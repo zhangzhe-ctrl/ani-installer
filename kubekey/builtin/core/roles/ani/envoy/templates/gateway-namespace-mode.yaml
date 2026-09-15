@@ -1,0 +1,72 @@
+# GatewayNamespace Mode 所需的集群级 RBAC
+# 默认模式下 infra-manager Role 只在 envoy-gateway-system 内授予
+# deployment/service/serviceaccount/configmap/HPA/PDB 的写权限。
+# 切到 GatewayNamespace Mode 后控制器要在每个 Gateway 所在 namespace
+# 创建数据面资源，因此需要集群级（ClusterRole）的等价权限。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eg-infra-manager-cluster
+  labels:
+    app.kubernetes.io/instance: eg
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: gateway-helm
+rules:
+- apiGroups: [""]
+  resources:
+  - serviceaccounts
+  - services
+  - configmaps
+  verbs: ["create","get","list","delete","deletecollection","patch","watch"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - daemonsets
+  verbs: ["create","get","list","delete","deletecollection","patch","watch"]
+- apiGroups: ["autoscaling","policy"]
+  resources:
+  - horizontalpodautoscalers
+  - poddisruptionbudgets
+  verbs: ["create","get","list","delete","deletecollection","patch","watch"]
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["clustertrustbundles"]
+  verbs: ["list","get","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eg-infra-manager-cluster
+  labels:
+    app.kubernetes.io/instance: eg
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: gateway-helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eg-infra-manager-cluster
+subjects:
+- kind: ServiceAccount
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+---
+# xDS JWT 鉴权所需的 TokenReview 权限
+# GatewayNamespace Mode 下数据面 SA 与控制器不同 namespace，
+# 控制面无法本地校验 SA token，必须通过 TokenReview API 校验，
+# 因此需要把内置的 system:auth-delegator ClusterRole 绑定给
+# envoy-gateway 控制面 SA（否则 xDS 流被拒绝，EDS fetch 超时）。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eg-auth-delegator
+  labels:
+    app.kubernetes.io/instance: eg
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: gateway-helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: envoy-gateway
+  namespace: envoy-gateway-system

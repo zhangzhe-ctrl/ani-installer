@@ -1,0 +1,29 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyGateway
+gateway:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+provider:
+  type: Kubernetes
+  kubernetes:
+    deploy:
+      type: GatewayNamespace
+    rateLimitDeployment:
+      container:
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/ratelimit:1e50889b" }}
+      patch:
+        type: StrategicMerge
+        value:
+          spec:
+            template:
+              spec:
+                containers:
+                - imagePullPolicy: IfNotPresent
+                  name: envoy-ratelimit
+    shutdownManager:
+      image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/gateway-dev:latest" }}
+extensionApis:
+  enableBackend: true
+  enableEnvoyPatchPolicy: true
+logging:
+  level:
+    default: info

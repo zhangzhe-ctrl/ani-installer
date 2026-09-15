@@ -1,0 +1,10 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: ani-smoke-backend
+  namespace: ani-installer-smoke
+spec:
+  endpoints:
+    - ip:
+        address: {{ .ani_smoke_backend_ip.stdout }}
+        port: 3000

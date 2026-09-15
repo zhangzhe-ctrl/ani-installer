@@ -1,0 +1,17 @@
+original_ref	hauler_ref	actual_digest	use_location
+docker.io/library/haproxy:2.9.6-alpine	127.0.0.1:5000/library/haproxy:2.9.6-alpine	sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5	KubeKey artifact; unused because control_plane_endpoint.type=local
+docker.io/plndr/kube-vip:v0.7.2	127.0.0.1:5000/plndr/kube-vip:v0.7.2	sha256:9d12df52ee3d95d4bc28fe19fcddb970f10705ac59566070d8dc142f593c4277	KubeKey artifact; unused because control_plane_endpoint.type=local
+registry.k8s.io/kube-apiserver:v1.35.8	127.0.0.1:5000/kubernetes/kube-apiserver:v1.35.8	sha256:cc20b3167f36d432c121a477e82b0bbd4d48e1609004b7fd73916ad62018924c	KubeKey/Kubernetes kube-apiserver
+registry.k8s.io/kube-controller-manager:v1.35.8	127.0.0.1:5000/kubernetes/kube-controller-manager:v1.35.8	sha256:544ad10d3bb84c52e612cdccd73ec1a803eb1700face93cdc75753ca89e914ff	KubeKey/Kubernetes kube-controller-manager
+registry.k8s.io/kube-proxy:v1.35.8	127.0.0.1:5000/kubernetes/kube-proxy:v1.35.8	sha256:f0174bfc4bf1afaa6ec1b575c478498d8dd4fb4e375ca4db527beb41f09b0190	KubeKey/Kubernetes kube-proxy
+registry.k8s.io/kube-scheduler:v1.35.8	127.0.0.1:5000/kubernetes/kube-scheduler:v1.35.8	sha256:9e9432917144239709bea763461d44c281566f281588e24a0fd060f107d9b7d3	KubeKey/Kubernetes kube-scheduler
+registry.k8s.io/pause:3.10.1	127.0.0.1:5000/kubernetes/pause:3.10.1	sha256:3b040af9bc594a02f1bb068d329d95c13f8d0139e3cc8b224737f0bf2c93bd87	Kubernetes sandbox image
+registry.k8s.io/coredns/coredns:v1.13.1	127.0.0.1:5000/coredns/coredns:v1.13.1	sha256:a0f0a739ccd102b7ea7ecf9b0c2bd0af9520a3b2e16d6718065660e954924ea6	Kubernetes CoreDNS
+registry.k8s.io/dns/k8s-dns-node-cache:1.26.4	127.0.0.1:5000/dns/k8s-dns-node-cache:1.26.4	sha256:55470ded85dfacf7ddd0f9bcf541a3d9654002bc3cac654e62a63d0c1f1d62fe	KubeKey artifact; nodelocaldns disabled
+registry.k8s.io/etcd:v3.6.6	127.0.0.1:5000/kubernetes/etcd:v3.6.6	sha256:da34fe69aa499157f3c9fb018ade396ed1ef1095998443ec44e7db96d2134848	Kubernetes stacked etcd
+docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2	127.0.0.1:5000/kubercloud/kc-networking:v0.6.2	sha256:78c7524dc1e9afc3d54797b168f739f4779ec2f4a99ccbe1df24022c6d5ca899	kcn v0.6.2 controller and init
+docker.changqingyun.cn/kubercloud/gateway:v1.8.3	127.0.0.1:5000/kubercloud/gateway:v1.8.3	sha256:3c3b5b6132002462b5c652cb9f1f72f532d3c848110e669f49690d9e11d9ce6e	Envoy Gateway controller and certgen
+docker.changqingyun.cn/kubercloud/gateway-dev:latest	127.0.0.1:5000/kubercloud/gateway-dev:latest	sha256:82df373256bb31c9fdbbf4a5e26696276e56bf06f29902f8608b3e52b0cf3c44	Envoy Proxy shutdown-manager patch
+docker.changqingyun.cn/kubercloud/envoy:distroless-v1.38.3	127.0.0.1:5000/kubercloud/envoy:distroless-v1.38.3	sha256:c8fecdf5574f1752be5de7d05c8161aca51ce81969e15e7ec6cafaad555ff065	Envoy Gateway data plane
+docker.io/library/busybox:1.37.0	127.0.0.1:5000/library/busybox:1.37.0	sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0	ANI smoke backend and client
+docker.changqingyun.cn/kubercloud/ratelimit:1e50889b	127.0.0.1:5000/kubercloud/ratelimit:1e50889b	sha256:1a98dadfce8da0aab0c10bfcba0049c9aa17f22b89bc5d7fe51c552889c3fc35	Envoy Gateway rate limit deployment

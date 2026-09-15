@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-smoke-backend
+  namespace: ani-installer-smoke
+  labels:
+    app: ani-smoke-backend
+spec:
+  nodeName: {{ index .ani.nodes 0 }}
+  restartPolicy: Never
+  containers:
+    - name: backend
+      image: {{ index .ani.images "docker.io/library/busybox:1.37.0" }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - >-
+          mkdir -p /www;
+          printf 'ANI-INSTALLER-OK\n' > /www/index.html;
+          exec busybox httpd -f -p 3000 -h /www
+      ports:
+        - name: http
+          containerPort: 3000

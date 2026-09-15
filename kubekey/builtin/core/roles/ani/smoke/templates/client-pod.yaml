@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-smoke-client
+  namespace: ani-installer-smoke
+spec:
+  nodeName: {{ index .ani.nodes 1 }}
+  restartPolicy: Never
+  containers:
+    - name: client
+      image: {{ index .ani.images "docker.io/library/busybox:1.37.0" }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - >-
+          wget -qO- http://{{ .ani_smoke_service.stdout }}/

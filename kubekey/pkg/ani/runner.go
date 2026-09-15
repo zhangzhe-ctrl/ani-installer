@@ -1,0 +1,295 @@
+package ani
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/cockroachdb/errors"
+	"gopkg.in/yaml.v3"
+)
+
+// InstallInput identifies the relocatable package and the site-specific
+// cluster input.
+type InstallInput struct {
+	ConfigFile  string
+	PackageRoot string
+}
+
+const serviceUnitName = "ani-image-registry.service"
+
+func RunInstall(ctx context.Context, input InstallInput) error {
+	if os.Geteuid() != 0 {
+		return errors.New("kk ani install must run as root; use install.sh or sudo")
+	}
+	packageRoot, err := filepath.Abs(input.PackageRoot)
+	if err != nil {
+		return errors.Wrap(err, "resolve package root")
+	}
+	if strings.ContainsAny(packageRoot, " \t") {
+		return errors.New("package root must not contain spaces (systemd unit safety)")
+	}
+	configPath, err := filepath.Abs(input.ConfigFile)
+	if err != nil {
+		return errors.Wrap(err, "resolve cluster config")
+	}
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return errors.Wrapf(err, "read cluster config %s", configPath)
+	}
+	cluster := ClusterConfig{}
+	if err := yaml.Unmarshal(configData, &cluster); err != nil {
+		return errors.Wrapf(err, "parse cluster config %s", configPath)
+	}
+	if err := Validate(cluster); err != nil {
+		return errors.Wrap(err, "validate cluster config")
+	}
+	if err := VerifyInstallerInterface(cluster); err != nil {
+		return err
+	}
+	if err := VerifySSHAuth(cluster); err != nil {
+		return err
+	}
+
+	workRoot := filepath.Join(packageRoot, "work", cluster.Name)
+	logRoot := filepath.Join(packageRoot, "logs", cluster.Name)
+	artifactPath := filepath.Join(packageRoot, "packages", "kubekey-artifact.tgz")
+	archivePath := filepath.Join(packageRoot, "images", "images.haul.tar.zst")
+	haulerPath := filepath.Join(packageRoot, "bin", "hauler")
+	kkPath, err := os.Executable()
+	if err != nil {
+		return errors.Wrap(err, "locate kk executable")
+	}
+	required := []string{artifactPath, archivePath, haulerPath, kkPath}
+	for _, path := range required {
+		if _, err := os.Stat(path); err != nil {
+			return errors.Wrapf(err, "required package file %s", path)
+		}
+	}
+	if err := os.MkdirAll(workRoot, 0o700); err != nil {
+		return errors.Wrap(err, "create work directory")
+	}
+	if err := os.MkdirAll(logRoot, 0o700); err != nil {
+		return errors.Wrap(err, "create log directory")
+	}
+	logFile, err := os.OpenFile(filepath.Join(logRoot, "install.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return errors.Wrap(err, "open install log")
+	}
+	defer logFile.Close()
+	logger := newInstallLogger(logFile)
+	fmt.Fprintf(logger, "ANI install started at %s; package=%s config=%s\n", time.Now().Format(time.RFC3339), packageRoot, configPath)
+
+	imageRows, err := readLines(filepath.Join(packageRoot, "images", "images.tsv"))
+	if err != nil {
+		return errors.Wrap(err, "read images.tsv")
+	}
+	imageTable, err := LoadImageTable(imageRows)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(logger, "loaded %d images from images.tsv\\n", len(imageTable))
+
+	spec, err := KubeKeyConfig(cluster, artifactPath, imageTable)
+	if err != nil {
+		return err
+	}
+	if err := writeYAML(filepath.Join(workRoot, "config.yaml"), map[string]any{
+		"apiVersion": "kubekey.kubesphere.io/v1",
+		"kind":       "Config",
+		"spec":       spec,
+	}); err != nil {
+		return err
+	}
+	inventorySpec, err := KubeKeyInventory(cluster)
+	if err != nil {
+		return err
+	}
+	if err := writeYAML(filepath.Join(workRoot, "inventory.yaml"), map[string]any{
+		"apiVersion": "kubekey.kubesphere.io/v1",
+		"kind":       "Inventory",
+		"metadata":   map[string]any{"name": "default"},
+		"spec":       inventorySpec,
+	}); err != nil {
+		return err
+	}
+
+	registryAddress, err := cluster.RegistryAddress()
+	if err != nil {
+		return err
+	}
+	storeDir := filepath.Join(workRoot, "hauler-store")
+	registryDir := filepath.Join(workRoot, "registry-data")
+	if err := os.RemoveAll(storeDir); err != nil {
+		return errors.Wrap(err, "clear Hauler store")
+	}
+	if err := os.MkdirAll(storeDir, 0o700); err != nil {
+		return errors.Wrap(err, "create Hauler store")
+	}
+	if err := os.MkdirAll(registryDir, 0o700); err != nil {
+		return errors.Wrap(err, "create registry backend")
+	}
+	if err := runLogged(ctx, logger, haulerPath, "store", "load", "--filename", archivePath, "--store", storeDir); err != nil {
+		return errors.Wrap(err, "load Hauler archive")
+	}
+	if err := writeRegistryService(packageRoot, haulerPath, storeDir, registryDir, cluster.RegistryConfig.Port); err != nil {
+		return errors.Wrap(err, "write Hauler service")
+	}
+	for _, args := range [][]string{
+		{"daemon-reload"},
+		{"restart", serviceUnitName},
+	} {
+		if err := runLogged(ctx, logger, "systemctl", args...); err != nil {
+			return errors.Wrapf(err, "systemctl %v", args)
+		}
+	}
+	if err := waitRegistry(ctx, logger, registryAddress); err != nil {
+		return err
+	}
+	if err := verifyRegistryImages(ctx, logger, registryAddress, imageTable); err != nil {
+		return err
+	}
+	fmt.Fprintf(logger, "Hauler registry %s is ready and all %d image manifests are present\n", registryAddress, len(imageTable))
+
+	kubekeyWorkdir := filepath.Join(workRoot, "kubekey")
+	if err := os.MkdirAll(kubekeyWorkdir, 0o700); err != nil {
+		return errors.Wrap(err, "create KubeKey workdir")
+	}
+	fmt.Fprintf(logger, "starting KubeKey create cluster\n")
+	err = runLogged(ctx, logger, kkPath,
+		"create", "cluster",
+		"--inventory", filepath.Join(workRoot, "inventory.yaml"),
+		"--config", filepath.Join(workRoot, "config.yaml"),
+		"--artifact", artifactPath,
+		"--workdir", kubekeyWorkdir,
+	)
+	if err != nil {
+		fmt.Fprintf(logger, "KubeKey failed: %v\n", err)
+		return errors.Wrap(err, "KubeKey create cluster")
+	}
+	fmt.Fprintf(logger, "ANI install completed at %s\n", time.Now().Format(time.RFC3339))
+	return nil
+}
+
+func writeYAML(path string, value any) error {
+	data, err := yaml.Marshal(value)
+	if err != nil {
+		return errors.Wrap(err, "marshal YAML")
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return errors.Wrapf(err, "write %s", path)
+	}
+	return nil
+}
+
+func readLines(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSuffix(lines[i], "\r")
+	}
+	return lines, nil
+}
+
+type installLogger struct {
+	io.Writer
+	file io.Writer
+}
+
+func newInstallLogger(file io.Writer) installLogger {
+	return installLogger{Writer: io.MultiWriter(file, os.Stdout), file: file}
+}
+
+func (l installLogger) Write(p []byte) (int, error) {
+	return l.Writer.Write(p)
+}
+
+func runLogged(ctx context.Context, logger io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = logger
+	cmd.Stderr = logger
+	return cmd.Run()
+}
+
+func writeRegistryService(packageRoot, haulerPath, storeDir, registryDir string, port int) error {
+	if port <= 0 || port > 65535 {
+		return errors.New("invalid registry port")
+	}
+	unit := fmt.Sprintf(`[Unit]
+Description=ANI offline image registry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%s
+ExecStart=%s store serve registry --port %d --directory %s --readonly=true --store %s
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+`, packageRoot, haulerPath, port, registryDir, storeDir)
+	path := "/etc/systemd/system/" + serviceUnitName
+	return os.WriteFile(path, []byte(unit), 0o644)
+}
+
+func waitRegistry(ctx context.Context, logger io.Writer, registryAddress string) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	url := fmt.Sprintf("http://%s/v2/", registryAddress)
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	_ = runLogged(context.WithoutCancel(ctx), logger, "systemctl", "status", serviceUnitName, "--no-pager", "-l")
+	return errors.New("timed out waiting for Hauler registry /v2/")
+}
+
+func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	for original, image := range table {
+		path, err := ManifestURL(image.HaulerRef)
+		if err != nil {
+			return errors.Wrap(err, "build manifest URL")
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", registryAddress, path), nil)
+		if err != nil {
+			return errors.Wrap(err, "build image request")
+		}
+		req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return errors.Wrapf(err, "request image %s", original)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			_ = runLogged(context.WithoutCancel(ctx), logger, "journalctl", "-u", serviceUnitName, "--no-pager", "-n", "100")
+			return errors.Errorf("image %s manifest returned HTTP %d", original, resp.StatusCode)
+		}
+	}
+	return nil
+}

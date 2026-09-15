@@ -1,0 +1,106 @@
+---
+- name: ANI Smoke | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani
+
+- name: ANI Smoke | Create namespace
+  command: kubectl create namespace ani-installer-smoke --dry-run=client -o yaml | kubectl apply -f -
+
+- name: ANI Smoke | Render Gateway
+  template:
+    src: gateway.yaml
+    dest: /etc/kubernetes/ani/smoke-gateway.yaml
+
+- name: ANI Smoke | Apply Gateway
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-gateway.yaml
+
+- name: ANI Smoke | Render backend Pod
+  template:
+    src: backend-pod.yaml
+    dest: /etc/kubernetes/ani/smoke-backend-pod.yaml
+
+- name: ANI Smoke | Apply backend Pod
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-backend-pod.yaml
+
+- name: ANI Smoke | Wait for backend Pod
+  command: kubectl wait --for=condition=Ready pod/ani-smoke-backend -n ani-installer-smoke --timeout=180s
+
+- name: ANI Smoke | Read backend Pod IP
+  command: kubectl get pod ani-smoke-backend -n ani-installer-smoke -o jsonpath='{.status.podIP}'
+  register: ani_smoke_backend_ip
+
+- name: ANI Smoke | Render backend Service
+  template:
+    src: backend-service.yaml
+    dest: /etc/kubernetes/ani/smoke-backend-service.yaml
+
+- name: ANI Smoke | Apply backend Service
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-backend-service.yaml
+
+- name: ANI Smoke | Read backend Service ClusterIP
+  command: kubectl get service ani-smoke-backend -n ani-installer-smoke -o jsonpath='{.spec.clusterIP}'
+  register: ani_smoke_backend_service_ip
+
+- name: ANI Smoke | Render network client Pod
+  template:
+    src: network-client-pod.yaml
+    dest: /etc/kubernetes/ani/smoke-network-client-pod.yaml
+
+- name: ANI Smoke | Apply network client Pod
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-network-client-pod.yaml
+
+- name: ANI Smoke | Wait for network client result
+  command: kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/ani-smoke-network-client -n ani-installer-smoke --timeout=180s
+
+- name: ANI Smoke | Read network client result
+  command: kubectl logs ani-smoke-network-client -n ani-installer-smoke
+  register: ani_smoke_network_response
+
+- name: ANI Smoke | Assert cross-node Pod, Service, and DNS access
+  assert:
+    that: .ani_smoke_network_response.stdout | trim | eq "ANI-NETWORK-OK"
+    fail_msg: >-
+      Expected cross-node Pod IP, Service IP, and DNS name checks to return "ANI-NETWORK-OK", but got "{{ .ani_smoke_network_response.stdout | trim }}".
+
+- name: ANI Smoke | Render Backend
+  template:
+    src: backend.yaml
+    dest: /etc/kubernetes/ani/smoke-backend.yaml
+
+- name: ANI Smoke | Apply Backend
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-backend.yaml
+
+- name: ANI Smoke | Render HTTPRoute
+  template:
+    src: httproute.yaml
+    dest: /etc/kubernetes/ani/smoke-httproute.yaml
+
+- name: ANI Smoke | Apply HTTPRoute
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-httproute.yaml
+
+- name: ANI Smoke | Wait for Envoy data-plane Deployment
+  command: kubectl rollout status deployment -n ani-installer-smoke --timeout=300s
+
+- name: ANI Smoke | Read Envoy Service endpoint
+  command: kubectl get service -n ani-installer-smoke -o jsonpath='{.items[0].spec.clusterIP}:{.items[0].spec.ports[0].port}'
+  register: ani_smoke_service
+
+- name: ANI Smoke | Render client Pod
+  template:
+    src: client-pod.yaml
+    dest: /etc/kubernetes/ani/smoke-client-pod.yaml
+
+- name: ANI Smoke | Apply client Pod
+  command: kubectl apply --server-side -f /etc/kubernetes/ani/smoke-client-pod.yaml
+
+- name: ANI Smoke | Wait for client result
+  command: kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/ani-smoke-client -n ani-installer-smoke --timeout=180s
+
+- name: ANI Smoke | Read client result
+  command: kubectl logs ani-smoke-client -n ani-installer-smoke
+  register: ani_smoke_response
+
+- name: ANI Smoke | Assert exact response
+  assert:
+    that: .ani_smoke_response.stdout | trim | eq "ANI-INSTALLER-OK"
+    fail_msg: >-
+      Expected the client to receive "ANI-INSTALLER-OK" through the Envoy Service, but got "{{ .ani_smoke_response.stdout | trim }}".

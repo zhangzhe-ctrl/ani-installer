@@ -1,0 +1,4255 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kc-networking
+    control-plane: controller
+  name: kcn-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: eipgateways.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: EIPGateway
+    listKind: EIPGatewayList
+    plural: eipgateways
+    shortNames:
+    - eipgw
+    singular: eipgateway
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.scope
+      name: Scope
+      type: string
+    - jsonPath: .spec.egressType
+      name: EgressType
+      type: string
+    - jsonPath: .status.localIP
+      name: LocalIP
+      type: string
+    - jsonPath: .status.subnets
+      name: Subnets
+      priority: 1
+      type: string
+    - jsonPath: .spec.gatewayConfig.nodes
+      name: Nodes
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: EIPGateway is the Schema for the eipgateways API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of EIPGateway
+            properties:
+              egressType:
+                default: Host
+                description: 'egressType specifies the overlay egress method. Supported
+                  values: Host, Gateway. Defaults to Host. Currently only Host is
+                  supported.'
+                enum:
+                - Host
+                type: string
+              gatewayConfig:
+                description: |-
+                  gatewayConfig is required when egressType is "Gateway".
+                  NOTE: This is not currently implemented.
+                properties:
+                  network:
+                    description: network defines the network used for interconnection
+                      with the switch.
+                    properties:
+                      localIP:
+                        description: localIP is the OVN-side interconnection address
+                          (e.g. "100.64.0.1/30").
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      vlanNetwork:
+                        description: vlanNetwork is the VLAN network used for interconnection
+                          with the switch.
+                        type: string
+                    required:
+                    - localIP
+                    - vlanNetwork
+                    type: object
+                  nodes:
+                    additionalProperties:
+                      format: int32
+                      type: integer
+                    description: |-
+                      nodes lists the gateway nodes in active-backup mode.
+                      Key is the node name, value is the priority (higher value means higher priority).
+                    type: object
+                  routes:
+                    description: routes lists the static routes for the gateway.
+                    items:
+                      description: RouteEntry defines a single route in the route
+                        table.
+                      properties:
+                        cidr:
+                          description: cidr is the target/source CIDR depending on
+                            the policy.
+                          pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                          type: string
+                        enableECMP:
+                          description: enableECMP indicates whether this route uses
+                            equal-cost multi-path routing.
+                          type: boolean
+                        nextHopIP:
+                          description: |-
+                            nextHopIP is the next hop IP address. If the VPC/EIPGateway's logical router
+                            does not have a corresponding direct route, this route will not be applied.
+                            "discard" represents a blackhole route.
+                          pattern: ^(?:discard|(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)))$
+                          type: string
+                        policy:
+                          default: DstIP
+                          description: |-
+                            policy specifies the route policy: SrcIP or DstIP.
+                            Defaults to DstIP.
+                          enum:
+                          - SrcIP
+                          - DstIP
+                          type: string
+                      required:
+                      - cidr
+                      - nextHopIP
+                      type: object
+                    maxItems: 20
+                    type: array
+                required:
+                - network
+                - nodes
+                type: object
+              hostConfig:
+                description: hostConfig is required when egressType is "Host".
+                properties:
+                  localIP:
+                    description: localIP is the lrp ip address of service subnet.
+                    pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                    type: string
+                required:
+                - localIP
+                type: object
+              scope:
+                default: Public
+                description: |-
+                  scope indicates the EIP network type. Supported values: Intranet, Public.
+                  Defaults to Public. Currently only Public is supported. Immutable after creation.
+                enum:
+                - Public
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            type: object
+            x-kubernetes-validations:
+            - message: field scope is immutable once set
+              rule: '!has(oldSelf.scope) || has(self.scope)'
+          status:
+            description: status defines the observed state of EIPGateway
+            properties:
+              boundResources:
+                description: boundResources holds OVN-related resource IDs for the
+                  EIPGateway.
+                properties:
+                  router:
+                    description: router is the OVN logical router name.
+                    type: string
+                required:
+                - router
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the EIPGateway resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the EIPGateway is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              localIP:
+                description: lrp ip address of service subnet for Host egressType.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+              subnets:
+                additionalProperties:
+                  type: string
+                description: |-
+                  subnets lists the subnets associated with this gateway. Key is the subnet
+                  name in "namespace/name" format, value is the subnet cidr.
+                type: object
+            required:
+            - localIP
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: eips.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: EIP
+    listKind: EIPList
+    plural: eips
+    singular: eip
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .status.gateway
+      name: Gateway
+      type: string
+    - jsonPath: .spec.ipAddress
+      name: IP
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.boundResource.resourceType
+      name: ResourceType
+      type: string
+    - jsonPath: .status.boundResource.resource
+      name: Resource
+      type: string
+    - jsonPath: .status.boundResource.vpc
+      name: VPC
+      type: string
+    - jsonPath: .status.boundResource.nodeName
+      name: NodeName
+      type: string
+    - jsonPath: .status.boundResource.disabled
+      name: Disabled
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: EIP is the Schema for the eips API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of EIP
+            properties:
+              ipAddress:
+                description: |-
+                  ipAddress can be specified to request a particular IP; if empty, CNI
+                  auto-assigns one. Immutable after creation.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              ipVersion:
+                default: IPv4
+                description: |-
+                  ipVersion specifies the IP version: IPv4, IPv6, or Dual. Defaults to IPv4.
+                  Currently only IPv4 is supported. Immutable after creation.
+                enum:
+                - IPv4
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              securityGroups:
+                description: securityGroups is the list of security groups bound to
+                  this EIP.
+                items:
+                  type: string
+                type: array
+              subnet:
+                description: |-
+                  subnet is the name of the Intranet/Public type subnet from which the EIP is
+                  allocated. Required and immutable after creation.
+                  Format: "namespace/name". The namespace part may be omitted if the subnet
+                  resides in the same namespace as this resource.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - subnet
+            type: object
+            x-kubernetes-validations:
+            - message: field ipVersion is immutable once set
+              rule: '!has(oldSelf.ipVersion) || has(self.ipVersion)'
+            - message: field ipAddress is immutable once set
+              rule: '!has(oldSelf.ipAddress) || has(self.ipAddress)'
+          status:
+            description: status defines the observed state of EIP
+            properties:
+              boundResource:
+                description: boundResource records the resource the EIP is currently
+                  bound to.
+                properties:
+                  disabled:
+                    description: disable controls whether the bound resource is active.
+                    type: boolean
+                  nodeName:
+                    description: nodeName is the name of the current eip egress node.
+                    type: string
+                  observedGeneration:
+                    description: observedGeneration is the generation of the bound
+                      resource's spec that the EIP controller last observed and reconciled.
+                    format: int64
+                    type: integer
+                  resource:
+                    description: resource is the name of the resource the EIP is bound
+                      to.
+                    type: string
+                  resourceType:
+                    description: 'resourceType indicates the type of resource the
+                      EIP is bound to: snat, nat, or service.'
+                    enum:
+                    - Snat
+                    - Nat
+                    - Service
+                    type: string
+                  vpc:
+                    description: vpc is the name of the VPC the EIP is associated
+                      with, in the format of namespace/name.
+                    type: string
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the EIP resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid and the EIP has a valid IP address
+                    (False when IP allocation fails or the specified IP is invalid)
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the EIP is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              gateway:
+                description: gateway represents the VPC gateway or EIP gateway for
+                  this EIP.
+                type: string
+              phase:
+                description: phase is the current binding phase of the EIP. Only meaningful
+                  when the "Valid" condition is true.
+                enum:
+                - Available
+                - Bound
+                - Failed
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: nats.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: Nat
+    listKind: NatList
+    plural: nats
+    singular: nat
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .status.vpc
+      name: VPC
+      type: string
+    - jsonPath: .spec.eip
+      name: EIP
+      type: string
+    - jsonPath: .spec.vNic
+      name: VNic
+      type: string
+    - jsonPath: .status.eipAddress
+      name: EIPAddress
+      type: string
+    - jsonPath: .status.ipAddress
+      name: IPAddress
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Nat is the Schema for the nats API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Nat
+            properties:
+              disable:
+                description: |-
+                  disable controls whether this NAT rule is active. If set to true, the rule
+                  will be disabled and traffic will not be NATed. Defaults to false.
+                type: boolean
+              eip:
+                description: eip is the name of the EIP used for this NAT. Immutable
+                  after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              ipAddress:
+                description: |-
+                  ipAddress is the internal IP address of the VNic. If not specified, any
+                  available IP address of the VNic will be used automatically.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+              vNic:
+                description: vNic is the name of the VNic that the EIP is bound to.
+                  Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - eip
+            - vNic
+            type: object
+          status:
+            description: status defines the observed state of Nat
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the Nat resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec is valid and the EIP is available for binding (False when
+                    the spec is invalid or the EIP is occupied)
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the NAT is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              eipAddress:
+                description: eipAddress is the EIP address.
+                type: string
+              ipAddress:
+                description: ipAddress is the internal (private) IP address.
+                type: string
+              nodeName:
+                description: nodeName is the name of the node where the bound VNic
+                  resides.
+                type: string
+              phase:
+                description: phase is the current binding phase of the NAT.
+                enum:
+                - Pending
+                - Bound
+                - Disabled
+                type: string
+              vpc:
+                description: vpc is the namespaced name of the VPC this NAT belongs
+                  to.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: networkacls.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: NetworkACL
+    listKind: NetworkACLList
+    plural: networkacls
+    shortNames:
+    - acl
+    singular: networkacl
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vpc
+      name: VPC
+      type: string
+    - jsonPath: .spec.subnets
+      name: Subnets
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: NetworkACL is the Schema for the networkacls API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of NetworkACL
+            properties:
+              egressRules:
+                description: egressRules lists the egress (outbound) rules.
+                items:
+                  description: NetworkACLRule defines a single ACL rule.
+                  properties:
+                    action:
+                      description: 'action specifies the rule action: allow or drop.'
+                      enum:
+                      - allow
+                      - drop
+                      type: string
+                    dstCIDR:
+                      description: dstCIDR is the list of destination CIDRs for the
+                        rule.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
+                    ipVersion:
+                      default: IPv4
+                      description: 'ipVersion specifies the IP version: IPv4 or IPv6.
+                        Defaults to IPv4.'
+                      enum:
+                      - IPv4
+                      type: string
+                    priority:
+                      description: priority specifies the rule priority. Lower values
+                        have higher priority.
+                      type: integer
+                    protocol:
+                      description: 'protocol specifies the protocol: tcp, udp, icmp,
+                        or all.'
+                      enum:
+                      - tcp
+                      - udp
+                      - icmp
+                      - all
+                      type: string
+                    srcCIDR:
+                      description: srcCIDR is the list of source CIDRs for the rule.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
+                  required:
+                  - action
+                  - ipVersion
+                  - priority
+                  - protocol
+                  type: object
+                type: array
+              ingressRules:
+                description: ingressRules lists the ingress (inbound) rules.
+                items:
+                  description: NetworkACLRule defines a single ACL rule.
+                  properties:
+                    action:
+                      description: 'action specifies the rule action: allow or drop.'
+                      enum:
+                      - allow
+                      - drop
+                      type: string
+                    dstCIDR:
+                      description: dstCIDR is the list of destination CIDRs for the
+                        rule.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
+                    ipVersion:
+                      default: IPv4
+                      description: 'ipVersion specifies the IP version: IPv4 or IPv6.
+                        Defaults to IPv4.'
+                      enum:
+                      - IPv4
+                      type: string
+                    priority:
+                      description: priority specifies the rule priority. Lower values
+                        have higher priority.
+                      type: integer
+                    protocol:
+                      description: 'protocol specifies the protocol: tcp, udp, icmp,
+                        or all.'
+                      enum:
+                      - tcp
+                      - udp
+                      - icmp
+                      - all
+                      type: string
+                    srcCIDR:
+                      description: srcCIDR is the list of source CIDRs for the rule.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
+                  required:
+                  - action
+                  - ipVersion
+                  - priority
+                  - protocol
+                  type: object
+                type: array
+              subnets:
+                description: subnets lists the subnets this ACL is applied to. If
+                  empty, the ACL applies to the entire VPC.
+                items:
+                  type: string
+                type: array
+              vpc:
+                description: vpc is the name of the VPC this ACL belongs to. Immutable
+                  after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - vpc
+            type: object
+          status:
+            description: status defines the observed state of NetworkACL
+            properties:
+              appliedSubnets:
+                additionalProperties:
+                  description: NetworkACLSubnetSyncStatus defines the sync status
+                    of a subnet for ingress/egress rules.
+                  properties:
+                    egressSyncSuccess:
+                      description: egressSyncSuccess indicates whether the egress
+                        rules have been successfully synced to the subnet.
+                      type: boolean
+                    ingressSyncSuccess:
+                      description: ingressSyncSuccess indicates whether the ingress
+                        rules have been successfully synced to the subnet.
+                      type: boolean
+                  required:
+                  - egressSyncSuccess
+                  - ingressSyncSuccess
+                  type: object
+                description: |-
+                  appliedSubnets records the sync status of each subnet this ACL has been applied to.
+                  Key is the subnet name, value is the sync status for ingress/egress rules.
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the NetworkACL resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the NetworkACL is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              egressMd5:
+                description: egressMd5 is the MD5 checksum of the current applied
+                  egress rules.
+                type: string
+              ingressMd5:
+                description: ingressMd5 is the MD5 checksum of the current applied
+                  ingress rules.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: nics.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: Nic
+    listKind: NicList
+    plural: nics
+    singular: nic
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.ifName
+      name: IfName
+      type: string
+    - jsonPath: .status.allocated.peerName
+      name: PeerName
+      type: string
+    - jsonPath: .spec.nodeName
+      name: NodeName
+      type: string
+    - jsonPath: .spec.netns
+      name: Netns
+      priority: 1
+      type: string
+    - jsonPath: .spec.vNic
+      name: VNic
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Nic is the Schema for the nics API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Nic
+            properties:
+              ifName:
+                description: ifName is the device name used by pod. Immutable after
+                  creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              netns:
+                description: netns is the pod's network namespace, provided by the
+                  CNI. Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              nodeName:
+                description: nodeName is the name of the node where this NIC resides.
+                  Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              type:
+                default: VETH
+                description: 'type specifies the Nic device type: UNMANAGED or VETH.
+                  Immutable after creation.'
+                enum:
+                - UNMANAGED
+                - VETH
+                - INTERNAL
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              vNic:
+                description: VNic specifies the desired VNic to be bound in "namespace/name"
+                  format. Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - ifName
+            - nodeName
+            - vNic
+            type: object
+            x-kubernetes-validations:
+            - message: field type is immutable once set
+              rule: '!has(oldSelf.type) || has(self.type)'
+            - message: field netns is immutable once set
+              rule: '!has(oldSelf.netns) || has(self.netns)'
+          status:
+            description: status defines the observed state of Nic
+            properties:
+              allocated:
+                description: |-
+                  allocated holds allocated device information for SR-IOV type NICs,
+                  and also records peer information for veth type devices.
+                properties:
+                  peerName:
+                    description: peerName is the representor device name for vf/sf/vdpa/pf
+                      devices or peer name for veth device.
+                    type: string
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the Nic resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the Nic is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              phase:
+                description: 'phase indicates the current phase: Available, Attached,
+                  Attaching, Detaching, or Pending.'
+                enum:
+                - Available
+                - Attached
+                - Attaching
+                - Pending
+                type: string
+              vNic:
+                description: VNic specifies the current bound VNic in "namespace/name"
+                  format.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    selectableFields:
+    - jsonPath: .spec.nodeName
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: routetables.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: RouteTable
+    listKind: RouteTableList
+    plural: routetables
+    singular: routetable
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.generation
+      name: Generation
+      type: integer
+    - jsonPath: .status.observedGeneration
+      name: ObservedGeneration
+      type: integer
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: RouteTable is the Schema for the routetables API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of RouteTable
+            properties:
+              routes:
+                description: routes lists the route entries in this route table.
+                items:
+                  description: RouteEntry defines a single route in the route table.
+                  properties:
+                    cidr:
+                      description: cidr is the target/source CIDR depending on the
+                        policy.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                      type: string
+                    enableECMP:
+                      description: enableECMP indicates whether this route uses equal-cost
+                        multi-path routing.
+                      type: boolean
+                    nextHopIP:
+                      description: |-
+                        nextHopIP is the next hop IP address. If the VPC/EIPGateway's logical router
+                        does not have a corresponding direct route, this route will not be applied.
+                        "discard" represents a blackhole route.
+                      pattern: ^(?:discard|(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)))$
+                      type: string
+                    policy:
+                      default: DstIP
+                      description: |-
+                        policy specifies the route policy: SrcIP or DstIP.
+                        Defaults to DstIP.
+                      enum:
+                      - SrcIP
+                      - DstIP
+                      type: string
+                  required:
+                  - cidr
+                  - nextHopIP
+                  type: object
+                maxItems: 50
+                type: array
+            type: object
+          status:
+            description: status defines the observed state of RouteTable
+            properties:
+              appliedResources:
+                additionalProperties:
+                  description: RouteAppliedResource records a VPC's application status
+                    for the route table.
+                  properties:
+                    appliedGeneration:
+                      description: |-
+                        appliedGeneration is the generation of the route table applied to the
+                        corresponding VPC. A non-zero value indicates the route table is bound to the VPC.
+                      format: int64
+                      type: integer
+                    appliedSubnets:
+                      additionalProperties:
+                        format: int64
+                        type: integer
+                      description: |-
+                        appliedSubnets lists the subnets within the VPC that use this route table.
+                        Key is the subnet name, value is the applied route table generation for that subnet.
+                      type: object
+                  type: object
+                description: |-
+                  appliedResources records which VPCs/subnets are currently applying this
+                  route table. Key is the VPC name, value is the applied resource record.
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the RouteTable resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the route table has been applied and its status is synced with the latest spec
+                  - "Ready": the route table is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: securitygroups.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: SecurityGroup
+    listKind: SecurityGroupList
+    plural: securitygroups
+    shortNames:
+    - sg
+    singular: securitygroup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.allowSameGroupTraffic
+      name: AllowSameGroupTraffic
+      type: string
+    - jsonPath: .status.appliedVNics
+      name: AppliedVNics
+      type: string
+    - jsonPath: .status.referencedBy
+      name: ReferencedBy
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: SecurityGroup is the Schema for the securitygroups API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of SecurityGroup
+            properties:
+              allowSameGroupTraffic:
+                default: true
+                description: allowSameGroupTraffic indicates whether intra-group traffic
+                  is allowed.
+                type: boolean
+              egressRules:
+                description: egressRules lists the egress (outbound) rules.
+                items:
+                  description: SecurityGroupRule defines a single security group rule
+                    (used for both egress and ingress).
+                  properties:
+                    action:
+                      description: 'action specifies the rule action: allow or drop.'
+                      enum:
+                      - allow
+                      - drop
+                      type: string
+                    ipVersion:
+                      default: IPv4
+                      description: 'ipVersion specifies the IP version: IPv4 or IPv6.
+                        Defaults to IPv4.'
+                      enum:
+                      - IPv4
+                      type: string
+                    portRangeMax:
+                      description: portRangeMax specifies the maximum port in the
+                        range.
+                      format: int32
+                      type: integer
+                    portRangeMin:
+                      description: portRangeMin specifies the minimum port in the
+                        range.
+                      format: int32
+                      type: integer
+                    priority:
+                      description: priority specifies the rule priority. Higher values
+                        take precedence.
+                      type: integer
+                    protocol:
+                      description: 'protocol specifies the network protocol: tcp,
+                        udp, icmp, or all.'
+                      enum:
+                      - tcp
+                      - udp
+                      - icmp
+                      - all
+                      type: string
+                    remoteAddress:
+                      description: remoteAddress specifies the remote IP address/CIDR.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                      type: string
+                    remoteSgName:
+                      description: |-
+                        remoteSgName specifies the name of a remote SecurityGroup.
+                        The IPs of the VNics listed in that SecurityGroup's status.appliedVNics are used
+                        as the remote address set for this rule.
+                      type: string
+                  required:
+                  - action
+                  - ipVersion
+                  - priority
+                  - protocol
+                  type: object
+                type: array
+              ingressRules:
+                description: ingressRules lists the ingress (inbound) rules.
+                items:
+                  description: SecurityGroupRule defines a single security group rule
+                    (used for both egress and ingress).
+                  properties:
+                    action:
+                      description: 'action specifies the rule action: allow or drop.'
+                      enum:
+                      - allow
+                      - drop
+                      type: string
+                    ipVersion:
+                      default: IPv4
+                      description: 'ipVersion specifies the IP version: IPv4 or IPv6.
+                        Defaults to IPv4.'
+                      enum:
+                      - IPv4
+                      type: string
+                    portRangeMax:
+                      description: portRangeMax specifies the maximum port in the
+                        range.
+                      format: int32
+                      type: integer
+                    portRangeMin:
+                      description: portRangeMin specifies the minimum port in the
+                        range.
+                      format: int32
+                      type: integer
+                    priority:
+                      description: priority specifies the rule priority. Higher values
+                        take precedence.
+                      type: integer
+                    protocol:
+                      description: 'protocol specifies the network protocol: tcp,
+                        udp, icmp, or all.'
+                      enum:
+                      - tcp
+                      - udp
+                      - icmp
+                      - all
+                      type: string
+                    remoteAddress:
+                      description: remoteAddress specifies the remote IP address/CIDR.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                      type: string
+                    remoteSgName:
+                      description: |-
+                        remoteSgName specifies the name of a remote SecurityGroup.
+                        The IPs of the VNics listed in that SecurityGroup's status.appliedVNics are used
+                        as the remote address set for this rule.
+                      type: string
+                  required:
+                  - action
+                  - ipVersion
+                  - priority
+                  - protocol
+                  type: object
+                type: array
+            type: object
+          status:
+            description: status defines the observed state of SecurityGroup
+            properties:
+              allowSameGroupTraffic:
+                description: allowSameGroupTraffic indicates the current applied state
+                  of intra-group traffic allowance.
+                type: boolean
+              appliedVNics:
+                description: appliedVNics lists the VNics that this security group
+                  has been applied to.
+                items:
+                  type: string
+                type: array
+              conditions:
+                description: |-
+                  conditions represent the current state of the SecurityGroup resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the SecurityGroup is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              egressMd5:
+                description: egressMd5 is the MD5 checksum of the current applied
+                  egress rules.
+                type: string
+              ingressMd5:
+                description: ingressMd5 is the MD5 checksum of the current applied
+                  ingress rules.
+                type: string
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
+              referencedBy:
+                description: referencedBy lists the SecurityGroups that reference
+                  this SecurityGroup in their rules' remoteSgName.
+                items:
+                  type: string
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: snats.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: Snat
+    listKind: SnatList
+    plural: snats
+    singular: snat
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .spec.vpc
+      name: VPC
+      type: string
+    - jsonPath: .spec.eip
+      name: EIP
+      type: string
+    - jsonPath: .status.eipAddress
+      name: EIPAddress
+      type: string
+    - jsonPath: .spec.cidrs
+      name: CIDRs
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Snat is the Schema for the snats API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Snat
+            properties:
+              cidrs:
+                description: cidrs limits the SNAT scope. If empty, the entire VPC
+                  is SNATed.
+                items:
+                  pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                  type: string
+                type: array
+              disable:
+                description: |-
+                  disable controls whether this SNAT rule is active. If set to true, the rule
+                  will be disabled and traffic will not be SNATed. Defaults to false.
+                type: boolean
+              eip:
+                description: eip is the name of the EIP used for SNAT. Immutable after
+                  creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              vpc:
+                description: vpc is the namespaced name of the VPC this SNAT applies
+                  to. Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - eip
+            - vpc
+            type: object
+          status:
+            description: status defines the observed state of Snat
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the Snat resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec is valid and the EIP is available for binding (False when
+                    the spec is invalid or the EIP is occupied)
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the SNAT is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              eipAddress:
+                description: eipAddress is the allocated EIP address.
+                type: string
+              phase:
+                description: phase is the current binding phase of the SNAT.
+                enum:
+                - Pending
+                - Bound
+                - Disabled
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: subnets.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: Subnet
+    listKind: SubnetList
+    plural: subnets
+    singular: subnet
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.gateway
+      name: Gateway
+      type: string
+    - jsonPath: .spec.cidrBlock
+      name: CIDR
+      type: string
+    - jsonPath: .spec.gatewayIP
+      name: GatewayIP
+      type: string
+    - jsonPath: .status.underlayState.vlanNetwork
+      name: Vlan
+      type: string
+    - jsonPath: .status.v4usingIPs
+      name: V4USED
+      type: integer
+    - jsonPath: .status.v4availableIPs
+      name: V4AVAILABLE
+      type: integer
+    - jsonPath: .spec.excludeIps
+      name: EXCLUDEIPS
+      priority: 1
+      type: string
+    - jsonPath: .spec.allowedNamespaces
+      name: AllowedNamespaces
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Subnet is the Schema for the subnets API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Subnet
+            properties:
+              allowedNamespaces:
+                description: |-
+                  allowedNamespaces specifies which namespaces are allowed to use this subnet.
+                  If empty, only the current namespace is allowed to use. For VPC subnets, the
+                  effective namespaces are the intersection with the VPC's allowedNamespaces.
+                properties:
+                  from:
+                    description: 'from specifies the namespace selection mode: All,
+                      Same, or Selector.'
+                    enum:
+                    - All
+                    - Same
+                    - Selector
+                    type: string
+                  selector:
+                    description: selector is used when from is Selector. Labels are
+                      ANDed.
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: matchLabels is a map of key-value pairs. All
+                          labels must match (AND relation).
+                        type: object
+                    type: object
+                required:
+                - from
+                type: object
+              cidrBlock:
+                description: cidrBlock is the subnet CIDR. Immutable after creation.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              dnsServers:
+                description: dnsServers lists DNS server addresses configured via
+                  DHCP options.
+                items:
+                  pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                  type: string
+                type: array
+              enableDHCP:
+                description: enableDHCP indicates whether DHCP is enabled for this
+                  subnet. Required for VM scenarios.
+                type: boolean
+              enableIPv6RA:
+                description: enableIPv6RA indicates whether IPv6 Router Advertisement
+                  is enabled.
+                type: boolean
+              excludeIPs:
+                description: 'excludeIPs lists IP ranges to exclude from allocation.
+                  Format: "startIP..endIP" or single IP.'
+                items:
+                  type: string
+                type: array
+              gateway:
+                description: |-
+                  gateway references the gateway for this subnet. For VPC subnets, format is
+                  "namespace/vpc-name". For Intranet/Public subnets, references an EIPGateway;
+                  empty means default gateway. System subnets: empty. Immutable after creation.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              gatewayIP:
+                description: gatewayIP is the subnet gateway address on the OVN side.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+              ipVersion:
+                default: IPv4
+                description: 'ipVersion specifies the IP version: IPv4, IPv6, or Dual.
+                  Defaults to IPv4. Immutable after creation.'
+                enum:
+                - IPv4
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              natOutgoing:
+                description: |-
+                  natOutgoing only applies to the default VPC. When true, SNAT is done on the
+                  node using the node's IP address. When false, IDC should configure routes to
+                  deliver traffic to the nodes. Invalid for Intranet/Public subnets.
+                type: boolean
+              routeTable:
+                description: routeTable is the name of the route table used by this
+                  subnet. Only support for VPC subnets.
+                type: string
+              type:
+                default: VPC
+                description: 'type specifies the subnet type: VPC, Intranet, Public,
+                  or System. Defaults to VPC. Immutable after creation.'
+                enum:
+                - VPC
+                - Intranet
+                - Public
+                - System
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              underlayConfig:
+                description: |-
+                  underlayConfig holds the underlay network configuration. When non-nil, it
+                  indicates that underlay network mode is desired for this subnet.
+                  Only applicable to Intranet/Public subnets. Immutable after creation.
+                properties:
+                  gatewayIP:
+                    description: gatewayIP is the gateway address on the switch side
+                      for the underlay network.
+                    pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                    type: string
+                  vlanNetwork:
+                    description: vlanNetwork is the name of the VlanNetwork for the
+                      underlay. Immutable after creation.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: field is immutable
+                      rule: self == oldSelf
+                required:
+                - gatewayIP
+                - vlanNetwork
+                type: object
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - cidrBlock
+            type: object
+            x-kubernetes-validations:
+            - message: field type is immutable once set
+              rule: '!has(oldSelf.type) || has(self.type)'
+            - message: field gateway is immutable once set
+              rule: '!has(oldSelf.gateway) || has(self.gateway)'
+            - message: field underlayConfig is immutable once set
+              rule: '!has(oldSelf.underlayConfig) || has(self.underlayConfig)'
+            - message: field ipVersion is immutable once set
+              rule: '!has(oldSelf.ipVersion) || has(self.ipVersion)'
+          status:
+            description: status defines the observed state of Subnet
+            properties:
+              appliedRouteTable:
+                description: appliedRouteTable records the route table that has been
+                  applied to the Subnet.
+                properties:
+                  appliedGeneration:
+                    description: appliedGeneration is the generation of the route
+                      table that has been applied.
+                    format: int64
+                    type: integer
+                  routeTable:
+                    description: routeTable is the name of the applied route table.
+                    type: string
+                required:
+                - appliedGeneration
+                - routeTable
+                type: object
+              boundResources:
+                description: boundResources holds OVN-related resource IDs.
+                properties:
+                  dhcpV4OptionsUUID:
+                    description: DHCPv4OptionsUUID is the OVN DHCPv4 options UUID
+                      for the logical switch.
+                    type: string
+                  gatewayPort:
+                    description: gatewayPort is the OVN logical switch port name for
+                      the gateway.
+                    type: string
+                  switch:
+                    description: switch is the OVN logical switch name.
+                    type: string
+                required:
+                - switch
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the Subnet resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the subnet has been successfully created and is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              gatewayMac:
+                description: gatewayMac is the auto-generated gateway MAC address.
+                type: string
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
+              underlayState:
+                description: underlayState holds the underlay subnet state (only for
+                  Intranet/Public underlay subnets).
+                properties:
+                  chassisNode:
+                    description: chassisNode is the node where the  OVN DGP (distributed
+                      gateway port) of underlay subnet is resident.
+                    type: string
+                  notReadyNodes:
+                    description: notReadyNodes lists nodes where the underlay is not
+                      ready.
+                    items:
+                      type: string
+                    type: array
+                  ready:
+                    description: ready indicates whether the underlay is ready on
+                      all nodes.
+                    type: boolean
+                  vlanNetwork:
+                    description: vlanNetwork is the name of the VlanNetwork for the
+                      underlay.
+                    type: string
+                required:
+                - chassisNode
+                - ready
+                - vlanNetwork
+                type: object
+              v4availableIPrange:
+                description: v4availableIPrange shows the available IPv4 IP ranges.
+                type: string
+              v4availableIPs:
+                description: v4availableIPs is the count of available IPv4 addresses.
+                type: integer
+              v4usingIPrange:
+                description: v4usingIPrange shows the in-use IPv4 IP ranges.
+                type: string
+              v4usingIPs:
+                description: v4usingIPs is the count of in-use IPv4 addresses.
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: vlannetworks.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: VlanNetwork
+    listKind: VlanNetworkList
+    plural: vlannetworks
+    shortNames:
+    - vlan
+    singular: vlannetwork
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.vlanID
+      name: VlanID
+      type: integer
+    - jsonPath: .spec.devName
+      name: DevName
+      type: string
+    - jsonPath: .status.subnet
+      name: Subnet
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VlanNetwork is the Schema for the vlannetworks API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of VlanNetwork
+            properties:
+              devName:
+                description: |-
+                  devName is the physical network interface name. All nodes must have a
+                  network interface with this name. Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              vlanID:
+                description: vlanID is the VLAN identifier (0-4094). A value of 0
+                  indicates no VLAN. Immutable after creation.
+                format: int32
+                maximum: 4094
+                minimum: 0
+                type: integer
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - devName
+            - vlanID
+            type: object
+          status:
+            description: status defines the observed state of VlanNetwork
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the VlanNetwork resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the VLAN network is effective and ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              notReadyNodes:
+                description: notReadyNodes lists nodes where the VLAN network is not
+                  ready.
+                items:
+                  type: string
+                type: array
+              subnet:
+                description: / subnet specifies the subnet name associated with the
+                  VLAN network.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: vnicips.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: VNicIP
+    listKind: VNicIPList
+    plural: vnicips
+    singular: vnicip
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .spec.ipAddress
+      name: IP
+      type: string
+    - jsonPath: .spec.vNic
+      name: VNic
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VNicIP is the Schema for the vnicips API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of VNicIP
+            properties:
+              dhcp:
+                description: |-
+                  dhcp indicates whether DHCP is enabled for this IP. Requires the
+                  corresponding subnet to have enableDHCP=true. Defaults to false.
+                  Note: At most one IP address can be acquired through DHCP.
+                type: boolean
+              ipAddress:
+                description: |-
+                  ipAddress can be specified to request a particular IP; if empty,
+                  CNI auto-assigns one. For dual-stack subnets, format is "ipv4,ipv6"
+                  (e.g. "10.16.0.84,fd00:10:16::54"). Immutable after creation.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              subnet:
+                description: |-
+                  subnet is the name of the subnet this IP belongs to. Required and immutable after creation.
+                  Format: "namespace/name". The namespace part may be omitted if the subnet
+                  resides in the same namespace as this resource.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              vNic:
+                description: vNic is the name of the VNic this IP is bound to. Must
+                  be in the same namespace.
+                type: string
+            required:
+            - subnet
+            type: object
+            x-kubernetes-validations:
+            - message: field ipAddress is immutable once set
+              rule: '!has(oldSelf.ipAddress) || has(self.ipAddress)'
+          status:
+            description: status defines the observed state of VNicIP
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the VNicIP resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid and the IP address is valid
+                    (False when IP allocation fails or the specified IP is invalid)
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the VNicIP is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              vNic:
+                description: vNic is the name of the VNic currently bound to this
+                  IP.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: vnics.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: VNic
+    listKind: VNicList
+    plural: vnics
+    singular: vnic
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .status.gateway
+      name: Gateway
+      priority: 1
+      type: string
+    - jsonPath: .spec.macAddress
+      name: MacAddress
+      type: string
+    - jsonPath: .status.primaryIP
+      name: PrimaryIP
+      type: string
+    - jsonPath: .status.nodeName
+      name: NodeName
+      type: string
+    - jsonPath: .status.nic
+      name: Nic
+      type: string
+    - jsonPath: .status.ips
+      name: IPs
+      priority: 1
+      type: string
+    - jsonPath: .spec.securityGroup
+      name: SecurityGroup
+      priority: 1
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VNic is the Schema for the vnics API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of VNic
+            properties:
+              macAddress:
+                description: macAddress can be empty; CNI will auto-assign one. Immutable
+                  after creation.
+                pattern: ^([0-9a-f]{2}:){5}[0-9a-f]{2}$
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              securityGroups:
+                description: securityGroups is the list of security groups bound to
+                  this VNic.
+                items:
+                  type: string
+                type: array
+              subnet:
+                description: |-
+                  subnet is the name of the subnet this VNic joins. Immutable after creation.
+                  Format: "namespace/name". The namespace part may be omitted if the subnet
+                  resides in the same namespace as this resource.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              type:
+                default: VETH
+                description: 'type specifies the VNic type: UNMANAGED or VETH. VMs
+                  use UNMANAGED type. Immutable after creation.'
+                enum:
+                - UNMANAGED
+                - VETH
+                - INTERNAL
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - subnet
+            type: object
+            x-kubernetes-validations:
+            - message: field type is immutable once set
+              rule: '!has(oldSelf.type) || has(self.type)'
+            - message: field macAddress is immutable once set
+              rule: '!has(oldSelf.macAddress) || has(self.macAddress)'
+          status:
+            description: status defines the observed state of VNic
+            properties:
+              appliedSecurityGroups:
+                additionalProperties:
+                  format: int64
+                  type: integer
+                description: |-
+                  appliedSecurityGroups is the currently applied security group list bound to
+                  this VNic. Key is the SecurityGroup name, value is the applied generation of
+                  SecurityGroup.
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the VNic resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the VNic is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              dstNic:
+                description: dstNic is the destination Nic used during VM live migration
+                  in "namespace/name" format.
+                type: string
+              gateway:
+                description: gateway represents the default VPC gateway or EIP gateway
+                  for this VNic.
+                type: string
+              ips:
+                additionalProperties:
+                  type: string
+                description: ips lists the vNicIPs bound to this vNic, key is the
+                  vNicIP name and value is the ip address.
+                type: object
+              nic:
+                description: nic is the currently active Nic in "namespace/name" format.
+                type: string
+              nodeName:
+                description: nodeName is the name of the node where the current bonding
+                  nic resides.
+                type: string
+              primaryIP:
+                description: primaryIP is the primary IP address assigned to this
+                  vNic.
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: vpcs.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: VPC
+    listKind: VPCList
+    plural: vpcs
+    singular: vpc
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.cidrBlock
+      name: CIDR
+      type: string
+    - jsonPath: .status.subnets
+      name: Subnets
+      priority: 1
+      type: string
+    - jsonPath: .spec.allowedNamespaces
+      name: AllowedNamespaces
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VPC is the Schema for the vpcs API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of VPC
+            properties:
+              allowedNamespaces:
+                description: |-
+                  allowedNamespaces specifies which namespaces are allowed to attach subnets
+                  to this VPC. If empty, only the current namespace is allowed to attach.
+                properties:
+                  from:
+                    description: 'from specifies the namespace selection mode: All,
+                      Same, or Selector.'
+                    enum:
+                    - All
+                    - Same
+                    - Selector
+                    type: string
+                  selector:
+                    description: selector is used when from is Selector. Labels are
+                      ANDed.
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: matchLabels is a map of key-value pairs. All
+                          labels must match (AND relation).
+                        type: object
+                    type: object
+                required:
+                - from
+                type: object
+              cidrBlock:
+                description: |-
+                  cidrBlock, if not empty, validates subnet CIDRs when creating subnets.
+                  If empty, subnets can specify any CIDR.
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                type: string
+              ipVersion:
+                default: IPv4
+                description: 'ipVersion specifies the IP version: IPv4, IPv6, or Dual.
+                  Defaults to IPv4. Immutable after creation.'
+                enum:
+                - IPv4
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              policyRoutes:
+                description: |-
+                  policyRoutes are user-specified routing policies for the VPC gateway (OVN
+                  parameters). This field has no effect on the default VPC.
+                items:
+                  description: PolicyRoute defines a routing policy rule for the VPC
+                    gateway.
+                  properties:
+                    action:
+                      description: 'action specifies the action for the matched traffic:
+                        allow, drop, or reroute.'
+                      enum:
+                      - allow
+                      - drop
+                      - reroute
+                      type: string
+                    match:
+                      description: match specifies the OVN match condition, e.g. "ip4.src==10.0.1.0/24
+                        && ip4.dst==10.0.1.250".
+                      type: string
+                    nextHopIP:
+                      description: nextHopIP is required when action is reroute, specifying
+                        the next hop IP address.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                      type: string
+                    priority:
+                      description: priority specifies the rule priority (1000-10000).
+                        Higher values take precedence.
+                      maximum: 10000
+                      minimum: 1000
+                      type: integer
+                  required:
+                  - action
+                  - match
+                  - priority
+                  type: object
+                type: array
+              routeTable:
+                description: |-
+                  routeTable is the name of the route table bound to this VPC.
+                  Empty string means no route table is bound, only system routes apply.
+                type: string
+            type: object
+            x-kubernetes-validations:
+            - message: field ipVersion is immutable once set
+              rule: '!has(oldSelf.ipVersion) || has(self.ipVersion)'
+          status:
+            description: status defines the observed state of VPC
+            properties:
+              appliedRouteTable:
+                description: appliedRouteTable records the route table that has been
+                  applied to the VPC.
+                properties:
+                  appliedGeneration:
+                    description: appliedGeneration is the generation of the route
+                      table that has been applied.
+                    format: int64
+                    type: integer
+                  routeTable:
+                    description: routeTable is the name of the applied route table.
+                    type: string
+                required:
+                - appliedGeneration
+                - routeTable
+                type: object
+              boundResources:
+                description: boundResources holds OVN-related resource IDs.
+                properties:
+                  chassisNode:
+                    description: chassisNode is the node where the  OVN DGP (distributed
+                      gateway port) of uplink-subnet is resident.
+                    type: string
+                  router:
+                    description: router is the OVN logical router name.
+                    type: string
+                required:
+                - router
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the VPC resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Ready": the VPC has been successfully created and is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              default:
+                description: default indicates whether this is the default VPC. Only
+                  one default VPC exists globally.
+                type: boolean
+              eips:
+                additionalProperties:
+                  type: string
+                description: |-
+                  eips maps the EIPs associated with this VPC. Key is the EIP name in
+                  "namespace/name" format, value is the EIP address.
+                type: object
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
+              subnets:
+                additionalProperties:
+                  type: string
+                description: |-
+                  subnets lists the subnets attached to this VPC. Key is the subnet name
+                  in "namespace/name" format, value is the subnet cidr.
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kc-networking
+  name: kcn-controller
+  namespace: kcn-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kc-networking
+  name: kcn-leader-election-role
+  namespace: kcn-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kcn-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  - namespaces
+  - nodes
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints/finalizers
+  - namespaces/finalizers
+  - nodes/finalizers
+  - pods/finalizers
+  - services/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - endpoints/status
+  - namespaces/status
+  - nodes/status
+  - services/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods/status
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - controllerrevisions
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - k8s.cni.cncf.io
+  resources:
+  - network-attachment-definitions
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - networking.kubercloud.com
+  resources:
+  - eipgateways
+  - eips
+  - nats
+  - networkacls
+  - nics
+  - routetables
+  - securitygroups
+  - snats
+  - subnets
+  - vlannetworks
+  - vnicips
+  - vnics
+  - vpcs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - networking.kubercloud.com
+  resources:
+  - eipgateways/finalizers
+  - eips/finalizers
+  - nats/finalizers
+  - networkacls/finalizers
+  - nics/finalizers
+  - routetables/finalizers
+  - securitygroups/finalizers
+  - snats/finalizers
+  - subnets/finalizers
+  - vlannetworks/finalizers
+  - vnicips/finalizers
+  - vnics/finalizers
+  - vpcs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - networking.kubercloud.com
+  resources:
+  - eipgateways/status
+  - eips/status
+  - nats/status
+  - networkacls/status
+  - nics/status
+  - routetables/status
+  - securitygroups/status
+  - snats/status
+  - subnets/status
+  - vlannetworks/status
+  - vnicips/status
+  - vnics/status
+  - vpcs/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kcn-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kcn-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kc-networking
+  name: kcn-leader-election-rolebinding
+  namespace: kcn-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kcn-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: kcn-controller
+  namespace: kcn-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kc-networking
+  name: kcn-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kcn-manager-role
+subjects:
+- kind: ServiceAccount
+  name: kcn-controller
+  namespace: kcn-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kcn-metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kcn-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: kcn-controller
+  namespace: kcn-system
+---
+apiVersion: v1
+data:
+  enablePortSecurity: "false"
+  encapNetworks: {{ .ani.network.kcn.encapNetworks | join "," }}
+  hasMultusCNI: "false"
+  intranetNetworks: |
+{{ range .ani.network.kcn.intranetNetworks }}    - {{ . }}
+{{ end }}
+  isDefaultCNI: "true"
+  managedDevices: {{ .ani.network.kcn.managedDevices | join "," }}
+  nadDefaultNamespace: kube-system
+kind: ConfigMap
+metadata:
+  name: kcn-config
+  namespace: kcn-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ovn-nb
+  namespace: kcn-system
+spec:
+  ports:
+  - name: ovn-nb
+    port: 6641
+    protocol: TCP
+    targetPort: 6641
+  selector:
+    networking.kubercloud.com/app: ovn-central
+    ovn-nb-leader: "true"
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ovn-northd
+  namespace: kcn-system
+spec:
+  ports:
+  - name: ovn-northd
+    port: 6643
+    protocol: TCP
+    targetPort: 6643
+  selector:
+    networking.kubercloud.com/app: ovn-central
+    ovn-northd-leader: "true"
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ovn-sb
+  namespace: kcn-system
+spec:
+  ports:
+  - name: ovn-sb
+    port: 6642
+    protocol: TCP
+    targetPort: 6642
+  selector:
+    networking.kubercloud.com/app: ovn-central
+    ovn-sb-leader: "true"
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    networking.kubercloud.com/app: controller
+  name: kcn-controller
+  namespace: kcn-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      networking.kubercloud.com/app: controller
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        networking.kubercloud.com/app: controller
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                networking.kubercloud.com/app: controller
+            topologyKey: kubernetes.io/hostname
+      automountServiceAccountToken: true
+      containers:
+      - args:
+        - --service-cluster-ip-range={{ .ani.network.service_cidr }}
+        command:
+        - /kc-networking/start-controller.sh
+        env:
+        - name: OVN_DB_IPS
+          value: {{ .ani.node_addresses | join "," }}
+        - name: ENABLE_SSL
+          value: "false"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIPs
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /healthz
+            port: 18081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: kcn-controller
+        ports:
+        - containerPort: 18081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 18081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "1"
+            ephemeral-storage: 1Gi
+            memory: 1Gi
+          requests:
+            cpu: 200m
+            memory: 200Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            - NET_RAW
+          privileged: false
+          runAsUser: 65534
+        volumeMounts:
+        - mountPath: /etc/localtime
+          name: localtime
+          readOnly: true
+        - mountPath: /var/log/kc-networking
+          name: kc-networking-log
+        - mountPath: /var/log/ovn
+          name: ovn-log
+        - mountPath: /var/run/tls
+          name: kc-networking-tls
+      hostNetwork: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - 'chown -R nobody: /var/log/kc-networking'
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        name: hostpath-init
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+            - ALL
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /var/log/kc-networking
+          name: kc-networking-log
+      nodeSelector:
+        kubernetes.io/os: linux
+        networking.kubercloud.com/role: master
+      priorityClassName: system-cluster-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kcn-controller
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /etc/localtime
+        name: localtime
+      - hostPath:
+          path: /var/log/kc-networking
+        name: kc-networking-log
+      - hostPath:
+          path: /var/log/ovn
+        name: ovn-log
+      - name: kc-networking-tls
+        secret:
+          optional: true
+          secretName: kc-networking-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    networking.kubercloud.com/app: ovn-central
+  name: kcn-ovn-central
+  namespace: kcn-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      networking.kubercloud.com/app: ovn-central
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        component: network
+        networking.kubercloud.com/app: ovn-central
+        type: infra
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                networking.kubercloud.com/app: ovn-central
+            topologyKey: kubernetes.io/hostname
+      automountServiceAccountToken: true
+      containers:
+      - command:
+        - bash
+        - -c
+        - |
+          /kc-networking/start-db.sh &
+          db_pid=$!
+          /kc-networking/kc-networking-leader-checker --probeInterval="${OVN_LEADER_PROBE_INTERVAL}" &
+          checker_pid=$!
+          terminate() {
+            kill -TERM "$checker_pid" "$db_pid" 2>/dev/null || true
+            wait "$checker_pid" "$db_pid" 2>/dev/null || true
+            exit 0
+          }
+          trap terminate TERM INT
+          set +e
+          wait -n "$db_pid" "$checker_pid"
+          status=$?
+          set -e
+          kill -TERM "$checker_pid" "$db_pid" 2>/dev/null || true
+          wait "$checker_pid" "$db_pid" 2>/dev/null || true
+          exit "$status"
+        env:
+        - name: NODE_IPS
+          value: {{ .ani.node_addresses | join "," }}
+        - name: ENABLE_SSL
+          value: "false"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIPs
+        - name: ENABLE_BIND_LOCAL_IP
+          value: "true"
+        - name: DEBUG_WRAPPER
+        - name: PROBE_INTERVAL
+          value: "180000"
+        - name: OVN_NORTHD_PROBE_INTERVAL
+          value: "5000"
+        - name: OVN_LEADER_PROBE_INTERVAL
+          value: "5"
+        - name: OVN_NORTHD_N_THREADS
+          value: "1"
+        - name: ENABLE_COMPACT
+          value: "false"
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - bash
+            - /kc-networking/ovn-healthcheck.sh
+          failureThreshold: 5
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 45
+        name: ovn-central
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - /kc-networking/ovn-healthcheck.sh
+          periodSeconds: 15
+          timeoutSeconds: 45
+        resources:
+          limits:
+            cpu: "4"
+            ephemeral-storage: 1Gi
+            memory: 4Gi
+          requests:
+            cpu: 300m
+            memory: 300Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            - SYS_NICE
+          privileged: false
+          runAsUser: 65534
+        volumeMounts:
+        - mountPath: /var/run/ovn
+          name: host-run-ovn
+        - mountPath: /etc/ovn
+          name: host-config-ovn
+        - mountPath: /var/log/ovn
+          name: host-log-ovn
+        - mountPath: /etc/localtime
+          name: localtime
+          readOnly: true
+        - mountPath: /var/run/tls
+          name: kc-networking-tls
+      hostNetwork: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - 'chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn'
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        name: hostpath-init
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+            - ALL
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /var/run/ovn
+          name: host-run-ovn
+        - mountPath: /etc/ovn
+          name: host-config-ovn
+        - mountPath: /var/log/ovn
+          name: host-log-ovn
+      nodeSelector:
+        kubernetes.io/os: linux
+        networking.kubercloud.com/role: master
+      priorityClassName: system-cluster-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kcn-controller
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /run/ovn
+        name: host-run-ovn
+      - hostPath:
+          path: /etc/origin/ovn
+        name: host-config-ovn
+      - hostPath:
+          path: /var/log/ovn
+        name: host-log-ovn
+      - hostPath:
+          path: /etc/localtime
+        name: localtime
+      - name: kc-networking-tls
+        secret:
+          optional: true
+          secretName: kc-networking-tls
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    networking.kubercloud.com/app: cni-ds
+  name: kcn-cni-ds
+  namespace: kcn-system
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      networking.kubercloud.com/app: cni-ds
+  template:
+    metadata:
+      labels:
+        networking.kubercloud.com/app: cni-ds
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - args:
+        - --service-cluster-ip-range={{ .ani.network.service_cidr }}
+        command:
+        - /kc-networking/start-cniserver.sh
+        env:
+        - name: ENABLE_SSL
+          value: "false"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIPs
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /healthz
+            port: 18082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        name: kcn-cni-server
+        ports:
+        - containerPort: 18082
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 18082
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "1"
+            ephemeral-storage: 1Gi
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_BIND_SERVICE
+            - NET_RAW
+            - SYS_ADMIN
+            - SYS_NICE
+            - SYS_PTRACE
+          privileged: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /etc/cni/net.d
+          name: cni-conf
+        - mountPath: /usr/local/sbin
+          name: usr-local-sbin
+        - mountPath: /lib/modules
+          name: host-modules
+          readOnly: true
+        - mountPath: /run/xtables.lock
+          name: xtables-lock
+        - mountPath: /var/lib/kubelet/pods
+          name: shared-dir
+        - mountPath: /etc/openvswitch
+          name: systemid
+          readOnly: true
+        - mountPath: /etc/ovs_ipsec_keys
+          name: ovs-ipsec-keys
+        - mountPath: /run/openvswitch
+          mountPropagation: HostToContainer
+          name: host-run-ovs
+        - mountPath: /run/ovn
+          name: host-run-ovn
+        - mountPath: /host/var/run/dbus
+          mountPropagation: HostToContainer
+          name: host-dbus
+        - mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+          name: host-ns
+        - mountPath: /var/lib/cni/kc-networking
+          name: host-lib-cni
+        - mountPath: /var/log/kc-networking
+          name: kc-networking-log
+        - mountPath: /var/log/openvswitch
+          name: host-log-ovs
+        - mountPath: /var/log/ovn
+          name: host-log-ovn
+        - mountPath: /etc/localtime
+          name: localtime
+          readOnly: true
+      hostNetwork: true
+      hostPID: true
+      initContainers:
+      - command:
+        - sh
+        - -xec
+        - |
+          chmod +t /usr/local/sbin
+          iptables -V
+          chown -R nobody: /var/log/kc-networking
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        name: hostpath-init
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+            - ALL
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /usr/local/sbin
+          name: usr-local-sbin
+        - mountPath: /run/xtables.lock
+          name: xtables-lock
+        - mountPath: /var/run/netns
+          name: host-ns
+        - mountPath: /var/log/kc-networking
+          name: kc-networking-log
+      - command:
+        - /kc-networking/install-cni.sh
+        env:
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIPs
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        name: install-cni
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /opt/cni/bin
+          name: cni-bin
+        - mountPath: /usr/local/bin
+          name: local-bin
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kcn-controller
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      volumes:
+      - emptyDir: {}
+        name: usr-local-sbin
+      - hostPath:
+          path: /lib/modules
+        name: host-modules
+      - hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+        name: xtables-lock
+      - hostPath:
+          path: /var/lib/kubelet/pods
+        name: shared-dir
+      - hostPath:
+          path: /etc/origin/openvswitch
+        name: systemid
+      - hostPath:
+          path: /etc/origin/ovs_ipsec_keys
+        name: ovs-ipsec-keys
+      - hostPath:
+          path: /run/openvswitch
+        name: host-run-ovs
+      - hostPath:
+          path: /run/ovn
+        name: host-run-ovn
+      - hostPath:
+          path: /etc/cni/net.d
+        name: cni-conf
+      - hostPath:
+          path: /opt/cni/bin
+        name: cni-bin
+      - hostPath:
+          path: /var/run/netns
+        name: host-ns
+      - hostPath:
+          path: /var/run/dbus
+        name: host-dbus
+      - hostPath:
+          path: /var/lib/cni/kc-networking
+        name: host-lib-cni
+      - hostPath:
+          path: /var/log/openvswitch
+        name: host-log-ovs
+      - hostPath:
+          path: /var/log/ovn
+        name: host-log-ovn
+      - hostPath:
+          path: /var/log/kc-networking
+        name: kc-networking-log
+      - hostPath:
+          path: /etc/localtime
+        name: localtime
+      - hostPath:
+          path: /usr/local/bin
+        name: local-bin
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    networking.kubercloud.com/app: ovs-ds
+  name: kcn-ovs-ds
+  namespace: kcn-system
+spec:
+  selector:
+    matchLabels:
+      networking.kubercloud.com/app: ovs-ds
+  template:
+    metadata:
+      labels:
+        component: network
+        networking.kubercloud.com/app: ovs-ds
+        type: infra
+    spec:
+      automountServiceAccountToken: true
+      containers:
+      - command:
+        - /kc-networking/start-ovs.sh
+        env:
+        - name: OVN_DB_IPS
+          value: {{ .ani.node_addresses | join "," }}
+        - name: ENABLE_SSL
+          value: "false"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: HW_OFFLOAD
+          value: "false"
+        - name: TUNNEL_TYPE
+          value: geneve
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        - name: DEBUG_WRAPPER
+        - name: OVN_REMOTE_PROBE_INTERVAL
+          value: "10000"
+        - name: OVN_REMOTE_OPENFLOW_INTERVAL
+          value: "180"
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - bash
+            - /kc-networking/ovs-healthcheck.sh
+          failureThreshold: 5
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          timeoutSeconds: 45
+        name: openvswitch
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - /kc-networking/ovs-healthcheck.sh
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 45
+        resources:
+          limits:
+            cpu: "2"
+            ephemeral-storage: 1Gi
+            memory: 1000Mi
+          requests:
+            cpu: 200m
+            memory: 200Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_BIND_SERVICE
+            - NET_RAW
+            - SYS_NICE
+            - SYS_ADMIN
+          privileged: false
+          runAsUser: 65534
+        volumeMounts:
+        - mountPath: /usr/local/sbin
+          name: usr-local-sbin
+        - mountPath: /lib/modules
+          name: host-modules
+          readOnly: true
+        - mountPath: /var/run/openvswitch
+          name: host-run-ovs
+        - mountPath: /var/run/ovn
+          name: host-run-ovn
+        - mountPath: /etc/openvswitch
+          name: host-config-openvswitch
+        - mountPath: /var/log/openvswitch
+          name: host-log-ovs
+        - mountPath: /var/log/ovn
+          name: host-log-ovn
+        - mountPath: /etc/localtime
+          name: localtime
+          readOnly: true
+        - mountPath: /var/run/tls
+          name: kc-networking-tls
+        - mountPath: /var/run/containerd
+          name: cruntime
+          readOnly: true
+      hostNetwork: true
+      hostPID: true
+      initContainers:
+      - command:
+        - sh
+        - -xec
+        - |
+          chmod +t /usr/local/sbin
+          chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
+          iptables -V
+          /usr/share/openvswitch/scripts/ovs-ctl load-kmod
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        imagePullPolicy: IfNotPresent
+        name: hostpath-init
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            drop:
+            - ALL
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /lib/modules
+          name: host-modules
+          readOnly: true
+        - mountPath: /usr/local/sbin
+          name: usr-local-sbin
+        - mountPath: /var/log/ovn
+          name: host-log-ovn
+        - mountPath: /var/run/ovn
+          name: host-run-ovn
+        - mountPath: /etc/openvswitch
+          name: host-config-openvswitch
+        - mountPath: /var/run/openvswitch
+          name: host-run-ovs
+        - mountPath: /var/log/openvswitch
+          name: host-log-ovs
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kcn-controller
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      - key: CriticalAddonsOnly
+        operator: Exists
+      volumes:
+      - emptyDir: {}
+        name: usr-local-sbin
+      - hostPath:
+          path: /lib/modules
+        name: host-modules
+      - hostPath:
+          path: /run/openvswitch
+        name: host-run-ovs
+      - hostPath:
+          path: /run/ovn
+        name: host-run-ovn
+      - hostPath:
+          path: /etc/origin/openvswitch
+        name: host-config-openvswitch
+      - hostPath:
+          path: /var/log/openvswitch
+        name: host-log-ovs
+      - hostPath:
+          path: /var/log/ovn
+        name: host-log-ovn
+      - hostPath:
+          path: /etc/localtime
+        name: localtime
+      - hostPath:
+          path: /var/run/containerd
+        name: cruntime
+      - name: kc-networking-tls
+        secret:
+          optional: true
+          secretName: kc-networking-tls
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate

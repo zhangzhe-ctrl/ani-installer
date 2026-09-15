@@ -1,0 +1,39 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-proxy-small-noeip
+  namespace: envoy-gateway-system
+spec:
+  preserveRouteOrder: true
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 2
+        container:
+          image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/envoy:distroless-v1.38.3" }}
+          resources:
+            requests:
+              cpu: 1
+              memory: 1Gi
+            limits:
+              cpu: 2
+              memory: 2Gi
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: envoy
+                    startupProbe: null
+                    readinessProbe: null
+                    livenessProbe: null
+                  - name: shutdown-manager
+                    image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/gateway-dev:latest" }}
+                    startupProbe: null
+                    readinessProbe: null
+                    livenessProbe: null

@@ -1,0 +1,23 @@
+name: ani-lab
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - name: node1
+    address: 192.0.2.11
+  - name: node2
+    address: 192.0.2.12
+  - name: node3
+    address: 192.0.2.13
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: [ens35]
+    encapNetworks: [192.0.2.0/24]
+    intranetNetworks: [192.0.2.0/24, 10.96.0.0/16]
+registry:
+  port: 5000

@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ani-smoke
+  namespace: ani-installer-smoke
+spec:
+  gatewayClassName: lb-small-noeip
+  listeners:
+    - name: http-b
+      port: 9090
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same

@@ -1,0 +1,37 @@
+---
+- name: ANI KCN | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani
+
+- name: ANI KCN | Render v0.6.2 install manifest
+  template:
+    src: install.yaml
+    dest: /etc/kubernetes/ani/kcn-install.yaml
+
+- name: ANI KCN | Persist OVN reverse path filtering
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: >-
+    sh -c 'printf "%s\n" "net.ipv4.conf.default.rp_filter=0" > /etc/sysctl.d/99-ani-kcn.conf
+    && sysctl -w net.ipv4.conf.default.rp_filter=0'
+
+- name: ANI KCN | Apply v0.6.2 install manifest
+  command: kubectl apply -f /etc/kubernetes/ani/kcn-install.yaml
+
+- name: ANI KCN | Wait for controller deployment
+  command: kubectl rollout status deployment/kcn-controller -n kcn-system --timeout=600s
+
+- name: ANI KCN | Wait for OVN central deployment
+  command: kubectl rollout status deployment/kcn-ovn-central -n kcn-system --timeout=600s
+
+- name: ANI KCN | Wait for CNI daemonset
+  command: kubectl rollout status daemonset/kcn-cni-ds -n kcn-system --timeout=600s
+
+- name: ANI KCN | Wait for OVS daemonset
+  command: kubectl rollout status daemonset/kcn-ovs-ds -n kcn-system --timeout=600s
+
+- name: ANI KCN | Disable OVN interface reverse path filtering
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: >-
+    sh -c 'for i in $(seq 1 30); do test -e /sys/class/net/ovn0 && break; sleep 2; done;
+    sysctl -w net.ipv4.conf.ovn0.rp_filter=0'
