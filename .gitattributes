@@ -1,0 +1,6 @@
+# Enforce LF for assets that ship to and execute on Linux target nodes.
+# CRLF line endings previously broke remote script execution (see kubekey/docs/progress.md, r3).
+*.sh    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.tsv   text eol=lf
