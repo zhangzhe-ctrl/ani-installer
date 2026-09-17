@@ -1,0 +1,28 @@
+---
+# ANI CephFS shared storage (Rook v1.20.7). Faithful to upstream csi/cephfs/storageclass.yaml
+# with rook-cephfs -> ani-cephfs, fsName myfs -> ani-fs and pool myfs-replicated -> ani-fs-replicated.
+# The pool name is derived by Rook as <filesystem-name>-<dataPool-name>.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ani-cephfs
+provisioner: rook-ceph.cephfs.csi.ceph.com
+parameters:
+  # clusterID is the namespace where the rook cluster is running
+  clusterID: rook-ceph
+  # CephFS filesystem name into which the volume shall be created
+  fsName: ani-fs
+  # Ceph pool into which the volume shall be created
+  pool: ani-fs-replicated
+  # The secrets contain Ceph admin credentials, generated automatically by the operator.
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+mountOptions: []

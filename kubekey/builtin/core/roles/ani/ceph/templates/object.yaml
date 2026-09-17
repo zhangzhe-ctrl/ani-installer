@@ -1,0 +1,57 @@
+---
+# ANI CephObjectStore (Rook v1.20.7). Provides an S3-compatible RGW endpoint used later by
+# Loki and Milvus. Faithful to upstream deploy/examples/object.yaml with my-store -> ani-store.
+# The RGW pod runs the ceph daemon image only; the COSI driver (and its objectstorage-sidecar /
+# cosi images) is intentionally NOT deployed, so no extra images are pulled at runtime.
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: ani-store
+  namespace: rook-ceph
+spec:
+  # The pool spec used to create the metadata pools. Must use replication.
+  metadataPool:
+    failureDomain: host
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+    parameters:
+      compression_mode: none
+  # The pool spec used to create the data pool.
+  dataPool:
+    failureDomain: host
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+    parameters:
+      # RGW data pools are expected to be large, so mark them as "bulk" so the PG autoscaler
+      # precreates a full number of PGs.
+      bulk: "true"
+      compression_mode: none
+  # Whether to preserve metadata and data pools on object store deletion
+  preservePoolsOnDelete: false
+  # The gateway service configuration
+  gateway:
+    # The port that RGW pods will listen on (http)
+    port: 80
+    # The number of pods in the rgw deployment
+    instances: 1
+    placement:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - rook-ceph-rgw
+              topologyKey: kubernetes.io/hostname
+    priorityClassName: system-cluster-critical
+  # service endpoint healthcheck
+  healthCheck:
+    startupProbe:
+      disabled: false
+    readinessProbe:
+      disabled: false

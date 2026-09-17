@@ -1,0 +1,39 @@
+---
+# ANI RBD block storage (Rook v1.20.7). Faithful to upstream csi/rbd/storageclass.yaml with
+# replicapool -> ani-block-pool and rook-ceph-block -> ani-block (marked default by tasks/main.yaml).
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: ani-block-pool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+    requireSafeReplicaSize: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ani-block
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  # clusterID is the namespace where the rook cluster is running
+  clusterID: rook-ceph
+  pool: ani-block-pool
+  # RBD image format. Defaults to "2".
+  imageFormat: "2"
+  # For 5.3 or earlier kernels use layering only.
+  imageFeatures: layering
+  # The secrets contain Ceph admin credentials, generated automatically by the operator.
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
+allowVolumeExpansion: true
+reclaimPolicy: Delete

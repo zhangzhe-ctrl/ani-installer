@@ -1,0 +1,144 @@
+---
+# ANI Ceph component (Rook v1.20.7 / Ceph v20.2.4 / ceph-csi-operator v1.0.4 / cephcsi v3.17.1).
+# Applied on kube_control_plane[0] after the base cluster, CNI (kcn), Envoy and smoke are up.
+# All images resolve through {{ index .ani.images "<original-ref>" }} to the offline registry.
+- name: ANI Ceph | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani/ceph
+
+- name: ANI Ceph | Render CRDs
+  template:
+    src: crds.yaml
+    dest: /etc/kubernetes/ani/ceph/00-crds.yaml
+
+- name: ANI Ceph | Render common
+  template:
+    src: common.yaml
+    dest: /etc/kubernetes/ani/ceph/01-common.yaml
+
+- name: ANI Ceph | Render csi-operator
+  template:
+    src: csi-operator.yaml
+    dest: /etc/kubernetes/ani/ceph/02-csi-operator.yaml
+
+- name: ANI Ceph | Render operator
+  template:
+    src: operator.yaml
+    dest: /etc/kubernetes/ani/ceph/03-operator.yaml
+
+- name: ANI Ceph | Apply CRDs, common and csi-operator
+  command: |
+    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/00-crds.yaml
+    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/01-common.yaml
+    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/02-csi-operator.yaml
+
+- name: ANI Ceph | Wait for Rook and CSI CRDs to be established
+  command: |
+    kubectl wait --for=condition=Established --timeout=180s \
+      crd/cephclusters.ceph.rook.io \
+      crd/cephblockpools.ceph.rook.io \
+      crd/cephfilesystems.ceph.rook.io \
+      crd/cephobjectstores.ceph.rook.io \
+      crd/cephfilesystemsubvolumegroups.ceph.rook.io \
+      crd/operatorconfigs.csi.ceph.io \
+      crd/drivers.csi.ceph.io
+
+- name: ANI Ceph | Apply Rook operator
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/03-operator.yaml
+
+- name: ANI Ceph | Wait for Rook operator rollout
+  command: kubectl -n rook-ceph rollout status deployment/rook-ceph-operator --timeout=600s
+
+- name: ANI Ceph | Wait for ceph-csi-operator rollout
+  command: kubectl -n rook-ceph rollout status deployment/ceph-csi-controller-manager --timeout=600s
+
+- name: ANI Ceph | Render CephCluster
+  template:
+    src: cluster.yaml
+    dest: /etc/kubernetes/ani/ceph/10-cluster.yaml
+
+- name: ANI Ceph | Apply CephCluster
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/10-cluster.yaml
+
+- name: ANI Ceph | Wait for CephCluster phase Ready
+  command: kubectl -n rook-ceph wait cephcluster/rook-ceph --for=jsonpath=.status.phase=Ready --timeout=1200s
+
+- name: ANI Ceph | Render toolbox
+  template:
+    src: toolbox.yaml
+    dest: /etc/kubernetes/ani/ceph/11-toolbox.yaml
+
+- name: ANI Ceph | Apply toolbox
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/11-toolbox.yaml
+
+- name: ANI Ceph | Wait for toolbox rollout
+  command: kubectl -n rook-ceph rollout status deployment/rook-ceph-tools --timeout=300s
+
+- name: ANI Ceph | Render health-wait script
+  template:
+    src: ceph-wait.sh
+    dest: /etc/kubernetes/ani/ceph/ceph-wait.sh
+    mode: "0755"
+
+- name: ANI Ceph | Wait for HEALTH_OK and 3 OSDs up
+  command: bash /etc/kubernetes/ani/ceph/ceph-wait.sh
+
+- name: ANI Ceph | Render CephFilesystem
+  template:
+    src: filesystem.yaml
+    dest: /etc/kubernetes/ani/ceph/20-filesystem.yaml
+
+- name: ANI Ceph | Apply CephFilesystem
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/20-filesystem.yaml
+
+- name: ANI Ceph | Wait for CephFilesystem Ready
+  command: kubectl -n rook-ceph wait cephfilesystem/ani-fs --for=jsonpath=.status.phase=Ready --timeout=600s
+
+- name: ANI Ceph | Render CephObjectStore
+  template:
+    src: object.yaml
+    dest: /etc/kubernetes/ani/ceph/21-object.yaml
+
+- name: ANI Ceph | Apply CephObjectStore
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/21-object.yaml
+
+- name: ANI Ceph | Wait for CephObjectStore Ready
+  command: kubectl -n rook-ceph wait cephobjectstore/ani-store --for=jsonpath=.status.phase=Ready --timeout=600s
+
+- name: ANI Ceph | Render RBD StorageClass
+  template:
+    src: storageclass-rbd.yaml
+    dest: /etc/kubernetes/ani/ceph/30-storageclass-rbd.yaml
+
+- name: ANI Ceph | Apply RBD block pool and StorageClass
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/30-storageclass-rbd.yaml
+
+- name: ANI Ceph | Render CephFS StorageClass
+  template:
+    src: storageclass-cephfs.yaml
+    dest: /etc/kubernetes/ani/ceph/31-storageclass-cephfs.yaml
+
+- name: ANI Ceph | Apply CephFS StorageClass
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/31-storageclass-cephfs.yaml
+
+- name: ANI Ceph | Mark ani-block as the default StorageClass
+  command: |
+    kubectl patch storageclass ani-block \
+      -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+    for sc in $(kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+      if [ "$sc" != "ani-block" ]; then
+        kubectl patch storageclass "$sc" --type=merge \
+          -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' || true
+      fi
+    done
+
+- name: ANI Ceph | Render storage verification script
+  template:
+    src: ceph-verify.sh
+    dest: /etc/kubernetes/ani/ceph/ceph-verify.sh
+    mode: "0755"
+
+- name: ANI Ceph | Verify RBD and CephFS provisioning end to end
+  command: bash /etc/kubernetes/ani/ceph/ceph-verify.sh
+
+- name: ANI Ceph | Record final ceph status
+  command: kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph -s

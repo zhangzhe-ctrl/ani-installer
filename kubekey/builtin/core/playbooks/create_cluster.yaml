@@ -101,5 +101,6 @@
     - ani/envoy
     - ani/smoke
     - storageclass
+    - ani/ceph
 
 - import_playbook: hook/post_install.yaml

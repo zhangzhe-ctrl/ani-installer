@@ -15,3 +15,15 @@ docker.changqingyun.cn/kubercloud/gateway-dev:latest	127.0.0.1:5000/kubercloud/g
 docker.changqingyun.cn/kubercloud/envoy:distroless-v1.38.3	127.0.0.1:5000/kubercloud/envoy:distroless-v1.38.3	sha256:c8fecdf5574f1752be5de7d05c8161aca51ce81969e15e7ec6cafaad555ff065	Envoy Gateway data plane
 docker.io/library/busybox:1.37.0	127.0.0.1:5000/library/busybox:1.37.0	sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0	ANI smoke backend and client
 docker.changqingyun.cn/kubercloud/ratelimit:1e50889b	127.0.0.1:5000/kubercloud/ratelimit:1e50889b	sha256:1a98dadfce8da0aab0c10bfcba0049c9aa17f22b89bc5d7fe51c552889c3fc35	Envoy Gateway rate limit deployment
+docker.io/rook/ceph:v1.20.7	127.0.0.1:5000/rook/ceph:v1.20.7	sha256:2f970c4256179d56fa9f7867a634701f533103908c4e2ad43cf3954c1f7e33f9	Rook Ceph operator v1.20.7
+quay.io/ceph/ceph:v20.2.4	127.0.0.1:5000/ceph/ceph:v20.2.4	sha256:6bb1c8a42fbc0bf87938946990b65174466997bc11c31eb5a323225a779fd8f9	Ceph v20.2.4 daemon image (mon/osd/mgr/mds/rgw) and toolbox
+quay.io/cephcsi/ceph-csi-operator:v1.0.4	127.0.0.1:5000/cephcsi/ceph-csi-operator:v1.0.4	sha256:c62933fd4083635f969f8a61932af45dba9902d48867e2b5d98a69d8e4344eb6	ceph-csi-operator v1.0.4
+quay.io/cephcsi/cephcsi:v3.17.1	127.0.0.1:5000/cephcsi/cephcsi:v3.17.1	sha256:0b62db8afc9b174619186c87084a8952157daa719415c598603be22b63cc1293	Ceph CSI plugin v3.17.1 (rbd + cephfs)
+quay.io/csiaddons/k8s-sidecar:v0.14.0	127.0.0.1:5000/csiaddons/k8s-sidecar:v0.14.0	sha256:69092d026323307933fba2bed9c57d864f2a92cfd385d644b478442ded0d2886	CSI addons sidecar v0.14.0
+registry.k8s.io/sig-storage/csi-provisioner:v6.2.0	127.0.0.1:5000/sig-storage/csi-provisioner:v6.2.0	sha256:6be9f63ca4caa6c46aae55aa372500949d8a21473d72f819da1f746076b32d4e	CSI external-provisioner v6.2.0
+registry.k8s.io/sig-storage/csi-attacher:v4.12.0	127.0.0.1:5000/sig-storage/csi-attacher:v4.12.0	sha256:b9dc9a714a484ccdeeb6f86d88d4db9b7a5ecfc5a55da6db3a60bb3fa33c278a	CSI external-attacher v4.12.0
+registry.k8s.io/sig-storage/csi-resizer:v2.1.0	127.0.0.1:5000/sig-storage/csi-resizer:v2.1.0	sha256:589e525cddef6d768e68da1f0bc9ffd0a24bf3add3dd010648eb7189976fde79	CSI external-resizer v2.1.0
+registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0	127.0.0.1:5000/sig-storage/csi-snapshotter:v8.5.0	sha256:da081c27e8a6d91f36042c1942362d0515ced8d06e18c11b8f893e58c4d6d797	CSI external-snapshotter v8.5.0
+registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.17.0	127.0.0.1:5000/sig-storage/csi-node-driver-registrar:v2.17.0	sha256:f9de845b170155199f2a2a3f9531cf13d78e31235e9db6b6582a8b0db0a50dad	CSI node-driver-registrar v2.17.0
+gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v0.2.2	127.0.0.1:5000/sig-storage/objectstorage-sidecar:v0.2.2	sha256:c7166a73a303c43c8c1dca3e81aacf2fa85e98b46bcab0b64249cde19fa67979	RGW object-storage sidecar v0.2.2 (Rook image set)
+quay.io/ceph/cosi:v0.1.4	127.0.0.1:5000/ceph/cosi:v0.1.4	sha256:8939634644dc270e8a9c3ae1e4dd5adb03973e9f31db649638c33828bfcefc0b	Ceph COSI driver v0.1.4 (Rook image set)
