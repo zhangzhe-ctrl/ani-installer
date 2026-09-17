@@ -2,57 +2,96 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="${1:-$ROOT/ani/package.yaml}"
-OUTPUT="${ANI_PACKAGE_OUT:-$ROOT/build/ani-offline-ubuntu24-amd64}"
+CONFIG="${CONFIG:-$ROOT/ani/package.yaml}"
+IMAGES_TSV="${IMAGES_TSV:-$ROOT/ani/images.tsv}"
+OUTPUT="${ANI_ARTIFACT_OUT:-$ROOT/build/ani-artifact-ubuntu24-amd64-$(date +%Y%m%d-%H%M%S)}"
+KK_BIN="${KK_BIN:-}"
 HAULER_BIN="${HAULER_BIN:?set HAULER_BIN to the Linux amd64 hauler v2.0.3 binary}"
-HAULER_STORE="${HAULER_STORE:-}"
+REPOSITORY_ISO="${REPOSITORY_ISO:?set REPOSITORY_ISO to ubuntu-24.04-debs-amd64.iso}"
 KUBEKEY_ARTIFACT="${KUBEKEY_ARTIFACT:-}"
-GO_BIN="${GO_BIN:-/usr/local/go/bin/go}"
+HAULER_ARCHIVE="${HAULER_ARCHIVE:-}"
+HAULER_STORE="${HAULER_STORE:-}"
 
-if [[ ! -f "$CONFIG" ]]; then
-  echo "package config not found: $CONFIG" >&2
-  exit 1
-fi
 if [[ "$(uname -s)/$(uname -m)" != "Linux/x86_64" ]]; then
   echo "build-offline.sh must run on Linux amd64" >&2
   exit 1
 fi
+if [[ -e "$OUTPUT" ]]; then
+  echo "artifact output already exists; use a new ANI_ARTIFACT_OUT: $OUTPUT" >&2
+  exit 1
+fi
+if [[ -n "$HAULER_ARCHIVE" && -n "$HAULER_STORE" ]]; then
+  echo "set only one of HAULER_ARCHIVE or HAULER_STORE" >&2
+  exit 1
+fi
+required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO")
+if [[ -z "$KUBEKEY_ARTIFACT" ]]; then
+  required+=("$KK_BIN")
+fi
+for path in "${required[@]}"; do
+  if [[ ! -s "$path" ]]; then
+    echo "required artifact input is not a non-empty file: $path" >&2
+    exit 1
+  fi
+done
+if [[ ! -x "$HAULER_BIN" ]]; then
+  echo "HAULER_BIN must be executable: $HAULER_BIN" >&2
+  exit 1
+fi
+if [[ -z "$KUBEKEY_ARTIFACT" && ! -x "$KK_BIN" ]]; then
+  echo "KK_BIN must be executable when KUBEKEY_ARTIFACT is not supplied: $KK_BIN" >&2
+  exit 1
+fi
+if [[ -n "$KUBEKEY_ARTIFACT" && ! -s "$KUBEKEY_ARTIFACT" ]]; then
+  echo "KUBEKEY_ARTIFACT is not a non-empty file: $KUBEKEY_ARTIFACT" >&2
+  exit 1
+fi
+if [[ -n "$HAULER_STORE" && ! -d "$HAULER_STORE" ]]; then
+  echo "HAULER_STORE is not a directory: $HAULER_STORE" >&2
+  exit 1
+fi
 
 CONFIG="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
-mkdir -p "$ROOT/build" "$OUTPUT/bin" "$OUTPUT/packages" "$OUTPUT/images" "$OUTPUT/manifests" "$OUTPUT/config" "$OUTPUT/licenses"
-
-WORK="$(mktemp -d "$ROOT/build/ani-package.XXXXXX")"
+IMAGES_TSV="$(cd "$(dirname "$IMAGES_TSV")" && pwd)/$(basename "$IMAGES_TSV")"
+OUTPUT="$(mkdir -p "$(dirname "$OUTPUT")" && cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
+WORK="$(mktemp -d "$ROOT/build/ani-artifact.XXXXXX")"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-echo "[1/7] building kk with builtin assets"
-PATH="$(dirname "$GO_BIN"):$PATH" make -C "$ROOT" kk
-KK="$ROOT/_output/bin/kk"
+mkdir -p \
+  "$OUTPUT/bin" \
+  "$OUTPUT/packages" \
+  "$OUTPUT/images" \
+  "$OUTPUT/config" \
+  "$OUTPUT/licenses" \
+  "$OUTPUT/repository"
 
-echo "[2/7] exporting KubeKey artifact"
+copy_material() {
+  local source="$1" destination="$2"
+  cp --reflink=auto --sparse=auto -- "$source" "$destination"
+}
+
+echo "[1/6] placing KubeKey artifact"
 if [[ -n "$KUBEKEY_ARTIFACT" ]]; then
-  if [[ ! -s "$KUBEKEY_ARTIFACT" ]]; then
-    echo "KUBEKEY_ARTIFACT is not a non-empty file: $KUBEKEY_ARTIFACT" >&2
+  copy_material "$KUBEKEY_ARTIFACT" "$OUTPUT/packages/kubekey-artifact.tgz"
+else
+  "$KK_BIN" artifact export -c "$CONFIG" --workdir "$WORK/artifact"
+  ARTIFACT="$WORK/artifact/artifact/kubekey-artifact.tgz"
+  if [[ ! -s "$ARTIFACT" ]]; then
+    echo "KubeKey artifact export did not produce $ARTIFACT" >&2
     exit 1
   fi
-  cp "$KUBEKEY_ARTIFACT" "$OUTPUT/packages/kubekey-artifact.tgz"
-else
-  "$KK" artifact export -c "$CONFIG" --workdir "$WORK/artifact"
-  ARTIFACT="$WORK/artifact/artifact/kubekey-artifact.tgz"
-  [[ -s "$ARTIFACT" ]]
-  cp "$ARTIFACT" "$OUTPUT/packages/kubekey-artifact.tgz"
+  copy_material "$ARTIFACT" "$OUTPUT/packages/kubekey-artifact.tgz"
 fi
 
-echo "[3/7] collecting images into a fresh Hauler store"
-STORE="$WORK/hauler-store"
-mkdir -p "$STORE"
-if [[ -n "$HAULER_STORE" ]]; then
-  if [[ ! -d "$HAULER_STORE" ]]; then
-    echo "HAULER_STORE is not a directory: $HAULER_STORE" >&2
-    exit 1
-  fi
-  cp -a "$HAULER_STORE/." "$STORE"
+echo "[2/6] placing image archive"
+if [[ -n "$HAULER_ARCHIVE" ]]; then
+  copy_material "$HAULER_ARCHIVE" "$OUTPUT/images/images.haul.tar.zst"
+elif [[ -n "$HAULER_STORE" ]]; then
+  "$HAULER_BIN" store save -s "$HAULER_STORE" -f "$OUTPUT/images/images.haul.tar.zst"
 else
+  STORE="$WORK/hauler-store"
+  mkdir -p "$STORE"
   while IFS=$'\t' read -r original hauler_ref actual_digest use_location; do
     [[ "$original" == "original_ref" ]] && continue
     [[ -z "$original" ]] && continue
@@ -61,65 +100,50 @@ else
       --platform linux/amd64 \
       --rewrite "$rewrite" \
       --store "$STORE"
-  done < "$ROOT/ani/images.tsv"
-fi
-image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$ROOT/ani/images.tsv")"
-store_count="$("$HAULER_BIN" store info -s "$STORE" --type image -o json | grep -c '"Type": "image"')"
-if [[ "$store_count" != "$image_count" ]]; then
-  echo "Hauler store image count mismatch: expected $image_count, got $store_count" >&2
-  exit 1
-fi
-
-required_materials=(
-  builtin/core/roles/ani/kcn/tasks/main.yaml
-  builtin/core/roles/ani/kcn/templates/install.yaml
-  builtin/core/roles/ani/envoy/tasks/main.yaml
-  builtin/core/roles/ani/envoy/templates/cleanup-orphan-lsp.py
-  builtin/core/roles/ani/envoy/templates/install.yaml
-  builtin/core/roles/ani/smoke/tasks/main.yaml
-  builtin/core/roles/ani/smoke/templates/gateway.yaml
-  builtin/core/roles/ani/smoke/templates/backend-pod.yaml
-  builtin/core/roles/ani/smoke/templates/backend-service.yaml
-  builtin/core/roles/ani/smoke/templates/network-client-pod.yaml
-  builtin/core/roles/ani/smoke/templates/backend.yaml
-  builtin/core/roles/ani/smoke/templates/httproute.yaml
-  builtin/core/roles/ani/smoke/templates/client-pod.yaml
-)
-for path in "${required_materials[@]}"; do
-  if [[ ! -f "$ROOT/$path" ]]; then
-    echo "required package material not found: $ROOT/$path" >&2
+  done < "$IMAGES_TSV"
+  image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$IMAGES_TSV")"
+  store_count="$("$HAULER_BIN" store info -s "$STORE" --type image -o json | grep -c '"Type": "image"')"
+  if [[ "$store_count" != "$image_count" ]]; then
+    echo "Hauler store image count mismatch: expected $image_count, got $store_count" >&2
     exit 1
   fi
-done
+  "$HAULER_BIN" store save -s "$STORE" -f "$OUTPUT/images/images.haul.tar.zst"
+fi
+install -m 0644 "$IMAGES_TSV" "$OUTPUT/images/images.tsv"
 
-echo "[4/7] saving Hauler archive"
-"$HAULER_BIN" store save -s "$STORE" -f "$OUTPUT/images/images.haul.tar.zst"
-
-echo "[5/7] copying binaries"
-install -m 0755 "$KK" "$OUTPUT/bin/kk"
+echo "[3/6] copying fixed binaries and repository ISO"
 install -m 0755 "$HAULER_BIN" "$OUTPUT/bin/hauler"
+copy_material "$REPOSITORY_ISO" "$OUTPUT/repository/ubuntu-24.04-debs-amd64.iso"
 
-echo "[6/7] copying package materials"
+echo "[4/6] copying fixed artifact metadata"
 install -m 0644 "$ROOT/ani/package.yaml" "$OUTPUT/config/package.yaml"
-install -m 0644 "$ROOT/ani/images.tsv" "$OUTPUT/images/images.tsv"
-install -m 0644 "$ROOT/ani/cluster.example.yaml" "$OUTPUT/cluster.example.yaml"
-install -m 0644 "$ROOT/ani/README.md" "$OUTPUT/README.md"
-install -m 0755 "$ROOT/scripts/install.sh" "$OUTPUT/install.sh"
-install -m 0755 "$ROOT/scripts/verify.sh" "$OUTPUT/verify.sh"
+install -m 0644 "$ROOT/ani/versions.yaml" "$OUTPUT/config/versions.yaml"
+install -m 0644 "$ROOT/ani/runtime-checksums.txt" "$OUTPUT/config/runtime-checksums.txt"
+install -m 0644 "$ROOT/ani/repository-iso-checksums.txt" "$OUTPUT/config/repository-iso-checksums.txt"
 for path in LICENSE NOTICE; do
   if [[ -f "$ROOT/$path" ]]; then
     install -m 0644 "$ROOT/$path" "$OUTPUT/licenses/$path"
   fi
 done
-rm -rf "$OUTPUT/manifests/ani"
-mkdir -p "$OUTPUT/manifests/ani"
-cp -R "$ROOT/builtin/core/roles/ani/." "$OUTPUT/manifests/ani/"
 
-find "$OUTPUT/manifests/ani" -type d -name __pycache__ -prune -exec rm -rf {} +
+echo "[5/6] validating artifact-only layout"
+for forbidden in \
+  kk \
+  install.sh \
+  verify.sh \
+  probe.sh \
+  cluster.example.yaml \
+  README.md \
+  manifests; do
+  if [[ -e "$OUTPUT/$forbidden" ]]; then
+    echo "artifact output must not contain code-release file or directory: $OUTPUT/$forbidden" >&2
+    exit 1
+  fi
+done
 
-echo "[7/7] generating package checksums"
+echo "[6/6] generating artifact checksums"
 (
   cd "$OUTPUT"
   find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
 )
-echo "package complete at $OUTPUT"
+echo "artifact complete at $OUTPUT"

@@ -10,7 +10,7 @@ import (
 
 // ClusterConfig is the small site-specific input used by "kk ani install".
 // It intentionally does not describe components or versions; those are fixed
-// by the offline package.
+// by the offline artifact.
 type ClusterConfig struct {
 	Name           string       `yaml:"name"`
 	InstallerNode  string       `yaml:"installerNode"`
@@ -72,6 +72,9 @@ func (c ClusterConfig) RegistryAddress() (string, error) {
 func Validate(c ClusterConfig) error {
 	if strings.TrimSpace(c.Name) == "" {
 		return fmt.Errorf("name is required")
+	}
+	if strings.ContainsAny(c.Name, " \t/\\") || c.Name == "." || c.Name == ".." {
+		return fmt.Errorf("name must be a safe path component")
 	}
 	if len(c.Nodes) != 3 {
 		return fmt.Errorf("exactly 3 nodes are required, got %d", len(c.Nodes))
@@ -254,8 +257,8 @@ func KubeKeyConfig(c ClusterConfig, artifactPath string, imageTable ImageTable) 
 		},
 		"cri": map[string]any{
 			"container_manager":  "containerd",
-			"containerd_version": "v1.7.13",
-			"runc_version":       "v1.1.12",
+			"containerd_version": "v2.3.4",
+			"runc_version":       "v1.4.3",
 			"registry": map[string]any{
 				"insecure_registries": []string{registry},
 			},

@@ -2,14 +2,6 @@
 - name: ANI Envoy | Create work directory
   command: install -d -m 0755 /etc/kubernetes/ani
 
-- name: ANI Envoy | Render orphan LSP cleanup
-  template:
-    src: cleanup-orphan-lsp.py
-    dest: /etc/kubernetes/ani/cleanup-orphan-lsp.py
-
-- name: ANI Envoy | Remove orphan LSPs before base install
-  command: python3 /etc/kubernetes/ani/cleanup-orphan-lsp.py
-
 - name: ANI Envoy | Render base install manifest
   template:
     src: install.yaml
@@ -25,9 +17,6 @@
       crd/envoyproxies.gateway.envoyproxy.io \
       crd/gatewayclasses.gateway.networking.k8s.io \
       --timeout=180s
-
-- name: ANI Envoy | Remove orphan LSPs after base install
-  command: python3 /etc/kubernetes/ani/cleanup-orphan-lsp.py
 
 - name: ANI Envoy | Render GatewayNamespace RBAC
   template:

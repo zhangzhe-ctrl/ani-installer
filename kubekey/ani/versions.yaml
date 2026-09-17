@@ -1,0 +1,8 @@
+platform:
+  os: ubuntu-24.04
+  architecture: amd64
+kubernetes: v1.35.8
+runtime:
+  containerd: v2.3.4
+  runc: v1.4.3
+hauler: v2.0.3

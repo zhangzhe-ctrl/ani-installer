@@ -47,6 +47,16 @@ func TestValidateAndRegistryAddress(t *testing.T) {
 	if err := Validate(c); err == nil {
 		t.Fatal("Validate() unexpectedly accepted two nodes")
 	}
+
+	c = validConfig()
+	c.Name = "bad name"
+	if err := Validate(c); err == nil {
+		t.Fatal("Validate() unexpectedly accepted an unsafe cluster name")
+	}
+	c.Name = "../escape"
+	if err := Validate(c); err == nil {
+		t.Fatal("Validate() unexpectedly accepted a path traversal cluster name")
+	}
 }
 
 func TestKubeKeyInventoryUsesLocalOnlyForInstaller(t *testing.T) {
@@ -101,11 +111,11 @@ func TestKubeKeyConfigOfflineAndNetworkValues(t *testing.T) {
 		t.Fatalf("etcd image config = %#v", etcdImage)
 	}
 	criSpec := spec["cri"].(map[string]any)
-	if criSpec["containerd_version"] != "v1.7.13" {
+	if criSpec["containerd_version"] != "v2.3.4" {
 		t.Fatal("runtime containerd version must match packaged artifact")
 	}
-	if criSpec["runc_version"] != "v1.1.12" {
-		t.Fatalf("runtime runc version = %#v, want v1.1.12", criSpec["runc_version"])
+	if criSpec["runc_version"] != "v1.4.3" {
+		t.Fatalf("runtime runc version = %#v, want v1.4.3", criSpec["runc_version"])
 	}
 	download := spec["download"].(map[string]any)
 	if download["fetch"] != false || download["artifact_file"] != "/opt/ani/packages/kubekey-artifact.tgz" {

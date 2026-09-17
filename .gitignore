@@ -1,2 +1,7 @@
 .tmp/
 
+# Temp ops/diagnostic scripts and transfer bundles generated during remote
+# install/verify/rebuild cycles on the fedora build host and target nodes.
+# These are throwaway helpers and must never be version-controlled.
+_*.sh
+*.tgz

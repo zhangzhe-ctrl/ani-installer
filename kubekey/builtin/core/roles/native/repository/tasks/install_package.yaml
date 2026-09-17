@@ -30,7 +30,7 @@
             ebtables -L >/dev/null 2>&1 || PKGS_TO_INSTALL="$PKGS_TO_INSTALL ebtables"
             ;;
           chrony)
-            [ "$(systemctl show -p LoadState --value chrony.service 2>/dev/null)" = "loaded" ] \
+            [ "$(dpkg-query -W -f='${Status}' chrony 2>/dev/null)" = "install ok installed" ] \
               || PKGS_TO_INSTALL="$PKGS_TO_INSTALL chrony"
             ;;
           ipvsadm)

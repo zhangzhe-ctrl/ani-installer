@@ -75,68 +75,132 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 	}
 }
 
-func TestANIEnvoyCleansOrphanKCNPodPorts(t *testing.T) {
-	scriptPath := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "envoy", "templates", "cleanup-orphan-lsp.py")
-	tmpl, err := template.New("cleanup-orphan-lsp.py").Funcs(template.FuncMap{
-		"join": func(sep string, values []string) string { return strings.Join(values, sep) },
-	}).ParseFiles(scriptPath)
-	if err != nil {
-		t.Fatalf("parse cleanup template: %v", err)
-	}
-	builder := &strings.Builder{}
-	if err := tmpl.Execute(builder, map[string]any{
-		"ani": map[string]any{
-			"node_addresses": []string{"192.0.2.11", "192.0.2.12", "192.0.2.13"},
-		},
-	}); err != nil {
-		t.Fatalf("execute cleanup template: %v", err)
-	}
-	cleanup := builder.String()
-	for _, want := range []string{
-		"NODE_ADDRESSES = '192.0.2.11,192.0.2.12,192.0.2.13'",
-		"tcp:[{address}]:6641",
-		"vnics.networking.kubercloud.com",
-		"Logical_Switch_Port",
-		"auto-.*-vnic-",
-		"lsp-del",
-	} {
-		if !strings.Contains(cleanup, want) {
-			t.Fatalf("cleanup template missing %q", want)
-		}
-	}
-
+func TestANIEnvoyDoesNotCleanComponentState(t *testing.T) {
 	tasksPath := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "envoy", "tasks", "main.yaml")
-	tasks, err := os.ReadFile(tasksPath)
+	tasksData, err := os.ReadFile(tasksPath)
 	if err != nil {
 		t.Fatalf("read Envoy tasks: %v", err)
 	}
-	got := string(tasks)
-	last := -1
-	for _, want := range []string{
-		"ANI Envoy | Remove orphan LSPs before base install",
-		"ANI Envoy | Apply base install manifest",
-		"ANI Envoy | Remove orphan LSPs after base install",
-		"ANI Envoy | Restart controller",
-		"ANI Envoy | Wait for controller",
-	} {
-		index := strings.Index(got, want)
-		if index < 0 {
-			t.Fatalf("Envoy tasks missing %q", want)
+	tasks := string(tasksData)
+	for _, forbidden := range []string{"cleanup", "orphan", "LSP", "lsp-del"} {
+		if strings.Contains(tasks, forbidden) {
+			t.Fatalf("Envoy tasks still contain out-of-scope component-state repair %q", forbidden)
 		}
-		if index < last {
-			t.Fatalf("Envoy task %q is out of order", want)
-		}
-		last = index
 	}
 
-	buildScript, err := os.ReadFile(filepath.Join("..", "..", "scripts", "build-offline.sh"))
+	scriptPath := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "envoy", "templates", "cleanup-orphan-lsp.py")
+	if _, err := os.Stat(scriptPath); !os.IsNotExist(err) {
+		t.Fatalf("cleanup script must not exist; stat error=%v", err)
+	}
+
+	playbookPath := filepath.Join("..", "..", "builtin", "core", "playbooks", "create_cluster.yaml")
+	playbook, err := os.ReadFile(playbookPath)
 	if err != nil {
-		t.Fatalf("read offline build script: %v", err)
+		t.Fatalf("read create-cluster playbook: %v", err)
 	}
-	if !strings.Contains(string(buildScript), "builtin/core/roles/ani/envoy/templates/cleanup-orphan-lsp.py") {
-		t.Fatal("offline build script does not require the orphan LSP cleanup template")
+	for _, want := range []string{`grep -F "v2.3.4"`, `grep -F "1.4.3"`} {
+		if !strings.Contains(string(playbook), want) {
+			t.Fatalf("create-cluster playbook does not verify fixed runtime version %q", want)
+		}
 	}
-	if !strings.Contains(string(buildScript), `find "$OUTPUT/manifests/ani" -type d -name __pycache__ -prune -exec rm -rf {} +`) {
-		t.Fatal("offline build script does not exclude Python bytecode caches")
+}
+
+func TestCodeAndArtifactBuildScriptsAreSeparate(t *testing.T) {
+	root := filepath.Join("..", "..")
+	read := func(name string) string {
+		data, err := os.ReadFile(filepath.Join(root, "scripts", name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		return string(data)
+	}
+	code := read("build-code.sh")
+	artifact := read("build-offline.sh")
+	install := read("install.sh")
+	verify := read("verify.sh")
+
+	for _, want := range []string{
+		`make -C "$ROOT" build-kk-dev`,
+		`builtin/core/roles/ani/smoke/templates/probe.sh`,
+		`"$OUTPUT/kk"`,
+		`"$OUTPUT/install.sh"`,
+		`"$OUTPUT/verify.sh"`,
+		`"$OUTPUT/probe.sh"`,
+	} {
+		if !strings.Contains(code, want) {
+			t.Fatalf("code build script missing %q", want)
+		}
+	}
+	for _, want := range []string{
+		`HAULER_BIN`,
+		`REPOSITORY_ISO`,
+		`KUBEKEY_ARTIFACT`,
+		`HAULER_ARCHIVE`,
+		`"$OUTPUT/bin/hauler"`,
+		`"$OUTPUT/packages/kubekey-artifact.tgz"`,
+		`"$OUTPUT/images/images.haul.tar.zst"`,
+		`"$OUTPUT/repository/ubuntu-24.04-debs-amd64.iso"`,
+	} {
+		if !strings.Contains(artifact, want) {
+			t.Fatalf("artifact build script missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		`make -C "$ROOT" build-kk-dev`,
+		`install -m 0755 "$ROOT/scripts/install.sh"`,
+		`install -m 0755 "$ROOT/scripts/verify.sh"`,
+		`builtin/core/roles/ani/smoke/templates/probe.sh`,
+		`mkdir -p "$OUTPUT/manifests"`,
+		`cp -R "$ROOT/builtin/core/roles/ani`,
+	} {
+		if strings.Contains(artifact, forbidden) {
+			t.Fatalf("artifact build script still builds or copies code release %q", forbidden)
+		}
+	}
+	if !strings.Contains(install, `KK="$ROOT/kk"`) || !strings.Contains(install, `--package-root "$ARTIFACT_ROOT"`) {
+		t.Fatal("install wrapper is not bound to the independent code release and explicit artifact root")
+	}
+	for _, want := range []string{`PROBE="$ROOT/probe.sh"`, `IMAGE_TABLE="$ARTIFACT_ROOT/images/images.tsv"`, `"/var/lib/ani-installer/$CLUSTER_NAME/logs/verify-`} {
+		if !strings.Contains(verify, want) {
+			t.Fatalf("verify script missing %q", want)
+		}
+	}
+}
+
+func TestDebianChronyPackageCheckUsesDpkg(t *testing.T) {
+	path := filepath.Join("..", "..", "builtin", "core", "roles", "native", "repository", "tasks", "install_package.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read repository package task: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `dpkg-query -W -f='${Status}' chrony`) ||
+		!strings.Contains(text, `"install ok installed"`) {
+		t.Fatal("Debian chrony check must compare dpkg-query Status to install ok installed")
+	}
+	if strings.Contains(text, `systemctl show -p LoadState --value chrony.service`) {
+		t.Fatal("Debian chrony check must not infer package installation from chrony.service LoadState")
+	}
+}
+
+func TestExecutableReleaseFilesUseLF(t *testing.T) {
+	root := filepath.Join("..", "..")
+	for _, rel := range []string{
+		"scripts/install.sh",
+		"scripts/verify.sh",
+		filepath.Join("builtin", "core", "roles", "ani", "smoke", "templates", "probe.sh"),
+		filepath.Join("builtin", "core", "roles", "native", "init", "templates", "init-os.sh"),
+	} {
+		data, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("read executable %s: %v", rel, err)
+		}
+		content := string(data)
+		if !strings.HasPrefix(content, "#!/usr/bin/env bash\n") {
+			t.Fatalf("executable %s must start with an LF-terminated bash shebang", rel)
+		}
+		if strings.Contains(content, "\r") {
+			t.Fatalf("executable %s contains CRLF bytes", rel)
+		}
 	}
 }

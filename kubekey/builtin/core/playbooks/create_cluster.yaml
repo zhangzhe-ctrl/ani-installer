@@ -72,6 +72,13 @@
         - .kubernetes.certs.renew
         - .groups.kube_control_plane | default list | has .inventory_hostname
   post_tasks:
+    - name: ANI Runtime | Verify fixed containerd and runc versions
+      loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+      delegate_to: "{{ .item }}"
+      command: >-
+        sh -ec 'containerd --version && runc --version
+        && containerd --version | grep -F "v2.3.4"
+        && runc --version | grep -F "1.4.3"'
     - name: Add custom labels to the cluster nodes
       delegate_to: "{{ .init_kubernetes_node }}"
       command: >-

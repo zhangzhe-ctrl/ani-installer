@@ -3,6 +3,7 @@ kind: Config
 spec:
   zone: ""
   download:
+    timeout: 1800s
     arch: ["amd64"]
     images:
       policy: strict
@@ -13,8 +14,8 @@ spec:
       multi_cni: ["none"]
     cri:
       container_manager: ["containerd"]
-      containerd_version: ["v1.7.13"]
-      runc_version: ["v1.1.12"]
+      containerd_version: ["v2.3.4"]
+      runc_version: ["v1.4.3"]
     storage_class:
       local:
         enabled: false
@@ -23,4 +24,3 @@ spec:
     image_registry:
       type: []
     iso: ["ubuntu-24.04-debs"]
-

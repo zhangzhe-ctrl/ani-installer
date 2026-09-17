@@ -29,7 +29,7 @@ import (
 func NewANICommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ani",
-		Short: "Install the packaged ANI offline cluster",
+		Short: "Install the ANI cluster from the fixed offline artifact",
 	}
 	cmd.AddCommand(newANIInstallCommand())
 	return cmd
@@ -39,12 +39,12 @@ func newANIInstallCommand() *cobra.Command {
 	input := ani.InstallInput{}
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Run the packaged ANI offline installation",
+		Short: "Run the ANI offline installation from the fixed artifact",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return ani.RunInstall(cmd.Context(), input)
 		},
 	}
 	cmd.Flags().StringVarP(&input.ConfigFile, "config", "c", "cluster.yaml", "path to the site-specific ANI cluster config")
-	cmd.Flags().StringVar(&input.PackageRoot, "package-root", ".", "root of the relocatable ANI offline package")
+	cmd.Flags().StringVar(&input.PackageRoot, "package-root", ".", "root of the independently released ANI offline artifact")
 	return cmd
 }
