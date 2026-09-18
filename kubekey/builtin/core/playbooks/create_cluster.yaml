@@ -107,5 +107,7 @@
     # completely when its switch is off.
     - role: ani/cert-manager
       when: '{{ (index .ani.components "cert-manager").enabled }}'
+    - role: ani/postgresql
+      when: '{{ (index .ani.components "postgresql").enabled }}'
 
 - import_playbook: hook/post_install.yaml

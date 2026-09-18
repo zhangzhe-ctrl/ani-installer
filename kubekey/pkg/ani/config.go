@@ -98,7 +98,7 @@ func (c Components) storage(name string) *StorageComponent {
 // ImplementedComponents is the set of components this release can actually
 // deploy. It grows one batch at a time; a site enabling anything else must fail
 // before any deployment begins instead of silently skipping it.
-var ImplementedComponents = []string{componentsOrder[0]}
+var ImplementedComponents = []string{componentsOrder[0], componentsOrder[1]}
 
 // validateComponents checks supported names, effective capacity and the
 // "not implemented yet" gate.

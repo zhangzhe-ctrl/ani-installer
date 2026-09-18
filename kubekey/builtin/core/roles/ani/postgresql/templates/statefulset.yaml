@@ -1,0 +1,102 @@
+# Rendered by the ANI postgresql role for the official postgres:17.11-bookworm
+# image. Re-rendered by every install run; do not edit.
+#
+# Single replica, one RWO RBD PVC (ani-block), ClusterIP Service on 5432.
+# PGDATA lives in a subdir of the mount so the volume's lost+found is never
+# mistaken for a corrupted database. The initdb ConfigMap creates the non
+# superuser application account (ani_app) and its database (ani) on first init.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: ani-platform
+  labels:
+    app.kubernetes.io/name: ani-postgresql
+spec:
+  type: ClusterIP
+  selector:
+    app: postgresql
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql
+  namespace: ani-platform
+  labels:
+    app.kubernetes.io/name: ani-postgresql
+spec:
+  serviceName: postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: postgresql
+          image: {{ index .ani.images "docker.io/library/postgres:17.11-bookworm" }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD_FILE
+              value: /etc/postgres-admin/postgres-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: ANI_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ani-postgres-app
+                  key: app-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: admin-secret
+              mountPath: /etc/postgres-admin
+              readOnly: true
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      volumes:
+        - name: admin-secret
+          secret:
+            secretName: ani-postgres-admin
+        - name: initdb
+          configMap:
+            name: ani-postgres-initdb
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+{{- if .ani.components.postgresql.storage_class }}
+        storageClassName: {{ .ani.components.postgresql.storage_class }}
+{{- end }}
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .ani.components.postgresql.storage_size }}

@@ -1,0 +1,102 @@
+---
+# ANI PostgreSQL component (official image postgres:17.11-bookworm).
+#
+# Single-replica StatefulSet in the ani-platform namespace, backed by one RWO
+# RBD PVC (ani-block). Credentials are random per run and never printed.
+# Skipped entirely when components.postgresql is not enabled.
+#
+# All images come from {{ index .ani.images "docker.io/library/postgres:17.11-bookworm" }}
+# style offline references; no remote registry is contacted and there is no
+# network access here.
+
+- name: ANI PostgreSQL | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani/postgresql
+
+- name: ANI PostgreSQL | Generate stable credentials for this run
+  command: |
+    set -euo pipefail
+    d=/etc/kubernetes/ani/postgresql
+    # Read a bounded chunk of /dev/urandom and filter it, then take the first 24
+    # chars with `cut` (which consumes the whole line). Using `head -c` on the
+    # *output* instead would close the pipe early and kill `tr` with SIGPIPE,
+    # which `set -o pipefail` then turns into a spurious exit 141.
+    gen_pw() {
+      pw=""
+      while [ "${#pw}" -ne 24 ]; do
+        pw="$(LC_ALL=C head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-24)"
+      done
+      printf '%s' "$pw"
+    }
+    if [ ! -s "$d/admin.pw" ]; then gen_pw > "$d/admin.pw"; fi
+    if [ ! -s "$d/app.pw" ]; then gen_pw > "$d/app.pw"; fi
+    chmod 0600 "$d/admin.pw" "$d/app.pw"
+
+- name: ANI PostgreSQL | Create the application namespace
+  command: |
+    kubectl create namespace ani-platform --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI PostgreSQL | Create admin secret (superuser password)
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create secret generic ani-postgres-admin \
+      --from-file=postgres-password=/etc/kubernetes/ani/postgresql/admin.pw \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI PostgreSQL | Create app secret (ani_app password)
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create secret generic ani-postgres-app \
+      --from-file=app-password=/etc/kubernetes/ani/postgresql/app.pw \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI PostgreSQL | Render the initdb script (creates ani_app user and ani database)
+  template:
+    src: initdb.sh
+    dest: /etc/kubernetes/ani/postgresql/20-initdb.sh
+
+- name: ANI PostgreSQL | Lock down the rendered initdb script
+  command: chmod 0600 /etc/kubernetes/ani/postgresql/20-initdb.sh
+
+- name: ANI PostgreSQL | Publish the initdb script as a ConfigMap
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create configmap ani-postgres-initdb \
+      --from-file=10-ani-init.sh=/etc/kubernetes/ani/postgresql/20-initdb.sh \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI PostgreSQL | Render StatefulSet and Service
+  template:
+    src: statefulset.yaml
+    dest: /etc/kubernetes/ani/postgresql/10-statefulset.yaml
+
+- name: ANI PostgreSQL | Lock down the rendered StatefulSet manifest
+  command: chmod 0600 /etc/kubernetes/ani/postgresql/10-statefulset.yaml
+
+- name: ANI PostgreSQL | Apply StatefulSet and Service
+  command: |
+    kubectl apply --server-side -f /etc/kubernetes/ani/postgresql/10-statefulset.yaml
+
+- name: ANI PostgreSQL | Wait for StatefulSet rollout
+  command: |
+    kubectl -n ani-platform rollout status statefulset/postgresql --timeout=600s
+
+- name: ANI PostgreSQL | Wait for the RWO PVC to bind
+  command: |
+    kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/data-postgresql-0 --timeout=300s
+
+- name: ANI PostgreSQL | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/postgresql/verify.sh
+
+- name: ANI PostgreSQL | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/postgresql/verify.sh
+    chmod 0700 /etc/kubernetes/ani/postgresql/verify.sh
+    test -x /etc/kubernetes/ani/postgresql/verify.sh
+
+- name: ANI PostgreSQL | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/postgresql/verify.sh

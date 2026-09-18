@@ -16,7 +16,7 @@
 | 底座（r12） | K8s v1.35.8 / containerd v2.3.4 / runc v1.4.3 / Hauler v2.0.3 / kcn v0.6.2 / Envoy / Rook v1.20.7 + Ceph v20.2.4 | user_reported_pass | 用户反馈（2026-09-18） |
 | B0 | 固定输入与材料、容量核对、材料锁 | pass | 2026-09-18 |
 | B1 | 最小组件开关 + cert-manager | pass | 2026-09-18 |
-| B2 | PostgreSQL | pending | — |
+| B2 | PostgreSQL | pass（a7 单次运行内 安装+独立verify+持久化 全绿；底座 Pod 重建 netns 抖动见 K-5） | 2026-09-18 |
 | B3 | Valkey | pending | — |
 | B4 | NATS JetStream | pending | — |
 | B5 | 最终交付与人工复现入口 | pending | — |
@@ -183,7 +183,50 @@ B1 通过，可进入 B2（PostgreSQL）。
 
 ## B2：PostgreSQL
 
-等待开始。
+**状态：产品判据 pass；底座存在未定位根因的阻塞（K-5）**。a7 为参考运行：安装、独立 verify、持久化三者在**同一运行内**全部通过，且是在真实干净快照、全程断网条件下取得。**但该次并非零干预通过**——运行中先对 PostgreSQL Pod 执行了“删除 → 由 StatefulSet 重建 → 直到网络可达”的**实验室恢复动作**，之后 verify 与持久化才一次通过。底座 kcn/OVN 存在**未定位根因**的 Pod 网络缺陷（详见「B2-5」与「附录 A」）。**因此不得据 a7 推断底座 pod 网络健康**；本批结论仅限于“PostgreSQL 产品实现按判据通过”。
+
+### B2-0 批次事实
+
+| 项 | 值 |
+| --- | --- |
+| 批次 / attempt | B2 / **a7 通过**（单次运行内 安装 + 独立 verify + 持久化 全绿）。a1/a4 底座 CNI 抖动、a2 凭据 SIGPIPE、a3 verify heredoc、a5 持久化过但 verify 抖动、a6 未预清 dpkg 锁早期失败，均定位并记录 |
+| 源码快照 | Fedora `foundation-20260918/src`（B0 快照 + B1/B2 改动） |
+| 代码包 | `ani-code-20260918-b2`；kk sha256 `f39b4fd993845d935c5af90270a977421ad69765a471c8ef7a581a2b92623035` |
+| artifact | `ani-artifact-ubuntu24-amd64-20260918-b2`（新增 `postgres:17.11-bookworm`，amd64 manifest digest `sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6`；底座 runtime/ISO/hauler 与 B1 逐字节相同） |
+| 站点配置 | 私有 `site/cluster.yaml`；sha256 `27f1d2987cbf382cd2fce5fcf4e4d583ea4f1868402a1c36c9c2825fde2db0a0`（certManager=true, postgresql=true, valkey/nats=false） |
+| 启用组件 | cert-manager=true；postgresql=true（appVersion 17.11 / imageTag 17.11-bookworm / chartVersion null） |
+
+### B2-1 快照与断网证据
+
+- `restore_esxi_snapshots.sh execute` 3/3（test-installer-01/02/03，VMID 5/6/7，snapshotId=1）（`evidence/b2a7-restore.log`）；clean-check 干净（无 admin.conf/runtime，containerd/kubelet inactive，sdb 空）。安装前先清 dpkg 锁（`lab/preplock.sh`，3/3 `LOCK_FREE`）。
+- 安装前/后 `apply_offline_isolation.sh` apply+verify 通过：路由表无 ifindex0 黑洞、OUTPUT 跳 `ANI-OFFLINE`、公网 HTTPS/DNS 失败、管理 SSH 可达（`evidence/b2a7-isolation-after.log` 等）。
+
+### B2-2 安装退出码
+
+以 a7 为参考运行：`INSTALL_EXIT=0`；`total: 446, success: 436, ignored: 10, failed: 0`（结束 `2026-09-18T13:40:47Z`，`evidence/b2a7-install.log`）。普通 `ubuntu` 用户经 `install.sh` 入口，无需手动 export KUBECONFIG。普通入口会在中途执行 PostgreSQL 组件自检（安装退出码即其通过）。
+
+### B2-3 功能验证
+
+- **PostgreSQL：pass**。独立 `verify.sh`（`VERIFY_EXIT=0`，同一构建 kk `f39b4fd9`，a7 参考运行 `evidence/b2a7-verify2.log`）：独立管理员与应用用户 Secret 均存在；应用用户 `ani_app`（非超级用户）经 Service DNS `postgresql.ani-platform.svc.cluster.local` 建表、插入唯一值、查询精确比对（`ANI-PG-CRUD-OK`）；错误密码连接被拒绝（`ANI-PG-AUTH-REJECTED`）；StatefulSet readyReplicas=1；PVC `data-postgresql-0` Bound。
+- **cert-manager 回归：pass**。随包 `alpine/openssl:3.5.4` 验证证书链 `OK`，叶子 SAN=`ani-ca-test-leaf.ani-cert-test.svc[.cluster.local]`，内部自签 CA（`ANI-CERT-MANAGER-VERIFY-OK`）。
+- 网络/Envoy 回归：`ANI-NETWORK-OK` / `ANI-INSTALLER-OK`，nodes=3。
+- valkey / nats：**skipped**（本批未启用，选择文件明确 false）。
+
+### B2-4 持久化验证（lab，正常 Pod 重建）
+
+**pass**（`evidence/b2a7-persist2.log`，`B2-PERSISTENCE-OK`）。流程：记录 StatefulSet/PVC/Secret/Pod UID → 经 Service 以 `ani_app` 写入唯一值（`PERSIST-WRITE-OK`）→ 正常删除唯一服务 Pod（新 Pod UID 不同）→ 等待新 Pod Ready 且 Service EndpointSlice `ready=true` → 经同一 Service/用户读回原值（`PERSIST-READ-OK`）→ StatefulSet/PVC/Secret UID 均不变（a7：sts `0e9e6e50…`、pvc `c8cddced…`、secret `37733124…` 前后一致）。重建后的 Pod 落在 node2。
+
+### B2-5 已知问题与责任方
+
+- **K-5（底座 kcn/OVN Pod 网络缺陷，非本轮实现）— 未解决**：Pod 删除/重建后有概率被分配到**坏 netns**，该 Pod 的 **Pod IP 直连**与**经 Service ClusterIP** 从所有节点均超时；而 Pod 仍显示 `Ready`（探针为容器内 `exec`，不经网络）、端点显示 `ready: true`。同一 Pod 时而可达时而不可达，且**不限于**本批组件（coredns / smoke 等底座 Pod 同样复现）。已排除本轮相关因素：离线隔离（`remove` 后等待 75s 仍复现）、本批物料（底座 runtime artifact 与 B1 逐字节相同）、传播延迟（等待端点 ready 并多次重试仍超时）。**根因未定位**，触发条件与失败概率未量化。实验室绕过手段（**非修复**）：再次删除该 Pod 让 StatefulSet 重建，通常 1–2 次内可取得可达实例（a7 即如此）。责任方：底座 kcn/OVN。**完整诚实记录见「附录 A」。**
+- B2 实现中修复并经重建 kk `f39b4fd9` 验证的 installer 缺陷：
+  - 凭据生成 `tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24` 在 `set -o pipefail` 下触发 SIGPIPE（`exit status 141`）；改为有界读取（`head -c 256`）+ `cut -c1-24`，已隔离验证 `len=24`。
+  - 组件 `verify.sh` 使用**未加引号 heredoc**，使 `$(psql ...)` 在目标宿主机本地展开（`verify.sh: line 31: psql: command not found`）；改为转义容器侧 `\$`（与 cert-manager verify 一致），并已在 Fedora 上实际渲染+执行 heredoc 验证。
+  - 组件 `verify.sh` 的 PVC 检查由 `kubectl ... | grep -q` 改为变量比较，避免 pipefail 下的 SIGPIPE。
+
+### B2-6 下一批
+
+a7 单次运行内产品判据全部通过（安装退出 0、独立 verify 0、持久化 0）。底座 kcn/OVN 在 Pod 重建时的坏 netns 抖动为环境阻塞（K-5），会使该 Pod 短时不可达，需“重建 Pod 重试”恢复。**B3（Valkey）具备开始条件，但需预期同类的 Pod 重建抖动并按 K-5 方式重试**（其认证/读写/持久化验证同样依赖 pod 网络）。
 
 ---
 
@@ -213,3 +256,62 @@ B1 通过，可进入 B2（PostgreSQL）。
 | K-2 | 执行计划 §7 称 cert-manager `crds.enabled: true` 为本版本字段，实际 Chart 默认为 `false`；本轮 values 显式置 true | installer（本轮） | resolved（B0 记录） |
 | K-3 | 证书验证需要 openssl  binary；以随包 `alpine/openssl:3.5.4` 镜像提供，不在目标机安装 | installer（本轮） | resolved（B0 记录） |
 | K-4 | B1 cert-manager 角色实现中修复的多项 installer 缺陷（startupapicheck hook 删除策略、jsonpath 转义、`{@}` 遍历、dpkg 锁、模板 `mode` 未生效改显式 `chmod`） | installer（本轮） | resolved（B1 a6 验证通过） |
+| K-5 | **底座 kcn/OVN Pod 网络缺陷（未定位根因）**：Pod 删除/重建后有概率被分配到坏 netns → 该 Pod IP 直连与 Service ClusterIP 从所有节点均超时，而 Pod 仍 `Ready`（探针为容器内 `exec`）、端点显示 `ready: true`；同 Pod 时而可达时而不可达；不限于本批组件（coredns / smoke Pod 同样复现）。已排除：离线隔离（移除后仍复现）、本批物料（底座 artifact 与 B1 逐字节相同）、传播延迟（等端点 ready 并多次重试仍超时）。**未确定**：根因、触发条件与失败概率。实验室绕过（**非修复**）：再删除该 Pod 重建，1–2 次内可取可达实例（`lab/b2-heal.sh`）。详见「附录 A」 | 底座 kcn/OVN（组件/环境） | **open（未解决）**；B2 已用重建绕过；建议底座修复后再判 B3/B4 |
+| K-6 | B2 PostgreSQL 角色实现中修复的 installer 缺陷（凭据生成 pipefail SIGPIPE exit 141、verify.sh 未加引号 heredoc 本地展开 psql、PVC 检查管道） | installer（本轮） | resolved（B2 a7 验证通过） |
+
+---
+
+## 附录 A：底座 kcn/OVN Pod 网络缺陷（诚实记录）
+
+> 本附录是本轮唯一**未修复、未定位到根因**的阻塞项，单独列出以便底座/kcn 维护方接手。
+> 本轮范围内**没有、也不允许**对底座的 kcn/OVN 组件源码、镜像或配置做任何修改（见执行计划的职责边界），
+> 因此以下全部为**黑盒观测记录**，不含根因结论。
+
+### A-1 现象（观测到的事实）
+
+- 组件安装完成、集群 3/3 Ready 之后，**对某个 Pod 执行删除/重建**（本批为 PostgreSQL 单副本 StatefulSet 的 Pod），
+  有概率被 kcn/OVN 分配到一个**无法通信的 netns**：
+  - 该 Pod 的 **Pod IP 直连**（来自 node1/node2/node3 的临时 Job）全部超时；
+  - 经 **Service ClusterIP**（`10.96.x.x:5432`）同样超时；
+  - Pod 自身仍 `Ready=True`——就绪探针是**容器内 `exec`** 的 `pg_isready`，不经过网络，**因此不能证明网络可用**；
+  - Service EndpointSlice 中该端点显示 `ready: true`，但实际不可达；
+  - 同一 Pod **时而可达、时而不可达**，无稳定周期（a5 一次运行中同一 Pod 先可达、随后不可达）。
+- 该现象**不限于** PostgreSQL Pod：`ani-installer-smoke` 的底座 Pod、coredns Pod 也观察到同类不可达。
+- 更早一次（B2 attempt a1）表现为：coredns 两个副本都落在 node3，**node3 宿主机 → 任意 Pod IP** 全部超时
+  （宿主机到 10.16.0.2/.3/.10 均不可达），而 **node1 宿主机 → 同一 Pod IP 正常**；该次直接导致底座 smoke
+  探针 DNS 解析失败（`wget: bad address`）、整轮安装中止（`total 363 / failed 1`，PostgreSQL 角色根本没跑到）。
+- 不可达时段，node3 上 kcn-cni 日志可见 `del port` / `Nic is deleted` 之类的端口增删记录。
+
+### A-2 已排除的因素
+
+| 假设 | 验证方式 | 结论 |
+| --- | --- | --- |
+| 是本批 PostgreSQL 物料/写法问题 | 底座 runtime artifact（`kubekey-artifact.tgz`/ISO/hauler）与 B1 逐字节相同；StatefulSet/Service 为最简标准写法；安装内自检每次通过 | 排除 |
+| 是实验室离线隔离（iptables `ANI-OFFLINE`）导致 | `apply_offline_isolation.sh remove` 后等待 75s 再复测，pod→pod、pod→Service 仍超时 | 排除 |
+| 是 Pod 重建后的正常端点传播延迟 | 重建后等待 EndpointSlice `ready=true`，并跨数分钟重试多次仍超时 | 排除 |
+| 是节点资源/调度问题 | 三节点 3/3 Ready，宿主机资源充裕；coredns 在其它节点健康 | 排除 |
+| 是 DNS 配置问题 | Pod IP 直连亦超时（不经 DNS）；且同一 Pod 时好时坏 | 排除 |
+
+### A-3 **未**确定的内容（诚实声明）
+
+- **根因未定位**：本轮**没有**对 kcn-cni / ovn-central / ovs 的源码、日志与数据面做定位分析，
+  也没有识别出触发条件（为何“某些重建”会拿到坏 netns）。
+- **触发条件未量化**：仅知“Pod 重建后有一定概率发生”，**未测得**失败概率、时间窗口，以及与节点/镜像/资源的相关性。
+- **“恢复手段”是实验室绕过，不是修复**：观察到的可用手段是“**再次删除该 Pod、由 StatefulSet 重建，通常 1–2 次内取得可达实例**”
+  （`lab/b2-heal.sh`）。它只是把故障实例换掉，**并未修复底座缺陷**；缺陷仍然存在，只是被绕开。
+- **影响范围未完全评估**：仅确认“Pod 重建后可能不可达”，**未验证**在正常业务运行（不重建 Pod）下是否也会发生。
+  且 a1 的形态（宿主机→Pod 全断并影响 coredns）**不依赖我们删除 Pod**，说明风险不止于“重建”这一种触发。
+
+### A-4 对 B2 结论的影响（诚实声明）
+
+- B2 的**产品判据（安装 / 独立 verify / 持久化）确实在 a7 同一运行内全部通过**，且是在真实干净快照、全程断网条件下取得。
+- 但 **a7 不是零干预的通过**：在跑 verify 与持久化之前，先执行了 A-3 的“重建 Pod 直到可达”恢复动作。
+  因此 **a7 的结果不能用来断言底座 pod 网络健康**；若底座网络在检查期间劣化，落在该时段的临时验证 Job 会超时失败。
+- 结论：**B2 的产品实现按判据通过；底座 kcn/OVN 的 Pod 网络缺陷为独立的环境阻塞（K-5），未解决。**
+
+### A-5 建议（交由底座/kcn 维护方）
+
+1. **复现**：清洁集群 → 删除并重建任意单副本 Pod（如 `ani-platform/postgresql-0`）→ 从其它节点验证 Pod IP 与 Service 连通性。
+2. **定位**：比对“可达实例”与“不可达实例”的 netns / OVN 流表 / `ovn0` 与 host→pod 路由，重点排查 kcn-cni 在
+   **del port → re-add** 路径上的竞态（不可达时段可见 `del port` / `Nic is deleted`）。
+3. **修复前不建议**把依赖 pod 网络的组件（B3 Valkey / B4 NATS 及其验证）判为稳定通过。
