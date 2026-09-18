@@ -49,17 +49,16 @@
 - name: Init | Copy kubeconfig to default directory
   when: .kubernetes_install_LoadState.stdout | eq "not-found"
   command: |
-    if [ ! -d /root/.kube ]; then
-      mkdir -p /root/.kube
-    fi
-    cp -f /etc/kubernetes/admin.conf /root/.kube/config
-    chown root:root /root/.kube/config
-    if [ "$SUDO_USER" != "root" ]; then
-      if [ ! -d /home/$SUDO_USER/.kube ]; then
-        mkdir -p /home/$SUDO_USER/.kube
-      fi
-      cp -f /etc/kubernetes/admin.conf /home/$SUDO_USER/.kube/config
-      chown "$SUDO_USER":root /home/$SUDO_USER/.kube/config
+    set -euo pipefail
+    install -d -m 0700 -o root -g root /root/.kube
+    install -m 0600 -o root -g root /etc/kubernetes/admin.conf /root/.kube/config
+    admin_user=$(printf '%s' '{{ .connector.user | default "root" | b64enc }}' | base64 -d)
+    account=$(getent passwd "$admin_user")
+    IFS=: read -r account_name password_field admin_uid admin_gid gecos admin_home login_shell <<< "$account"
+    test -n "$admin_home" && test "${admin_home#/}" != "$admin_home"
+    if [ "$admin_uid" != 0 ]; then
+      install -d -m 0700 -o "$admin_uid" -g "$admin_gid" "$admin_home/.kube"
+      install -m 0600 -o "$admin_uid" -g "$admin_gid" /etc/kubernetes/admin.conf "$admin_home/.kube/config"
     fi
 
 - name: Init | Configure node as worker

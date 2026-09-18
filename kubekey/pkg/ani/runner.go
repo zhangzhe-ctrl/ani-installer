@@ -232,7 +232,7 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		return errors.Wrap(err, "create KubeKey workdir")
 	}
 	fmt.Fprintf(logger, "starting KubeKey create cluster\n")
-	err = runLogged(ctx, logger, kkPath,
+	err = runKubeKeyLogged(ctx, logger, kkPath,
 		"create", "cluster",
 		"--inventory", filepath.Join(paths.WorkRoot, "inventory.yaml"),
 		"--config", filepath.Join(paths.WorkRoot, "config.yaml"),
@@ -296,6 +296,16 @@ func (l installLogger) Write(p []byte) (int, error) {
 
 func runLogged(ctx context.Context, logger io.Writer, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = logger
+	cmd.Stderr = logger
+	return cmd.Run()
+}
+
+// Installation must not select a caller's kubeconfig through HOME or KUBECONFIG.
+// kubeadm creates this file before any Kubernetes API tasks run.
+func runKubeKeyLogged(ctx context.Context, logger io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "KUBECONFIG=/etc/kubernetes/admin.conf")
 	cmd.Stdout = logger
 	cmd.Stderr = logger
 	return cmd.Run()

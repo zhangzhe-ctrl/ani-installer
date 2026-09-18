@@ -23,13 +23,17 @@
 - name: Join | Set kubeconfig permissions
   when: .groups.kube_control_plane | default list | has .inventory_hostname
   command: |
-    chown root:root /root/.kube/config
-    if [ "$SUDO_USER" != "root" ]; then
-      if [ ! -d /home/$SUDO_USER/.kube ]; then
-        mkdir -p /home/$SUDO_USER/.kube
-      fi
-      cp /root/.kube/config /home/$SUDO_USER/.kube/config
-      chown "$SUDO_USER":root /home/$SUDO_USER/.kube/config
+    set -euo pipefail
+    chown root:root /root/.kube /root/.kube/config
+    chmod 0700 /root/.kube
+    chmod 0600 /root/.kube/config
+    admin_user=$(printf '%s' '{{ .connector.user | default "root" | b64enc }}' | base64 -d)
+    account=$(getent passwd "$admin_user")
+    IFS=: read -r account_name password_field admin_uid admin_gid gecos admin_home login_shell <<< "$account"
+    test -n "$admin_home" && test "${admin_home#/}" != "$admin_home"
+    if [ "$admin_uid" != 0 ]; then
+      install -d -m 0700 -o "$admin_uid" -g "$admin_gid" "$admin_home/.kube"
+      install -m 0600 -o "$admin_uid" -g "$admin_gid" /root/.kube/config "$admin_home/.kube/config"
     fi
 
 - name: Join | Configure node as worker

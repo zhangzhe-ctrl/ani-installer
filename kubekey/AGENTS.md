@@ -1,5 +1,7 @@
 # ani-installer execution rules
 
+- Current extension scope (2026-09-18): follow `../docs/foundation-components-batch-execution-plan-20260918.md` for cert-manager, PostgreSQL, Valkey and NATS, one batch at a time. Preserve the validated base and keep all runtime work on `ssh fedora`. User-authorized snapshot restores apply only to the three dedicated test VMs and belong in the lab workflow, never in installer code or artifacts.
+
 - Work from KubeKey v4.0.7 and make only evidence-based changes needed by the offline first-install task.
 - Preserve KubeKey roles/connectors and use its artifact/create-cluster flow; do not restore the old Kubespray/Ansible installer.
 - Keep the scope fixed to Ubuntu 24.04 amd64, three dedicated VMs, containerd, kcn v0.6.2, and the supplied Envoy Gateway material.

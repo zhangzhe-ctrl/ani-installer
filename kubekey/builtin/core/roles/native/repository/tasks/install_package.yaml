@@ -11,7 +11,8 @@
 
 - name: Repository | Initialize Debian-based repository and install required system packages
   command: |
-    now=$(date +"%Y%m%d%H%M%S")
+    set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
     PKGS="socat conntrack ipset ebtables chrony ipvsadm{{ if .kubernetes.kube_proxy.mode | default "iptables" | eq "nftables" }} nftables{{ end }}{{ if .groups.nfs | default list | has .inventory_hostname }} nfs-kernel-server{{ end }}"
     PKGS_TO_INSTALL=""
     for pkg in $PKGS; do
@@ -46,30 +47,23 @@
         esac
       fi
     done
+    APT_ARGS=(-o DPkg::Lock::Timeout=300 -o APT::Update::Error-Mode=any)
     if [ -f "{{ .tmp_dir }}/repository.iso" ]; then
-      # Backup current APT sources
-      mv /etc/apt/sources.list /etc/apt/sources.list.kubekey-$now.bak
-      mv /etc/apt/sources.list.d /etc/apt/sources.list.d.kubekey-$now.bak
-      mkdir -p /etc/apt/sources.list.d
-      # Configure local repository
-      rm -rf /etc/apt/sources.list.d/*
-      echo 'deb [trusted=yes] file://{{ .tmp_dir }}/iso /' > /etc/apt/sources.list.d/kubekey.list
-      # Update package index
-      apt-get update
-      # Install missing packages
-      if [ -n "$PKGS_TO_INSTALL" ]; then
-        apt install -y $PKGS_TO_INSTALL
-      fi
-      # Restore original APT sources
-      rm -rf /etc/apt/sources.list.d
-      mv /etc/apt/sources.list.kubekey-$now.bak /etc/apt/sources.list
-      mv /etc/apt/sources.list.d.kubekey-$now.bak /etc/apt/sources.list.d
-    else
-      # No local ISO found, using default repositories
-      apt-get update
-      if [ -n "$PKGS_TO_INSTALL" ]; then
-        apt install -y $PKGS_TO_INSTALL
-      fi
+      # Keep system sources and apt-daily's index/cache untouched.
+      apt_work=$(mktemp -d "{{ .tmp_dir }}/apt.XXXXXX")
+      trap 'rm -rf "$apt_work"' EXIT
+      chmod 0755 "$apt_work"
+      mkdir -p "$apt_work/lists/partial" "$apt_work/cache/archives/partial"
+      echo 'deb [trusted=yes] file://{{ .tmp_dir }}/iso /' > "$apt_work/sources.list"
+      APT_ARGS+=(-o "Dir::Etc::sourcelist=$apt_work/sources.list"
+                -o Dir::Etc::sourceparts=-
+                -o "Dir::State::lists=$apt_work/lists"
+                -o "Dir::Cache=$apt_work/cache")
+    fi
+    echo "Installing missing system packages:$PKGS_TO_INSTALL"
+    apt-get "${APT_ARGS[@]}" update
+    if [ -n "$PKGS_TO_INSTALL" ]; then
+      apt-get "${APT_ARGS[@]}" install -y $PKGS_TO_INSTALL
     fi
   when: .current_host_type | trim | eq "ubuntu"
 

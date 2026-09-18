@@ -1,5 +1,7 @@
 # ani-installer 当前执行方案：职责边界与最小离线首装
 
+> 2026-09-18：本文件保留为最小首装阶段的历史方案。用户已确认 r12 手动验证通过，当前新增任务以 [四组件分批执行方案](foundation-components-batch-execution-plan-20260918.md) 为准。新授权允许测试流程按需自动还原 `.20/.21/.22`，不再逐次请求；快照和失败清理不得加入产品安装逻辑。下文旧范围及“请用户还原”不覆盖新方案。
+
 修订日期：2026-09-17。仓库：`/home/chabking/workspace/ani-installer`；Go 模块及 KubeKey fork：`kubekey/`。
 
 **当前只完成最小离线首装。** 优先分开发布 kk 和 artifact；由一台目标节点运行 installer，在干净虚拟机上安装三节点 Kubernetes、kcn 和既定 Envoy，并通过真实流量验证。完成后停止，基础组件补全另行讨论。
