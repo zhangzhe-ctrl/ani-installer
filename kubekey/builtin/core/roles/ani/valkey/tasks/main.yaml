@@ -1,0 +1,107 @@
+---
+# ANI Valkey component (official image valkey/valkey:8.1.10-alpine).
+#
+# Single-replica StatefulSet in the ani-platform namespace, backed by one RWO
+# RBD PVC (ani-block), AOF with appendfsync everysec. One random password for
+# this run, delivered to the server through a config-file Secret and to the
+# verification client through REDISCLI_AUTH - never in command arguments or
+# logs. Skipped entirely when components.valkey is not enabled.
+#
+# Image facts verified on the build host against this exact tag: the entrypoint
+# runs as root, chowns /data to valkey and drops to valkey (uid 999, gid 1000)
+# with setpriv, so no securityContext is needed; /etc/valkey does not exist in
+# the image and is created by the secret volume mount.
+#
+# All images come from {{ index .ani.images "docker.io/valkey/valkey:8.1.10-alpine" }}
+# style offline references; no remote registry is contacted and there is no
+# network access here.
+
+- name: ANI Valkey | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani/valkey
+
+- name: ANI Valkey | Generate stable credentials for this run
+  command: |
+    set -euo pipefail
+    d=/etc/kubernetes/ani/valkey
+    # Bounded read of /dev/urandom, filtered with tr, truncated with cut (which
+    # consumes the whole line). `head -c` on the *output* would close the pipe
+    # early, SIGPIPE `tr`, and `set -o pipefail` would turn that into a
+    # spurious exit 141 (the B2 lesson).
+    gen_pw() {
+      pw=""
+      while [ "${#pw}" -ne 24 ]; do
+        pw="$(LC_ALL=C head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-24)"
+      done
+      printf '%s' "$pw"
+    }
+    if [ ! -s "$d/valkey.pw" ]; then gen_pw > "$d/valkey.pw"; fi
+    chmod 0600 "$d/valkey.pw"
+
+- name: ANI Valkey | Create the application namespace
+  command: |
+    kubectl create namespace ani-platform --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Valkey | Create the auth secret
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create secret generic ani-valkey-auth \
+      --from-file=valkey-password=/etc/kubernetes/ani/valkey/valkey.pw \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Valkey | Render the server config (password lives only in this file)
+  command: |
+    set -euo pipefail
+    d=/etc/kubernetes/ani/valkey
+    umask 077
+    {
+      echo "daemonize no"
+      echo "dir /data"
+      echo "requirepass $(cat "$d/valkey.pw")"
+      echo "appendonly yes"
+      echo "appendfsync everysec"
+    } > "$d/valkey.conf"
+    chmod 0600 "$d/valkey.conf"
+
+- name: ANI Valkey | Publish the server config as a Secret
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create secret generic ani-valkey-config \
+      --from-file=valkey.conf=/etc/kubernetes/ani/valkey/valkey.conf \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Valkey | Render StatefulSet and Service
+  template:
+    src: statefulset.yaml
+    dest: /etc/kubernetes/ani/valkey/10-statefulset.yaml
+
+- name: ANI Valkey | Lock down the rendered StatefulSet manifest
+  command: chmod 0600 /etc/kubernetes/ani/valkey/10-statefulset.yaml
+
+- name: ANI Valkey | Apply StatefulSet and Service
+  command: |
+    kubectl apply --server-side -f /etc/kubernetes/ani/valkey/10-statefulset.yaml
+
+- name: ANI Valkey | Wait for StatefulSet rollout
+  command: |
+    kubectl -n ani-platform rollout status statefulset/valkey --timeout=600s
+
+- name: ANI Valkey | Wait for the RWO PVC to bind
+  command: |
+    kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/data-valkey-0 --timeout=300s
+
+- name: ANI Valkey | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/valkey/verify.sh
+
+- name: ANI Valkey | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/valkey/verify.sh
+    chmod 0700 /etc/kubernetes/ani/valkey/verify.sh
+    test -x /etc/kubernetes/ani/valkey/verify.sh
+
+- name: ANI Valkey | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/valkey/verify.sh

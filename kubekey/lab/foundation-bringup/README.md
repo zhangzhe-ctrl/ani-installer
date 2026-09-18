@@ -35,6 +35,23 @@
 | `b2-heal.sh` | **lab** 绕过底座 kcn/OVN 坏 netns：反复删除/重建 Pod 直到可达（K-5，详见 `docs/foundation-components-status.md` 附录 A）|
 | `a6-watch.sh` | 安装结束后**自动并行**触发持久化与独立 verify 的看护脚本（争取底座网络健康窗口）|
 
+### B3（PostgreSQL + Valkey）
+
+| 文件 | 作用 |
+|---|---|
+| `b3-transfer.sh` | B3 物料（`ani-code-20260918-b3` + 累计 artifact + site）传输与校验 |
+| `mksite-b3.sh` | 生成 `inputs/site-b3-cluster.yaml`（certManager/postgresql/valkey=true，nats=false）|
+| `nodeinstall-b3.sh` | .20 上 B3 的安装入口（差异仅 release id 与日志名）|
+| `launch-b3.sh` | 把 B3 入口推到 .20 并以普通 `ubuntu` 用户外加 pty 后台拉起 |
+| `run-verify-b3.sh` | fedora 侧发起、在 .20 上以 pty+sudo 运行安装包自带 `verify.sh` |
+| `verifyb3.sh` | .20 上的 verify payload |
+| `b3-persist.sh` | **lab** Valkey Pod 重建持久化测试：写唯一键 → `WAITAOF` 真实 AOF 证据 → 删 Pod → 重建 → 读回 → UID 不变 |
+| `b3-heal.sh` | **lab** K-5 处置梯（用户指定顺序）：先重启 kcn-controller，再重建 Pod，直到可达 |
+| `b3-watch.sh` | 安装结束后**顺序**触发持久化 → 独立 verify 的看护脚本（用法 `b3-watch.sh <attempt>`，证据按 attempt 命名）|
+
+> B3 教训：底座 ceph role 在 apply `ani-block-pool` CR 后必须等待其 Ready 再跑自检
+> （`roles/ani/ceph/tasks/main.yaml` 已加 wait；缺失会导致 `pool not found` 竞态，见 K-7）。
+
 
 ## 复用须知
 

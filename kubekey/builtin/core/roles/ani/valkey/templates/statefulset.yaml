@@ -1,0 +1,82 @@
+# Rendered by the ANI valkey role for the official valkey/valkey:8.1.10-alpine
+# image. Re-rendered by every install run; do not edit.
+#
+# Single replica, one RWO RBD PVC (ani-block) mounted at /data (the image's
+# data dir), ClusterIP Service on 6379. The requirepass line comes from the
+# ani-valkey-config Secret, so the password never appears in pod arguments or
+# logs. The official entrypoint chowns /data and drops to valkey (999:1000),
+# so no securityContext is set here.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: ani-platform
+  labels:
+    app.kubernetes.io/name: ani-valkey
+spec:
+  type: ClusterIP
+  selector:
+    app: valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+  namespace: ani-platform
+  labels:
+    app.kubernetes.io/name: ani-valkey
+spec:
+  serviceName: valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      app: valkey
+  template:
+    metadata:
+      labels:
+        app: valkey
+    spec:
+      containers:
+        - name: valkey
+          image: {{ index .ani.images "docker.io/valkey/valkey:8.1.10-alpine" }}
+          imagePullPolicy: IfNotPresent
+          command: ["valkey-server", "/etc/valkey/valkey.conf"]
+          ports:
+            - name: valkey
+              containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/valkey
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      volumes:
+        - name: config
+          secret:
+            secretName: ani-valkey-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+{{- if .ani.components.valkey.storage_class }}
+        storageClassName: {{ .ani.components.valkey.storage_class }}
+{{- end }}
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .ani.components.valkey.storage_size }}

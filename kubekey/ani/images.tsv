@@ -34,3 +34,4 @@ quay.io/jetstack/cert-manager-cainjector:v1.21.2	127.0.0.1:5000/jetstack/cert-ma
 quay.io/jetstack/cert-manager-startupapicheck:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-startupapicheck:v1.21.2	sha256:ed347b0ab607058f139b83f41567109456b9776330b63da8086a120afb7f1729	cert-manager v1.21.2 startupapicheck 安装后 hook Job
 quay.io/jetstack/cert-manager-acmesolver:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-acmesolver:v1.21.2	sha256:dc5c5b8456d1a50af47a240987e85afce352b5c1155a8a4698b7c91eac19f407	cert-manager controller --acme-http01-solver-image 默认引用（本轮不启用 ACME）
 docker.io/library/postgres:17.11-bookworm	127.0.0.1:5000/library/postgres:17.11-bookworm	sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6	PostgreSQL 17.11 单实例 StatefulSet 与 psql 客户端 Job
+docker.io/valkey/valkey:8.1.10-alpine	127.0.0.1:5000/valkey/valkey:8.1.10-alpine	sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7	Valkey 8.1.10 单实例 StatefulSet 与 valkey-cli 客户端 Job

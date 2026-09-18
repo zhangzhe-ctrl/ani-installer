@@ -17,7 +17,7 @@
 | B0 | 固定输入与材料、容量核对、材料锁 | pass | 2026-09-18 |
 | B1 | 最小组件开关 + cert-manager | pass | 2026-09-18 |
 | B2 | PostgreSQL | pass（a7 单次运行内 安装+独立verify+持久化 全绿；底座 Pod 重建 netns 抖动见 K-5） | 2026-09-18 |
-| B3 | Valkey | pending | — |
+| B3 | Valkey | pass（a4 单次运行内 安装+独立verify+持久化 全绿） | 2026-09-19 |
 | B4 | NATS JetStream | pending | — |
 | B5 | 最终交付与人工复现入口 | pending | — |
 
@@ -232,7 +232,54 @@ a7 单次运行内产品判据全部通过（安装退出 0、独立 verify 0、
 
 ## B3：Valkey
 
-等待开始。
+**状态：pass**（a4 单次运行内 **安装 + 独立 verify + 持久化 全绿**）。四次尝试：a1 暴露 installer 侧负向认证缺陷（已修 K-8）；a2 暴露底座 ceph role 缺 pool-CR 等待的既有编排缺陷（经用户批准已修，K-7 一半）；a3 撞上 rook operator reconcile 挂死（Rook v1.20.7 上游问题，重试通过，未做任何绕过）；a4 全绿。所有产品判据均在同一构建（kk `938d34ba…`）上真实验证通过。
+
+- **a4（参考运行，2026-09-19）**：`INSTALL_EXIT=0`（total 461/success 451/failed 0，结束 16:52:53Z）。含底座 pool 等待修复与 valkey 全部组件验证；安装内 cert-manager/postgresql/valkey 自检全过。安装后 watcher 顺序触发：**持久化 `B3-PERSISTENCE-OK`**（写唯一键 → `WAITAOF: 1` + `aof_enabled:1` 真实 AOF 完成证据 → 删 Pod 新 UID `a3890bae…`（node2）→ 端点 2s 就绪 → 经同一 Service 读回原值 → STS/PVC/两个 Secret UID 不变；K-5 梯未触发）→ **独立 verify `VERIFY_EXIT=0`**（`ANI-VALKEY-SETGET-OK`、`ANI-VALKEY-TTL-EXPIRED`、`ANI-VALKEY-AUTH-REJECTED`；`components=cert-manager=pass postgresql=pass valkey=pass nats=skipped`，registry=36，nodes=3，`ANI-NETWORK-OK`/`ANI-INSTALLER-OK`）。装后断网复核通过。证据：`evidence/b3a4-{restore,isolation-before,transfer,install,persist,verify,watch,isolation-after}.log`（分步按 attempt 命名）。
+- **a1**：干净快照+全程断网安装跑到 `total 450 / success 439 / failed 1`，PostgreSQL 与 Valkey 两个 role 全部执行：valkey StatefulSet rollout、PVC Bound、授权 Job SET/GET+TTL 均通过；唯一失败在 **installer 侧**负向认证脚本：`valkey-cli` 对服务端错误回复**退出 0**（本批镜像实测），按退出码分支误判（且连接失败会被当成"已拒绝"的**假通过**隐患）。已修复为按 RESP 错误码（`NOAUTH/WRONGPASS`）断言回复内容、其余一切显式失败（K-8）。
+- **a2**：INSTALL_EXIT=1 在**底座 Ceph**（`ani-rbd-test` ProvisioningFailed：`pool (ani-block-pool) not found`）。rook operator 日志时间戳证据：pool 于 15:45:51 初始化完成，测试 PVC 15:45:46（早 5 秒）→ CSI 重试 5 分钟超时。**根因=底座 ceph role 的既有编排缺陷**：apply pool CR 后未等其 Ready 就跑 ceph-verify（经用户批准修复：apply 后补 `kubectl wait cephblockpool/ani-block-pool --for=jsonpath=.status.phase=Ready`）。详见 `evidence/b3a2-ROOTCAUSE.md`。
+- **a3**：INSTALL_EXIT=1 在**底座 Ceph**（`timed out waiting on cephclusters/rook-ceph`）。rook operator 在 16:02:51 后**日志完全静默 >20 分钟**（进程存活、0 重启），0 mgr/0 OSD pod，CephCluster 恒为 `Progressing`。属 **Rook v1.20.7 上游 reconcile 挂死**，与 ANI 代码无关；a4 重试自然通过，未做任何绕过。详见 `evidence/b3a3-ROOTCAUSE.md`。
+
+### B3-0 批次事实
+
+| 项 | 值 |
+| --- | --- |
+| 批次 / attempt | B3 / **a4 通过**（单次运行内 安装+独立verify+持久化 全绿）。a1 installer 侧负向认证缺陷、a2 底座 role 缺 pool 等待（经批准已修）、a3 Rook operator 挂死（上游，重试通过） |
+| 代码包 | `ani-code-20260918-b3`；kk sha256 `938d34ba1f0f425ce798fb0c851ab0b703b1e2848591ba42054123f3498318d0` |
+| artifact | `ani-artifact-ubuntu24-amd64-20260918-b3`（36 镜像；新增 `valkey/valkey:8.1.10-alpine`，amd64 manifest digest `sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7`，与 components.lock 一致且已实测 registry 摘要；底座 runtime/ISO/hauler 与 B1/B2 相同；cert-manager Chart 沿用 v1.21.2） |
+| 站点配置 | 私有 `site/cluster.yaml` sha256 `7b1f03017897f76237a4b6d0a9df65261d24008774f75b7000c29a0f78b10968`（certManager/postgresql/valkey=true, nats=false） |
+| 源码改动 | 新增 `roles/ani/valkey/{tasks,templates/{statefulset,verify}}`；playbook 挂载；`ImplementedComponents` +valkey；`images.tsv` +1 行；测试改为仅 nats 未实现 |
+
+### B3-1 快照与断网证据（每 attempt 均完整执行）
+
+- a1/a2/a3 均为：`restore_esxi_snapshots.sh execute` 3/3（VMID 5/6/7, snapshotId=1）→ clean-check 干净 → `preplock.sh` 3/3 LOCK_FREE → `apply_offline_isolation.sh` apply+verify（公网 HTTPS/DNS 失败、`ANI-OFFLINE` 跳在、管理 SSH 可达）。证据：`evidence/b3-restore-dryrun.log`、`b3{,a2,a3}-restore.log`、`b3{,a2,a3}-isolation-before.log`。
+
+### B3-2 安装退出码
+
+| attempt | INSTALL_EXIT | 结果 |
+| --- | --- | --- |
+| a1 | 1 | total 450/success 439/failed 1；失败于 valkey 组件验证的负向认证 Job（installer 侧，已修复 K-8） |
+| a2 | 1 | total 402/success 391/failed 1；底座 ceph role 缺 pool-CR 等待（既有编排缺陷，经批准已修 K-7） |
+| a3 | 1 | 底座 Ceph 等待超时（Rook operator reconcile 挂死，上游问题，未绕过） |
+| a4 | **0** | total **461/success 451/failed 0**；安装内三组件自检全过 + 独立 verify 0 + 持久化 0 |
+
+### B3-3 功能验证（a4 实测）
+
+- **pass**：独立 `verify.sh`（`VERIFY_EXIT=0`，a4）：valkey 单副本 StatefulSet rollout、PVC `data-valkey-0` Bound、认证/配置 Secret 均存在；授权客户端 Job 经 Service DNS `SET/GET` 唯一值精确比对（`ANI-VALKEY-SETGET-OK`）；TTL 键真实过期（`ANI-VALKEY-TTL-EXPIRED`）；**未认证请求被拒**（`ANI-VALKEY-AUTH-REJECTED`，断言 RESP 错误码而非退出码）。
+- cert-manager / PostgreSQL 回归：**pass**（`components=cert-manager=pass postgresql=pass`）。
+- 网络/Envoy 回归：`ANI-NETWORK-OK` / `ANI-INSTALLER-OK`，nodes=3。nats：**skipped**。
+
+### B3-4 持久化验证（lab，a4 集群，分步证据齐全）
+
+**pass**（`evidence/b3a4-persist.log`，`B3-PERSISTENCE-OK`）：记录 STS/PVC/两个 Secret/Pod UID → 经 Service 写唯一非过期键（`PERSIST-WRITE-OK`）→ `WAITAOF 1 0` 返回 + `aof_enabled:1`（**真实 AOF 完成证据，非固定 sleep**，`B3-AOF-CONFIRMED`）→ 正常删除唯一服务 Pod（新 UID）→ 等 Ready + EndpointSlice ready（2s）→ K-5 梯未触发（重建后网络正常）→ 经同一 Service 读回原值（`PERSIST-READ-OK`）→ STS/PVC/auth Secret/config Secret UID 全部不变。AOF everysec 仅承诺正常 Pod 生命周期下的恢复，不宣称断电零丢失。
+
+### B3-5 a2/a3 停止依据的后续处理
+
+- a2 的根因（底座 ceph role 缺 pool-CR 等待）**经用户批准已修复**（`tasks/main.yaml` 增加 `Wait for the RBD block pool to be Ready`，a4 中该任务执行且通过）。
+- a3 的根因（Rook v1.20.7 operator reconcile 挂死）为上游问题，a4 重试自然通过，未做任何绕过或重试碰运气之外的干预；移交记录保留在 `evidence/b3a3-ROOTCAUSE.md`。
+
+### B3-6 下一批
+
+B3 产品判据全部通过（安装退出 0、独立 verify 0、持久化 0，单次运行内）。**B4（NATS JetStream）可以开始**。
 
 ---
 
@@ -258,6 +305,8 @@ a7 单次运行内产品判据全部通过（安装退出 0、独立 verify 0、
 | K-4 | B1 cert-manager 角色实现中修复的多项 installer 缺陷（startupapicheck hook 删除策略、jsonpath 转义、`{@}` 遍历、dpkg 锁、模板 `mode` 未生效改显式 `chmod`） | installer（本轮） | resolved（B1 a6 验证通过） |
 | K-5 | **底座 kcn/OVN Pod 网络缺陷（未定位根因）**：Pod 删除/重建后有概率被分配到坏 netns → 该 Pod IP 直连与 Service ClusterIP 从所有节点均超时，而 Pod 仍 `Ready`（探针为容器内 `exec`）、端点显示 `ready: true`；同 Pod 时而可达时而不可达；不限于本批组件（coredns / smoke Pod 同样复现）。已排除：离线隔离（移除后仍复现）、本批物料（底座 artifact 与 B1 逐字节相同）、传播延迟（等端点 ready 并多次重试仍超时）。**未确定**：根因、触发条件与失败概率。实验室绕过（**非修复**）：再删除该 Pod 重建，1–2 次内可取可达实例（`lab/b2-heal.sh`）。详见「附录 A」 | 底座 kcn/OVN（组件/环境） | **open（未解决）**；B2 已用重建绕过；建议底座修复后再判 B3/B4 |
 | K-6 | B2 PostgreSQL 角色实现中修复的 installer 缺陷（凭据生成 pipefail SIGPIPE exit 141、verify.sh 未加引号 heredoc 本地展开 psql、PVC 检查管道） | installer（本轮） | resolved（B2 a7 验证通过） |
+| K-7 | **底座 Ceph 初始化失败（B3 a2/a3 连续两次、机制不同、归属不同）**：a2 = **ANI 底座 ceph role 的编排缺陷（既有代码，非 B3 引入）**——apply `ani-block-pool` CR 后未等其 Ready 就跑 ceph-verify.sh 创建 `ani-rbd-test` 测试 PVC（早 5 秒）→ CSI 如实报 `pool not found` → 重试超时。a3 = **rook-ceph v1.20.7 operator reconcile 挂死**（CSI key 创建中 >20 分钟零日志、进程存活 0 重启、0 mgr/0 OSD）→ CephCluster 恒 `Progressing` → 安装等待超时，与 ANI 代码无关。均与离线隔离无关（两次均未执行到组件 role） | a2：ANI installer（底座 role）；a3：Rook/Ceph（组件） | **a2 已修复并经 a4 验证**（apply 后补 `wait cephblockpool/ani-block-pool --for=jsonpath=.status.phase=Ready`，经用户批准）；a3 未修（上游问题，a4 重试自然通过，移交记录见 `evidence/b3a3-ROOTCAUSE.md`） |
+| K-8 | B3 Valkey 负向认证验证最初按退出码分支：`valkey-cli` 对服务端错误回复退出 0（本批镜像实测），且连接失败会被误判为"已拒绝"（假通过隐患）。已改为断言 RESP 错误码（NOAUTH/WRONGPASS）+ 其余一切显式失败 | installer（本轮） | resolved（B3 a4 验证通过：`ANI-VALKEY-AUTH-REJECTED` 真实执行） |
 
 ---
 

@@ -109,5 +109,7 @@
       when: '{{ (index .ani.components "cert-manager").enabled }}'
     - role: ani/postgresql
       when: '{{ (index .ani.components "postgresql").enabled }}'
+    - role: ani/valkey
+      when: '{{ (index .ani.components "valkey").enabled }}'
 
 - import_playbook: hook/post_install.yaml

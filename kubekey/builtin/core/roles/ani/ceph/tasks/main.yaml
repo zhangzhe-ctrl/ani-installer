@@ -112,6 +112,11 @@
 - name: ANI Ceph | Apply RBD block pool and StorageClass
   command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/30-storageclass-rbd.yaml
 
+- name: ANI Ceph | Wait for the RBD block pool to be Ready
+  # The pool CR is reconciled asynchronously by Rook; provisioning the verify
+  # PVC before it exists makes the CSI fail with "pool not found" (B3 a2).
+  command: kubectl -n rook-ceph wait cephblockpool/ani-block-pool --for=jsonpath=.status.phase=Ready --timeout=300s
+
 - name: ANI Ceph | Render CephFS StorageClass
   template:
     src: storageclass-cephfs.yaml
