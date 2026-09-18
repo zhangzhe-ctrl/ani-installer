@@ -1,0 +1,40 @@
+# Rendered by the ANI cert-manager role for the official cert-manager chart
+# v1.21.2 (appVersion v1.21.2). Re-rendered by every install run; do not edit.
+#
+# Only the keys we intentionally lock are listed here; everything else keeps the
+# chart's own defaults for this exact version. Keys were confirmed against the
+# shipped values.yaml of cert-manager-v1.21.2.tgz, not copied from another
+# version.
+
+# The chart default for crds.enabled is false, so it is set explicitly here.
+crds:
+  enabled: true
+
+# Every image resolves from images.tsv into the offline registry. The chart
+# prefixes the registry and namespace, producing for example
+# {{ .ani.registry }}/jetstack/cert-manager-controller:v1.21.2.
+imageRegistry: {{ .ani.registry }}
+imageNamespace: jetstack
+image:
+  pullPolicy: IfNotPresent
+
+# The internal root CA lives in this namespace, so it must match the controller
+# --cluster-resource-namespace and the ClusterIssuer secret namespace.
+clusterResourceNamespace: cert-manager
+
+# Keep the startup API check Job after it succeeds. The chart default is
+# "before-hook-creation,hook-succeeded", which deletes the Job on success and
+# would hide the evidence that this hook ran from the offline image. Helm merges
+# maps deeply, so the default has to be overwritten explicitly rather than
+# omitted. Helm waits for the hook either way.
+startupapicheck:
+  enabled: true
+  jobAnnotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-weight: "1"
+    helm.sh/hook-delete-policy: before-hook-creation
+
+# No public ACME is used; the solver image is still packaged because the
+# controller default arguments reference it.
+prometheus:
+  enabled: false

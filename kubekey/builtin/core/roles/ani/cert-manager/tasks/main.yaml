@@ -1,0 +1,124 @@
+---
+# ANI cert-manager component (official chart v1.21.2 / app v1.21.2).
+#
+# Runs on kube_control_plane[0] after the base cluster and Ceph storage classes
+# exist. Skipped entirely when components.certManager is not enabled.
+#
+# All images come from {{ index .ani.images "quay.io/jetstack/cert-manager-controller:v1.21.2" }}
+# style offline references, and the chart itself is read from the artifact:
+# no remote Chart repository is contacted and there is no network access here.
+
+- name: ANI cert-manager | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani/cert-manager
+
+- name: ANI cert-manager | Require fixed Chart material in the offline artifact
+  command: test -f "{{ .ani.artifact_root }}/charts/cert-manager/v1.21.2.tgz"
+
+- name: ANI cert-manager | Require the packaged Helm binary
+  command: test -x "{{ .ani.artifact_root }}/bin/helm"
+
+- name: ANI cert-manager | Render values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/cert-manager/values.yaml
+
+# The template module does not apply its "mode" argument as an octal file mode,
+# so permissions are set explicitly here.
+- name: ANI cert-manager | Lock down the rendered values
+  command: chmod 0600 /etc/kubernetes/ani/cert-manager/values.yaml
+
+- name: ANI cert-manager | Install the fixed Chart from the offline artifact
+  command: >-
+    {{ .ani.artifact_root }}/bin/helm upgrade --install cert-manager
+    {{ .ani.artifact_root }}/charts/cert-manager/v1.21.2.tgz
+    --namespace cert-manager --create-namespace
+    --values /etc/kubernetes/ani/cert-manager/values.yaml
+    --wait --timeout 900s
+
+- name: ANI cert-manager | Wait for CRDs Established
+  command: >-
+    kubectl wait --for=condition=Established --timeout=300s
+    crd/certificates.cert-manager.io
+    crd/certificaterequests.cert-manager.io
+    crd/issuers.cert-manager.io
+    crd/clusterissuers.cert-manager.io
+    crd/orders.acme.cert-manager.io
+    crd/challenges.acme.cert-manager.io
+
+- name: ANI cert-manager | Wait for controller, webhook and cainjector rollout
+  command: |
+    kubectl -n cert-manager rollout status deployment/cert-manager --timeout=600s
+    kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=600s
+    kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=600s
+
+- name: ANI cert-manager | Wait for the startup API check hook Job
+  command: |
+    set -euo pipefail
+    kubectl -n cert-manager wait --for=condition=complete job/cert-manager-startupapicheck --timeout=600s
+    hook_image="$(kubectl -n cert-manager get job/cert-manager-startupapicheck \
+      -o jsonpath='{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}' | sed '/^$/d')"
+    case "$hook_image" in
+      "{{ .ani.registry }}"/*) echo "startupapicheck hook image=$hook_image" ;;
+      *) echo "startupapicheck hook image not served by the offline registry: $hook_image" >&2; exit 1 ;;
+    esac
+
+- name: ANI cert-manager | Verify every rendered image comes from the offline registry
+  command: |
+    set -euo pipefail
+    registry="{{ .ani.registry }}"
+    rendered="$(kubectl -n cert-manager get deploy cert-manager cert-manager-webhook cert-manager-cainjector \
+      -o jsonpath='{range .items[*]}{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}{end}')"
+    # "{@}" is required to iterate a JSON array of plain strings; "{.}" renders empty.
+    solver="$(kubectl -n cert-manager get deploy cert-manager \
+      -o jsonpath='{range .spec.template.spec.containers[*]}{range .args[*]}{@}{"\n"}{end}{end}' \
+      | sed -n 's/^--acme-http01-solver-image=//p')"
+    all="$(printf '%s\n%s\n' "$rendered" "$solver" | sed '/^$/d')"
+    count=0
+    while IFS= read -r ref; do
+      count=$((count + 1))
+      case "$ref" in
+        "$registry"/*) ;;
+        *) echo "image reference not served by the offline registry: $ref" >&2; exit 1 ;;
+      esac
+    done <<< "$all"
+    if [ "$count" -lt 4 ]; then
+      echo "expected 3 controller images plus the acmesolver reference, found $count" >&2
+      exit 1
+    fi
+    printf 'verified %d image references from %s\n' "$count" "$registry"
+
+- name: ANI cert-manager | Render internal CA manifests
+  template:
+    src: internal-ca.yaml
+    dest: /etc/kubernetes/ani/cert-manager/20-internal-ca.yaml
+
+- name: ANI cert-manager | Lock down the rendered CA manifests
+  command: chmod 0600 /etc/kubernetes/ani/cert-manager/20-internal-ca.yaml
+
+- name: ANI cert-manager | Apply internal CA manifests
+  command: |
+    kubectl create namespace ani-cert-test --dry-run=client -o yaml | kubectl apply --server-side -f -
+    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/cert-manager/20-internal-ca.yaml
+
+- name: ANI cert-manager | Wait for internal CA certificates to become Ready
+  command: |
+    kubectl -n cert-manager wait certificate/ani-root-ca --for=condition=Ready --timeout=300s
+    kubectl -n ani-cert-test wait certificate/ani-ca-test-leaf --for=condition=Ready --timeout=300s
+    kubectl wait clusterissuer/ani-ca --for=condition=Ready --timeout=300s
+
+- name: ANI cert-manager | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/cert-manager/verify.sh
+
+- name: ANI cert-manager | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/cert-manager/verify.sh
+    chmod 0700 /etc/kubernetes/ani/cert-manager/verify.sh
+    test -x /etc/kubernetes/ani/cert-manager/verify.sh
+
+- name: ANI cert-manager | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/cert-manager/verify.sh

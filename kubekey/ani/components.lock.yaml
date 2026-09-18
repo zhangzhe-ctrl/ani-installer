@@ -1,0 +1,207 @@
+# ANI 基础组件固定材料锁（第一轮：cert-manager / PostgreSQL / Valkey / NATS）
+#
+# 本文件只描述固定材料：官方来源、版本、材料路径、摘要和真实验证状态。
+# 它不是版本求解器，也不接受任意版本注入。
+# 与之配套的执行计划：docs/foundation-components-batch-execution-plan-20260918.md
+
+apiVersion: ani.installer/v1
+kind: ComponentMaterialLock
+
+lockedAt: "2026-09-18"
+lockBatch: B0
+status: materials_confirmed / installation_not_verified
+
+notes:
+  - 所有摘要均在 Fedora 上通过 skopeo 实际读取源仓库 manifest 得到，未填假值。
+  - source_manifest_digest 是源仓库多架构 index 的摘要；amd64_manifest_digest 是其中
+    linux/amd64 manifest 的摘要。二者通常是不同的值，锁定时不得要求相等。
+  - 本轮不在目标机联网补依赖；所有部署与测试镜像均来自离线 artifact。
+  - Chart 与 app 版本分开记录，不从一个推测另一个。
+
+base:
+  # 现有底座，本轮保留不升级
+  kubernetes: v1.35.8
+  containerd: v2.3.4
+  runc: v1.4.3
+  hauler: v2.0.3
+  kcn: v0.6.2
+  envoyGateway: 既定定制版本（仓库已锁定，本轮不动）
+  rook: v1.20.7
+  ceph: v20.2.4
+
+# ---------------------------------------------------------------------------
+# 随制品提供的固定二进制工具
+# ---------------------------------------------------------------------------
+tools:
+  helm:
+    version: v3.20.0
+    gitVersion: v3.20.0+gb2e4314
+    source: https://get.helm.sh/helm-v3.20.0-linux-amd64.tar.gz
+    sourceTarballSha256: dbb4c8fc8e19d159d1a63dda8db655f9ffa4aac1b9a6b188b34a40957119b286
+    binarySha256: 1f7ed083dbc200a10fdfe04df94c21530140fdc955de5a1daed2694150f77b17
+    artifactPath: bin/helm
+    purpose: 渲染并部署本轮官方固定 Chart；不执行 helm repo update / dependency update
+    verifiedCommand: "helm version --short -> v3.20.0+gb2e4314（Fedora 实际执行）"
+    status: materials_confirmed / installation_not_verified
+
+# ---------------------------------------------------------------------------
+# 证书验证工具镜像（随离线包供应，不在目标机临时安装 openssl）
+# ---------------------------------------------------------------------------
+verificationToolImages:
+  - original: docker.io/alpine/openssl:3.5.4
+    haulerRef: 127.0.0.1:5000/alpine/openssl:3.5.4
+    sourceManifestDigest: sha256:42c7389ef077aed0eb4e96d0abbd094083d701bbaff1313073b061c0c9cd8278
+    amd64ManifestDigest: sha256:b3a40181a3234df05d3702c48fd1c3690261b4d90b5ef418a2e84b9bf533ad37
+    verifiedCommand: /usr/bin/openssl
+    verifiedOutput: "OpenSSL 3.5.4 30 Sep 2025"
+    use: cert-manager 证书链 / SAN / 有效期验证 Job
+
+# ---------------------------------------------------------------------------
+# 四个组件
+# ---------------------------------------------------------------------------
+components:
+
+  cert-manager:
+    batch: B1
+    namespace: cert-manager
+    chartVersion: v1.21.2
+    appVersion: v1.21.2
+    chartSource: https://charts.jetstack.io/charts/cert-manager-v1.21.2.tgz
+    chartSha256: 73a56e1728edd6c99f1f31082618c3259d279a76b7ebd3d4bdc5475c2442d34a
+    artifactChartPath: charts/cert-manager/v1.21.2.tgz
+    chartFacts:
+      crdsEnabledDefault: false
+      crdsEnabledInOurValues: true
+      topLevelImageKeys: [imageRegistry, imageNamespace]
+      perComponentImageNameKeys:
+        - image.name = cert-manager-controller
+        - webhook.image.name = cert-manager-webhook
+        - cainjector.image.name = cert-manager-cainjector
+        - startupapicheck.image.name = cert-manager-startupapicheck
+        - acmesolver.image.name = cert-manager-acmesolver
+      # acmesolver 不产生常驻 Pod，但 controller 默认参数会引用它
+      controllerDefaultArgsObserved:
+        - "--cluster-resource-namespace=$(POD_NAMESPACE)"
+        - "--leader-election-namespace=kube-system"
+        - "--acme-http01-solver-image=quay.io/jetstack/cert-manager-acmesolver:v1.21.2"
+        - "--max-concurrent-challenges=60"
+      renderedDeploymentCount: 3  # controller / webhook / cainjector
+      renderedHookJobCount: 1     # startupapicheck (post-install hook)
+    images:
+      - original: quay.io/jetstack/cert-manager-controller:v1.21.2
+        haulerRef: 127.0.0.1:5000/jetstack/cert-manager-controller:v1.21.2
+        sourceManifestDigest: sha256:70f532fd9cfde0b09d55687200942399d89838bc2d5d5b45152eb799a15912b8
+        amd64ManifestDigest: sha256:57bb397c639e0e94184ba67848e5dad04284f24645e521e764a0ee5f5002f286
+        use: cert-manager controller Deployment
+      - original: quay.io/jetstack/cert-manager-webhook:v1.21.2
+        haulerRef: 127.0.0.1:5000/jetstack/cert-manager-webhook:v1.21.2
+        sourceManifestDigest: sha256:a60e2dac46dbb8a7f3df95c54ce941012f54c2fe022f0ee55aaa1ab40ed957ae
+        amd64ManifestDigest: sha256:b929259301ee75270ab4651d5e6bd4ba7b6624b1ce48ba767d064295a9312101
+        use: cert-manager webhook Deployment
+      - original: quay.io/jetstack/cert-manager-cainjector:v1.21.2
+        haulerRef: 127.0.0.1:5000/jetstack/cert-manager-cainjector:v1.21.2
+        sourceManifestDigest: sha256:c85268c64f2e0e76684bf5fe8906caff34b82523561c6affe0fae3546bd87562
+        amd64ManifestDigest: sha256:aa2bc58725d92a643f5069dde58abc93b65566ded8951348873ac9ee7efef66c
+        use: cert-manager cainjector Deployment
+      - original: quay.io/jetstack/cert-manager-startupapicheck:v1.21.2
+        haulerRef: 127.0.0.1:5000/jetstack/cert-manager-startupapicheck:v1.21.2
+        sourceManifestDigest: sha256:46e75b6866359ffb5d82624f41e3ed1c70b2994982702ced547ce5edb418a8f5
+        amd64ManifestDigest: sha256:ed347b0ab607058f139b83f41567109456b9776330b63da8086a120afb7f1729
+        use: cert-manager startupapicheck post-install hook Job
+      - original: quay.io/jetstack/cert-manager-acmesolver:v1.21.2
+        haulerRef: 127.0.0.1:5000/jetstack/cert-manager-acmesolver:v1.21.2
+        sourceManifestDigest: sha256:699b40d622211ab7accad8a21b04c5fbaa1841ef7a12621e8de492dbe27b2503
+        amd64ManifestDigest: sha256:dc5c5b8456d1a50af47a240987e85afce352b5c1155a8a4698b7c91eac19f407
+        use: controller --acme-http01-solver-image 默认引用；本轮不启用 ACME，但随包供应以避免重试时缺镜像
+    status: materials_confirmed / installation_not_verified
+
+  postgresql:
+    batch: B2
+    namespace: ani-platform
+    workload: StatefulSet/postgresql（单副本）
+    appVersion: "17.11"
+    imageTag: 17.11-bookworm
+    chartVersion: null   # 不使用 Operator/Chart，自管最小 StatefulSet 清单
+    imageSource: https://hub.docker.com/_/postgres
+    materialFacts:
+      psqlClient: 镜像自带 psql，客户端 Job 复用同一镜像，不在目标机 apt 安装
+      opensslInImage: "/usr/bin/openssl 3.0.20（Fedora 实际执行确认；仅记录，本组件不依赖它）"
+      entrypoint: 官方 docker-entrypoint.sh，支持 POSTGRES_PASSWORD_FILE
+    images:
+      - original: docker.io/library/postgres:17.11-bookworm
+        haulerRef: 127.0.0.1:5000/library/postgres:17.11-bookworm
+        sourceManifestDigest: sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+        amd64ManifestDigest: sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6
+        use: PostgreSQL 单实例 StatefulSet 与 psql 客户端 Job
+    status: materials_confirmed / installation_not_verified
+
+  valkey:
+    batch: B3
+    namespace: ani-platform
+    workload: StatefulSet/valkey（单副本）
+    appVersion: "8.1.10"
+    imageTag: 8.1.10-alpine
+    chartVersion: null
+    imageSource: https://github.com/valkey-io/valkey-container
+    materialFacts:
+      cli: 镜像自带 valkey-cli，客户端 Job 复用同一镜像
+      persistence: AOF，appendfsync everysec
+    images:
+      - original: docker.io/valkey/valkey:8.1.10-alpine
+        haulerRef: 127.0.0.1:5000/valkey/valkey:8.1.10-alpine
+        sourceManifestDigest: sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1
+        amd64ManifestDigest: sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7
+        use: Valkey 单实例 StatefulSet 与 valkey-cli 客户端 Job
+    status: materials_confirmed / installation_not_verified
+
+  nats:
+    batch: B4
+    namespace: ani-platform
+    workload: 官方 Chart nats（单实例 StatefulSet）
+    chartVersion: 2.14.6
+    appVersion: 2.14.6
+    chartSource: https://github.com/nats-io/k8s/releases/download/nats-2.14.6/nats-2.14.6.tgz
+    chartSha256: 72f7412d6856a6c75c80d4aa4a1ed88c3846f5728fa8e0cc134a76da0febe3d9
+    artifactChartPath: charts/nats/2.14.6.tgz
+    chartFacts:
+      renderedWithPlanValues:
+        kindStatefulSet: nats
+        jetstreamFileStorePvc: nats-js（5Gi, storageClassName ani-block）
+        services: [nats, nats-headless]
+        promExporterDefaultEnabled: false
+        natsBoxDefaultEnabled: false
+      tokenSyntax: "config.merge.authorization.token 使用该 Chart 特殊语法 << $TOKEN >>，配 container.env.TOKEN 的 secretKeyRef"
+      defaultImagesRendered:
+        - nats:2.14.6-alpine
+        - natsio/nats-server-config-reloader:0.23.0
+    images:
+      - original: docker.io/library/nats:2.14.6-alpine
+        haulerRef: 127.0.0.1:5000/library/nats:2.14.6-alpine
+        sourceManifestDigest: sha256:ad7a43eb7e3337c3c38ce5d784d1461791f95f730f252d2b25eee699752a0ca3
+        amd64ManifestDigest: sha256:065e8355c20a5575b3c77224be1855e8103fd148b68fba05130b9b8ddfa40ccc
+        use: NATS server StatefulSet
+      - original: docker.io/natsio/nats-server-config-reloader:0.23.0
+        haulerRef: 127.0.0.1:5000/natsio/nats-server-config-reloader:0.23.0
+        sourceManifestDigest: sha256:64cb6c858e794906d3167378e02b7e0feb83c4e14c07b371eb8d921ef8c4a60b
+        amd64ManifestDigest: sha256:1418d42cea39ea729c1d34ca26ba33d967abdf040bad45ec1314c807bfacc56f
+        use: NATS config reloader sidecar
+      - original: docker.io/natsio/nats-box:0.19.7
+        haulerRef: 127.0.0.1:5000/natsio/nats-box:0.19.7
+        sourceManifestDigest: sha256:ffce8bd103383f179f8c7f11cf645726acf5d17280706c530c3b342dbe16334c
+        amd64ManifestDigest: sha256:40c8442312af09e36818ea3500244ab5c18ce22fa2678885940e6a97f93f96ff
+        use: NATS CLI 一次性验证 Job（非常驻 natsBox）
+    status: materials_confirmed / installation_not_verified
+
+# ---------------------------------------------------------------------------
+# 本轮有意不打进离线包的镜像（记录决定，避免遗漏或误解）
+# ---------------------------------------------------------------------------
+excludedImages:
+  - original: natsio/prometheus-nats-exporter:0.20.1
+    reason: Chart 中 promExporter.enabled 默认 false，本轮不启用，保持关闭
+  - original: natsio/nats-server-config-reloader 之外的任何 operator 组件
+    reason: 不部署 NACK / operator / 多租户账号系统
+
+# ---------------------------------------------------------------------------
+# 每批真实验证记录（安装未完成前保持 installation_not_verified）
+# ---------------------------------------------------------------------------
+verificationRecords: []

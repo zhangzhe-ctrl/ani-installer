@@ -1,0 +1,42 @@
+# ANI 站点配置示例 —— 第一轮基础组件 B1（底座 + cert-manager）
+#
+# 说明：
+#   - 这是脱敏示例，密码/私钥一律用占位符，真实实验配置保存在 Fedora 私有目录，
+#     不进入 Git，也不打进 artifact。
+#   - components 缺省即关闭；未实现的组件在对应批次之前只能为 false，
+#     设为 true 必须在部署前明确报“本批未实现”，不能静默跳过。
+#   - B1 阶段只允许 certManager.enabled: true，其余三项必须保持 false。
+
+name: ani-lab
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - name: node1
+    address: 172.16.101.20
+  - name: node2
+    address: 172.16.101.21
+  - name: node3
+    address: 172.16.101.22
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: [ens35]
+    encapNetworks: [172.16.101.0/24]
+    intranetNetworks: [172.16.101.0/24, 10.96.0.0/16]
+registry:
+  port: 5000
+
+components:
+  certManager:
+    enabled: true
+  postgresql:
+    enabled: false
+  valkey:
+    enabled: false
+  nats:
+    enabled: false

@@ -1,0 +1,70 @@
+# ANI internal CA recipe (cert-manager v1.21.2).
+#
+# Minimal offline PKI for this round only: a self-signed bootstrap Issuer
+# creates one root CA Certificate, and a ClusterIssuer signs leaf certificates
+# for other namespaces. No public ACME, no external PKI, no trust-store
+# distribution, no automatic root rotation.
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ani-ca-bootstrap
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ani-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: ani-root-ca
+  subject:
+    organizations:
+      - ani-installer
+    organizationalUnits:
+      - foundation-components
+  secretName: ani-root-ca
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: ani-ca-bootstrap
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ani-ca
+spec:
+  ca:
+    secretName: ani-root-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ani-ca-test-leaf
+  namespace: ani-cert-test
+spec:
+  secretName: ani-ca-test-leaf
+  commonName: ani-ca-test-leaf.ani-cert-test.svc.cluster.local
+  dnsNames:
+    - ani-ca-test-leaf.ani-cert-test.svc
+    - ani-ca-test-leaf.ani-cert-test.svc.cluster.local
+  duration: 2160h
+  renewBefore: 360h
+  usages:
+    - server auth
+    - client auth
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: ani-ca
+    kind: ClusterIssuer

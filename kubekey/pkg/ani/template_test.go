@@ -203,4 +203,22 @@ func TestExecutableReleaseFilesUseLF(t *testing.T) {
 			t.Fatalf("executable %s contains CRLF bytes", rel)
 		}
 	}
+	// Every per-component verification script rides along inside the kk builtin
+	// resources, so it needs the same LF guarantee.
+	matches, err := filepath.Glob(filepath.Join(root, "builtin", "core", "roles", "ani", "*", "templates", "*.sh"))
+	if err != nil {
+		t.Fatalf("glob component scripts: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("no component verification scripts found")
+	}
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read component script %s: %v", path, err)
+		}
+		if strings.Contains(string(data), "\r") {
+			t.Fatalf("component script %s contains CRLF bytes", path)
+		}
+	}
 }

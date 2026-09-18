@@ -102,5 +102,10 @@
     - ani/smoke
     - storageclass
     - ani/ceph
+    # Foundation components follow the storage classes in the documented order:
+    # cert-manager -> postgresql -> valkey -> nats. Each role is skipped
+    # completely when its switch is off.
+    - role: ani/cert-manager
+      when: '{{ (index .ani.components "cert-manager").enabled }}'
 
 - import_playbook: hook/post_install.yaml

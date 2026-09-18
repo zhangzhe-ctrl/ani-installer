@@ -98,7 +98,7 @@ func TestKubeKeyInventoryUsesLocalOnlyForInstaller(t *testing.T) {
 }
 
 func TestKubeKeyConfigOfflineAndNetworkValues(t *testing.T) {
-	spec, err := KubeKeyConfig(validConfig(), "/opt/ani/packages/kubekey-artifact.tgz", testImageTable())
+	spec, err := KubeKeyConfig(validConfig(), "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
 	if err != nil {
 		t.Fatalf("KubeKeyConfig() error = %v", err)
 	}
@@ -255,7 +255,7 @@ func TestANITasksAvoidUnsupportedFileModule(t *testing.T) {
 func TestKubeKeyConfigFollowsInstallerNodeOrder(t *testing.T) {
 	c := validConfig()
 	c.InstallerNode = "node3"
-	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", testImageTable())
+	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
 	if err != nil {
 		t.Fatalf("KubeKeyConfig() error = %v", err)
 	}

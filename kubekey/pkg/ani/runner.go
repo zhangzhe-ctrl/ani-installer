@@ -2,6 +2,8 @@ package ani
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,9 +102,9 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	if err != nil {
 		return errors.Wrapf(err, "read cluster config %s", configPath)
 	}
-	cluster := ClusterConfig{}
-	if err := yaml.Unmarshal(configData, &cluster); err != nil {
-		return errors.Wrapf(err, "parse cluster config %s", configPath)
+	cluster, err := LoadClusterConfig(configPath)
+	if err != nil {
+		return err
 	}
 	if err := Validate(cluster); err != nil {
 		return errors.Wrap(err, "validate cluster config")
@@ -133,7 +135,19 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		filepath.Join(paths.ArtifactRoot, "config", "versions.yaml"),
 		filepath.Join(paths.ArtifactRoot, "config", "runtime-checksums.txt"),
 		filepath.Join(paths.ArtifactRoot, "config", "repository-iso-checksums.txt"),
+		filepath.Join(paths.ArtifactRoot, "config", "components.lock.yaml"),
 		kkPath,
+	}
+	// Every enabled component must have its fixed Chart material in the artifact
+	// before deployment starts, so a missing chart fails here and not mid-install.
+	selection := map[string]bool{}
+	for _, row := range cluster.Components.Selection() {
+		selection[row.Name] = row.Enabled
+	}
+	for name, relative := range componentChartMaterials {
+		if selection[name] {
+			required = append(required, filepath.Join(paths.ArtifactRoot, filepath.FromSlash(relative)))
+		}
 	}
 	for _, path := range required {
 		if _, err := os.Stat(path); err != nil {
@@ -149,6 +163,9 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	}
 	if err := os.MkdirAll(paths.LogRoot, 0o700); err != nil {
 		return errors.Wrap(err, "create log directory")
+	}
+	if err := writeComponentSelection(filepath.Join(paths.WorkRoot, "components-selection.tsv"), configSHA256(configData), cluster.Components.Selection()); err != nil {
+		return err
 	}
 	logFile, err := os.OpenFile(filepath.Join(paths.LogRoot, "install.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -172,7 +189,7 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	}
 	fmt.Fprintf(logger, "loaded %d images from images.tsv\n", len(imageTable))
 
-	spec, err := KubeKeyConfig(cluster, paths.ArtifactPath, imageTable)
+	spec, err := KubeKeyConfig(cluster, paths.ArtifactPath, paths.ArtifactRoot, imageTable)
 	if err != nil {
 		return err
 	}
@@ -245,6 +262,33 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	}
 	fmt.Fprintf(logger, "ANI install completed at %s\n", time.Now().Format(time.RFC3339))
 	return nil
+}
+
+// componentChartMaterials maps a component to the fixed Chart path inside the
+// offline artifact. Paths are relative so the artifact can be relocated.
+var componentChartMaterials = map[string]string{
+	"cert-manager": "charts/cert-manager/v1.21.2.tgz",
+}
+
+// writeComponentSelection records this run's effective component selection for
+// verify.sh. The first line pins this exact site config; every supported
+// component follows in the fixed order so a missing, duplicated or malformed
+// file can never be read as "everything disabled".
+func writeComponentSelection(path, configSHA string, rows []ComponentRow) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# config_sha256=%s\n", configSHA)
+	for _, row := range rows {
+		fmt.Fprintf(&b, "%s\t%t\n", row.Name, row.Enabled)
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		return errors.Wrapf(err, "write component selection %s", path)
+	}
+	return nil
+}
+
+func configSHA256(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func verifyArtifactChecksums(ctx context.Context, logger io.Writer, artifactRoot string) error {

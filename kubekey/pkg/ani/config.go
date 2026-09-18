@@ -1,16 +1,139 @@
 package ani
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // ClusterConfig is the small site-specific input used by "kk ani install".
 // It intentionally does not describe components or versions; those are fixed
 // by the offline artifact.
+// DefaultStorageClass is the RBD StorageClass created by the existing base
+// install (Rook/Ceph). Foundation components use it unless overridden.
+const DefaultStorageClass = "ani-block"
+
+var (
+	// componentsOrder is the fixed order used by every component artifact that
+	// must list all four components exactly once, including components-selection.tsv.
+	componentsOrder = [4]string{"cert-manager", "postgresql", "valkey", "nats"}
+)
+
+// CertManagerComponent configures the internal PKI component. It owns no PVC.
+type CertManagerComponent struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// StorageComponent configures a single-instance component backed by one RWO PVC.
+type StorageComponent struct {
+	Enabled      bool   `yaml:"enabled"`
+	StorageClass string `yaml:"storageClass"`
+	StorageSize  string `yaml:"storageSize"`
+}
+
+// Components selects which foundation components this run installs. Every
+// switch is independent and defaults to off.
+type Components struct {
+	CertManager CertManagerComponent `yaml:"certManager"`
+	PostgreSQL  StorageComponent     `yaml:"postgresql"`
+	Valkey      StorageComponent     `yaml:"valkey"`
+	NATS        StorageComponent     `yaml:"nats"`
+}
+
+// DefaultComponents returns the documented defaults for a site that does not
+// spell them out. Components stay disabled; storage defaults match the plan.
+func DefaultComponents() Components {
+	return Components{
+		PostgreSQL: StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "10Gi"},
+		Valkey:     StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "2Gi"},
+		NATS:       StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "5Gi"},
+	}
+}
+
+// ComponentRow is one row of components-selection.tsv.
+type ComponentRow struct {
+	Name    string
+	Enabled bool
+}
+
+// Selection returns every supported component in the fixed order with its
+// effective on/off result, so downstream consumers never have to re-parse the
+// nested site YAML.
+func (c Components) Selection() []ComponentRow {
+	enabled := map[string]bool{
+		componentsOrder[0]: c.CertManager.Enabled,
+		componentsOrder[1]: c.PostgreSQL.Enabled,
+		componentsOrder[2]: c.Valkey.Enabled,
+		componentsOrder[3]: c.NATS.Enabled,
+	}
+	rows := make([]ComponentRow, 0, len(componentsOrder))
+	for _, name := range componentsOrder {
+		rows = append(rows, ComponentRow{Name: name, Enabled: enabled[name]})
+	}
+	return rows
+}
+
+// storage returns the effective storage settings for the named storage-backed
+// component, or nil when the name is unknown.
+func (c Components) storage(name string) *StorageComponent {
+	switch name {
+	case componentsOrder[1]:
+		return &c.PostgreSQL
+	case componentsOrder[2]:
+		return &c.Valkey
+	case componentsOrder[3]:
+		return &c.NATS
+	default:
+		return nil
+	}
+}
+
+// ImplementedComponents is the set of components this release can actually
+// deploy. It grows one batch at a time; a site enabling anything else must fail
+// before any deployment begins instead of silently skipping it.
+var ImplementedComponents = []string{componentsOrder[0]}
+
+// validateComponents checks supported names, effective capacity and the
+// "not implemented yet" gate.
+func (c Components) validate() error {
+	for _, row := range c.Selection() {
+		if !row.Enabled {
+			continue
+		}
+		implemented := false
+		for _, known := range ImplementedComponents {
+			if known == row.Name {
+				implemented = true
+				break
+			}
+		}
+		if !implemented {
+			return fmt.Errorf("components.%s: enabled=true but this release does not implement %s yet; set it to false", row.Name, row.Name)
+		}
+		storage := c.storage(row.Name)
+		if storage == nil {
+			continue
+		}
+		if strings.TrimSpace(storage.StorageClass) == "" {
+			return fmt.Errorf("components.%s.storageClass is required when the component is enabled", row.Name)
+		}
+		if strings.TrimSpace(storage.StorageSize) == "" {
+			return fmt.Errorf("components.%s.storageSize is required when the component is enabled", row.Name)
+		}
+		if _, err := resource.ParseQuantity(storage.StorageSize); err != nil {
+			return fmt.Errorf("components.%s.storageSize %q is not a valid capacity: %w", row.Name, storage.StorageSize, err)
+		}
+	}
+	return nil
+}
+
 type ClusterConfig struct {
 	Name           string       `yaml:"name"`
 	InstallerNode  string       `yaml:"installerNode"`
@@ -18,6 +141,7 @@ type ClusterConfig struct {
 	Nodes          []NodeConfig `yaml:"nodes"`
 	Network        Network      `yaml:"network"`
 	RegistryConfig Registry     `yaml:"registry"`
+	Components     Components   `yaml:"components"`
 }
 
 type SSHConfig struct {
@@ -154,7 +278,33 @@ func Validate(c ClusterConfig) error {
 			return fmt.Errorf("network.kcn.intranetNetworks must include each encap network so KCN can route host traffic: %s", ipnet.String())
 		}
 	}
-	return nil
+	return c.Components.validate()
+}
+
+// LoadClusterConfig reads the site configuration strictly: unknown keys fail so
+// a typo in components.* can never be silently ignored. Defaults are applied
+// first so omitted switches stay off and omitted storage settings keep their
+// documented values. Credentials inside the file are never logged.
+func LoadClusterConfig(path string) (ClusterConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ClusterConfig{}, fmt.Errorf("read cluster config %s: %w", path, err)
+	}
+	return ParseClusterConfig(data)
+}
+
+// ParseClusterConfig applies strict decoding to an already-read site config.
+func ParseClusterConfig(data []byte) (ClusterConfig, error) {
+	cluster := ClusterConfig{Components: DefaultComponents()}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cluster); err != nil {
+		if err == io.EOF {
+			return ClusterConfig{}, fmt.Errorf("cluster config is empty")
+		}
+		return ClusterConfig{}, fmt.Errorf("parse cluster config: %w", err)
+	}
+	return cluster, nil
 }
 
 // VerifyInstallerInterface confirms that the installer management IP in the
@@ -197,12 +347,17 @@ func VerifySSHAuth(c ClusterConfig) error {
 
 // KubeKeyConfig returns a KubeKey Config spec as a plain map. Keeping it as a
 // map lets the installer emit the same format as the upstream YAML template.
-func KubeKeyConfig(c ClusterConfig, artifactPath string, imageTable ImageTable) (map[string]any, error) {
+// artifactRoot is the offline artifact root; roles locate their fixed Chart and
+// other material through it so nothing is fetched from the internet.
+func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTable ImageTable) (map[string]any, error) {
 	if err := Validate(c); err != nil {
 		return nil, err
 	}
 	if !strings.HasPrefix(artifactPath, "/") {
 		return nil, fmt.Errorf("artifact path %q must be absolute", artifactPath)
+	}
+	if !strings.HasPrefix(artifactRoot, "/") {
+		return nil, fmt.Errorf("artifact root %q must be absolute", artifactRoot)
 	}
 	registry, err := c.RegistryAddress()
 	if err != nil {
@@ -211,6 +366,16 @@ func KubeKeyConfig(c ClusterConfig, artifactPath string, imageTable ImageTable) 
 	imageRefs, err := LocalImageReferences(imageTable, registry)
 	if err != nil {
 		return nil, err
+	}
+
+	components := map[string]any{}
+	for _, row := range c.Components.Selection() {
+		entry := map[string]any{"enabled": row.Enabled}
+		if storage := c.Components.storage(row.Name); storage != nil {
+			entry["storage_class"] = storage.StorageClass
+			entry["storage_size"] = storage.StorageSize
+		}
+		components[row.Name] = entry
 	}
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
@@ -279,6 +444,8 @@ func KubeKeyConfig(c ClusterConfig, artifactPath string, imageTable ImageTable) 
 		"ani": map[string]any{
 			"registry":       registry,
 			"images":         imageRefs,
+			"components":     components,
+			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,
 			"installer_node": c.InstallerNode,

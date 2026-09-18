@@ -1,0 +1,41 @@
+# ANI 站点配置示例 —— 第一轮基础组件 B3（累计：cert-manager + PostgreSQL + Valkey）
+#
+# 累计启用：certManager、postgresql、valkey。nats 在 B4 之前必须为 false。
+
+name: ani-lab
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - name: node1
+    address: 172.16.101.20
+  - name: node2
+    address: 172.16.101.21
+  - name: node3
+    address: 172.16.101.22
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: [ens35]
+    encapNetworks: [172.16.101.0/24]
+    intranetNetworks: [172.16.101.0/24, 10.96.0.0/16]
+registry:
+  port: 5000
+
+components:
+  certManager:
+    enabled: true
+  postgresql:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 10Gi
+  valkey:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 2Gi
+  nats:
+    enabled: false

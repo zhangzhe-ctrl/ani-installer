@@ -11,6 +11,9 @@ REPOSITORY_ISO="${REPOSITORY_ISO:?set REPOSITORY_ISO to ubuntu-24.04-debs-amd64.
 KUBEKEY_ARTIFACT="${KUBEKEY_ARTIFACT:-}"
 HAULER_ARCHIVE="${HAULER_ARCHIVE:-}"
 HAULER_STORE="${HAULER_STORE:-}"
+HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the fixed chart renders}"
+CHARTS_DIR="${CHARTS_DIR:-$ROOT/ani/charts}"
+COMPONENT_LOCK="${COMPONENT_LOCK:-$ROOT/ani/components.lock.yaml}"
 
 if [[ "$(uname -s)/$(uname -m)" != "Linux/x86_64" ]]; then
   echo "build-offline.sh must run on Linux amd64" >&2
@@ -24,7 +27,7 @@ if [[ -n "$HAULER_ARCHIVE" && -n "$HAULER_STORE" ]]; then
   echo "set only one of HAULER_ARCHIVE or HAULER_STORE" >&2
   exit 1
 fi
-required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO")
+required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO" "$HELM_BIN" "$COMPONENT_LOCK")
 if [[ -z "$KUBEKEY_ARTIFACT" ]]; then
   required+=("$KK_BIN")
 fi
@@ -36,6 +39,10 @@ for path in "${required[@]}"; do
 done
 if [[ ! -x "$HAULER_BIN" ]]; then
   echo "HAULER_BIN must be executable: $HAULER_BIN" >&2
+  exit 1
+fi
+if [[ ! -x "$HELM_BIN" ]]; then
+  echo "HELM_BIN must be executable: $HELM_BIN" >&2
   exit 1
 fi
 if [[ -z "$KUBEKEY_ARTIFACT" && ! -x "$KK_BIN" ]]; then
@@ -63,6 +70,7 @@ mkdir -p \
   "$OUTPUT/packages" \
   "$OUTPUT/images" \
   "$OUTPUT/config" \
+  "$OUTPUT/charts" \
   "$OUTPUT/licenses" \
   "$OUTPUT/repository"
 
@@ -111,15 +119,30 @@ else
 fi
 install -m 0644 "$IMAGES_TSV" "$OUTPUT/images/images.tsv"
 
-echo "[3/6] copying fixed binaries and repository ISO"
+echo "[3/6] copying fixed binaries, repository ISO and chart material"
 install -m 0755 "$HAULER_BIN" "$OUTPUT/bin/hauler"
+install -m 0755 "$HELM_BIN" "$OUTPUT/bin/helm"
 copy_material "$REPOSITORY_ISO" "$OUTPUT/repository/ubuntu-24.04-debs-amd64.iso"
+
+# Charts are immutable upstream material: they are copied once and never
+# re-rendered here. Only charts already listed in the component lock are taken.
+if [[ -d "$CHARTS_DIR" ]]; then
+  charts_copied=0
+  while IFS= read -r chart_source; do
+    relative="${chart_source#"$CHARTS_DIR"/}"
+    mkdir -p "$OUTPUT/charts/$(dirname "$relative")"
+    install -m 0644 "$chart_source" "$OUTPUT/charts/$relative"
+    charts_copied=$((charts_copied + 1))
+  done < <(find "$CHARTS_DIR" -type f -name '*.tgz' | sort)
+  echo "packaged $charts_copied chart archives from $CHARTS_DIR"
+fi
 
 echo "[4/6] copying fixed artifact metadata"
 install -m 0644 "$ROOT/ani/package.yaml" "$OUTPUT/config/package.yaml"
 install -m 0644 "$ROOT/ani/versions.yaml" "$OUTPUT/config/versions.yaml"
 install -m 0644 "$ROOT/ani/runtime-checksums.txt" "$OUTPUT/config/runtime-checksums.txt"
 install -m 0644 "$ROOT/ani/repository-iso-checksums.txt" "$OUTPUT/config/repository-iso-checksums.txt"
+install -m 0644 "$COMPONENT_LOCK" "$OUTPUT/config/components.lock.yaml"
 for path in LICENSE NOTICE; do
   if [[ -f "$ROOT/$path" ]]; then
     install -m 0644 "$ROOT/$path" "$OUTPUT/licenses/$path"

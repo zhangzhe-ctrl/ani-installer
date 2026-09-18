@@ -70,5 +70,78 @@ if [[ "$PROBE_RC" -ne 0 ]]; then
   exit "$PROBE_RC"
 fi
 
+# ---------------------------------------------------------------------------
+# Foundation components: read the selection recorded by this exact install run
+# and verify each enabled component with its own packaged script. A missing,
+# malformed or stale selection file fails instead of being read as "all off".
+# ---------------------------------------------------------------------------
+SELECTION_FILE="/var/lib/ani-installer/$CLUSTER_NAME/work/components-selection.tsv"
+if [[ ! -s "$SELECTION_FILE" ]]; then
+  echo "component selection file not found: $SELECTION_FILE (installer version too old or cluster=$CLUSTER_NAME wrong)" >&2
+  exit 1
+fi
+
+CONFIG_SHA256="$(sha256sum "$CONFIG" | awk '{print $1}')"
+IFS= read -r SELECTION_HEADER < "$SELECTION_FILE"
+if [[ ! "$SELECTION_HEADER" =~ ^#\ config_sha256=([0-9a-f]{64})$ ]]; then
+  echo "component selection first line is malformed: $SELECTION_HEADER" >&2
+  exit 1
+fi
+if [[ "${BASH_REMATCH[1]}" != "$CONFIG_SHA256" ]]; then
+  echo "component selection was written for a different site config (expected ${CONFIG_SHA256}, got ${BASH_REMATCH[1]})" >&2
+  exit 1
+fi
+
+mapfile -t SELECTION_ROWS < <(tail -n +2 "$SELECTION_FILE")
+EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats)
+if [[ "${#SELECTION_ROWS[@]}" -ne "${#EXPECTED_COMPONENTS[@]}" ]]; then
+  echo "component selection must have exactly ${#EXPECTED_COMPONENTS[@]} rows, got ${#SELECTION_ROWS[@]}" >&2
+  exit 1
+fi
+
+COMPONENT_SUMMARY=()
+COMPONENT_RC=0
+for index in "${!EXPECTED_COMPONENTS[@]}"; do
+  expected="${EXPECTED_COMPONENTS[$index]}"
+  row="${SELECTION_ROWS[$index]}"
+  IFS=$'\t' read -r component_name component_enabled <<< "$row"
+  if [[ "$component_name" != "$expected" ]]; then
+    echo "component selection row $((index + 2)) must be $expected, got ${component_name:-<empty>}" >&2
+    exit 1
+  fi
+  case "$component_enabled" in
+    true|false) ;;
+    *) echo "component selection row $((index + 2)) has invalid enabled value ${component_enabled:-<empty>}" >&2; exit 1 ;;
+  esac
+
+  if [[ "$component_enabled" != "true" ]]; then
+    echo "component $component_name: skipped (not enabled in this run)"
+    COMPONENT_SUMMARY+=("$component_name=skipped")
+    continue
+  fi
+
+  component_script="/etc/kubernetes/ani/$component_name/verify.sh"
+  if [[ ! -f "$component_script" ]]; then
+    echo "component $component_name is enabled but $component_script is missing; only scripts produced by this clean install are accepted" >&2
+    exit 1
+  fi
+  set +e
+  ANI_VERIFY_KUBECONFIG="$KUBECONFIG_FILE" ANI_VERIFY_OUTPUT_DIR="$VERIFY_LOG_DIR" \
+    bash "$component_script" 2>&1 | tee "$VERIFY_LOG_DIR/component-$component_name.log"
+  component_exit="${PIPESTATUS[0]}"
+  set -e
+  if [[ "$component_exit" -ne 0 ]]; then
+    echo "component $component_name verification failed; exit=$component_exit; log=$VERIFY_LOG_DIR/component-$component_name.log" >&2
+    COMPONENT_RC="$component_exit"
+    COMPONENT_SUMMARY+=("$component_name=fail")
+    continue
+  fi
+  COMPONENT_SUMMARY+=("$component_name=pass")
+done
+if [[ "$COMPONENT_RC" -ne 0 ]]; then
+  echo "foundation component verification failed; components: ${COMPONENT_SUMMARY[*]}" >&2
+  exit "$COMPONENT_RC"
+fi
+
 image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$IMAGE_TABLE")"
-echo "ANI artifact verification passed: cluster=$CLUSTER_NAME artifact=$ARTIFACT_ROOT registry=$image_count images, nodes=3, network=ANI-NETWORK-OK, Envoy HTTP=ANI-INSTALLER-OK"
+echo "ANI artifact verification passed: cluster=$CLUSTER_NAME artifact=$ARTIFACT_ROOT registry=$image_count images, nodes=3, network=ANI-NETWORK-OK, Envoy HTTP=ANI-INSTALLER-OK, components=${COMPONENT_SUMMARY[*]}"
