@@ -5,6 +5,11 @@
 
 **本轮结论：live 全部 `not_verified`。** 新版 kcn 修复仅由用户口头告知，镜像材料尚未提供，按执行方案第 1.1 / 6 节，本轮只执行材料/代码阶段，不启动三台安装。旧 kcn 的迟到 DEL 缺陷（见 [B5 复核](foundation-b5-verification-20260919.md)）未解决，NATS 失败不能被本批覆盖成 pass。
 
+**C0～C5 六张卡已全部完成 code 阶段，渲染门全部通过（外来镜像 0）。** 交付入口是
+[observability-components-manual-runbook.md](observability-components-manual-runbook.md)。
+**整批通过需要两种日志组合分别真实验证**，在用户提供固定 kcn 材料并排期之前
+不启动三节点安装，因此 `metrics`/`loki`/`opensearch`/`fluent-bit` 四行在目标机上仍是 `not_verified`。
+
 ## 状态总览
 
 | 卡 | 内容 | code_status | live_status |
@@ -419,3 +424,398 @@ known issue / owner / exact next step:
 - 上游阻塞不变：新版 kcn 未提供材料 → C2 的 live 保持 `not_verified`，不启动三节点安装。
 - 下一卡：**C3 / Loki + Fluent Bit**（`ani/loki`、`ani/fluent-bit` role），同样只在 Fedora
   做代码/渲染/测试，live 仍 `not_verified`。
+
+## C3 / attempt: c3-feda-20260919
+
+```text
+card / attempt: C3 Loki + Fluent Bit / c3-feda-20260919
+code_status: pass
+live_status: not_verified
+source hash / kk hash / artifact manifest hash / config hash:
+  images.tsv sha256 c4f899cfce8af5275440e70867ae053765b76de49f16cf0e8512062fdfa7ddf9（本卡未改）
+  loki chart sha256 ddb31751a90269980332eb17ddbd67f2971fc1b0e847d6d1752a749c8e86232a
+  fluent-bit chart sha256 2404614ace4c7dc049b76fd39d13b695f7b66332c38095327ebaa8fc91f0b046
+  helm v3.20.0+gb2e4314（离线，--kube-version 1.35.8）
+  逐文件哈希见 evidence/c3-render-gate/provenance.txt
+KCN version / digest / validated status:
+  未使用、未修改、未回补；新版材料仍未提供 → 不启动三台安装
+enabled components / backend / chart and app versions:
+  components.logging.backend=loki → 选择文件 loki=true / opensearch=false / fluent-bit=true
+  loki chart 18.13.3（app 3.7.8，deploymentMode Monolithic）；fluent-bit chart 0.58.2（app 5.1.2）
+  release ani-loki / ani-fluent-bit；namespace ani-observability（与指标栈同命名空间）
+snapshot 3/3 / offline before-after / install exit:
+  not_verified（本卡未接触测试集群）
+metrics scrape-query / firing-resolved / logs three-node ingestion:
+  not_verified（verify.sh 已实现三节点 marker → 查询后端 + 元数据核对，但未在节点执行）
+normal Pod rebuild persistence / PVC and Secret UIDs:
+  not_verified（verify.sh 已实现 Loki Pod 重建 + PVC UID 比对 + marker 回读，
+  以及 Fluent Bit Pod 重建 + 游标留存 + 新旧 marker 并存，但未在节点执行）
+retention configuration / actual expiry (separate):
+  配置限值 retention_period=72h 且 compactor retention_enabled + filesystem delete store；
+  实际过期删除 not_verified（retention-expiry=not_verified 由脚本显式写出，不冒充通过）
+known issue / owner / exact next step:
+  见下「已知问题 / 下一步」
+```
+
+### 代码变更
+
+**新增 role `ani/loki`**（`kubekey/builtin/core/roles/ani/loki/`）
+
+- `templates/values.yaml`：单体 Loki，`deploymentMode: Monolithic`，`auth_enabled: false`；
+  `commonConfig.replication_factor: 1`；`storage.type: filesystem`；schema v13 tsdb + filesystem
+  + `index_` 前缀 + 24h 周期；`limits_config.retention_period` 取站点派生的小时数；
+  compactor 打开 `retention_enabled: true`、`delete_request_store: filesystem`、
+  `working_directory: /var/loki/compactor`；ingester WAL 落 PVC 且 `flush_on_shutdown: true`；
+  tsdb_shipper 的 index/cache 目录同在 PVC；`analytics.reporting_enabled: false`；
+  singleBinary 单副本、`sidecar: false`、PVC 用站点 storageClass/size、`whenScaled/whenDeleted: Retain`、
+  `enableStatefulSetAutoDeletePVC: false`；资源 100m/256Mi 请求 + 1Gi 上限；
+  `read/write/backend` 三组副本数全为 0；`chunksCache`/`resultsCache`/`gateway`/`lokiCanary`/`test`/
+  `ruler`/`minio` 全部关闭。
+- `tasks/main.yaml`：建工作目录与 `connections.d`、建命名空间、校验打包 helm、渲染并收紧（0600）
+  values、`helm upgrade --install ani-loki <artifact>/charts/loki/18.13.3.tgz --wait --timeout 900s`；
+  等 `statefulset/ani-loki`（单体是 StatefulSet，等 Deployment 永远不会成功）；
+  等 `pvc/storage-ani-loki-0` 绑定；渲染并执行 `verify.sh`（0700）；渲染 `connection.md`。
+- `templates/verify.sh`：5 段 —— [1] StatefulSet/pod/PVC（`readyReplicas=1`、PVC Bound、
+  记录 PVC 与 STS UID、断言存在名为 `storage` 的 volumeClaimTemplate，避免 emptyDir 冒充持久卷）；
+  [2] 从临时 python pod 走集群内真实 HTTP API（`/ready`、`/loki/api/v1/status/buildinfo`、
+  一次真实 `/loki/api/v1/query_range`）；[3] `GET /config` 核对生效配置（retention_period、
+  compactor.retention_enabled、delete_request_store、replication_factor、schema store/object store）；
+  [4] 只允许 Loki StatefulSet，无 Deployment/DaemonSet，Service 为 ClusterIP，全集群不得存在
+  grafana/dashboards 工作负载；[5] 只删本次自建 client pod。
+- `templates/connection.md`：命名空间、后端为首次安装选择而非运行期开关、版本、
+  `statefulset/ani-loki`、Service DNS 仅 ClusterIP、filesystem PVC 与保留期/compactor 说明、
+  `auth_enabled: false` 明确**不是**认证特性、关闭项、无凭据、采集路径由 Fluent Bit 卡验证。
+
+**新增 role `ani/fluent-bit`**（`kubekey/builtin/core/roles/ani/fluent-bit/`）
+
+- `templates/values.yaml`：`kind: DaemonSet`；镜像 `repository` **带站点 registry 前缀**、`tag` 来自
+  `logs.fluentBit`；`testFramework.enabled: false`、`hotReload.enabled: false`；
+  `config.service` 用**字面量**（`Flush 1` / `Log_Level info` / `HTTP_Port 2020`，不用 Chart 的
+  `.Values.*`，见下「真实缺陷 3」），本地缓冲有界（`storage.path`、`storage.backlog.mem_limit 10M`）；
+  `config.inputs` 只保留 tail（`/var/log/containers/*.log`、`multiline.parser cri`、
+  `DB /var/lib/fluent-bit/tail.db`、`DB.locking true`、`storage.type filesystem`），**删除 systemd 输入**；
+  `config.filters` 的 kubernetes filter 设 `Labels Off`/`Annotations Off`（不把全部标签提升为 Loki 标签）；
+  `config.outputs` 按后端**只渲染一个**输出（loki 用 `Name loki` + `Line_Format json` +
+  `Auto_Kubernetes_Labels Off`；opensearch 用 `Name opensearch` + 从 Secret 注入的
+  `HTTP_User`/`HTTP_Passwd` + TLS）；`daemonSetVolumes` 只保留 `varlog` 与
+  `fluent-bit-state`（hostPath `/var/lib/ani-installer/fluent-bit`，`DirectoryOrCreate`），
+  **删除 Chart 的 `/var/lib/docker/containers` 默认路径**；`/var/log` 只读挂载；
+  只容忍 control-plane 污点；资源 50m/64Mi 请求 + 128Mi 上限。
+- `tasks/main.yaml`：建工作目录、建命名空间、校验 helm、渲染并 0600 values、
+  `helm upgrade --install ani-fluent-bit <artifact>/charts/fluent-bit/0.58.2.tgz --wait --timeout 600s`；
+  等 `daemonset/ani-fluent-bit` 并**核对就绪数等于节点数**（少一个节点的采集器会静默丢该节点日志）；
+  渲染并执行 `verify.sh`（0700）；渲染 `connection.md`。
+- `templates/verify.sh`：这是后端 role 无法自证、也最容易被伪造的一段 —— 全部断言都走真实路径
+  （容器 stdout → 运行时写容器日志文件 → 采集器 tail → **查询后端**），从不直接 push 给后端：
+  [1] 从运行中的 pod 读回真实渲染配置，断言**恰好一个输出**且是所选后端、无残留 ES 输出、
+  无 systemd 输入、无 Docker 路径、游标与缓冲在持久目录、缓冲有界、state 目录是 hostPath；
+  [2] 三台各起一个指定 `nodeName` 的 marker pod，stdout 写唯一 marker（含本次 run 与序号），
+  先从 pod 自身日志确认期望值，再轮询**后端查询 API**直到三份 marker 全部出现，
+  并核对 namespace/pod/container/node 四项元数据（期望节点由 marker 的 `-nN` 后缀推出，
+  不是复述后端返回什么）；[3] 只删 Loki Pod 触发重建，比对重建前后 **PVC UID 不变**，
+  再回读三份 marker；[4] 只删一台的 Fluent Bit Pod，核对 `tail.db` 仍在持久目录、
+  该节点续产新 marker、且**新旧 marker 同时可查**；[5] 重读生效 retention 配置并把
+  `retention-expiry=not_verified` 显式写出（不把"配了"当"删过了"）；[6] 只删本次自建的测试 pod。
+- `templates/connection.md`：命名空间、版本、`daemonset/ani-fluent-bit`、只采集容器 stdout
+  （不采 kubelet journal）、元数据字段、**单一写路径**、本地有界缓冲不是后端 PVC 的替代、
+  按后端给出目标地址、凭据只来自 Secret、验证方式，以及过期删除未验证。
+
+**接线**
+
+- `builtin/core/playbooks/create_cluster.yaml`：`ani/metrics` 之后加
+  `role: ani/loki`（`when` 锁到 `loki` 行开启**且** `logging.backend == "loki"`）与
+  `role: ani/fluent-bit`（`when` 锁到 `logging.enabled` 且 backend 不为 `none`）；
+  后端在采集器之前，指标栈在两者之前。两个后端 role 由 backend 字符串互斥，结构上不可能同时装上；
+  没有后端时不会出现采集器。
+- `pkg/ani/config.go`：`ImplementedComponents` 增加 `loki`、`fluent-bit`
+  （**opensearch 仍不在列表**，C4 才加，启用它继续以明确错误拒绝）；
+  `LoggingComponent.storage` 归入 `loki` 行，使"启用 loki 但没配容量"在校验期就失败；
+  `componentSpec` 的 `logging` 产出 `enabled/backend/namespace/storage_class/storage_size/
+  retention_days/retention_hours/retention_iso`，新增 `retentionHours` / `retentionISOSeconds`
+  两个派生函数（站点只写天数，单位换算只在这一处）。
+- `pkg/ani/images.go`：新增 `logs.loki`、`logs.fluentBit` 两个镜像键。
+
+### 三个被渲染门当场抓到的真实缺陷（已修）
+
+1. **Fluent Bit 镜像丢主机名**（最关键）：该 Chart **没有 registry 字段**，helper 直接
+   `printf "%s:%s" .repository .tag`。原先按拆分习惯只填 `fluent/fluent-bit`，渲染出
+   `fluent/fluent-bit:5.1.2` —— 每台节点都会去 Docker Hub 拉，离线环境必然拉不到。
+   修法：`repository` 写成 `<站点registry>/fluent/fluent-bit`，成为完整主机加路径。
+   （与 C2 的 kube-prometheus-stack 恰好相反：那个有 registry 字段且**不能**塞整条引用。
+   两个 Chart 的拼接约定不同，只能用渲染门逐 Chart 实测，不能靠类推。）
+2. **`{{ .Values.* }}` 在 role 模板里不解析**：服务段照抄 Chart 默认值写成
+   `Flush {{ .Values.flush }}`，但那只在 Helm 的第二遍渲染生效；我们的 role 模板由 installler
+   自己用 `text/template` 渲染，读到的是 `<no value>`，任何看这份 values 的人（包括渲染门本身）
+   都无法区分"模板坏了"和"正常没值"。修法：服务段三处改写字面量，并保留顶层同名键；
+   同时在 `TestComponentValuesRenderCompleteImages` 里加"非注释行不得出现 `.Values.`"的成因断言。
+3. **verify.sh 内嵌 Python 的 LogQL 花括号被 Go 模板抢先解析**：LogQL 选择器 `{job="fluent-bit"}`
+   里的 `{{` 被 Go 的 `text/template` 当成模板起始，`parse template: bad character U+003D '='`。
+   修法：`LBRACE, RBRACE = chr(123), chr(125)` 拼出括号，生成的查询完全等价，
+   两处内嵌 Python 都已改。
+
+另有两处由测试/门禁逼出的自身错误：`image_parts` **不产出 `registry` 字段**
+（只有 repository/tag，主机来自 `.ani.registry`），我最初的断言写错了字段名；
+以及 gofmt 检查范围原先覆盖整个 `builtin/`，而上游仓库本就有两个 CRLF 文件
+（`builtin/core/fs.go`、`builtin/core/upgrade_path.go`，仓库里就是这么提交的），
+已把范围收窄到本次工作真正拥有的 `pkg/ani` 与 `builtin/core/roles`，并在输出里标注那两个上游文件，
+避免把无关仓库改动混进来。
+
+### 验收（Fedora，离线）
+
+- `gofmt -l pkg/ani builtin/core/roles` 无输出；`go build ./pkg/ani/...` 通过；
+  `go vet ./pkg/ani/...` 通过；`go test ./pkg/ani` **ok**。
+- `lab/c3-render-gate/render-values.sh`：用**真实 `pkg/ani` 代码**构造渲染上下文
+  （非手抄 key），渲染出 loki 3906B、fluent-bit(loki) 5195B、fluent-bit(opensearch) 5784B，
+  三份均通过 YAML 解析。
+- `lab/c3-render-gate/render-gate.sh`：三份 Chart 渲染全部通过门禁 ——
+  - **loki**（441 行）：StatefulSet/Service/headless Service/ConfigMap 齐备；无 Deployment；
+    存在 `storage` volumeClaimTemplate；越界对象（chunks-cache、results-cache、gateway、
+    canary、ruler、minio、grafana、Ingress）全部缺席；retention_period + compactor retention
+    + filesystem delete store 三项同时存在；镜像 `192.0.2.11:5000/grafana/loki:3.7.8`，外来 0。
+  - **fluent-bit / loki 后端**（238 行）：DaemonSet 且无 Deployment/StatefulSet；
+    恰好一个输出且为 loki；无 ES 输出、无 systemd 输入、无 Docker 路径；游标与有界缓冲在 hostPath；
+    `/var/log` 只读；filter 标签/注解关闭且 loki 输出不自动加标签；
+    镜像 `192.0.2.11:5000/fluent/fluent-bit:5.1.2`，外来 0。
+  - **fluent-bit / opensearch 后端**（262 行）：同样单输出、无残留 ES 输出，
+    输出为 opensearch，且**不出现** loki 专有参数 `Auto_Kubernetes_Labels`；其余项同上。
+    （C4 的 opensearch role 还没写，但采集器的两个分支现在都已验证能正确渲染。）
+- 证据：`~/ani-installer-runs/observability-20260919/evidence/c3-render-gate/`
+  （三份 rendered yaml 与 `.workloads`、三份 values、三份门禁日志、`provenance.txt`）。
+- **保留期与过期分开记录**：脚本把 `retention-expiry=not_verified` 写入证据，
+  因为观察真实删除需要等保留期过去，本卡不伪造该结论。
+
+### 本卡边界（未做）
+
+- 未实现 `ani/opensearch`（`opensearch` 仍不在 `ImplementedComponents`，启用它仍以明确错误拒绝）。
+- 未加入 Grafana、Dashboards、Jaeger、ANI 业务、Milvus、计算/GPU、Harbor、HA。
+- 未接触测试集群 172.16.101.20/.21/.22；未使用快照、重置、清盘、清 CNI/OVN、
+  删失败 PVC/命名空间或重启循环；`verify.sh` 内没有任何 `delete pvc`/`delete namespace`/
+  `--force`/`--grace-period=0`。
+- 未提交、未推送。
+
+### 已知问题 / 下一步
+
+- 上游阻塞不变：新版 kcn 未提供材料 → C3 的 live 保持 `not_verified`，不启动三节点安装。
+- Loki Chart 在**两个缓存都关闭**时仍渲染一个空的 `ServiceAccount ani-loki-memcached`。
+  它不是工作负载、不拉 memcached 镜像，实测整个渲染中唯一的 `image:` 只有 `grafana/loki:3.7.8`，
+  因此只报告不作失败判定，避免把门禁降级成"永远能过"。
+- 下一卡：**C4 / OpenSearch + Fluent Bit**（`ani/opensearch` role，把 `opensearch` 加入
+  `ImplementedComponents` 并接到 playbook 的同一处 backend 判断），live 仍 `not_verified`。
+
+---
+
+## C4 / attempt: c4-feda-20260919
+
+```text
+card / attempt: C4 / c4-feda-20260919
+code_status: pass
+live_status: not_verified
+source hash / kk hash / artifact manifest hash / config hash: 未提交（本卡无源码外发）；
+  artifact 未重建 —— 本卡只加 Chart 消费与 role，Chart 与镜像材料沿用 C0 锁定的候选
+KCN version / digest / validated status: 未提供 / 无 / user_reported_fixed（不变量，本卡未接触）
+enabled components / backend / chart and app versions:
+  components = metrics + (loki | opensearch 二选一) + fluent-bit；backend = opensearch
+  chart 3.8.0 / app 3.8.0（tgz sha256 cad6c77d04ec2389be6f61b5422ce61e7264eb7145e42b4c78dbc00e9d7dbe4d）
+  fluent-bit chart 0.58.2 / app 5.1.2
+snapshot 3/3 / offline before-after / install exit: 未执行（不启动三台安装）
+metrics scrape-query / firing-resolved / logs three-node ingestion: not_verified
+normal Pod rebuild persistence / PVC and Secret UIDs: not_verified
+retention configuration / actual expiry (separate): 配置已生成（ISM `min_index_age` =
+  `retention_iso`，如 PT72H）；实际过期 not_verified（需等保留期过去）
+known issue / owner / exact next step: 见下方"已知问题 / 下一步"
+```
+
+### 代码变更
+
+- 新增 `builtin/core/roles/ani/opensearch`（`values.yaml`、`tasks/main.yaml`、
+  `templates/{certificates.yaml,security-config.yaml,security-init.yaml,setup-indices.sh,verify.sh,connection.md}`），
+  用包内 `artifact_root/bin/helm` 对 C0 已落地的 `charts/opensearch/3.8.0.tgz` 渲染。
+- 安全模型是**真的安全模型，不是 demo 模式**：`DISABLE_INSTALL_DEMO_CONFIG=true`、
+  `plugins.security.allow_unsafe_democertificates: false`、
+  `plugins.security.allow_default_init_securityindex: false`，http 走 https，
+  密钥 PKCS#8，节点证书 CN `ani-opensearch-node`（serverAuth + clientAuth），
+  管理员证书 CN `ani-opensearch-admin`，由 `securityadmin.sh -cd /security-config
+  -cacert/-cert/-key` 播种，**不带** `--enable-demo`；Basic 认证后端 `type: intern`
+  （不是 `internal`，写错会静默不生效）。
+- 关闭项（有意为之）：`sysctl` / `sysctlInit`（后者是 `privileged: true` 的 init 容器）、
+  `serviceMonitor`、`plugins`、`rbac.create`、`podSecurityPolicy`、`networkPolicy`、
+  `antiAffinity: soft`、`keystore`、`masterTerminationFix`；`singleNode: true`。
+  TLS 由既有内部 `ani-ca` ClusterIssuer 签发（沿用第一批 B1）。
+- `pkg/ani/config.go`：`ImplementedComponents` 扩到 8 个（本批可观测性四项全部落地）；
+  `storage()` 新增 `opensearch` 分支，与 `loki` 同形，两者共用 `logging.StorageClass` /
+  `logging.StorageSize`；`fluent-bit` 仍不入列（它的暂存卷是 hostPath，不是组件卷）。
+- `pkg/ani/images.go`：新增 `logs.opensearch`、`lab.python`、`lab.busybox` 三个镜像键。
+- `builtin/core/playbooks/create_cluster.yaml`：顺序为 `metrics → loki → opensearch → fluent-bit`，
+  `ani/opensearch` 的 `when` 锁到 `opensearch` 行开启**且** `logging.backend == "opensearch"`。
+  两个后端 role 由同一个 backend 字符串互斥，结构上不可能同时装上；没有后端就不会出现采集器。
+- 八行选择文件**未加行**：`loki`/`opensearch`/`fluent-bit` 三行仍由 `logging.backend`
+  这一个字符串派生（C1 的 `Components.Selection()` 不变），因此两个后端永远不可能同时为 true。
+
+### 修掉 C3 留给 C4 的两个采集器缺陷（都影响真实通过）
+
+1. **OpenSearch 的 PVC 常量写错**：C3 的 `fluent-bit/templates/verify.sh` 里写死
+   `data-ani-opensearch-master-0`。而该 Chart 的 `volumeClaimTemplates[0].metadata.name`
+   是模板 `opensearch.uname` = `<clusterName>-<nodeGroup>` = `ani-opensearch-master`，
+   真实 PVC 是 **`ani-opensearch-master-0`**（不是 `data-` 前缀）。名字错 → 校验一定找不到 PVC。
+   修法：改成 `case` 显式给出 `BACKEND_PVC`，opensearch 分支用 `ani-opensearch-master-0`，
+   选择器用 `app.kubernetes.io/name=opensearch`；同时把选择器从内联 `$([ ... ] && ...)` 提成常量。
+2. **OpenSearch 轮询走明文 http 且无凭据**：C3 的标记等待与保留期回读都用 `http://` 且不带认证，
+   而本卡把集群配成了 https + 强制认证，它**永远看不到自己要校验的集群**。
+   修法：`BACKEND = opensearch` 时从 `ani-opensearch-node-tls` 取 `ca.crt`、
+   从 `ani-opensearch-fluent-bit` 取 `username`/`password` 拷进客户端 Pod，
+   两处 python 改用 `https://` + `ssl.create_default_context(cafile=...)` + Basic 认证。
+
+### 三个被渲染门当场抓到的真实结论
+
+1. **OpenSearch Chart 给 `persistence.image` 也加 registry 前缀**（本卡最关键）：
+   `opensearch.dockerRegistry` helper 会把 `global.dockerRegistry`（带尾斜杠）前置到
+   **`image.repository` 和 `persistence.image` 两个字段**（`statefulset.yaml:252`）。
+   若照 C3 的 Fluent Bit 习惯在 `persistence.image` 里写 `<registry>/library/busybox`，
+   渲染出 `192.0.2.11:5000/192.0.2.11:5000/library/busybox:1.37.0` —— 双重前缀，必然拉不到。
+   修法：`persistence.image` / `imageTag` 只写**不含 registry** 的 `library/busybox`，
+   门禁同时断言"裸形式存在"与"前缀形式不存在"。
+   （至此三个 Chart 三种拼接约定：kube-prometheus-stack 有 registry 字段且不能塞整条引用；
+   fluent-bit **没有** registry 字段必须塞完整主机；opensearch 有 registry 字段且会额外作用于 init 镜像。
+   只能逐 Chart 用渲染实测，不能类推。）
+2. **Chart 一定会渲染一个 PodDisruptionBudget**：`maxUnavailable: 1` 是非空默认值，
+   所以 PDB `ani-opensearch-master-pdb` 在任何配置下都会出现。**有意不"修"**：
+   单副本下 `1` 等于不设限（无害），改成 `0` 反而会阻塞节点排空，两者都比留默认差。
+   门禁只**报告**这一条，只对真正缺席的对象做断言（Ingress / ServiceMonitor / NetworkPolicy /
+   PodSecurityPolicy / Grafana / Dashboards / Deployment），不把门禁降级成"永远能过"。
+3. **`securityConfigSecret` 会让 Chart 一个 Secret 都不渲染**：用
+   `securityConfig.config.securityConfigSecret` 时，Chart 把外部 Secret 整目录挂到
+   `securityConfig.path`，自己**不产出** Secret（我最初断言 `ani-opensearch-master-securityconfig`
+   是错的，实际产出的是 ConfigMap `ani-opensearch-master-config`）。
+   这也是为什么八个安全文件**内联**在 role 的 `security-config.yaml` 里：
+   其中 `internal_users.yml` 的两个 bcrypt hash 只能在节点上算，
+   Chart 自建的 Secret 事后没法改而不重启 Pod。门禁改成"断言 Pod 从该 Secret 挂载"+"渲染里不得出现
+   `securityconfig` Secret"。
+
+### 验收（Fedora，离线）
+
+- `gofmt -l pkg/ani builtin/core/roles` 无输出（含两个上游 CRLF 文件的既有 NOTE）；
+  `go build ./pkg/ani/... ./cmd/...` 通过；`go vet` 通过；`go test ./pkg/ani/...` **ok**。
+- `lab/c4-render-gate/render-values.sh`：用真实 `pkg/ani` 代码构造上下文，渲染出
+  loki 3906B、opensearch 5099B、fluent-bit(loki) 5536B、fluent-bit(opensearch) 6125B，
+  四份均通过 YAML 解析。
+- `lab/c4-render-gate/render-gate.sh`：四份 Chart 渲染全部通过门禁 ——
+  - **loki**（441 行）：回归通过；`foreign: 0`；`loki render gate passed`。
+  - **opensearch**（293 行）：StatefulSet `ani-opensearch-master` / Service / headless Service
+    `ani-opensearch-master-headless` / ConfigMap `ani-opensearch-master-config` 齐备；无 Deployment；
+    `volumeClaimTemplates` 名为 `ani-opensearch-master`；关闭 demo 配置的环境变量与
+    `allow_unsafe_democertificates: false`、`allow_default_init_securityindex: false`、
+    `plugins.security.ssl.http.enabled: true`、两个 CN 均在；安全配置从
+    `secretName: "ani-opensearch-security-config"` 挂到
+    `/usr/share/opensearch/config/opensearch-security` 且渲染中无 Chart 自建 Secret；
+    无 `- name: sysctl` init 容器、无 `privileged: true`；`discovery.type: single-node`；
+    role 自身安全配置完整（`anonymous_auth_enabled: false`、`type: intern`、
+    `CN=ani-opensearch-node`、**恰好 2 个**占位符、无内置演示账号）；Job 受限且非 demo
+    （`kind: Job`、`securityadmin.sh`、`/admin-tls/ca.crt`、`hash.sh`、`/dev/urandom`、
+    namespaced Role/RoleBinding、**无** ClusterRole、无 `--enable-demo`/`admin/admin`/`changeme`）；
+    两个镜像均解析到 `192.0.2.11:5000`；`foreign: 0`；`opensearch render gate passed`。
+  - **fluent-bit / loki 后端**（238 行）与 **fluent-bit / opensearch 后端**（262 行）：
+    均通过，`foreign: 0`，两个 `fluent-bit render gate passed`。
+- 证据：`~/ani-installer-runs/observability-20260919/evidence/c4-render-gate/`。
+- **保留期与过期分开记录**：`retention-expiry` 仍为 `not_verified`；ISM 策略仅回读配置与
+  `min_index_age` 值，不伪造"已验证过期"。
+
+### 本卡边界（未做）
+
+- 未加入 Grafana、Dashboards、Jaeger、ANI 业务、Milvus、计算/GPU、Harbor、HA。
+- 未接触测试集群 172.16.101.20/.21/.22；未使用快照、重置、清盘、清 CNI/OVN、
+  删失败 PVC/命名空间或重启循环；`verify.sh` 内没有任何 `delete pvc`/`delete namespace`/
+  `--force`/`--grace-period=0`。
+- 未改组件源码、未做临时修复镜像、未关闭认证/探针。
+- 未提交、未推送。
+
+### 已知问题 / 下一步
+
+- 上游阻塞不变：新版 kcn 未提供材料 → C4 的 live 保持 `not_verified`，不启动三节点安装。
+  本地闭包里**没有** opensearch 镜像（`docker images | grep opensearch` 为空），
+  与"材料尚未提供"一致；因此本卡只做代码/渲染/测试。
+- 未验证项（必须在用户提供固定材料并排期后，从干净快照按 C2/C3/C4 分别完整安装才能判定）：
+  真实指标抓取与告警 firing/resolved、三节点容器日志真实入库、
+  正常 Pod 重建后的读取回放、ISM 保留期实际过期。
+- 下一卡：**C5 / 交付、状态、人工复现文档**（真实路径的手动 runbook 与无明文凭据的连接说明），
+  live 仍 `not_verified`。
+
+---
+
+## C5 / attempt: c5-feda-20260919
+
+```text
+card / attempt: C5 / c5-feda-20260919
+code_status: pass
+live_status: not_verified
+source hash / kk hash / artifact manifest hash / config hash: 未提交（本卡只产出文档）
+KCN version / digest / validated status: 未提供 / 无 / user_reported_fixed（不变量，本卡未接触）
+enabled components / backend / chart and app versions: 同 C2/C3/C4；
+  两条日志组合各自的从零流程已分别写成文档
+snapshot 3/3 / offline before-after / install exit: 未执行（不启动三台安装）
+metrics scrape-query / firing-resolved / logs three-node ingestion: not_verified
+normal Pod rebuild persistence / PVC and Secret UIDs: not_verified
+retention configuration / actual expiry (separate): 配置已生成；实际过期 not_verified
+known issue / owner / exact next step: 见下方"已知问题 / 下一步"
+```
+
+### 交付内容
+
+- 新建 `docs/observability-components-manual-runbook.md`：**第二批的真实交付入口**。
+  内容全部按本批真实路径书写，不引用第一批的 heal / watch / 逐次修补脚本：
+  - 拓扑/物料/凭据位置表；本批工作区 `~/ani-installer-runs/observability-20260919/` 各目录用途；
+  - 八行选择文件与两条日志组合的示例配置对应关系；
+  - 标准 7 步（还原 → 断网 → 解 dpkg 锁 → 传输 → 普通 ubuntu 安装 → 轮询 → 独立 verify）；
+  - **7 条必踩坑**：前 5 条沿用第一批（快照后必须重新施加隔离、unattended-upgrades 占锁、
+    干净快照无物料、离线隔离不能用 blackhole 路由、模板 `mode:` 需显式 chmod），
+    本批**新增 2 条**：日志后端 PVC 名字（OpenSearch 是 `ani-opensearch-master-0`，
+    **没有** `data-` 前缀）、三个 Chart 的 registry 拼接约定各不相同（附对照表）；
+  - 传输/安装/校验的实际命令形状（照 `b1-transfer.sh` 与 `install.sh` 改 4 处变量即可复用）；
+  - **两条日志后端各自的从零流程**（5.1 Loki / 5.2 OpenSearch），含 OpenSearch 的固定内部顺序
+    （证书 Ready → 9200 就绪 → 一次性安全初始化 Job → 认证/TLS 校验 → 索引模板与 ISM → 采集器）、
+    角色分工（admin 只用于首次初始化、Fluent Bit 用 `ani-collector` 写入身份）、
+    `vm.max_map_count` 由 role 经 `/etc/sysctl.d/90-ani-opensearch.conf` 设置；
+  - 人工验收清单：指标（真实 API 查询、`vector(1) == 1` firing → `vector(0) == 1` 同 fingerprint
+    resolved、不要加 `bool`、不要直接 POST 给 AM）、日志（三节点 stdout marker 经采集链在后端查到、
+    仅正常重建后端 Pod 后读回、重建采集器 Pod 后游标保留）、
+    **`retention-expiry=not_verified` 的诚实标注要求**；
+  - 状态与失败处理（实验准备错误 / 组件自身 bug / 原因不明重复两次 的三类归因与重试门槛）；
+  - 安全边界、脚本与证据索引。
+- 连接说明（文档第 9 节）：按组件给出 Service DNS/端口/命名空间与**凭据的 Secret 引用**，
+  并给出"读凭据但不上屏/不落命令行"的方式（`kubectl get secret ... -o jsonpath | base64 -d`）。
+  **文档内无任何明文凭据**；`connections.md` 本身由 installer 写为 root-only 0600，
+  因为它列出 Secret 名与命名空间。同时明确：Loki 与 Prometheus/Alertmanager 的 Service 都是
+  ClusterIP-only，故意没有对外入口；第一批四个组件的连接片段由本批一并拼接，不改其业务实现。
+
+### 事实核对（文档里的名字都对着代码验过）
+
+- `connections.md` 路径：`filepath.Join(runtimeBaseDir, c.Name)` + `connections.md`
+  → `/var/lib/ani-installer/<cluster_name>/connections.md`，`0o600`（`runner.go:263,309`）。
+- 命名空间：`MetricsNamespace = "ani-observability"`，指标与日志共用（`config.go:85`）。
+- 采集链校验确实在后端查询：`fluent-bit/templates/verify.sh` 第 2 节每节点起 marker Pod
+  并向 stdout 打印 `ANI-MARKER-<RUN_ID>-n<i>-<host>-<node>`，先从 Pod 自己的日志确认
+  （防止拿期望值自证），再经后端 API 查回；opensearch 分支从 `ani-opensearch-node-tls` 取
+  `ca.crt`、从 `ani-opensearch-fluent-bit` 取 `username`/`password` 走 https + Basic。
+- 各组件的打包路径：`/etc/kubernetes/ani/<component>/verify.sh`（0700 root），
+  `<component>/templates/connection.md` → `work/connections.d/<component>.md`。
+
+### 验收（Fedora）
+
+本卡为文档卡，未产出代码变更；沿用 C1–C4 已通过的离线门禁结果作为 code_status 依据。
+文档中的每条命令形状与路径均对着本地源码与 fedora 工作区实际核对（见上）。
+live 仍 `not_verified`。
+
+### 本卡边界（未做）
+
+- 未加入 Grafana、Dashboards、Jaeger、ANI 业务、Milvus、计算/GPU、Harbor、HA。
+- 未接触测试集群 172.16.101.20/.21/.22；未使用快照、重置、清盘、清 CNI/OVN。
+- 未提交、未推送、未发布。
+
+### 已知问题 / 下一步（本批收尾）
+
+- **整批 live 全部 `not_verified`**，符合执行方案第 1.1 / 6 节：新版 kcn 修复仅由用户口头告知、
+  镜像材料未提供，因此不启动三节点安装。C2 的指标抓取与告警 firing/resolved、
+  C3 的 Loki 三节点采集、C4 的 OpenSearch 三节点采集与凭据分离，均未在真实集群验证过。
+- 用户提供固定材料并排期后，按 `observability-components-manual-runbook.md` 从干净快照
+  **分别**完整安装两条日志组合；任一后端没做就写 `not_verified`，
+  旧 kcn 已知故障不能"豁免后全绿"。
+- 本批不承诺 HA、灾备或断电恢复；指标/日志可用不等于 ANI 业务可观测性完成。
