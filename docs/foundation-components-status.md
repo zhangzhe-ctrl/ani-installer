@@ -19,7 +19,7 @@
 | B2 | PostgreSQL | pass（a7 单次运行内 安装+独立verify+持久化 全绿；底座 Pod 重建 netns 抖动见 K-5） | 2026-09-18 |
 | B3 | Valkey | pass（a4 单次运行内 安装+独立verify+持久化 全绿） | 2026-09-19 |
 | B4 | NATS JetStream | pass（a2 单次运行内 安装+独立verify+持久化 全绿） | 2026-09-19 |
-| B5 | 最终交付与人工复现入口 | pending | — |
+| B5 | 最终交付与人工复现入口 | blocked（正式 verify：前三组件 pass，NATS fail；保留网络故障现场） | 2026-09-19 复核 |
 
 状态取值：`pending` / `in_progress` / `pass` / `fail` / `blocked` / `user_reported_pass`
 
@@ -331,7 +331,13 @@ B4 产品判据全部通过。**B5（最终交付与人工复现入口）可以�
 
 ## B5：最终交付
 
-等待开始。
+**blocked**：2026-09-19 在当前 B4 集群执行正式 verify.sh，退出 1；cert-manager/PostgreSQL/Valkey 功能通过，NATS 未就绪。容器内 healthz 正常，三台宿主机访问 NATS Pod IP 均超时，kubelet 因 startupProbe 失败反复重启主容器。具体网络根因未确定；未执行 heal、还原或产品修改。
+
+**后续定位与用户决定**：CNI 日志确认旧 sandbox `5bc5a6f874dc…` 的迟到 DEL 删除新 sandbox `d00e1ec6c583…` 的 NIC；kcn 的删除逻辑仅按 Pod/interface 查找，未核对 sandbox 身份，导致新 OVS 端口被删除。用户告知新版 kcn 已解决，要求本次只留记录、后续自行安排批量验证。新版修复为 `user_reported_fixed / not_verified`；本次未换镜像、不修组件、不重置，B5 为 `blocked / verification_deferred_by_user`。上段“未确定”描述初步检查阶段，最终原因以本段及复核报告为准。
+
+实际 Fedora 包、构建输出及 `.20` 的 kk SHA256 均为 `84dc71a2c9ae569612aff208a7d220238bcebfb3111c0203f9209b414db15f00`，与上方历史 B4 记录不同。现存包校验通过，历史安装时摘要的完整追溯尚未补齐。连接说明缺失，手动 runbook 仍为 B1 路径；最终集群的 PG/Valkey 持久化本次未继续执行。
+
+详情见 [B5 实测复核](foundation-b5-verification-20260919.md)。B1～B4 的历史 pass 不代表当前 B5 或当前集群全部通过。
 
 ---
 

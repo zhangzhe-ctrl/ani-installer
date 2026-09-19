@@ -1,5 +1,7 @@
 # 基础组件第一轮：分批代码实施与真实离线验证
 
+> 2026-09-19：第二批指标/日志实施请按 [第二批分卡执行方案](observability-components-batch-execution-plan-20260919.md)。本文件继续约束第一批四组件。B5 的当前阻塞与新版 kcn 待验证状态见 [复核记录](foundation-b5-verification-20260919.md)，不能据旧计划重新修旧版 kcn 或重复试装。
+
 日期：2026-09-18。仓库：`/home/chabking/workspace/ani-installer`；Go 模块：`kubekey/`。
 
 **这是下一轮当前执行依据，范围只有 cert-manager、PostgreSQL、Valkey、NATS。先读第 1～4 节，再从 B0 开始，一次只完成一个批次。禁止把历史完整组件计划中的所有任务一并恢复。**
