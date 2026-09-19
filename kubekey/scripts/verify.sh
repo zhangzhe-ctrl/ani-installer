@@ -71,9 +71,12 @@ if [[ "$PROBE_RC" -ne 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Foundation components: read the selection recorded by this exact install run
-# and verify each enabled component with its own packaged script. A missing,
-# malformed or stale selection file fails instead of being read as "all off".
+# Components: read the selection recorded by this exact install run and verify
+# each enabled component with its own packaged script. A missing, malformed or
+# stale selection file fails instead of being read as "all off". The row set is
+# fixed: four foundation components followed by the four observability rows,
+# where loki/opensearch are mutually exclusive and fluent-bit follows the
+# backend (the installer derives all three from one typed backend value).
 # ---------------------------------------------------------------------------
 SELECTION_FILE="/var/lib/ani-installer/$CLUSTER_NAME/work/components-selection.tsv"
 if [[ ! -s "$SELECTION_FILE" ]]; then
@@ -93,7 +96,7 @@ if [[ "${BASH_REMATCH[1]}" != "$CONFIG_SHA256" ]]; then
 fi
 
 mapfile -t SELECTION_ROWS < <(tail -n +2 "$SELECTION_FILE")
-EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats)
+EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit)
 if [[ "${#SELECTION_ROWS[@]}" -ne "${#EXPECTED_COMPONENTS[@]}" ]]; then
   echo "component selection must have exactly ${#EXPECTED_COMPONENTS[@]} rows, got ${#SELECTION_ROWS[@]}" >&2
   exit 1
@@ -139,7 +142,7 @@ for index in "${!EXPECTED_COMPONENTS[@]}"; do
   COMPONENT_SUMMARY+=("$component_name=pass")
 done
 if [[ "$COMPONENT_RC" -ne 0 ]]; then
-  echo "foundation component verification failed; components: ${COMPONENT_SUMMARY[*]}" >&2
+  echo "component verification failed; components: ${COMPONENT_SUMMARY[*]}" >&2
   exit "$COMPONENT_RC"
 fi
 

@@ -9,7 +9,9 @@
 # no remote Chart repository is contacted and there is no network access here.
 
 - name: ANI cert-manager | Create work directory
-  command: install -d -m 0755 /etc/kubernetes/ani/cert-manager
+  command: |
+    install -d -m 0755 /etc/kubernetes/ani/cert-manager
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
 - name: ANI cert-manager | Require fixed Chart material in the offline artifact
   command: test -f "{{ .ani.artifact_root }}/charts/cert-manager/v1.21.2.tgz"
@@ -122,3 +124,12 @@
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/cert-manager/verify.sh
+
+# Connection facts are rendered by the role that owns the resources, so the
+# installer never keeps a second copy of service names or Secret references.
+# The installer concatenates the fragments into connections.md after a
+# successful run; no fragment contains credentials.
+- name: ANI cert-manager | Render connection facts fragment
+  template:
+    src: connection.md
+    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/cert-manager.md"

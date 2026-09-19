@@ -22,8 +22,14 @@ const DefaultStorageClass = "ani-block"
 
 var (
 	// componentsOrder is the fixed order used by every component artifact that
-	// must list all four components exactly once, including components-selection.tsv.
-	componentsOrder = [4]string{"cert-manager", "postgresql", "valkey", "nats"}
+	// must list all components exactly once, including components-selection.tsv.
+	// The first four are the foundation batch; the last four are the
+	// observability batch, whose last three rows are derived from the typed
+	// logging backend rather than written independently.
+	componentsOrder = [8]string{
+		"cert-manager", "postgresql", "valkey", "nats",
+		"metrics", "loki", "opensearch", "fluent-bit",
+	}
 )
 
 // CertManagerComponent configures the internal PKI component. It owns no PVC.
@@ -38,23 +44,81 @@ type StorageComponent struct {
 	StorageSize  string `yaml:"storageSize"`
 }
 
-// Components selects which foundation components this run installs. Every
-// switch is independent and defaults to off.
+// MetricsComponent is the single switch for the whole metrics/alerts stack
+// (Prometheus, Alertmanager, Prometheus Operator, kube-state-metrics,
+// node-exporter). It has no per-workload switches by design.
+type MetricsComponent struct {
+	Enabled                 bool   `yaml:"enabled"`
+	StorageClass            string `yaml:"storageClass"`
+	PrometheusStorageSize   string `yaml:"prometheusStorageSize"`
+	AlertmanagerStorageSize string `yaml:"alertmanagerStorageSize"`
+	PrometheusRetention     string `yaml:"prometheusRetention"`
+}
+
+// LoggingComponent selects at most one log backend. An empty backend means
+// logging is off and Fluent Bit is not deployed. The backend is a one-time
+// choice at first install: switching is not a supported runtime operation.
+type LoggingComponent struct {
+	Backend       string `yaml:"backend"` // "" | "none" | "loki" | "opensearch"
+	StorageClass  string `yaml:"storageClass"`
+	StorageSize   string `yaml:"storageSize"`
+	RetentionDays string `yaml:"retentionDays"`
+}
+
+// logging backends. "none" and "" are equivalent.
+const (
+	loggingNone       = "none"
+	loggingLoki       = "loki"
+	loggingOpenSearch = "opensearch"
+)
+
+// Components selects which components this run installs. Every switch is
+// independent and defaults to off.
 type Components struct {
 	CertManager CertManagerComponent `yaml:"certManager"`
 	PostgreSQL  StorageComponent     `yaml:"postgresql"`
 	Valkey      StorageComponent     `yaml:"valkey"`
 	NATS        StorageComponent     `yaml:"nats"`
+	Metrics     MetricsComponent     `yaml:"metrics"`
+	Logging     LoggingComponent     `yaml:"logging"`
 }
 
 // DefaultComponents returns the documented defaults for a site that does not
-// spell them out. Components stay disabled; storage defaults match the plan.
+// spell them out. Every switch stays disabled; storage defaults match the plan.
 func DefaultComponents() Components {
 	return Components{
 		PostgreSQL: StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "10Gi"},
 		Valkey:     StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "2Gi"},
 		NATS:       StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "5Gi"},
+		Metrics: MetricsComponent{
+			StorageClass:            DefaultStorageClass,
+			PrometheusStorageSize:   "5Gi",
+			AlertmanagerStorageSize: "1Gi",
+			PrometheusRetention:     "24h",
+		},
+		Logging: LoggingComponent{
+			Backend:       loggingNone,
+			StorageClass:  DefaultStorageClass,
+			StorageSize:   "5Gi",
+			RetentionDays: "3",
+		},
 	}
+}
+
+// LogBackend normalises the configured backend; an omitted or empty value is
+// the same as an explicit "none".
+func (l LoggingComponent) LogBackend() string {
+	if strings.TrimSpace(l.Backend) == "" {
+		return loggingNone
+	}
+	return strings.TrimSpace(l.Backend)
+}
+
+// loggingEnabled reports whether a log backend was selected. Fluent Bit is
+// deployed exactly when this is true, so there is no separate collector switch
+// that could produce collection without a backend.
+func (c Components) loggingEnabled() bool {
+	return c.Logging.LogBackend() != loggingNone
 }
 
 // ComponentRow is one row of components-selection.tsv.
@@ -65,13 +129,19 @@ type ComponentRow struct {
 
 // Selection returns every supported component in the fixed order with its
 // effective on/off result, so downstream consumers never have to re-parse the
-// nested site YAML.
+// nested site YAML. The loki/opensearch rows are mutually exclusive and the
+// fluent-bit row follows the backend, so no combination can ask for two log
+// backends or for collection without a backend.
 func (c Components) Selection() []ComponentRow {
 	enabled := map[string]bool{
-		componentsOrder[0]: c.CertManager.Enabled,
-		componentsOrder[1]: c.PostgreSQL.Enabled,
-		componentsOrder[2]: c.Valkey.Enabled,
-		componentsOrder[3]: c.NATS.Enabled,
+		"cert-manager": c.CertManager.Enabled,
+		"postgresql":   c.PostgreSQL.Enabled,
+		"valkey":       c.Valkey.Enabled,
+		"nats":         c.NATS.Enabled,
+		"metrics":      c.Metrics.Enabled,
+		"loki":         c.Logging.LogBackend() == loggingLoki,
+		"opensearch":   c.Logging.LogBackend() == loggingOpenSearch,
+		"fluent-bit":   c.loggingEnabled(),
 	}
 	rows := make([]ComponentRow, 0, len(componentsOrder))
 	for _, name := range componentsOrder {
@@ -84,11 +154,11 @@ func (c Components) Selection() []ComponentRow {
 // component, or nil when the name is unknown.
 func (c Components) storage(name string) *StorageComponent {
 	switch name {
-	case componentsOrder[1]:
+	case "postgresql":
 		return &c.PostgreSQL
-	case componentsOrder[2]:
+	case "valkey":
 		return &c.Valkey
-	case componentsOrder[3]:
+	case "nats":
 		return &c.NATS
 	default:
 		return nil
@@ -98,23 +168,120 @@ func (c Components) storage(name string) *StorageComponent {
 // ImplementedComponents is the set of components this release can actually
 // deploy. It grows one batch at a time; a site enabling anything else must fail
 // before any deployment begins instead of silently skipping it.
-var ImplementedComponents = []string{componentsOrder[0], componentsOrder[1], componentsOrder[2], componentsOrder[3]}
+//
+// The observability rows are listed here from C1 onward because their typed
+// configuration and wiring exist; each role is added in its own card (C2-C4).
+// A row is only listed once its role and verification script are packaged.
+var ImplementedComponents = []string{"cert-manager", "postgresql", "valkey", "nats"}
 
-// validateComponents checks supported names, effective capacity and the
-// "not implemented yet" gate.
+// storageSizeOrErr parses a capacity and rejects values that are zero or
+// negative, which resource.ParseQuantity alone accepts.
+func parsePositiveQuantity(field, value string) error {
+	q, err := resource.ParseQuantity(value)
+	if err != nil {
+		return fmt.Errorf("%s %q is not a valid capacity: %w", field, value, err)
+	}
+	if q.IsZero() || q.Sign() <= 0 {
+		return fmt.Errorf("%s %q must be greater than zero", field, value)
+	}
+	return nil
+}
+
+// validRetention accepts a positive integer followed by one of the allowed
+// units. The metrics stack accepts h/d.
+func validRetention(value string, units []string) bool {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return false
+	}
+	for _, unit := range units {
+		if !strings.HasSuffix(v, unit) {
+			continue
+		}
+		number := strings.TrimSuffix(v, unit)
+		n, err := strconv.Atoi(number)
+		return err == nil && n > 0
+	}
+	return false
+}
+
+// validPositiveDays accepts a plain positive day count, which is how the
+// logging backend's retentionDays is documented ("retentionDays: 3"). It is
+// deliberately not a duration: a unit suffix is a typo here.
+func validPositiveDays(value string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	return err == nil && n > 0
+}
+
+// validateMetrics checks the metrics stack's own fields, but only when the
+// stack is enabled: disabled features must not fail on unrelated defaults.
+func (c Components) validateMetrics() error {
+	m := c.Metrics
+	if !m.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(m.StorageClass) == "" {
+		return fmt.Errorf("components.metrics.storageClass is required when metrics is enabled")
+	}
+	for field, value := range map[string]string{
+		"components.metrics.prometheusStorageSize":   m.PrometheusStorageSize,
+		"components.metrics.alertmanagerStorageSize": m.AlertmanagerStorageSize,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required when metrics is enabled", field)
+		}
+		if err := parsePositiveQuantity(field, value); err != nil {
+			return err
+		}
+	}
+	// Prometheus retention is a plain duration; alertmanager does not take one.
+	if !validRetention(m.PrometheusRetention, []string{"h", "d"}) {
+		return fmt.Errorf("components.metrics.prometheusRetention %q must be a positive integer followed by h or d (for example 24h or 7d)", m.PrometheusRetention)
+	}
+	return nil
+}
+
+// validateLogging checks the selected backend and its storage. It never enables
+// security features implicitly: an opensearch backend without cert-manager is
+// an explicit error rather than a silent fallback to demo TLS.
+func (c Components) validateLogging() error {
+	l := c.Logging
+	backend := l.LogBackend()
+	switch backend {
+	case loggingNone:
+		return nil
+	case loggingLoki, loggingOpenSearch:
+	default:
+		return fmt.Errorf("components.logging.backend %q is not supported; use one of none, loki, opensearch", l.Backend)
+	}
+	if strings.TrimSpace(l.StorageClass) == "" {
+		return fmt.Errorf("components.logging.storageClass is required when logging.backend=%s", backend)
+	}
+	if strings.TrimSpace(l.StorageSize) == "" {
+		return fmt.Errorf("components.logging.storageSize is required when logging.backend=%s", backend)
+	}
+	if err := parsePositiveQuantity("components.logging.storageSize", l.StorageSize); err != nil {
+		return err
+	}
+	// Log retention is a plain day count, not a duration: "3" is valid and
+	// "3d" is a typo that must be rejected rather than silently ignored.
+	if !validPositiveDays(l.RetentionDays) {
+		return fmt.Errorf("components.logging.retentionDays %q must be a positive integer number of days (for example 3)", l.RetentionDays)
+	}
+	if backend == loggingOpenSearch && !c.CertManager.Enabled {
+		return fmt.Errorf("components.logging.backend=opensearch requires components.certManager.enabled=true: OpenSearch uses cert-manager's internal CA for non-demo TLS, and this build never falls back to demo certificates or disables security")
+	}
+	return nil
+}
+
+// validateComponents checks supported names, effective capacity, the
+// "not implemented yet" gate and the batch-2 field rules.
 func (c Components) validate() error {
 	for _, row := range c.Selection() {
 		if !row.Enabled {
 			continue
 		}
-		implemented := false
-		for _, known := range ImplementedComponents {
-			if known == row.Name {
-				implemented = true
-				break
-			}
-		}
-		if !implemented {
+		if !containsString(ImplementedComponents, row.Name) {
 			return fmt.Errorf("components.%s: enabled=true but this release does not implement %s yet; set it to false", row.Name, row.Name)
 		}
 		storage := c.storage(row.Name)
@@ -127,11 +294,23 @@ func (c Components) validate() error {
 		if strings.TrimSpace(storage.StorageSize) == "" {
 			return fmt.Errorf("components.%s.storageSize is required when the component is enabled", row.Name)
 		}
-		if _, err := resource.ParseQuantity(storage.StorageSize); err != nil {
-			return fmt.Errorf("components.%s.storageSize %q is not a valid capacity: %w", row.Name, storage.StorageSize, err)
+		if err := parsePositiveQuantity("components."+row.Name+".storageSize", storage.StorageSize); err != nil {
+			return err
 		}
 	}
-	return nil
+	if err := c.validateMetrics(); err != nil {
+		return err
+	}
+	return c.validateLogging()
+}
+
+func containsString(values []string, needle string) bool {
+	for _, v := range values {
+		if v == needle {
+			return true
+		}
+	}
+	return false
 }
 
 type ClusterConfig struct {
@@ -368,15 +547,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		return nil, err
 	}
 
-	components := map[string]any{}
-	for _, row := range c.Components.Selection() {
-		entry := map[string]any{"enabled": row.Enabled}
-		if storage := c.Components.storage(row.Name); storage != nil {
-			entry["storage_class"] = storage.StorageClass
-			entry["storage_size"] = storage.StorageSize
-		}
-		components[row.Name] = entry
-	}
+	components := componentSpec(c.Components)
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
 		nodeNames = append(nodeNames, n.Name)
@@ -461,6 +632,43 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			},
 		},
 	}, nil
+}
+
+// componentSpec turns the typed component configuration into the map that the
+// roles read. It is separate from KubeKeyConfig so the spec shape can be tested
+// without going through the site validation gate, and so there is exactly one
+// place that decides which keys a role sees.
+func componentSpec(c Components) map[string]any {
+	spec := map[string]any{}
+	for _, row := range c.Selection() {
+		entry := map[string]any{"enabled": row.Enabled}
+		if storage := c.storage(row.Name); storage != nil {
+			entry["storage_class"] = storage.StorageClass
+			entry["storage_size"] = storage.StorageSize
+		}
+		spec[row.Name] = entry
+	}
+	// The metrics stack carries its own storage and retention fields. The
+	// values are always present so a role can render them without re-reading
+	// the site YAML, even when the stack is disabled.
+	spec["metrics"] = map[string]any{
+		"enabled":                   c.Metrics.Enabled,
+		"storage_class":             c.Metrics.StorageClass,
+		"prometheus_storage_size":   c.Metrics.PrometheusStorageSize,
+		"alertmanager_storage_size": c.Metrics.AlertmanagerStorageSize,
+		"prometheus_retention":      c.Metrics.PrometheusRetention,
+	}
+	// The log backend is one string, not a pair of booleans, so a role cannot
+	// see two enabled backends. The loki/opensearch/fluent-bit rows above are
+	// derived from this same backend, so they can never disagree with it.
+	spec["logging"] = map[string]any{
+		"enabled":        c.loggingEnabled(),
+		"backend":        c.Logging.LogBackend(),
+		"storage_class":  c.Logging.StorageClass,
+		"storage_size":   c.Logging.StorageSize,
+		"retention_days": c.Logging.RetentionDays,
+	}
+	return spec
 }
 
 // KubeKeyInventory returns an Inventory spec with local connector only for

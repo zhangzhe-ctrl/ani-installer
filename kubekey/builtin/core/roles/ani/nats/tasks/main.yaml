@@ -21,7 +21,9 @@
 # network access here.
 
 - name: ANI NATS | Create work directory
-  command: install -d -m 0755 /etc/kubernetes/ani/nats
+  command: |
+    install -d -m 0755 /etc/kubernetes/ani/nats
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
 - name: ANI NATS | Generate a stable token for this run
   command: |
@@ -91,3 +93,12 @@
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/nats/verify.sh
+
+# Connection facts are rendered by the role that owns the resources, so the
+# installer never keeps a second copy of service names or Secret references.
+# The installer concatenates the fragments into connections.md after a
+# successful run; no fragment contains credentials.
+- name: ANI NATS | Render connection facts fragment
+  template:
+    src: connection.md
+    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/nats.md"
