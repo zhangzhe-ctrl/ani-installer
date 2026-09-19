@@ -3,12 +3,11 @@
 本文件记录第二批（指标栈 / Fluent Bit + Loki 或 OpenSearch）每张任务卡的代码与真实验证状态。
 每卡分两列：**code_status**（Fedora 上代码、材料、渲染、测试）与 **live_status**（三台目标机的真实安装与功能验证）。
 
-**本轮结论：live 全部 `not_verified`。** 新版 kcn 修复仅由用户口头告知，镜像材料尚未提供，按执行方案第 1.1 / 6 节，本轮只执行材料/代码阶段，不启动三台安装。旧 kcn 的迟到 DEL 缺陷（见 [B5 复核](foundation-b5-verification-20260919.md)）未解决，NATS 失败不能被本批覆盖成 pass。
+**最新结论：第二批未完成，真实安装两次失败，已按用户要求暂停。** 用户本次明确授权用现有材料实测并允许必要时重启 kcn-controller，覆盖此前等待新版材料的限制。累计 Loki 配置在 metrics 模板路径处失败；关闭 metrics 后的 Loki 首装在 `/config` 响应解析处失败。两者均为 installer 缺陷，未人工重启 kcn-controller。
 
-**C0～C5 六张卡已全部完成 code 阶段，渲染门全部通过（外来镜像 0）。** 交付入口是
-[observability-components-manual-runbook.md](observability-components-manual-runbook.md)。
-**整批通过需要两种日志组合分别真实验证**，在用户提供固定 kcn 材料并排期之前
-不启动三节点安装，因此 `metrics`/`loki`/`opensearch`/`fluent-bit` 四行在目标机上仍是 `not_verified`。
+当前交接入口：[真实安装失败与后续执行交接](observability-live-handoff-20260919.md)。
+本文件下方 C0～C5 日志保留为历史记录；其中“code 全部完成”和“未启动三台安装”不再代表当前状态。
+OpenSearch 尚未实装，Fluent Bit 在两次流程中均未执行。已有 Go 测试/渲染通过不能证明角色任务能正确执行。
 
 ## 状态总览
 
@@ -16,10 +15,10 @@
 | --- | --- | --- | --- |
 | C0 | 固定候选、材料锁、容量、示例配置、状态基线 | pass | not_verified |
 | C1 | typed 配置、八行选择文件、最小公共接线 | pass | not_verified |
-| C2 | 指标栈（Prometheus/Alertmanager/Operator/KSM/node-exporter） | pass | not_verified |
-| C3 | Loki + Fluent Bit | pass | not_verified |
-| C4 | OpenSearch + Fluent Bit | pass | not_verified |
-| C5 | 交付、状态、人工复现文档 | pass | not_verified |
+| C2 | 指标栈（Prometheus/Alertmanager/Operator/KSM/node-exporter） | fail：任务模板上下文错误 | fail：创建命名空间失败 |
+| C3 | Loki + Fluent Bit | fail：将 YAML 配置响应按 JSON 解析 | fail：Loki 验证失败；Fluent Bit 未执行 |
+| C4 | OpenSearch + Fluent Bit | fail：静态复核确认编排缺陷，待修 | not_verified：用户要求本轮失败后暂停 |
+| C5 | 交付、状态、人工复现文档 | pending：本次已补制包，文档与最终交付待收口 | not_verified：两组合完整验收未通过 |
 
 ## 上游依赖状态
 
