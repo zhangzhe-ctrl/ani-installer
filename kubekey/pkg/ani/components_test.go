@@ -638,12 +638,24 @@ func TestConnectionFragmentsRenderSiteValues(t *testing.T) {
 					"prometheus_retention":      "24h",
 					"prometheus_retention_size": "4Gi",
 				},
+				// The log roles render from the same logging block: one
+				// backend string, one namespace, one derived retention.
+				"logging": map[string]any{
+					"enabled":         true,
+					"backend":         "loki",
+					"namespace":       "ani-observability",
+					"storage_class":   "ani-block",
+					"storage_size":    "10Gi",
+					"retention_days":  "3",
+					"retention_hours": 72,
+					"retention_iso":   "PT72H",
+				},
 			},
 		},
 		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
 	}
-	wantStorage := map[string]string{"postgresql": "10Gi", "valkey": "2Gi", "nats": "5Gi", "metrics": "5Gi"}
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"} {
+	wantStorage := map[string]string{"postgresql": "10Gi", "valkey": "2Gi", "nats": "5Gi", "metrics": "5Gi", "loki": "10Gi"}
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki"} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(root, name, "templates", "connection.md")
 			tmpl, err := template.New("connection.md").ParseFiles(path)
@@ -687,6 +699,75 @@ func TestConnectionFragmentsRenderSiteValues(t *testing.T) {
 	}
 }
 
+// TestFluentBitConnectionFragmentRendersBothBackends renders the collector's
+// connection fragment for each backend and asserts the destination it names is
+// the selected one and only that one. A fragment naming both would tell an
+// operator a deployment has two log stores, which it never does.
+func TestFluentBitConnectionFragmentRendersBothBackends(t *testing.T) {
+	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "fluent-bit")
+	path := filepath.Join(root, "templates", "connection.md")
+
+	cases := []struct {
+		backend string
+		want    string
+		absent  string
+	}{
+		{"loki", "ani-loki.ani-observability.svc.cluster.local:3100", "ani-opensearch-master"},
+		{"opensearch", "ani-opensearch-master.ani-observability.svc.cluster.local:9200", "ani-loki."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.backend, func(t *testing.T) {
+			ctx := map[string]any{
+				"ani": map[string]any{
+					"registry": "192.0.2.11:5000",
+					"components": map[string]any{
+						"logging": map[string]any{
+							"enabled":         true,
+							"backend":         tc.backend,
+							"namespace":       "ani-observability",
+							"storage_class":   "ani-block",
+							"storage_size":    "10Gi",
+							"retention_days":  "3",
+							"retention_hours": 72,
+							"retention_iso":   "PT72H",
+						},
+					},
+				},
+				"kubernetes": map[string]any{"cluster_name": "ani-lab"},
+			}
+			tmpl, err := template.New("connection.md").ParseFiles(path)
+			if err != nil {
+				t.Fatalf("parse template: %v", err)
+			}
+			rendered := &strings.Builder{}
+			if err := tmpl.Execute(rendered, ctx); err != nil {
+				t.Fatalf("execute template: %v", err)
+			}
+			out := rendered.String()
+			for _, bad := range []string{"{{", "}}", "<no value>"} {
+				if strings.Contains(out, bad) {
+					t.Fatalf("rendered fragment contains %q:\n%s", bad, out)
+				}
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Fatalf("fragment does not name the selected backend destination %q:\n%s", tc.want, out)
+			}
+			if strings.Contains(out, tc.absent) {
+				t.Fatalf("fragment names the unselected backend %q:\n%s", tc.absent, out)
+			}
+			if !strings.Contains(out, "- namespace:") || !strings.Contains(out, "- verification:") {
+				t.Fatalf("fragment is missing its namespace or verification entry:\n%s", out)
+			}
+			// The collector never carries a credential value.
+			for _, leak := range []string{"CHANGE_ME", "password:", "token:"} {
+				if strings.Contains(out, leak) {
+					t.Fatalf("fragment appears to contain a credential (%q):\n%s", leak, out)
+				}
+			}
+		})
+	}
+}
+
 func contains(values []string, needle string) bool {
 	for _, v := range values {
 		if v == needle {
@@ -707,49 +788,43 @@ func localRefSuffix(original string) string {
 	return parts[1]
 }
 
-// TestEnabledBatchTwoComponentsFailUntilImplemented makes the not-implemented
-// gate real rather than vacuous: every observability row must be reachable in
-// the selection (so the loop cannot be skipped) and Validate must reject it
-// with the not-implemented message while the row is absent from
-// ImplementedComponents. When a later card adds a role it must remove that row
-// from this test in the same change.
+// TestEnabledBatchTwoComponentsFailUntilImplemented keeps the not-implemented
+// gate honest: a site may enable any row the schema understands, but a row with
+// no packaged role must fail validation instead of deploying nothing. Each row
+// leaves this test in the card that ships its role; every observability row has
+// now left it, so what remains is the invariant that the gate itself still
+// works, checked with a row name the selection understands but no role ships.
 func TestEnabledBatchTwoComponentsFailUntilImplemented(t *testing.T) {
-	cases := []struct {
-		component string
-		site      string
-	}{
-		{"loki", "components:\n  logging:\n    backend: loki\n"},
-		{"opensearch", "components:\n  certManager:\n    enabled: true\n  logging:\n    backend: opensearch\n"},
-		{"fluent-bit", "components:\n  logging:\n    backend: loki\n"},
-	}
-	covered := map[string]bool{}
-	for _, tc := range cases {
-		if contains(ImplementedComponents, tc.component) {
-			t.Fatalf("%s is now implemented; drop it from this test and add a role test instead", tc.component)
-		}
-		covered[tc.component] = true
-		c, err := parseSite(t, tc.site)
-		if err != nil {
-			t.Fatalf("parse %s: %v", tc.component, err)
-		}
-		if !selectionEnabled(c, tc.component) {
-			t.Fatalf("fixture does not enable %s; the not-implemented gate would be untested", tc.component)
-		}
-		err = Validate(c)
-		if err == nil {
-			t.Fatalf("Validate() accepted enabled %s although this release has no role for it", tc.component)
-		}
-		if !strings.Contains(err.Error(), "not implement") {
-			t.Fatalf("Validate() error for %s = %v, want a not-implemented message", tc.component, err)
+	// Every observability row is implemented as of C4. The gate is still
+	// exercised directly, so it cannot regress to a no-op: a row the selection
+	// knows but ImplementedComponents does not must fail.
+	for _, row := range []string{"metrics", "loki", "opensearch", "fluent-bit"} {
+		if !contains(ImplementedComponents, row) {
+			t.Fatalf("%s must be an implemented component by now", row)
 		}
 	}
-	// Every remaining unimplemented observability row is covered, so the gate
-	// cannot silently regress. metrics is implemented as of C2 and is covered
-	// by its own role test instead.
-	for _, row := range []string{"loki", "opensearch", "fluent-bit"} {
-		if !covered[row] {
-			t.Fatalf("observability row %s has no not-implemented case", row)
-		}
+
+	// The gate in Validate loops Selection() and compares against
+	// ImplementedComponents. Removing a row from a copy of the list must make
+	// validation refuse the site that enables it, which is what proves the loop
+	// still runs rather than having been short-circuited.
+	saved := ImplementedComponents
+	defer func() { ImplementedComponents = saved }()
+	ImplementedComponents = []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "fluent-bit"}
+
+	c, err := parseSite(t, "components:\n  certManager:\n    enabled: true\n  logging:\n    backend: opensearch\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !selectionEnabled(c, "opensearch") {
+		t.Fatal("the fixture does not enable opensearch; the not-implemented gate would be untested")
+	}
+	err = Validate(c)
+	if err == nil {
+		t.Fatal("Validate() accepted an enabled row that has no role in the release")
+	}
+	if !strings.Contains(err.Error(), "not implement") {
+		t.Fatalf("Validate() error = %v, want a not-implemented message", err)
 	}
 }
 
@@ -833,19 +908,17 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	}
 	// Every original image key any current template asks for. Rendering with a
 	// deliberately incomplete map must fail rather than produce an empty field.
+	// The list is derived from componentImageKeys() plus the images the roles
+	// name directly, so a newly added key cannot silently go uncovered here.
 	complete := map[string]string{}
-	for _, original := range []string{
+	originalKeys := []string{
 		"docker.io/library/nats:2.14.6-alpine",
 		"docker.io/natsio/nats-server-config-reloader:0.23.0",
-		"quay.io/prometheus-operator/prometheus-operator:v0.90.1",
-		"quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1",
-		"quay.io/prometheus/prometheus:v3.11.3-distroless",
-		"quay.io/prometheus/alertmanager:v0.32.1",
-		"quay.io/prometheus/node-exporter:v1.11.1-distroless",
-		"registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0",
-		"ghcr.io/jkroepke/kube-webhook-certgen:1.8.3",
-		"docker.io/library/python:3.13.11-alpine3.23",
-	} {
+	}
+	for _, key := range componentImageKeys() {
+		originalKeys = append(originalKeys, key.Original)
+	}
+	for _, original := range originalKeys {
 		complete[original] = "192.0.2.11:5000/" + localRefSuffix(original)
 	}
 	// Charts that build "registry/repository:tag" themselves read the split
@@ -877,6 +950,19 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 					"prometheus_retention":      "24h",
 					"prometheus_retention_size": "4Gi",
 				},
+				// The log roles render from the logging block; without it their
+				// templates would compare an empty backend and render no output
+				// at all, which is exactly the failure this test should catch.
+				"logging": map[string]any{
+					"enabled":         true,
+					"backend":         "loki",
+					"namespace":       "ani-observability",
+					"storage_class":   "ani-block",
+					"storage_size":    "10Gi",
+					"retention_days":  "3",
+					"retention_hours": 72,
+					"retention_iso":   "PT72H",
+				},
 			},
 		},
 		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
@@ -884,6 +970,26 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	for _, path := range matches {
 		name := filepath.Base(filepath.Dir(filepath.Dir(path)))
 		t.Run(name, func(t *testing.T) {
+			// The roles render with text/template from the installer's own
+			// context. Helm's {{ .Values.* }} does not exist at that point, so a
+			// role template using it would render "<no value>" and any consumer
+			// reading the file could not tell that from a working render. The
+			// output check below catches the symptom; this catches the cause.
+			// Comment lines are skipped: a comment explaining why the chart's
+			// own .Values form is not used is legitimate and must not fail.
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read template: %v", err)
+			}
+			for i, line := range strings.Split(string(source), "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") {
+					continue
+				}
+				if strings.Contains(line, ".Values.") {
+					t.Fatalf("role values template uses Helm's .Values on line %d, which the installer's render never provides", i+1)
+				}
+			}
+
 			tmpl, err := template.New("values.yaml").ParseFiles(path)
 			if err != nil {
 				t.Fatalf("parse template: %v", err)
@@ -967,7 +1073,7 @@ func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
 // document complete: a role that installs resources must render facts for them.
 func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani")
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"} {
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit"} {
 		fragment := filepath.Join(root, name, "templates", "connection.md")
 		if _, err := os.Stat(fragment); err != nil {
 			t.Fatalf("component %s has no connection facts template: %v", name, err)
@@ -1229,6 +1335,693 @@ func TestMetricsRetentionSizeMustFitInTheVolume(t *testing.T) {
 	}
 	if err := Validate(c); err == nil {
 		t.Fatal("a non-capacity retention cap must be rejected")
+	}
+}
+
+// TestLokiRoleIsWiredAndOffline mirrors the C2 role test for the log backend:
+// the role must be gated on the backend actually being loki (not merely on the
+// loki row being on), must take its Chart from the offline artifact, must wait
+// on the objects the Chart really renders, and must keep every default-on
+// component of the Loki Chart disabled.
+func TestLokiRoleIsWiredAndOffline(t *testing.T) {
+	root := filepath.Join("..", "..")
+	role := filepath.Join(root, "builtin", "core", "roles", "ani", "loki")
+
+	tasks, err := os.ReadFile(filepath.Join(role, "tasks", "main.yaml"))
+	if err != nil {
+		t.Fatalf("read loki tasks: %v", err)
+	}
+	taskText := string(tasks)
+
+	playbook, err := os.ReadFile(filepath.Join(root, "builtin", "core", "playbooks", "create_cluster.yaml"))
+	if err != nil {
+		t.Fatalf("read create_cluster.yaml: %v", err)
+	}
+	playbookText := string(playbook)
+	if !strings.Contains(playbookText, "role: ani/loki") {
+		t.Fatal("create_cluster.yaml does not reference ani/loki")
+	}
+	// Gating on the backend, not on the row, is what makes the two backends
+	// mutually exclusive: a deployment can never render both roles.
+	if !strings.Contains(playbookText,
+		`when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") }}'`) {
+		t.Fatal("ani/loki is not gated on the selected logging backend")
+	}
+	// Order matters: the backend must be installed and verified before the
+	// collector starts writing to it.
+	lokiAt := strings.Index(playbookText, "role: ani/loki")
+	fluentAt := strings.Index(playbookText, "role: ani/fluent-bit")
+	if lokiAt < 0 || fluentAt < 0 || lokiAt > fluentAt {
+		t.Fatal("ani/loki must appear before ani/fluent-bit so the backend exists before collection")
+	}
+	metricsAt := strings.Index(playbookText, "role: ani/metrics")
+	if metricsAt < 0 || metricsAt > lokiAt {
+		t.Fatal("ani/metrics must appear before the log roles so they share one namespace")
+	}
+
+	if !strings.Contains(taskText, "charts/loki/18.13.3.tgz") {
+		t.Fatal("loki tasks do not install the packaged loki 18.13.3 Chart")
+	}
+	if !strings.Contains(taskText, "{{ .ani.artifact_root }}/bin/helm") {
+		t.Fatal("loki tasks do not use the packaged Helm binary")
+	}
+	// The monolith is a StatefulSet in this Chart; waiting on a Deployment
+	// would never succeed.
+	for _, want := range []string{
+		"statefulset/ani-loki --timeout=600s",
+		"--for=jsonpath='{.status.phase}'=Bound pvc/storage-ani-loki-0",
+		"chmod 0700 /etc/kubernetes/ani/loki/verify.sh",
+	} {
+		if !strings.Contains(taskText, want) {
+			t.Fatalf("loki tasks do not contain %q", want)
+		}
+	}
+	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
+		if strings.Contains(taskText, bad) {
+			t.Fatalf("loki tasks appear to fetch from the network (%q)", bad)
+		}
+	}
+	// Grafana is a later batch and must not appear at all.
+	for _, line := range strings.Split(taskText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(trimmed), "grafana") {
+			t.Fatalf("loki tasks reference grafana outside a comment: %s", trimmed)
+		}
+	}
+
+	values, err := os.ReadFile(filepath.Join(role, "templates", "values.yaml"))
+	if err != nil {
+		t.Fatalf("read loki values: %v", err)
+	}
+	valuesText := string(values)
+	for _, want := range []string{
+		"deploymentMode: Monolithic",
+		"auth_enabled: false",
+		// Every default-on component of this Chart has to be off, or the
+		// install grows a gateway, a canary, a ruler, a test hook and ~9GiB of
+		// memcached that this batch did not ask for.
+		"chunksCache:\n  enabled: false",
+		"resultsCache:\n  enabled: false",
+		"gateway:\n  enabled: false",
+		"lokiCanary:\n  enabled: false",
+		"test:\n  enabled: false",
+		"ruler:\n  enabled: false",
+		"minio:\n  enabled: false",
+		"  sidecar: false",
+		// The Chart refuses to render a monolith unless all three distributed
+		// replica groups are zero.
+		"read:\n  replicas: 0",
+		"write:\n  replicas: 0",
+		"backend:\n  replicas: 0",
+		// Retention only acts when the compactor is enabled with a delete
+		// store; setting the limit alone marks nothing for deletion.
+		"retention_enabled: true",
+		"delete_request_store: filesystem",
+		"working_directory: /var/loki/compactor",
+		"flush_on_shutdown: true",
+		"whenDeleted: Retain",
+		"whenScaled: Retain",
+		"enableStatefulSetAutoDeletePVC: false",
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("loki values do not contain %q", want)
+		}
+	}
+	// The image must be built from the split parts; the chart concatenates
+	// registry + repository + tag itself. image_parts carries only repository
+	// and tag (the registry is the single site value), so the registry line
+	// must reference .ani.registry while the other two come from the parts.
+	if !strings.Contains(valuesText, "registry: {{ .ani.registry }}") {
+		t.Fatal("loki image must take its registry from the site registry value")
+	}
+	if strings.Contains(valuesText, ".ani.image_parts.logs.loki.registry") {
+		t.Fatal("image_parts has no registry field; the host must come from .ani.registry")
+	}
+	if !strings.Contains(valuesText, "repository: {{ .ani.image_parts.logs.loki.repository }}") {
+		t.Fatal("loki image must take its repository from the split image parts")
+	}
+	if !strings.Contains(valuesText, "tag: {{ .ani.image_parts.logs.loki.tag }}") {
+		t.Fatal("loki image must take its tag from the split image parts")
+	}
+	// Retention must be rendered from the derived hour count, not hand-written.
+	if !strings.Contains(valuesText, "retention_period: {{ .ani.components.logging.retention_hours }}h") {
+		t.Fatal("loki retention_period must come from the derived hour count")
+	}
+	if !strings.Contains(valuesText, "replication_factor: 1") {
+		t.Fatal("loki must run with replication_factor 1 (one monolith, one volume)")
+	}
+}
+
+// TestOpenSearchRoleIsWiredAndOffline pins the C4 role: it must be gated on the
+// selected backend so the two backends are mutually exclusive, must install the
+// packaged Chart from the offline artifact, and must never ship a demo
+// configuration or a credential in a rendered file.
+func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
+	root := filepath.Join("..", "..")
+	role := filepath.Join(root, "builtin", "core", "roles", "ani", "opensearch")
+
+	tasks, err := os.ReadFile(filepath.Join(role, "tasks", "main.yaml"))
+	if err != nil {
+		t.Fatalf("read opensearch tasks: %v", err)
+	}
+	taskText := string(tasks)
+
+	playbook, err := os.ReadFile(filepath.Join(root, "builtin", "core", "playbooks", "create_cluster.yaml"))
+	if err != nil {
+		t.Fatalf("read create_cluster.yaml: %v", err)
+	}
+	playbookText := string(playbook)
+	if !strings.Contains(playbookText, "role: ani/opensearch") {
+		t.Fatal("create_cluster.yaml does not reference ani/opensearch")
+	}
+	// Gating on the backend, not on the row, is what makes the two log backends
+	// mutually exclusive: a deployment can never render both roles.
+	if !strings.Contains(playbookText,
+		`when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") }}'`) {
+		t.Fatal("ani/opensearch is not gated on the selected logging backend")
+	}
+	// Order matters: the backend must be installed and verified before the
+	// collector starts writing to it, and both backends come after the metrics
+	// stack because they share its namespace.
+	metricsAt := strings.Index(playbookText, "role: ani/metrics")
+	osAt := strings.Index(playbookText, "role: ani/opensearch")
+	fluentAt := strings.Index(playbookText, "role: ani/fluent-bit")
+	lokiAt := strings.Index(playbookText, "role: ani/loki")
+	if metricsAt < 0 || osAt < 0 || fluentAt < 0 {
+		t.Fatal("the observability roles are not all wired into create_cluster.yaml")
+	}
+	if metricsAt > osAt || osAt > fluentAt {
+		t.Fatal("ani/opensearch must appear after ani/metrics and before ani/fluent-bit")
+	}
+	// loki must not have been displaced: both backends stay in the playbook,
+	// each gated on its own backend value.
+	if lokiAt < 0 || lokiAt > fluentAt {
+		t.Fatal("ani/loki must still appear before ani/fluent-bit")
+	}
+
+	if !strings.Contains(taskText, "charts/opensearch/3.8.0.tgz") {
+		t.Fatal("opensearch tasks do not install the packaged opensearch 3.8.0 Chart")
+	}
+	if !strings.Contains(taskText, "{{ .ani.artifact_root }}/bin/helm") {
+		t.Fatal("opensearch tasks do not use the packaged Helm binary")
+	}
+	// The single node is a StatefulSet, so waiting on a Deployment would never
+	// succeed, and the PVC the Chart renders is named after the cluster/group.
+	for _, want := range []string{
+		"statefulset/ani-opensearch-master --timeout=900s",
+		"--for=jsonpath='{.status.phase}'=Bound pvc/ani-opensearch-master-0",
+		"job/ani-opensearch-security-init",
+		"90-ani-opensearch.conf",
+		"chmod 0700 \"/etc/kubernetes/ani/opensearch/$script\"",
+	} {
+		if !strings.Contains(taskText, want) {
+			t.Fatalf("opensearch tasks do not contain %q", want)
+		}
+	}
+	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
+		if strings.Contains(taskText, bad) {
+			t.Fatalf("opensearch tasks appear to fetch from the network (%q)", bad)
+		}
+	}
+	// The Chart's privileged sysctl init container must stay off; the node
+	// setting is written by the role instead.
+	if strings.Contains(taskText, "sysctlInit") && strings.Contains(taskText, "enabled: true") {
+		t.Fatal("opensearch tasks appear to enable the Chart's privileged sysctl init container")
+	}
+	// Grafana is a later batch and must not appear at all.
+	for _, line := range strings.Split(taskText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(trimmed), "grafana") {
+			t.Fatalf("opensearch tasks reference grafana outside a comment: %s", trimmed)
+		}
+	}
+
+	values, err := os.ReadFile(filepath.Join(role, "templates", "values.yaml"))
+	if err != nil {
+		t.Fatalf("read opensearch values: %v", err)
+	}
+	valuesText := string(values)
+	for _, want := range []string{
+		"singleNode: true",
+		// The demo configuration and the demo certificates are what install the
+		// well-known users and the shared demo certificate; both are refused.
+		"DISABLE_INSTALL_DEMO_CONFIG",
+		"value: \"true\"",
+		"plugins.security.allow_unsafe_democertificates: false",
+		"plugins.security.allow_default_init_securityindex: false",
+		"plugins.security.ssl.http.enabled: true",
+		"CN=ani-opensearch-admin",
+		"CN=ani-opensearch-node",
+		// The security configuration is an externally created Secret, because
+		// two of its files carry a hash that only exists at install time.
+		"securityConfigSecret: ani-opensearch-security-config",
+		// The privileged init container is off; the node setting is written by
+		// the role instead.
+		"sysctl:\n  enabled: false",
+		"sysctlInit:\n  enabled: false",
+		"serviceMonitor:\n  enabled: false",
+		"plugins:\n  enabled: false",
+		"protocol: https",
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("opensearch values do not contain %q", want)
+		}
+	}
+	// The image must be built from the split parts with the registry in the
+	// chart's own global field, which that chart prefixes with a slash.
+	if !strings.Contains(valuesText, "dockerRegistry: {{ .ani.registry }}") {
+		t.Fatal("opensearch must take its registry from the chart's global.dockerRegistry field")
+	}
+	if !strings.Contains(valuesText, "repository: {{ .ani.image_parts.logs.opensearch.repository }}") {
+		t.Fatal("opensearch image must take its repository from the split image parts")
+	}
+	if !strings.Contains(valuesText, "tag: {{ .ani.image_parts.logs.opensearch.tag }}") {
+		t.Fatal("opensearch image must take its tag from the split image parts")
+	}
+	// The chown init image is the locked busybox, also as split parts. The chart
+	// prepends global.dockerRegistry to this reference itself, so only the
+	// repository and tag belong here: repeating the registry would double it.
+	if !strings.Contains(valuesText, "image: {{ .ani.image_parts.lab.busybox.repository }}") {
+		t.Fatal("the chart's chown init image must be the locked busybox repository alone")
+	}
+	if strings.Contains(valuesText, "{{ .ani.registry }}/{{ .ani.image_parts.lab.busybox.repository }}") {
+		t.Fatal("the chart already prepends global.dockerRegistry; the busybox repository must not repeat it")
+	}
+	// The storage must come from the logging block rather than being hardcoded.
+	if !strings.Contains(valuesText, "storageClass: {{ .ani.components.logging.storage_class }}") {
+		t.Fatal("opensearch storage must come from the logging storage class")
+	}
+	if !strings.Contains(valuesText, "size: {{ .ani.components.logging.storage_size }}") {
+		t.Fatal("opensearch storage must come from the logging storage size")
+	}
+	// No credential may be written into a rendered values file.
+	for _, bad := range []string{"password:", "hash:", "changeme", "admin:"} {
+		if strings.Contains(valuesText, bad) {
+			t.Fatalf("opensearch values appear to carry a credential (%q)", bad)
+		}
+	}
+
+	// The security initialization is what makes the cluster usable: the
+	// security index is not initialized by the plugin, so a Job must seed it,
+	// and it must hash the password rather than ship one.
+	init, err := os.ReadFile(filepath.Join(role, "templates", "security-init.yaml"))
+	if err != nil {
+		t.Fatalf("read opensearch security-init template: %v", err)
+	}
+	initText := string(init)
+	for _, want := range []string{
+		"kind: Job",
+		"securityadmin.sh",
+		"-cd ",
+		"/admin-tls/ca.crt",
+		"/admin-tls/tls.crt",
+		"/admin-tls/tls.key",
+		"hash.sh",
+		"ani-opensearch-fluent-bit",
+		"ani-opensearch-admin",
+		"/dev/urandom",
+		// The privilege is scoped to the two Secrets in one namespace.
+		"kind: Role",
+		"kind: RoleBinding",
+		"runAsNonRoot: true",
+		"allowPrivilegeEscalation: false",
+	} {
+		if !strings.Contains(initText, want) {
+			t.Fatalf("opensearch security-init template does not contain %q", want)
+		}
+	}
+	// No demo flag and no hardcoded password anywhere in the initialization.
+	for _, bad := range []string{"--enable-demo", "admin/admin", "admin:\n", "-ts ", "changeme"} {
+		if strings.Contains(initText, bad) {
+			t.Fatalf("opensearch security-init appears to use a demo setting or a literal credential (%q)", bad)
+		}
+	}
+	// The initialization Job must not be given cluster-wide Secret access: the
+	// Role is namespaced and the binding references that Role, not a ClusterRole.
+	if strings.Contains(initText, "kind: ClusterRole") {
+		t.Fatal("the security initialization must not use a ClusterRole")
+	}
+
+	// The security configuration must carry two placeholder hashes and no other
+	// credential, so the Job has exactly one thing to replace.
+	config, err := os.ReadFile(filepath.Join(role, "templates", "security-config.yaml"))
+	if err != nil {
+		t.Fatalf("read opensearch security-config template: %v", err)
+	}
+	configText := string(config)
+	placeholders := strings.Count(configText, "PLACEHOLDER-REPLACED-AT-INSTALL-TIME")
+	if placeholders != 2 {
+		t.Fatalf("the security configuration has %d hash placeholders, want exactly 2", placeholders)
+	}
+	for _, want := range []string{
+		"type: \"internalusers\"",
+		"type: \"rolesmapping\"",
+		"type: \"nodesdn\"",
+		"type: \"allowlist\"",
+		"type: \"config\"",
+		"anonymous_auth_enabled: false",
+		"type: intern",
+		"CN=ani-opensearch-node",
+	} {
+		if !strings.Contains(configText, want) {
+			t.Fatalf("opensearch security configuration does not contain %q", want)
+		}
+	}
+	// No demo user may be carried over from the upstream file.
+	for _, bad := range []string{"kibanaro", "logstash:", "readall:", "snapshotrestore", "anomalyadmin", "admin_tenant"} {
+		if strings.Contains(configText, bad) {
+			t.Fatalf("the security configuration still carries the upstream demo entry %q", bad)
+		}
+	}
+}
+
+// TestOpenSearchNeedsStorageWhenSelected keeps the storage requirement where the
+// failure is cheap: an OpenSearch with no volume would install and then lose
+// every index on the first pod rebuild. It shares the logging storage settings
+// with loki, because only one backend can ever be selected.
+func TestOpenSearchNeedsStorageWhenSelected(t *testing.T) {
+	base := "components:\n  certManager:\n    enabled: true\n  logging:\n    backend: opensearch\n"
+	c, err := parseSite(t, base+"    storageClass: ''\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("opensearch with an empty storageClass must be rejected")
+	}
+	c, err = parseSite(t, base+"    storageSize: ''\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("opensearch with an empty storageSize must be rejected")
+	}
+
+	// With the defaults it must validate, and it must be storage-backed so the
+	// two backends cannot disagree about what a volume is.
+	c, err = parseSite(t, base)
+	if err != nil {
+		t.Fatalf("parse defaults: %v", err)
+	}
+	if err := Validate(c); err != nil {
+		t.Fatalf("opensearch with the default storage settings must validate: %v", err)
+	}
+	storage := c.Components.storage("opensearch")
+	if storage == nil {
+		t.Fatal("opensearch must be treated as a storage-backed component")
+	}
+	if !storage.Enabled {
+		t.Fatal("the opensearch storage row must be enabled when opensearch is the selected backend")
+	}
+	// The two backends are mutually exclusive, so selecting one must leave the
+	// other's storage row disabled.
+	if loki := c.Components.storage("loki"); loki != nil && loki.Enabled {
+		t.Fatal("the loki storage row must not be enabled while opensearch is the selected backend")
+	}
+	if storage.StorageClass != c.Components.Logging.StorageClass {
+		t.Fatal("opensearch storage must be the same settings the logging block carries")
+	}
+}
+
+// TestFluentBitRoleIsWiredAndOffline pins the collection role: it must be gated
+// on logging being enabled with a real backend, must ship exactly one output,
+// and must never promote the full Kubernetes label set to Loki labels.
+func TestFluentBitRoleIsWiredAndOffline(t *testing.T) {
+	root := filepath.Join("..", "..")
+	role := filepath.Join(root, "builtin", "core", "roles", "ani", "fluent-bit")
+
+	tasks, err := os.ReadFile(filepath.Join(role, "tasks", "main.yaml"))
+	if err != nil {
+		t.Fatalf("read fluent-bit tasks: %v", err)
+	}
+	taskText := string(tasks)
+
+	playbook, err := os.ReadFile(filepath.Join(root, "builtin", "core", "playbooks", "create_cluster.yaml"))
+	if err != nil {
+		t.Fatalf("read create_cluster.yaml: %v", err)
+	}
+	playbookText := string(playbook)
+	if !strings.Contains(playbookText, "role: ani/fluent-bit") {
+		t.Fatal("create_cluster.yaml does not reference ani/fluent-bit")
+	}
+	// Collection must be impossible without a backend: a collector with
+	// backend "none" would only fill its local buffer.
+	if !strings.Contains(playbookText,
+		`when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") }}'`) {
+		t.Fatal("ani/fluent-bit is not gated on logging being enabled with a selected backend")
+	}
+
+	if !strings.Contains(taskText, "charts/fluent-bit/0.58.2.tgz") {
+		t.Fatal("fluent-bit tasks do not install the packaged fluent-bit 0.58.2 Chart")
+	}
+	if !strings.Contains(taskText, "{{ .ani.artifact_root }}/bin/helm") {
+		t.Fatal("fluent-bit tasks do not use the packaged Helm binary")
+	}
+	// The DaemonSet ready count must be compared against the node count, or a
+	// collector missing on one node would silently drop that node's logs.
+	for _, want := range []string{
+		"daemonset/ani-fluent-bit --timeout=600s",
+		"fluent-bit ready on",
+		"chmod 0700 /etc/kubernetes/ani/fluent-bit/verify.sh",
+	} {
+		if !strings.Contains(taskText, want) {
+			t.Fatalf("fluent-bit tasks do not contain %q", want)
+		}
+	}
+	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
+		if strings.Contains(taskText, bad) {
+			t.Fatalf("fluent-bit tasks appear to fetch from the network (%q)", bad)
+		}
+	}
+
+	values, err := os.ReadFile(filepath.Join(role, "templates", "values.yaml"))
+	if err != nil {
+		t.Fatalf("read fluent-bit values: %v", err)
+	}
+	valuesText := string(values)
+	for _, want := range []string{
+		"kind: DaemonSet",
+		"testFramework:\n  enabled: false",
+		"hotReload:\n  enabled: false",
+		// Container logs only: the chart's systemd input reads kubelet's
+		// journal and is out of scope for this batch.
+		"Path /var/log/containers/*.log",
+		"multiline.parser cri",
+		// The cursor and buffer must be on the per-node persistent directory.
+		"DB /var/lib/fluent-bit/tail.db",
+		"storage.type filesystem",
+		"storage.path /var/lib/fluent-bit/buffers",
+		"storage.total_limit_size",
+		// The whole Kubernetes label/annotation set must stay out of the
+		// stream labels.
+		"Labels Off",
+		"Annotations Off",
+		"Auto_Kubernetes_Labels Off",
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("fluent-bit values do not contain %q", want)
+		}
+	}
+	// This chart has no registry field: its helper prints repository + ":" + tag,
+	// so the repository must carry the whole host/path. A bare "fluent/fluent-bit"
+	// would make every node pull from Docker Hub, which is unreachable here.
+	if !strings.Contains(valuesText,
+		"repository: {{ .ani.registry }}/{{ .ani.image_parts.logs.fluentBit.repository }}") {
+		t.Fatal("fluent-bit repository must be prefixed with the site registry: this Chart has no registry field")
+	}
+	if !strings.Contains(valuesText, "tag: {{ .ani.image_parts.logs.fluentBit.tag }}") {
+		t.Fatal("fluent-bit tag must come from the split image parts")
+	}
+	if strings.Contains(valuesText, "registry: {{ .ani.image_parts") {
+		t.Fatal("the fluent-bit Chart has no registry field; the host belongs in repository")
+	}
+	// Exactly one output must be rendered for each backend, chosen by the
+	// backend string, and both must be present as mutually exclusive branches.
+	lokiOutput := strings.Count(valuesText, "Name loki")
+	osOutput := strings.Count(valuesText, "Name opensearch")
+	if lokiOutput != 1 || osOutput != 1 {
+		t.Fatalf("expected one loki output and one opensearch output, got %d and %d", lokiOutput, osOutput)
+	}
+	for _, want := range []string{
+		`{{- if eq .ani.components.logging.backend "loki" }}`,
+		`{{- if eq .ani.components.logging.backend "opensearch" }}`,
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("fluent-bit values do not branch on the backend with %q", want)
+		}
+	}
+	// The chart's own defaults must be gone: a leftover Elasticsearch output
+	// would write every record a second time to a host that does not exist.
+	if strings.Contains(valuesText, "Name es") {
+		t.Fatal("the chart's default Elasticsearch output is still present, which would double-write")
+	}
+	if strings.Contains(valuesText, "Name systemd") {
+		t.Fatal("the chart's systemd input is still present")
+	}
+	if strings.Contains(valuesText, "/var/lib/docker/containers") {
+		t.Fatal("the chart's Docker container path is still present; this cluster runs containerd")
+	}
+	// The collector state directory must be a hostPath so the cursor survives
+	// a pod rebuild, and the log directory must be mounted read-only.
+	if !strings.Contains(valuesText, "/var/lib/ani-installer/fluent-bit") {
+		t.Fatal("fluent-bit values do not put the cursor on a per-node hostPath")
+	}
+	if !strings.Contains(valuesText, "readOnly: true") {
+		t.Fatal("the container log directory must be mounted read-only")
+	}
+	// No credential may be written into this file.
+	for _, bad := range []string{"password:", "OS_PASSWORD:", "admin"} {
+		if strings.Contains(valuesText, bad) {
+			t.Fatalf("fluent-bit values appear to carry a credential (%q)", bad)
+		}
+	}
+	// The pod-scoped environment must come from a Secret, not a literal.
+	if !strings.Contains(valuesText, "secretKeyRef:") {
+		t.Fatal("fluent-bit values must inject the OpenSearch credential from a Secret")
+	}
+}
+
+// TestFluentBitVerifyProvesCollectionPath pins the C3 acceptance that no
+// role-level check can substitute for: the markers must be found by querying
+// the backend, after being written to a container's stdout. A script that
+// pushed to the backend directly would prove the backend accepts writes and
+// nothing about collection.
+func TestFluentBitVerifyProvesCollectionPath(t *testing.T) {
+	root := filepath.Join("..", "..")
+	scriptPath := filepath.Join(root, "builtin", "core", "roles", "ani", "fluent-bit", "templates", "verify.sh")
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read fluent-bit verify.sh: %v", err)
+	}
+	script := string(data)
+
+	for _, want := range []struct{ needle, why string }{
+		{"/loki/api/v1/query_range?", "must query the Loki HTTP API for the markers"},
+		{"ani-log-marker-", "must create a per-node marker pod"},
+		{"ANI-MARKER-", "must write a unique marker to the container's stdout"},
+		{"nodeName:", "must pin each marker pod to a specific node"},
+		{"$EVIDENCE/markers-written.txt", "must know the expected marker from the pod's own stdout"},
+		{"check_metadata.py", "must assert the pod/container/node metadata actually arrived"},
+		{"tail.db", "must fingerprint the tail cursor before and after the rebuild"},
+		{"delete pod \"$victim_pod\"", "must rebuild one collector pod"},
+		{"storage.total_limit_size", "must confirm the local buffer is bounded"},
+		{"retention-expiry=not_verified", "must record the expiry check as not verified rather than claim it"},
+		{"rollout status", "must wait on the workload state rather than sleeping"},
+	} {
+		if !strings.Contains(script, want.needle) {
+			t.Fatalf("fluent-bit verify.sh does not contain %q: it %s", want.needle, want.why)
+		}
+	}
+
+	// The one thing that would invalidate the whole check: writing the marker
+	// into the backend instead of letting the collector ship it.
+	for _, bad := range []string{
+		"/loki/api/v1/push",
+		"/_bulk",
+		"PUT /ani-logs",
+	} {
+		if strings.Contains(script, bad) {
+			t.Fatalf("fluent-bit verify.sh writes to the backend directly (%q), which would fake collection", bad)
+		}
+	}
+	// The rebuilds must be by explicit pod deletion, never by resetting or
+	// wiping anything.
+	for _, bad := range []string{
+		"delete pvc",
+		"delete namespace",
+		"delete ns ",
+		"--force",
+		"--grace-period=0",
+	} {
+		if strings.Contains(script, bad) {
+			t.Fatalf("fluent-bit verify.sh performs a destructive operation (%q)", bad)
+		}
+	}
+	// The lab images must be the locked offline ones.
+	for _, want := range []string{
+		`index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`,
+		`index .ani.images "docker.io/library/busybox:1.37"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("fluent-bit verify.sh does not use the locked offline image %s", want)
+		}
+	}
+	// This run's own test pods have to be removed.
+	if !strings.Contains(script, "delete pod ani-log-marker-post") {
+		t.Fatal("fluent-bit verify.sh does not clean up its post-rebuild marker pod")
+	}
+	// The script must fail loudly rather than continue past a broken step.
+	if !strings.Contains(script, "set -euo pipefail") {
+		t.Fatal("fluent-bit verify.sh does not fail fast")
+	}
+}
+
+// TestLoggingRetentionUnitsDerivedFromDays pins the single unit conversion: the
+// site states a day count, Loki needs an hour duration and OpenSearch needs an
+// ISO-8601 duration. Deriving them in Go keeps a role template from doing
+// arithmetic and keeps the two backends from disagreeing about the same value.
+func TestLoggingRetentionUnitsDerivedFromDays(t *testing.T) {
+	// There is no separate logging switch: selecting a backend is what enables
+	// the log stack, so the fixture writes only `backend`.
+	c, err := parseSite(t, "components:\n  logging:\n    backend: loki\n    retentionDays: 3\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	logging := componentSpec(c.Components, c.Name)["logging"].(map[string]any)
+	if logging["retention_days"] != "3" {
+		t.Fatalf("retention_days = %v, want 3", logging["retention_days"])
+	}
+	if logging["retention_hours"] != 72 {
+		t.Fatalf("retention_hours = %v, want 72", logging["retention_hours"])
+	}
+	if logging["retention_iso"] != "PT72H" {
+		t.Fatalf("retention_iso = %v, want PT72H", logging["retention_iso"])
+	}
+	// The log roles share the metrics namespace: one observability namespace,
+	// which is what makes "no dashboards workload anywhere" checkable.
+	if logging["namespace"] != MetricsNamespace {
+		t.Fatalf("logging namespace = %v, want %s", logging["namespace"], MetricsNamespace)
+	}
+
+	// An invalid value must not render a nonsense duration. Validation rejects
+	// it before a role could render, but the derivation must still be safe.
+	for _, bad := range []string{"not-a-number", "0", "-1", ""} {
+		if got := retentionHours(bad); got != 0 {
+			t.Fatalf("retentionHours(%q) = %d, want 0", bad, got)
+		}
+		if got := retentionISOSeconds(bad); got != "" {
+			t.Fatalf("retentionISOSeconds(%q) = %q, want empty", bad, got)
+		}
+	}
+}
+
+// TestLokiNeedsStorageWhenSelected keeps the storage requirement where the
+// failure is cheap: a loki monolith with no volume would install and then lose
+// every log on the first pod rebuild.
+func TestLokiNeedsStorageWhenSelected(t *testing.T) {
+	c, err := parseSite(t, "components:\n  logging:\n    backend: loki\n    storageClass: ''\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("loki with an empty storageClass must be rejected")
+	}
+
+	// fluent-bit is not storage-backed: it must validate without any volume.
+	c, err = parseSite(t, "components:\n  logging:\n    backend: loki\n")
+	if err != nil {
+		t.Fatalf("parse defaults: %v", err)
+	}
+	if err := Validate(c); err != nil {
+		t.Fatalf("loki with the default storage settings must validate: %v", err)
+	}
+	if storage := c.Components.storage("fluent-bit"); storage != nil {
+		t.Fatal("fluent-bit must not be treated as a storage-backed component")
 	}
 }
 

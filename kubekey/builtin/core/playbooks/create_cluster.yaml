@@ -115,8 +115,21 @@
       when: '{{ (index .ani.components "nats").enabled }}'
     # The observability batch follows the foundation components: the metrics
     # stack installs first because the log backend roles reuse its namespace,
-    # then the log collector. Each role is skipped when its switch is off.
+    # then the log backend the site selected, then the collector. Each role is
+    # skipped when its switch is off.
+    #
+    # Only one log backend can exist in a deployment, so loki and opensearch
+    # are mutually exclusive by construction: each role runs only when the
+    # selected backend is its own. A deployment can never end up with both, and
+    # a deployment with no backend never gets a collector, because the
+    # collector has nowhere to write.
     - role: ani/metrics
       when: '{{ (index .ani.components "metrics").enabled }}'
+    - role: ani/loki
+      when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") }}'
+    - role: ani/opensearch
+      when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") }}'
+    - role: ani/fluent-bit
+      when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") }}'
 
 - import_playbook: hook/post_install.yaml

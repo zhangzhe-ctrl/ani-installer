@@ -1,0 +1,240 @@
+# ANI OpenSearch security configuration files.
+#
+# The Secret the Chart mounts as the security configuration directory. It is
+# applied before the Chart is installed, because the pod mounts it at startup.
+#
+# The files are written out here rather than read from the role's files/
+# directory: the installer's template module renders one file with the site
+# context, and splitting this into eight further templates would add eight
+# copies of the same mount for no benefit. What matters is that the content is
+# here, in one place, with the placeholder the initialization Job replaces.
+#
+# There is no demo user and no default password: the administrator's entry is a
+# placeholder that the Job rewrites with the bcrypt hash of a password generated
+# in the cluster, and the collector's entry is added by the same Job.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ani-opensearch-security-config
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+type: Opaque
+stringData:
+  # Only the internal user database is enabled. Every other authentication
+  # backend the upstream file offers is present but switched off, so the file
+  # stays a complete, valid document instead of a stripped one. Anonymous
+  # access is off: this is not a public endpoint and nothing may read logs
+  # without a credential.
+  config.yml: |
+    _meta:
+      type: "config"
+      config_version: 2
+    config:
+      dynamic:
+        http:
+          anonymous_auth_enabled: false
+          xff:
+            enabled: false
+            internalProxies: '.*'
+        authc:
+          basic_internal_auth_domain:
+            description: "Authenticate via HTTP Basic against internal users database"
+            http_enabled: true
+            transport_enabled: true
+            order: 4
+            http_authenticator:
+              type: basic
+              challenge: true
+            authentication_backend:
+              type: intern
+          clientcert_auth_domain:
+            description: "Authenticate via SSL client certificates"
+            http_enabled: false
+            transport_enabled: false
+            order: 2
+            http_authenticator:
+              type: clientcert
+              config:
+                username_attribute: cn
+              challenge: false
+            authentication_backend:
+              type: noop
+          proxy_auth_domain:
+            description: "Authenticate via proxy"
+            http_enabled: false
+            transport_enabled: false
+            order: 3
+            http_authenticator:
+              type: proxy
+              challenge: false
+              config:
+                user_header: "x-proxy-user"
+                roles_header: "x-proxy-roles"
+            authentication_backend:
+              type: noop
+          ldap:
+            description: "Authenticate via LDAP or Active Directory"
+            http_enabled: false
+            transport_enabled: false
+            order: 5
+            http_authenticator:
+              type: basic
+              challenge: false
+            authentication_backend:
+              type: ldap
+              config:
+                enable_ssl: false
+                enable_start_tls: false
+                enable_ssl_client_auth: false
+                verify_hostnames: true
+                hosts:
+                  - localhost:8389
+                bind_dn: null
+                password: null
+                userbase: 'ou=people,dc=example,dc=com'
+                usersearch: '(sAMAccountName={0})'
+                username_attribute: null
+          kerberos_auth_domain:
+            http_enabled: false
+            transport_enabled: false
+            order: 6
+            http_authenticator:
+              type: kerberos
+              challenge: true
+              config:
+                krb_debug: false
+                strip_realm_from_principal: true
+            authentication_backend:
+              type: noop
+          jwt_auth_domain:
+            description: "Authenticate via Json Web Token"
+            http_enabled: false
+            transport_enabled: false
+            order: 0
+            http_authenticator:
+              type: jwt
+              challenge: false
+              config:
+                jwks_uri: 'https://invalid.invalid/.well-known/jwks.json'
+                signing_key: "not-configured"
+                jwt_header: "Authorization"
+                jwt_url_parameter: null
+                jwt_clock_skew_tolerance_seconds: 30
+                roles_key: null
+                subject_key: null
+            authentication_backend:
+              type: noop
+        authz:
+          roles_from_myldap:
+            description: "Authorize via LDAP or Active Directory"
+            http_enabled: false
+            transport_enabled: false
+            authorization_backend:
+              type: ldap
+              config:
+                enable_ssl: false
+                enable_start_tls: false
+                enable_ssl_client_auth: false
+                verify_hostnames: true
+                hosts:
+                  - localhost:8389
+                bind_dn: null
+                password: null
+                rolebase: 'ou=groups,dc=example,dc=com'
+                rolesearch: '(member={0})'
+                userroleattribute: null
+                userrolename: disabled
+                rolename: cn
+                resolve_nested_roles: true
+                userbase: 'ou=people,dc=example,dc=com'
+                usersearch: '(uid={0})'
+          roles_from_another_ldap:
+            description: "Authorize via another Active Directory"
+            http_enabled: false
+            transport_enabled: false
+            authorization_backend:
+              type: ldap
+              config:
+                enable_ssl: false
+                enable_start_tls: false
+                enable_ssl_client_auth: false
+                verify_hostnames: true
+                hosts:
+                  - localhost:8389
+                bind_dn: null
+                password: null
+
+  # No custom action groups: the plugin's built-in groups are what its built-in
+  # roles are composed from, and an empty list keeps them in force.
+  action_groups.yml: |
+    _meta:
+      type: "actiongroups"
+      config_version: 2
+
+  # No custom roles either. The plugin's built-in roles are authoritative.
+  roles.yml: |
+    _meta:
+      type: "roles"
+      config_version: 2
+
+  # Maps the administrator account to all_access. The collector's mapping is the
+  # dynamic part and is added into this file by the initialization Job, from the
+  # same directory it hands to securityadmin.sh.
+  roles_mapping.yml: |
+    _meta:
+      type: "rolesmapping"
+      config_version: 2
+    all_access:
+      reserved: false
+      backend_roles:
+        - "admin"
+      description: "Maps the admin backend role to all_access"
+
+  # No tenants: multi-tenancy belongs to a dashboard, and none is deployed in
+  # this batch, so there is nothing to isolate.
+  tenants.yml: |
+    _meta:
+      type: "tenants"
+      config_version: 2
+
+  # The distinguished name a node must present to join. opensearch.yml lists the
+  # same DN under plugins.security.nodes_dn, and the node certificate
+  # cert-manager issues carries exactly this common name.
+  nodes_dn.yml: |
+    _meta:
+      type: "nodesdn"
+      config_version: 2
+    ani-opensearch:
+      nodes_dn:
+        - CN=ani-opensearch-node
+
+  # The endpoint allowlisting feature, switched off: the plugin applies its
+  # ordinary access-control checks and this cluster only ever serves the
+  # collector's writes and the verifier's queries through the admin identity.
+  allowlist.yml: |
+    _meta:
+      type: "allowlist"
+      config_version: 2
+    config:
+      enabled: false
+
+  # The administrator's entry is a placeholder the initialization Job replaces
+  # with the bcrypt hash of a password generated in the cluster. The collector
+  # account is created by the same Job. Neither the password nor its hash is
+  # ever written into this repository, a rendered file, or a log.
+  internal_users.yml: |
+    _meta:
+      type: "internalusers"
+      config_version: 2
+    admin:
+      hash: "PLACEHOLDER-REPLACED-AT-INSTALL-TIME"
+      reserved: true
+      backend_roles:
+        - "admin"
+      description: "ANI cluster administrator"
+    kibanaserver:
+      hash: "PLACEHOLDER-REPLACED-AT-INSTALL-TIME"
+      reserved: true
+      description: "Reserved internal account; no dashboard is deployed in this batch"

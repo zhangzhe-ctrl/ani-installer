@@ -1,0 +1,85 @@
+# ANI OpenSearch TLS material.
+#
+# Two certificates, both signed by the internal ClusterIssuer the foundation
+# batch installed (cert-manager's CA, no public PKI, no demo certificates):
+#
+#   ani-opensearch-node-tls — presented by the node. Its common name is the DN
+#     that opensearch.yml lists under plugins.security.nodes_dn and that
+#     nodes_dn.yml allows, and its SANs cover every name a client or another
+#     node can use to reach the pod, so hostname verification succeeds from
+#     inside the namespace and from the pod's own fully qualified name.
+#   ani-opensearch-admin-tls — used only by the security initialization Job to
+#     authenticate as the cluster administrator. Its common name is the DN in
+#     plugins.security.authcz.admin_dn.
+#
+# cert-manager writes tls.crt, tls.key and ca.crt into each Secret. The node
+# certificate is mounted by the Chart (see values.yaml); the admin certificate
+# is mounted by the initialization Job only, so the admin key is never present
+# in the cluster's own container.
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ani-opensearch-node-tls
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+spec:
+  secretName: ani-opensearch-node-tls
+  commonName: ani-opensearch-node
+  # Every name the pod answers to. The bare short name is what another node in
+  # the same namespace resolves; the rest cover the services the Chart renders.
+  dnsNames:
+    - ani-opensearch-master
+    - ani-opensearch-master.{{ .ani.components.logging.namespace }}
+    - ani-opensearch-master.{{ .ani.components.logging.namespace }}.svc
+    - ani-opensearch-master.{{ .ani.components.logging.namespace }}.svc.cluster.local
+    - ani-opensearch-master-headless
+    - ani-opensearch-master-headless.{{ .ani.components.logging.namespace }}
+    - ani-opensearch-master-headless.{{ .ani.components.logging.namespace }}.svc
+    - ani-opensearch-master-headless.{{ .ani.components.logging.namespace }}.svc.cluster.local
+    - ani-opensearch-master-0
+    - ani-opensearch-master-0.ani-opensearch-master-headless.{{ .ani.components.logging.namespace }}.svc.cluster.local
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+  # OpenSearch presents this certificate on both the transport and the HTTP
+  # layer, so it must be valid for server and client use.
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: ani-ca
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ani-opensearch-admin-tls
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+spec:
+  secretName: ani-opensearch-admin-tls
+  commonName: ani-opensearch-admin
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+  # The administrator authenticates with this certificate on the HTTP layer and
+  # on the transport layer, so it needs both usages as well.
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: ani-ca
+    kind: ClusterIssuer

@@ -178,6 +178,14 @@ func (c Components) Selection() []ComponentRow {
 
 // storage returns the effective storage settings for the named storage-backed
 // component, or nil when the name is unknown.
+//
+// loki and opensearch are included because each backend keeps its data on one
+// PVC: they are storage-backed components like the foundation ones, so an
+// enabled backend without a storage class must fail here rather than at
+// install time. Both read the same logging storage settings, because only one
+// backend can ever be selected. fluent-bit is not listed: a collector keeps
+// only a bounded buffer on a hostPath, which is node-local scratch rather than
+// a component volume.
 func (c Components) storage(name string) *StorageComponent {
 	switch name {
 	case "postgresql":
@@ -186,6 +194,18 @@ func (c Components) storage(name string) *StorageComponent {
 		return &c.Valkey
 	case "nats":
 		return &c.NATS
+	case "loki":
+		return &StorageComponent{
+			Enabled:      c.Logging.LogBackend() == loggingLoki,
+			StorageClass: c.Logging.StorageClass,
+			StorageSize:  c.Logging.StorageSize,
+		}
+	case "opensearch":
+		return &StorageComponent{
+			Enabled:      c.Logging.LogBackend() == loggingOpenSearch,
+			StorageClass: c.Logging.StorageClass,
+			StorageSize:  c.Logging.StorageSize,
+		}
 	default:
 		return nil
 	}
@@ -195,10 +215,13 @@ func (c Components) storage(name string) *StorageComponent {
 // deploy. It grows one batch at a time; a site enabling anything else must fail
 // before any deployment begins instead of silently skipping it.
 //
-// The observability rows are listed here from C1 onward because their typed
-// configuration and wiring exist; each role is added in its own card (C2-C4).
-// A row is only listed once its role and verification script are packaged.
-var ImplementedComponents = []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"}
+// A row is only listed once its role and verification script are packaged, so
+// "the switch is on" and "something will actually be installed" never diverge.
+// The observability batch is complete here: metrics, the two mutually
+// exclusive log backends and the collector all ship their own roles.
+var ImplementedComponents = []string{
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit",
+}
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
 // negative, which resource.ParseQuantity alone accepts.
@@ -732,13 +755,45 @@ func componentSpec(c Components, clusterName string) map[string]any {
 	// see two enabled backends. The loki/opensearch/fluent-bit rows above are
 	// derived from this same backend, so they can never disagree with it.
 	spec["logging"] = map[string]any{
-		"enabled":        c.loggingEnabled(),
-		"backend":        c.Logging.LogBackend(),
-		"storage_class":  c.Logging.StorageClass,
-		"storage_size":   c.Logging.StorageSize,
-		"retention_days": c.Logging.RetentionDays,
+		"enabled":       c.loggingEnabled(),
+		"backend":       c.Logging.LogBackend(),
+		"namespace":     MetricsNamespace,
+		"storage_class": c.Logging.StorageClass,
+		"storage_size":  c.Logging.StorageSize,
+		// The site states retentionDays as a plain day count. Loki's
+		// retention_period is a duration, and the two backends need different
+		// units, so the hour count is derived here once instead of letting each
+		// role template multiply. An unparseable value yields 0, which the
+		// validation above already rejects before a role could render it.
+		"retention_days":  c.Logging.RetentionDays,
+		"retention_hours": retentionHours(c.Logging.RetentionDays),
+		"retention_iso":   retentionISOSeconds(c.Logging.RetentionDays),
 	}
 	return spec
+}
+
+// retentionHours converts the plain day count the site configures into the hour
+// count Loki's retention_period uses. An invalid value becomes 0 so a template
+// can never render a nonsense duration.
+func retentionHours(days string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(days))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n * 24
+}
+
+// retentionISOSeconds renders the same day count as the ISO-8601 duration the
+// OpenSearch index-state-management policy takes on its `min_index_age` field
+// (for example 3d -> PT72H). ISM compares true durations, so the plain day count
+// would be rejected there; deriving it here keeps the unit conversion in one
+// place instead of duplicating arithmetic in a role template.
+func retentionISOSeconds(days string) string {
+	n, err := strconv.Atoi(strings.TrimSpace(days))
+	if err != nil || n <= 0 {
+		return ""
+	}
+	return "PT" + strconv.Itoa(n*24) + "H"
 }
 
 // KubeKeyInventory returns an Inventory spec with local connector only for

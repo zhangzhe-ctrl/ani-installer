@@ -157,7 +157,16 @@ func componentImageKeys() []ImageKey {
 		},
 		{Group: "metrics", Name: "kubeStateMetrics", Original: "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0"},
 		{Group: "metrics", Name: "webhookCertgen", Original: "ghcr.io/jkroepke/kube-webhook-certgen:1.8.3"},
+		// The log stack. Loki, Fluent Bit and OpenSearch all take a split
+		// image: their charts build "registry/repository:tag" themselves the
+		// same way the metrics sub-charts do. The OpenSearch chart puts the
+		// registry in one field for every image it renders, so its chown init
+		// image (the locked busybox) needs its parts as well.
+		{Group: "logs", Name: "loki", Original: "docker.io/grafana/loki:3.7.8"},
+		{Group: "logs", Name: "fluentBit", Original: "cr.fluentbit.io/fluent/fluent-bit:5.1.2"},
+		{Group: "logs", Name: "opensearch", Original: "docker.io/opensearchproject/opensearch:3.8.0"},
 		{Group: "lab", Name: "python", Original: "docker.io/library/python:3.13.11-alpine3.23"},
+		{Group: "lab", Name: "busybox", Original: "docker.io/library/busybox:1.37.0"},
 	}
 }
 

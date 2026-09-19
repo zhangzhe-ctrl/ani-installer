@@ -1,0 +1,131 @@
+# Rendered by the ANI opensearch role for the official OpenSearch Chart 3.8.0.
+# Re-rendered by every install run; do not edit.
+#
+# One single-node master in the ani-observability namespace under release name
+# ani-opensearch-master, on one RBD PVC. Single node is a deliberate scope
+# decision for this batch: this is a log store for one small lab, not a highly
+# available cluster, and the chart's own singleNode flag is what keeps it from
+# trying to elect a quorum of one.
+#
+# Security is never turned off and the demo configuration is never installed:
+# DISABLE_INSTALL_DEMO_CONFIG is set and allow_unsafe_democertificates,
+# allow_default_init_securityindex are false, so the cluster comes up with the
+# security plugin enforcing authentication against the internal user database
+# and TLS on both the transport and the HTTP layer, using certificates issued
+# by cert-manager's internal CA. The chart's own sysctl init container (which
+# would need a privileged container) stays off: the installer sets
+# vm.max_map_count on the node instead, which is where that setting belongs.
+#
+# Loaded together with the security-config templates in this directory, which
+# are mounted under securityConfig.config.data below. OpenSearch reads them
+# only after securityadmin.sh seeds the security index, which the role's
+# initialization job does once the cluster answers.
+#
+# No image is fetched from a remote registry: both the cluster image and the
+# chart's chown init image are rewritten to the site registry here.
+clusterName: ani-opensearch
+nodeGroup: master
+masterService: ani-opensearch-master
+singleNode: true
+
+global:
+  # The chart prepends this with a trailing slash to every image it builds,
+  # which is why the site registry goes here and the repositories below stay
+  # relative to it.
+  dockerRegistry: {{ .ani.registry }}
+
+image:
+  repository: {{ .ani.image_parts.logs.opensearch.repository }}
+  tag: {{ .ani.image_parts.logs.opensearch.tag }}
+
+# One node: a 1Gi heap under a 2Gi limit, which leaves the page cache room on an
+# 8GiB lab node. The heap is fixed rather than left to the container heuristic
+# so the same shape is used on every node.
+opensearchJavaOpts: "-Xms1g -Xmx1g"
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    memory: 2Gi
+
+# The data directory is a PVC so an index survives a pod rebuild; the chown
+# init container is the chart's default and uses the locked busybox image. The
+# chart builds that reference as global.dockerRegistry + this repository, so
+# only the repository and tag belong here — putting the registry in again would
+# produce a doubled path.
+persistence:
+  enabled: true
+  storageClass: {{ .ani.components.logging.storage_class }}
+  size: {{ .ani.components.logging.storage_size }}
+  image: {{ .ani.image_parts.lab.busybox.repository }}
+  imageTag: {{ .ani.image_parts.lab.busybox.tag }}
+
+# The chart's privileged init container is off on purpose: it needs
+# `privileged: true`, and vm.max_map_count is a node setting the installer
+# writes to /etc/sysctl.d/90-ani-opensearch.conf instead.
+sysctl:
+  enabled: false
+sysctlInit:
+  enabled: false
+
+protocol: https
+httpPort: 9200
+transportPort: 9300
+metricsPort: 9600
+
+service:
+  type: ClusterIP
+
+# The demo configuration is what installs the well-known demo users and the
+# demo certificates; both are unacceptable here. It is disabled in the
+# environment, which is how the OpenSearch image decides at startup whether to
+# run its demo setup.
+extraEnvs:
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
+
+# The node certificate from cert-manager's internal CA, mounted as a directory
+# so the transport and HTTP TLS settings below can name the three files.
+secretMounts:
+  - name: ani-opensearch-node-tls
+    secretName: ani-opensearch-node-tls
+    path: /usr/share/opensearch/config/ani-tls
+
+config:
+  opensearch.yml: |
+    cluster.name: ani-opensearch
+    network.host: 0.0.0.0
+    plugins.security.ssl.transport.pemcert_filepath: ani-tls/tls.crt
+    plugins.security.ssl.transport.pemkey_filepath: ani-tls/tls.key
+    plugins.security.ssl.transport.pemtrustedcas_filepath: ani-tls/ca.crt
+    plugins.security.ssl.http.enabled: true
+    plugins.security.ssl.http.pemcert_filepath: ani-tls/tls.crt
+    plugins.security.ssl.http.pemkey_filepath: ani-tls/tls.key
+    plugins.security.ssl.http.pemtrustedcas_filepath: ani-tls/ca.crt
+    plugins.security.allow_unsafe_democertificates: false
+    plugins.security.allow_default_init_securityindex: false
+    plugins.security.authcz.admin_dn:
+      - CN=ani-opensearch-admin
+    plugins.security.nodes_dn:
+      - CN=ani-opensearch-node
+
+# The eight files the security plugin needs, mounted as one directory. They are
+# not rendered into this file because two of them carry a password hash that can
+# only be computed on the node at install time (from a password generated in the
+# same run): the role builds the Secret from its own security-config templates
+# and mounts it whole through securityConfigSecret, which is the chart's
+# externally-created-Secret path. Nothing here carries a credential, and
+# dataComplete is unused on that path, so it is left at its default.
+securityConfig:
+  enabled: true
+  config:
+    securityConfigSecret: ani-opensearch-security-config
+
+# Everything this batch does not ask for is off: the service monitor has no
+# Prometheus Operator scraping it, and the dashboard/plugin paths are a later
+# batch.
+serviceMonitor:
+  enabled: false
+plugins:
+  enabled: false

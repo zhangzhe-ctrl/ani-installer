@@ -1,0 +1,287 @@
+# ANI OpenSearch security initialization.
+#
+# A one-shot Job that does four things in order, inside the cluster, with the
+# locked OpenSearch image (so the hash tool and securityadmin.sh are the ones
+# that belong to this exact version):
+#
+#   1. generates the administrator password, the reserved account's password and
+#      the collector password with the pod's own random source. None is printed:
+#      each goes into a Secret, and the administrator's bcrypt hash goes into the
+#      security configuration that securityadmin.sh loads;
+#   2. rewrites the placeholder hashes in the mounted security configuration and
+#      adds the collector user, its role and its role mapping. Doing it here
+#      rather than in the rendered Secret keeps the hash out of the repository,
+#      and it also means the files loaded into the security index and the
+#      credential the collector is given are produced by the same step, so they
+#      cannot disagree;
+#   3. runs securityadmin.sh once with the administrator certificate, which
+#      creates the security index and the users. This has to happen:
+#      allow_default_init_securityindex is false, so the plugin will not create
+#      the index by itself, and until it exists every authenticated request is
+#      refused;
+#   4. creates the two credential Secrets. The collector's one is what the
+#      Fluent Bit role reads; creating it here is what ties it to a user that
+#      actually exists in this cluster's security index.
+#
+# The plaintext never reaches a file that outlives this pod: the configuration
+# copy lives in an emptyDir, and the credentials are written through the API.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ani-opensearch-security-init
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+spec:
+  # One retry: a failure here means the cluster was not ready rather than that
+  # the approach is wrong. The installer waits on this Job and fails the install
+  # if it does not succeed.
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: ani-observability
+        app.kubernetes.io/component: ani-opensearch-security-init
+    spec:
+      restartPolicy: Never
+      serviceAccountName: ani-opensearch-security-init
+      containers:
+        - name: security-init
+          image: "{{ .ani.registry }}/{{ .ani.image_parts.logs.opensearch.repository }}:{{ .ani.image_parts.logs.opensearch.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              OS_HOME=/usr/share/opensearch
+              SEC_TOOLS="$OS_HOME/plugins/opensearch-security/tools"
+              SEC_ADMIN="$SEC_TOOLS/securityadmin.sh"
+              CONFIG=/tmp/security-config
+              OS_HOST="ani-opensearch-master.{{ .ani.components.logging.namespace }}.svc.cluster.local"
+
+              # securityadmin.sh needs a JVM; the image ships one at this path.
+              export JAVA_HOME="${JAVA_HOME:-$OS_HOME/jdk}"
+
+              # ---------------------------------------------------------------
+              echo "== generating credentials =="
+              # The pod's own random source. The output is base64 with the
+              # characters that need quoting removed, so the value survives every
+              # place it is passed through below.
+              gen_pw() { head -c 32 /dev/urandom | base64 | tr -d '\n=+/' | cut -c1-24; }
+
+              ADMIN_PW="$(gen_pw)"
+              RESERVED_PW="$(gen_pw)"
+              COLLECTOR_PW="$(gen_pw)"
+
+              hash_of() {
+                "$SEC_TOOLS/hash.sh" -p "$1" | tr -d '\r'
+              }
+
+              ADMIN_HASH="$(hash_of "$ADMIN_PW")"
+              RESERVED_HASH="$(hash_of "$RESERVED_PW")"
+              COLLECTOR_HASH="$(hash_of "$COLLECTOR_PW")"
+              # A hash that is not bcrypt means the tool failed and the plugin
+              # would refuse every login, so this is checked before anything is
+              # loaded.
+              for h in "$ADMIN_HASH" "$RESERVED_HASH" "$COLLECTOR_HASH"; do
+                case "$h" in
+                  \$2*) ;;
+                  *) echo "hash.sh did not return a bcrypt hash" >&2; exit 1 ;;
+                esac
+              done
+
+              # ---------------------------------------------------------------
+              echo "== preparing the security configuration =="
+              cp -a /security-config/. "$CONFIG/"
+              chmod -R u+w "$CONFIG"
+
+              # The placeholder lines are replaced in order: the first is admin,
+              # the second is the reserved account. python is not needed; sed
+              # addresses each occurrence by line number, which is stable because
+              # the file is rendered from one template.
+              admin_line="$(grep -n 'PLACEHOLDER' "$CONFIG/internal_users.yml" | sed -n '1p' | cut -d: -f1)"
+              reserved_line="$(grep -n 'PLACEHOLDER' "$CONFIG/internal_users.yml" | sed -n '2p' | cut -d: -f1)"
+              if [ -z "$admin_line" ] || [ -z "$reserved_line" ]; then
+                echo "expected two placeholder hashes in internal_users.yml" >&2
+                exit 1
+              fi
+              sed -i "${admin_line}s|.*|      hash: \"$ADMIN_HASH\"|" "$CONFIG/internal_users.yml"
+              sed -i "${reserved_line}s|.*|      hash: \"$RESERVED_HASH\"|" "$CONFIG/internal_users.yml"
+
+              if grep -q 'PLACEHOLDER' "$CONFIG/internal_users.yml"; then
+                echo "a placeholder hash was not replaced" >&2
+                exit 1
+              fi
+
+              # The collector account: a dedicated user that may only write to
+              # this installation's log indices and read nothing else. Adding it
+              # to the three files here, rather than carrying it in the rendered
+              # Secret, is what keeps its hash out of the repository.
+              cat >> "$CONFIG/internal_users.yml" <<EOF
+
+              ani-collector:
+                hash: "$COLLECTOR_HASH"
+                reserved: false
+                backend_roles:
+                  - "ani_collector"
+                description: "ANI Fluent Bit log writer"
+              EOF
+
+              cat >> "$CONFIG/roles.yml" <<'EOF'
+
+              ani_collector_role:
+                reserved: false
+                cluster_permissions:
+                  - "cluster_monitor"
+                index_permissions:
+                  - index_patterns:
+                      - "ani-logs-*"
+                    allowed_actions:
+                      - "create_index"
+                      - "indices:data/write/index"
+                      - "indices:data/write/bulk"
+                      - "indices:admin/mapping/put"
+                      - "indices:admin/get"
+                      - "indices:admin/create"
+                tenant_permissions: []
+              EOF
+
+              cat >> "$CONFIG/roles_mapping.yml" <<'EOF'
+
+              ani_collector_role:
+                reserved: false
+                backend_roles:
+                  - "ani_collector"
+                description: "Maps the collector backend role to its own write-only role"
+              EOF
+
+              # ---------------------------------------------------------------
+              echo "== waiting for the cluster to accept connections =="
+              # The cluster is started before this Job runs, but its security
+              # plugin refuses unauthenticated requests, so readiness is tested
+              # with a TCP connect rather than an HTTP call.
+              ready=0
+              for i in $(seq 1 90); do
+                if (exec 3<>/dev/tcp/"$OS_HOST"/9200) 2>/dev/null; then
+                  exec 3<&- 3>&-
+                  ready=1
+                  break
+                fi
+                sleep 5
+              done
+              if [ "$ready" != "1" ]; then
+                echo "the OpenSearch service did not accept a connection" >&2
+                exit 1
+              fi
+
+              # ---------------------------------------------------------------
+              echo "== seeding the security index =="
+              # -cd loads the whole directory in one run. There is no demo flag
+              # and no default password: the cluster was asked not to initialize
+              # its security index by itself, and this is the only thing that
+              # creates it.
+              "$SEC_ADMIN" \
+                -cd "$CONFIG" \
+                -cacert /admin-tls/ca.crt \
+                -cert /admin-tls/tls.crt \
+                -key /admin-tls/tls.key \
+                -h "$OS_HOST" \
+                -p 9200 \
+                -icl -nhnv
+
+              # ---------------------------------------------------------------
+              echo "== writing the credential Secrets =="
+              kubectl -n {{ .ani.components.logging.namespace }} create secret generic \
+                ani-opensearch-admin \
+                --from-literal=username=admin \
+                --from-literal=password="$ADMIN_PW" \
+                --dry-run=client -o yaml \
+                | kubectl -n {{ .ani.components.logging.namespace }} apply --server-side -f -
+
+              kubectl -n {{ .ani.components.logging.namespace }} create secret generic \
+                ani-opensearch-fluent-bit \
+                --from-literal=username=ani-collector \
+                --from-literal=password="$COLLECTOR_PW" \
+                --dry-run=client -o yaml \
+                | kubectl -n {{ .ani.components.logging.namespace }} apply --server-side -f -
+
+              echo "security initialization complete"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: security-config
+              mountPath: /security-config
+              readOnly: true
+            - name: admin-tls
+              mountPath: /admin-tls
+              readOnly: true
+            # The writable copy the placeholders are replaced in. A secret mount
+            # is read-only, so the configuration cannot be edited in place.
+            - name: work
+              mountPath: /tmp/security-config
+      volumes:
+        - name: security-config
+          secret:
+            secretName: ani-opensearch-security-config
+        - name: admin-tls
+          secret:
+            secretName: ani-opensearch-admin-tls
+        - name: work
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ani-opensearch-security-init
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ani-opensearch-security-init
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+rules:
+  # This Job reads the two TLS Secrets and writes the two credential Secrets.
+  # It gets no other access: it never lists or watches anything, and never
+  # touches a Secret outside its own namespace.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ani-opensearch-security-init
+  namespace: {{ .ani.components.logging.namespace }}
+  labels:
+    app.kubernetes.io/part-of: ani-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ani-opensearch-security-init
+subjects:
+  - kind: ServiceAccount
+    name: ani-opensearch-security-init
+    namespace: {{ .ani.components.logging.namespace }}
