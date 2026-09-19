@@ -18,7 +18,7 @@
 | B1 | 最小组件开关 + cert-manager | pass | 2026-09-18 |
 | B2 | PostgreSQL | pass（a7 单次运行内 安装+独立verify+持久化 全绿；底座 Pod 重建 netns 抖动见 K-5） | 2026-09-18 |
 | B3 | Valkey | pass（a4 单次运行内 安装+独立verify+持久化 全绿） | 2026-09-19 |
-| B4 | NATS JetStream | pending | — |
+| B4 | NATS JetStream | pass（a2 单次运行内 安装+独立verify+持久化 全绿） | 2026-09-19 |
 | B5 | 最终交付与人工复现入口 | pending | — |
 
 状态取值：`pending` / `in_progress` / `pass` / `fail` / `blocked` / `user_reported_pass`
@@ -285,7 +285,47 @@ B3 产品判据全部通过（安装退出 0、独立 verify 0、持久化 0，�
 
 ## B4：NATS JetStream
 
-等待开始。
+**状态：pass**（a2 单次运行内 **安装 + 独立 verify + 持久化 全绿**）。
+
+### B4-0 批次事实
+
+| 项 | 值 |
+| --- | --- |
+| 批次 / attempt | B4 / **a2 通过**（a1 失败于 nats verify 的宿主侧标记锚定 bug，见 K-9；已修） |
+| 代码包 | `ani-code-20260918-b4`；kk sha256 `256c0e1e75bf6cf18a6cdd52b0d029c2dbc37cf514693a685d292bd2b965d8ac` |
+| artifact | `ani-artifact-ubuntu24-amd64-20260918-b4`（39 镜像；新增 nats server/reloader/nats-box 三个，amd64 digest 与 lock 一致；新增 `charts/nats/2.14.6.tgz` sha256 `72f7412d…` 与 lock 完全一致；底座 runtime/ISO/hauler 不变） |
+| 站点配置 | 私有 `site/cluster.yaml` sha256 `eb6c74f55172680311f618d30363ae43d0551ee9a1c467fb28c8bb38f2def940`（四组件全 true） |
+| 源码改动 | 新增 `roles/ani/nats/{tasks,templates/{values,verify}}`；playbook 挂载；`ImplementedComponents` 全量（4/4） |
+
+### B4-1 部署形态（真实渲染 + 实测）
+
+- 官方 Chart 2.14.6，values 按计划模板：`config.cluster.enabled=false`、JetStream fileStore（PVC `nats-js` 5Gi `ani-block`）、`memoryStore.enabled=false`、`natsBox.enabled=false`。
+- 认证：`config.merge.authorization.token: "<< $TOKEN >>"`（Chart 特殊语法，渲染为 nats.conf 的 `$TOKEN`，由 server 进程从环境展开）+ `container.env.TOKEN` secretKeyRef `ani-nats-auth/token`——**token 不出现在参数/日志/values**。
+- 镜像全部经 `container.image.fullImageName` / `reloader.image.fullImageName` 覆盖为离线引用（chart 默认短名会出公网）。
+- 真实渲染核对：StatefulSet `nats` replicas=1（非 cluster 默认 3）、服务 `nats`/`nats-headless`、sidecar reloader 在位。
+
+### B4-2 快照与断网证据
+
+- a1/a2 均为：restore 3/3（VMID 5/6/7, snapshotId=1）→ clean-check 干净 → preplock 3/3 → 断网 apply+verify（公网 HTTPS/DNS 失败、`ANI-OFFLINE` 在、管理 SSH 可达）。证据 `evidence/b4-{restore-dryrun,restore,isolation-before}.log`、`b4a2-*`。
+
+### B4-3 安装退出码
+
+| attempt | INSTALL_EXIT | 结果 |
+| --- | --- | --- |
+| a1 | 1 | total 464/success 453/failed 1；失败于 nats verify **宿主侧**标记锚定 bug（容器内输出带后缀、断言用 `$` 精确行尾，K-9 已修） |
+| a2 | **0** | total **474/success 464/failed 0**（结束 2026-09-18T18:15:08Z）；四组件安装内自检全过 |
+
+### B4-4 功能与持久化验证（a2）
+
+- **独立 verify `VERIFY_EXIT=0`**：`components=cert-manager=pass postgresql=pass valkey=pass nats=pass`，registry=39，nodes=3，`ANI-NETWORK-OK`/`ANI-INSTALLER-OK`。
+- **NATS 判据（a2 verify 内全部真实执行）**：授权 Job 经 Service DNS 用 token 创建 **file 存储、replicas=1** 的唯一 stream 与 **durable 显式 ack pull consumer**；两条唯一消息均获得 **JetStream PubAck**（`Stored in Stream: X Sequence: 1/2`）；仅消费+ack 第一条（`ANI-NATS-CONSUMED-OK`）；第二条保持未投递（`num_pending=1`，`ANI-NATS-PENDING-OK`）；CLI 命令形态在 build host 用真实 nats-box 0.19.7 + 真实 server 逐条验证过（`--config` 免 TTY、`-J` 同步 PubAck、`NATS_TOKEN` 环境变量认证——token 不进参数）。
+- **负向**：错误 token → `nats: Authorization Violation`（按回复内容断言，非退出码——CLI 对错误回复退出 0，同 valkey 的教训）→ `ANI-NATS-AUTH-REJECTED`。
+- **持久化（lab，`evidence/b4a2-persist-final.log`，`B4-PERSISTENCE-OK`）**：写唯一 stream/consumer/两消息（双 PubAck）→ 仅 ack 第一条 → 记录 stream/consumer 状态（messages=2、num_pending=1）→ 删除唯一 server Pod（新 UID `dae989b4…`，node2）→ 端点 2s 就绪（K-5 梯未触发）→ 同一 Service 读回：stream/consumer/确认状态保留，第二条消息成功投递且载荷精确匹配 → STS/PVC/Secret UID 不变。
+- 注：persist 的 write Job 首跑曾因**逐节点镜像缓存差异**失败（lab 脚本硬编码 `127.0.0.1:5000`，而集群实际镜像引用为 installer 节点 IP `172.16.101.20:5000`，后者才在非 installer 节点可用/缓存）；已改为 `172.16.101.20:5000` 并加 write 重试，与产品渲染逻辑（`.ani.images` 本就生成 installer IP 引用）对齐。
+
+### B4-5 下一批
+
+B4 产品判据全部通过。**B5（最终交付与人工复现入口）可以开始**。
 
 ---
 
@@ -307,6 +347,8 @@ B3 产品判据全部通过（安装退出 0、独立 verify 0、持久化 0，�
 | K-6 | B2 PostgreSQL 角色实现中修复的 installer 缺陷（凭据生成 pipefail SIGPIPE exit 141、verify.sh 未加引号 heredoc 本地展开 psql、PVC 检查管道） | installer（本轮） | resolved（B2 a7 验证通过） |
 | K-7 | **底座 Ceph 初始化失败（B3 a2/a3 连续两次、机制不同、归属不同）**：a2 = **ANI 底座 ceph role 的编排缺陷（既有代码，非 B3 引入）**——apply `ani-block-pool` CR 后未等其 Ready 就跑 ceph-verify.sh 创建 `ani-rbd-test` 测试 PVC（早 5 秒）→ CSI 如实报 `pool not found` → 重试超时。a3 = **rook-ceph v1.20.7 operator reconcile 挂死**（CSI key 创建中 >20 分钟零日志、进程存活 0 重启、0 mgr/0 OSD）→ CephCluster 恒 `Progressing` → 安装等待超时，与 ANI 代码无关。均与离线隔离无关（两次均未执行到组件 role） | a2：ANI installer（底座 role）；a3：Rook/Ceph（组件） | **a2 已修复并经 a4 验证**（apply 后补 `wait cephblockpool/ani-block-pool --for=jsonpath=.status.phase=Ready`，经用户批准）；a3 未修（上游问题，a4 重试自然通过，移交记录见 `evidence/b3a3-ROOTCAUSE.md`） |
 | K-8 | B3 Valkey 负向认证验证最初按退出码分支：`valkey-cli` 对服务端错误回复退出 0（本批镜像实测），且连接失败会被误判为"已拒绝"（假通过隐患）。已改为断言 RESP 错误码（NOAUTH/WRONGPASS）+ 其余一切显式失败 | installer（本轮） | resolved（B3 a4 验证通过：`ANI-VALKEY-AUTH-REJECTED` 真实执行） |
+| K-9 | B4 nats verify 宿主侧标记断言 bug：容器内输出 `ANI-NATS-PENDING-OK second=pending`（带后缀），断言用 `^…$` 精确整行匹配 → 永不匹配。已改为容器内裸输出标记；同批实测 `nats` CLI 对错误回复退出 0（负向断言按 "Authorization Violation" 内容判定） | installer（本轮） | resolved（B4 a2 验证通过） |
+| K-10 | **lab 脚本硬编码 `127.0.0.1:5000` 镜像引用的陷阱**：离线 registry（hauler）只监听在 installer 节点；集群内 pod 的实际镜像引用是 `172.16.101.20:5000/...`（site registry 地址），非 installer 节点上 `127.0.0.1:5000` 不可达。产品渲染（`.ani.images`）自动使用正确地址，不受影响；仅 lab 脚本需用 `172.16.101.20:5000` 引用 | lab（本轮） | resolved（b4-persist 已改并加 write 重试；B4 a2 持久化验证通过） |
 
 ---
 

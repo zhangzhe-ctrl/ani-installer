@@ -1,0 +1,38 @@
+# Rendered by the ANI nats role for the official nats Chart 2.14.6.
+# Re-rendered by every install run; do not edit.
+#
+# Single instance: cluster disabled, JetStream fileStore on the ani-block PVC
+# (size from the site config), token auth via the "<< $TOKEN >>" chart
+# mechanism backed by the ani-nats-auth Secret. Images are pinned to the
+# offline registry through the chart's fullImageName overrides - the chart's
+# default short image names would pull from the internet.
+config:
+  cluster:
+    enabled: false
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      pvc:
+        enabled: true
+        size: {{ .ani.components.nats.storage_size }}
+        storageClassName: {{ .ani.components.nats.storage_class }}
+    memoryStore:
+      enabled: false
+  merge:
+    authorization:
+      token: "<< $TOKEN >>"
+container:
+  image:
+    fullImageName: {{ index .ani.images "docker.io/library/nats:2.14.6-alpine" }}
+  env:
+    TOKEN:
+      valueFrom:
+        secretKeyRef:
+          name: ani-nats-auth
+          key: token
+reloader:
+  image:
+    fullImageName: {{ index .ani.images "docker.io/natsio/nats-server-config-reloader:0.23.0" }}
+natsBox:
+  enabled: false

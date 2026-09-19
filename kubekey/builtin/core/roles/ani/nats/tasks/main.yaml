@@ -1,0 +1,93 @@
+---
+# ANI NATS JetStream component (official Chart nats 2.14.6).
+#
+# Single instance in the ani-platform namespace: cluster disabled, JetStream
+# fileStore on one RWO RBD PVC (ani-block), token auth. The token is random per
+# run and reaches the server only through the ani-nats-auth Secret ->
+# container env TOKEN -> nats.conf "$TOKEN" expansion (the chart's documented
+# "<< $TOKEN >>" mechanism). It never appears in command arguments or logs.
+# natsBox stays disabled; the CLI jobs use the packaged nats-box image.
+# Skipped entirely when components.nats is not enabled.
+#
+# Chart facts verified by rendering 2.14.6.tgz with these values on the build
+# host: StatefulSet nats (replicas 1), ConfigMap nats-config, Services
+# nats/nats-headless, JetStream PVC claim "nats-js", config reloader sidecar
+# on. Images are overridden to offline refs via container.image.fullImageName /
+# reloader.image.fullImageName (the chart's default short names would leave
+# the cluster).
+#
+# All images come from {{ index .ani.images "docker.io/library/nats:2.14.6-alpine" }}
+# style offline references; no remote registry is contacted and there is no
+# network access here.
+
+- name: ANI NATS | Create work directory
+  command: install -d -m 0755 /etc/kubernetes/ani/nats
+
+- name: ANI NATS | Generate a stable token for this run
+  command: |
+    set -euo pipefail
+    d=/etc/kubernetes/ani/nats
+    gen_pw() {
+      pw=""
+      while [ "${#pw}" -ne 32 ]; do
+        pw="$(LC_ALL=C head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-32)"
+      done
+      printf '%s' "$pw"
+    }
+    if [ ! -s "$d/nats.token" ]; then gen_pw > "$d/nats.token"; fi
+    chmod 0600 "$d/nats.token"
+
+- name: ANI NATS | Create the application namespace
+  command: |
+    kubectl create namespace ani-platform --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI NATS | Create the auth token secret
+  command: |
+    set -euo pipefail
+    kubectl -n ani-platform create secret generic ani-nats-auth \
+      --from-file=token=/etc/kubernetes/ani/nats/nats.token \
+      --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI NATS | Require the packaged Helm binary
+  command: test -x "{{ .ani.artifact_root }}/bin/helm"
+
+- name: ANI NATS | Render the Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/nats/values.yaml
+
+- name: ANI NATS | Lock down the rendered values
+  command: chmod 0600 /etc/kubernetes/ani/nats/values.yaml
+
+- name: ANI NATS | Install the fixed Chart from the offline artifact
+  command: >-
+    {{ .ani.artifact_root }}/bin/helm upgrade --install nats
+    {{ .ani.artifact_root }}/charts/nats/2.14.6.tgz
+    --namespace ani-platform --create-namespace
+    --values /etc/kubernetes/ani/nats/values.yaml
+    --wait --timeout 900s
+
+- name: ANI NATS | Wait for StatefulSet rollout
+  command: |
+    kubectl -n ani-platform rollout status statefulset/nats --timeout=600s
+
+- name: ANI NATS | Wait for the JetStream RWO PVC to bind
+  command: |
+    kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/nats-js-nats-0 --timeout=300s
+
+- name: ANI NATS | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/nats/verify.sh
+
+- name: ANI NATS | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/nats/verify.sh
+    chmod 0700 /etc/kubernetes/ani/nats/verify.sh
+    test -x /etc/kubernetes/ani/nats/verify.sh
+
+- name: ANI NATS | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/nats/verify.sh

@@ -5,3 +5,6 @@
 # These are throwaway helpers and must never be version-controlled.
 _*.sh
 *.tgz
+
+# Project-local memory / runtime state managed by WorkBuddy — never commit.
+.workbuddy/

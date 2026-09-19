@@ -111,5 +111,7 @@
       when: '{{ (index .ani.components "postgresql").enabled }}'
     - role: ani/valkey
       when: '{{ (index .ani.components "valkey").enabled }}'
+    - role: ani/nats
+      when: '{{ (index .ani.components "nats").enabled }}'
 
 - import_playbook: hook/post_install.yaml

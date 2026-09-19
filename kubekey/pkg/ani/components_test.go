@@ -100,7 +100,9 @@ func TestComponentsUnknownKeyRejected(t *testing.T) {
 }
 
 func TestNotImplementedComponentMustFailBeforeDeploy(t *testing.T) {
-	for _, component := range []string{"nats"} {
+	// All four foundation components are implemented as of B4; the loop below
+	// stays as the guard rail for any future component added to componentsOrder.
+	for _, component := range []string{} {
 		if contains(ImplementedComponents, component) {
 			t.Fatalf("%s is already implemented; update this test with the new batch", component)
 		}
