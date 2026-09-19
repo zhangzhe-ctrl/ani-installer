@@ -1,0 +1,116 @@
+# Rendered by the ANI loki role for the official Loki Chart 18.13.3. Re-rendered
+# by every install run; do not edit.
+#
+# One monolith on one RBD PVC in the ani-observability namespace, release name
+# ani-loki. The chart's own reference monolith (monolithic-values.yaml in the
+# Chart) is the shape this follows, with the storage switched from MinIO/S3 to
+# filesystem and every unused component turned off: the distributed read/write/
+# backend replicas, the two memcached caches (each declares gigabytes of memory
+# by default, which this 8GiB lab cannot spare), the gateway, the canary, the
+# chart's self-test hook, the ruler and MinIO itself.
+#
+# Loki's filesystem store is the documented low-traffic deployment. The RBD PVC
+# makes the logs survive a pod rebuild; it does not make this deployment highly
+# available, and this batch makes no such claim. There is no public endpoint:
+# the Service is ClusterIP only and auth_enabled stays false because this is a
+# single-tenant in-cluster service, not because authentication is optional in
+# general.
+deploymentMode: Monolithic
+
+loki:
+  auth_enabled: false
+  image:
+    registry: {{ .ani.registry }}
+    repository: {{ .ani.image_parts.logs.loki.repository }}
+    tag: {{ .ani.image_parts.logs.loki.tag }}
+  commonConfig:
+    # One copy of every stream: there is no second ingester to replicate to.
+    replication_factor: 1
+  storage:
+    # Filesystem chunks live on the PVC. No S3, no RGW, no MinIO.
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    # The site's retentionDays, rendered as a Loki duration by the role.
+    retention_period: {{ .ani.components.logging.retention_hours }}h
+  compactor:
+    # Retention is only real when the compactor runs with a delete store: the
+    # limits_config value alone marks nothing for deletion. The working
+    # directory holds the deletion markers, so it must be on the PVC.
+    working_directory: /var/loki/compactor
+    retention_enabled: true
+    delete_request_store: filesystem
+  ingester:
+    wal:
+      # The write-ahead log flushes to the PVC, so a pod rebuild does not lose
+      # the most recent lines. flush_on_shutdown makes a normal rebuild drain
+      # instead of replaying.
+      enabled: true
+      dir: /var/loki/wal
+      flush_on_shutdown: true
+  storage_config:
+    # Index and cache paths are on the PVC too; the container root is read-only.
+    tsdb_shipper:
+      active_index_directory: /var/loki/tsdb-index
+      cache_location: /var/loki/tsdb-cache
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  replicas: 1
+  # The rules sidecar watches for a second container image; there are no rules.
+  sidecar: false
+  persistence:
+    enabled: true
+    storageClass: {{ .ani.components.logging.storage_class }}
+    size: {{ .ani.components.logging.storage_size }}
+    # Deleting the release or scaling down must not delete the logs: this is the
+    # one copy of them.
+    whenScaled: Retain
+    whenDeleted: Retain
+    enableStatefulSetAutoDeletePVC: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# The other deployment modes' replicas are zeroed so the platform accepts
+# deploymentMode: Monolithic. The chart refuses to render a monolith while any
+# of these still asks for replicas.
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Unused components that default to on. chunksCache and resultsCache alone
+# declare roughly 8GiB and 1GiB of memcached memory, which does not fit this
+# lab; the rest would add workloads, services or a second image this batch does
+# not need.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+gateway:
+  enabled: false
+lokiCanary:
+  enabled: false
+# The chart's test hook pulls a separate grafana/loki-helm-test image. Disabling
+# it also keeps that image out of the offline closure.
+test:
+  enabled: false
+ruler:
+  enabled: false
+minio:
+  enabled: false

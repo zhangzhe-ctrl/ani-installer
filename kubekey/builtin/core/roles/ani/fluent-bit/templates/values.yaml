@@ -1,0 +1,196 @@
+# Rendered by the ANI fluent-bit role for the official Fluent Bit Chart 0.58.2.
+# Re-rendered by every install run; do not edit.
+#
+# One DaemonSet collecting every node's container stdout/stderr into the single
+# selected backend. The whole chart config is replaced: the chart's default tail
+# input is kept but the systemd input is dropped (this batch collects container
+# logs, not kubelet's journal), the default Docker container path is dropped
+# (this cluster runs containerd), and both default Elasticsearch outputs are
+# replaced by exactly one output for the selected backend. Leaving the chart's
+# outputs in place would double-write every record.
+#
+# The tail cursor database and the filesystem buffer live on a per-node hostPath
+# so a collector restart resumes where it stopped instead of re-reading or
+# skipping. That hostPath holds the collector's own bookkeeping only; the logs
+# themselves are in the backend's PVC.
+kind: DaemonSet
+
+image:
+  # This chart has no registry field: its helper does
+  # printf "%s%s" .repository ":tag", so the repository must carry the whole
+  # host/path. Handing it a bare "fluent/fluent-bit" would make every node try
+  # to pull from Docker Hub, which is unreachable here and is exactly what the
+  # offline render gate checks for.
+  repository: {{ .ani.registry }}/{{ .ani.image_parts.logs.fluentBit.repository }}
+  tag: {{ .ani.image_parts.logs.fluentBit.tag }}
+
+# The chart's test hook pulls a second image and runs it as a Job. The packaged
+# verification script covers the same ground, so this stays off and the extra
+# image stays out of the offline closure.
+testFramework:
+  enabled: false
+
+# No config-reloader sidecar: the rendered config is fixed for the life of the
+# install and nothing rewrites it at runtime.
+hotReload:
+  enabled: false
+
+# The three values used inside config.service below are literals on purpose.
+# The chart's own defaults reference them through its values map, but that only
+# resolves during Helm's second render pass. Any consumer that reads this file
+# directly (our own render gate, an operator inspecting the rendered values)
+# would otherwise see a missing-value marker and be unable to tell a broken
+# template from a working one. The top-level flush/logLevel/metricsPort keys
+# below are kept in step with these literals.
+config:
+  service: |
+    [SERVICE]
+        Daemon Off
+        Flush 1
+        Log_Level info
+        Parsers_File /fluent-bit/etc/parsers.conf
+        Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+        Health_Check On
+        # Bounded local buffering: the cursor file and the filesystem buffer are
+        # on the per-node hostPath below. This is a bounded buffer, not a
+        # promise of zero loss while the backend is unreachable.
+        storage.path /var/lib/fluent-bit/buffers
+        storage.sync normal
+        storage.checksum off
+        storage.backlog.mem_limit 10M
+
+  inputs: |
+    # Container logs only. The CRI parser handles containerd's
+    # "timestamp stream flag message" framing; the kubernetes filter below
+    # attaches the pod metadata that makes records searchable.
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*.log
+        multiline.parser cri
+        Tag kube.*
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+        DB /var/lib/fluent-bit/tail.db
+        DB.locking true
+        storage.type filesystem
+
+  filters: |
+    # Attach namespace/pod/container/node from the log file path and the API.
+    # The metadata stays in the record body; it is deliberately not promoted to
+    # Loki labels as the whole label set would explode the index.
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Merge_Log_Key log_processed
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Labels Off
+        Annotations Off
+
+  outputs: |
+{{- if eq .ani.components.logging.backend "loki" }}
+    [OUTPUT]
+        Name loki
+        Match kube.*
+        Host ani-loki.{{ .ani.components.logging.namespace }}.svc.cluster.local
+        Port 3100
+        Line_Format json
+        Labels job=fluent-bit,namespace=$kubernetes['namespace_name'],pod=$kubernetes['pod_name'],container=$kubernetes['container_name'],node=$kubernetes['host']
+        Label_Keys $kubernetes['namespace_name'],$kubernetes['pod_name'],$kubernetes['container_name']
+        Auto_Kubernetes_Labels Off
+        Retry_Limit 5
+        storage.total_limit_size 100M
+{{- end }}
+{{- if eq .ani.components.logging.backend "opensearch" }}
+    # Credentials come from a Secret through env, never from this file.
+    [OUTPUT]
+        Name opensearch
+        Match kube.*
+        Host ani-opensearch-master.{{ .ani.components.logging.namespace }}.svc.cluster.local
+        Port 9200
+        HTTP_User ${OS_USER}
+        HTTP_Passwd ${OS_PASSWORD}
+        tls On
+        tls.verify On
+        tls.ca_file /fluent-bit/tls/ca.crt
+        Suppress_Type_Name On
+        Logstash_Format On
+        Logstash_Prefix ani-logs
+        Logstash_DateFormat %Y.%m.%d
+        Generate_ID On
+        Retry_Limit 5
+        storage.total_limit_size 100M
+{{- end }}
+
+  customParsers: |
+    [PARSER]
+        Name docker_no_time
+        Format json
+        Time_Keep Off
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+# Only the two host paths this collector needs. The Docker containers path in
+# the chart's defaults is dropped: the runtime here is containerd and that
+# directory does not exist.
+daemonSetVolumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: fluent-bit-state
+    hostPath:
+      path: /var/lib/ani-installer/fluent-bit
+      type: DirectoryOrCreate
+{{- if eq .ani.components.logging.backend "opensearch" }}
+  - name: opensearch-tls
+    secret:
+      secretName: ani-opensearch-fluent-bit-tls
+{{- end }}
+
+daemonSetVolumeMounts:
+  # Read-only: the collector must not write into the node's log directory.
+  - name: varlog
+    mountPath: /var/log
+    readOnly: true
+  - name: fluent-bit-state
+    mountPath: /var/lib/fluent-bit
+{{- if eq .ani.components.logging.backend "opensearch" }}
+  - name: opensearch-tls
+    mountPath: /fluent-bit/tls
+    readOnly: true
+{{- end }}
+
+# The control-plane node carries this taint in the lab. The toleration names the
+# taint instead of tolerating everything, so a stray taint on another node does
+# not silently become tolerated too.
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+{{- if eq .ani.components.logging.backend "opensearch" }}
+# The credential values are injected from a Secret; this file only names the
+# environment variables the output block above reads.
+env:
+  - name: OS_USER
+    valueFrom:
+      secretKeyRef:
+        name: ani-opensearch-fluent-bit
+        key: username
+  - name: OS_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: ani-opensearch-fluent-bit
+        key: password
+{{- end }}

@@ -1,0 +1,83 @@
+---
+# ANI Loki (official Chart 18.13.3).
+#
+# One monolith with one RBD PVC in the ani-observability namespace under
+# release name ani-loki. Chart facts verified by rendering 18.13.3.tgz with
+# these values on the build host: StatefulSet ani-loki, Services ani-loki,
+# ani-loki-headless and ani-loki-memberlist, ConfigMaps loki and loki-runtime,
+# one container image and no other workload. The chart's own caches, gateway,
+# canary, ruler, MinIO and test hook are off.
+#
+# Skipped entirely when the selected backend is not loki. The role does not
+# also deploy Fluent Bit: collection is a separate role so that collection can
+# never exist without a backend, and a backend can be installed and verified
+# before anything writes to it.
+#
+# No image is fetched from a remote registry: the single container image is
+# rewritten to the site registry below.
+
+- name: ANI Loki | Create work directory
+  command: |
+    install -d -m 0755 /etc/kubernetes/ani/loki
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+
+- name: ANI Loki | Create the observability namespace
+  command: |
+    kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Loki | Require the packaged Helm binary
+  command: test -x "{{ .ani.artifact_root }}/bin/helm"
+
+- name: ANI Loki | Render the Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/loki/values.yaml
+
+- name: ANI Loki | Lock down the rendered values
+  command: chmod 0600 /etc/kubernetes/ani/loki/values.yaml
+
+- name: ANI Loki | Install the fixed Chart from the offline artifact
+  command: >-
+    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-loki
+    {{ .ani.artifact_root }}/charts/loki/18.13.3.tgz
+    --namespace {{ .ani.components.logging.namespace }} --create-namespace
+    --values /etc/kubernetes/ani/loki/values.yaml
+    --wait --timeout 900s
+
+# The monolith is a StatefulSet, so this waits for the same object the chart
+# renders rather than for a Deployment that does not exist.
+- name: ANI Loki | Wait for the Loki StatefulSet
+  command: |
+    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+      statefulset/ani-loki --timeout=600s
+
+- name: ANI Loki | Wait for the data PVC to bind
+  command: |
+    set -euo pipefail
+    kubectl -n {{ .ani.components.logging.namespace }} wait \
+      --for=jsonpath='{.status.phase}'=Bound pvc/storage-ani-loki-0 --timeout=300s
+
+- name: ANI Loki | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/loki/verify.sh
+
+- name: ANI Loki | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/loki/verify.sh
+    chmod 0700 /etc/kubernetes/ani/loki/verify.sh
+    test -x /etc/kubernetes/ani/loki/verify.sh
+
+# This verifies the backend's own capabilities (API, retention config, PVC). The
+# end-to-end path from a container's stdout through Fluent Bit into this backend
+# belongs to the Fluent Bit role, which runs after this one.
+- name: ANI Loki | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/loki/verify.sh
+
+- name: ANI Loki | Render connection facts fragment
+  template:
+    src: connection.md
+    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/loki.md"

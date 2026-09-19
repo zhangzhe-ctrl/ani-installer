@@ -1,0 +1,90 @@
+---
+# ANI Fluent Bit (official Chart 0.58.2).
+#
+# One DaemonSet in the ani-observability namespace under release name
+# ani-fluent-bit, collecting every node's container stdout/stderr and writing
+# it to the single selected backend. The values template replaces the whole
+# chart config: the systemd input and the Docker container path are dropped and
+# the chart's two default Elasticsearch outputs are replaced by exactly one
+# output, so no record is ever written twice.
+#
+# This role is independent of which backend was chosen. It is skipped when
+# logging is disabled or when no backend was selected, because a collector
+# without a backend has nowhere to write and would only fill its local buffer.
+# When the backend is OpenSearch this role runs after the opensearch role; when
+# it is Loki it runs after the loki role. Either way the backend is already
+# verified before the first record is sent to it.
+#
+# No image is fetched from a remote registry: the one container image is
+# rewritten to the site registry here.
+
+- name: ANI Fluent Bit | Create work directory
+  command: |
+    install -d -m 0755 /etc/kubernetes/ani/fluent-bit
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+
+- name: ANI Fluent Bit | Create the observability namespace
+  command: |
+    kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Fluent Bit | Require the packaged Helm binary
+  command: test -x "{{ .ani.artifact_root }}/bin/helm"
+
+- name: ANI Fluent Bit | Render the Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/fluent-bit/values.yaml
+
+- name: ANI Fluent Bit | Lock down the rendered values
+  command: chmod 0600 /etc/kubernetes/ani/fluent-bit/values.yaml
+
+- name: ANI Fluent Bit | Install the fixed Chart from the offline artifact
+  command: >-
+    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-fluent-bit
+    {{ .ani.artifact_root }}/charts/fluent-bit/0.58.2.tgz
+    --namespace {{ .ani.components.logging.namespace }} --create-namespace
+    --values /etc/kubernetes/ani/fluent-bit/values.yaml
+    --wait --timeout 600s
+
+# A DaemonSet rollout status only returns once every scheduled pod is ready,
+# but the chart does not pin the desired count, so the ready count is compared
+# against the node count as well. A collector missing on one node would
+# silently lose that node's logs.
+- name: ANI Fluent Bit | Wait for the DaemonSet on every node
+  command: |
+    set -euo pipefail
+    want="$(kubectl get nodes --no-headers | wc -l)"
+    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+      daemonset/ani-fluent-bit --timeout=600s
+    got="$(kubectl -n {{ .ani.components.logging.namespace }} get daemonset \
+      ani-fluent-bit -o jsonpath='{.status.numberReady}')"
+    if [ "$got" != "$want" ]; then
+      echo "fluent-bit ready on $got of $want nodes" >&2
+      exit 1
+    fi
+
+- name: ANI Fluent Bit | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/fluent-bit/verify.sh
+
+- name: ANI Fluent Bit | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/fluent-bit/verify.sh
+    chmod 0700 /etc/kubernetes/ani/fluent-bit/verify.sh
+    test -x /etc/kubernetes/ani/fluent-bit/verify.sh
+
+# This is the end-to-end check the Loki (or OpenSearch) role cannot make for
+# itself: a marker written to a container's stdout must be found in the selected
+# backend by querying the backend, with the pod/namespace/container/node
+# metadata the collector attached. It does not push to the backend directly.
+- name: ANI Fluent Bit | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/fluent-bit/verify.sh
+
+- name: ANI Fluent Bit | Render connection facts fragment
+  template:
+    src: connection.md
+    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/fluent-bit.md"
