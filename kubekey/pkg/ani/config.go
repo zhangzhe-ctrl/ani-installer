@@ -53,6 +53,12 @@ type MetricsComponent struct {
 	PrometheusStorageSize   string `yaml:"prometheusStorageSize"`
 	AlertmanagerStorageSize string `yaml:"alertmanagerStorageSize"`
 	PrometheusRetention     string `yaml:"prometheusRetention"`
+	// PrometheusRetentionSize caps what Prometheus keeps on disk. It must stay
+	// below PrometheusStorageSize, otherwise the volume fills before the time
+	// based retention ever applies. It is a Kubernetes quantity, so it uses the
+	// Ki/Mi/Gi suffix family (Prometheus also accepts 4GB, but that form is not
+	// a quantity and would not be comparable to the volume size here).
+	PrometheusRetentionSize string `yaml:"prometheusRetentionSize"`
 }
 
 // LoggingComponent selects at most one log backend. An empty backend means
@@ -71,6 +77,25 @@ const (
 	loggingLoki       = "loki"
 	loggingOpenSearch = "opensearch"
 )
+
+// MetricsNamespace holds the whole observability batch: the metrics stack and
+// whichever log backend is selected. It is a constant rather than a site field
+// because the roles, the Prometheus rule selector and the Alertmanager config
+// selector all have to agree on it.
+const MetricsNamespace = "ani-observability"
+
+// metricsRunID is the value the metrics role puts on its AlertmanagerConfig.
+// Alertmanager only admits configs carrying it, so a stale config from an
+// earlier installation cannot route a later run's alerts. Deriving it from the
+// cluster name keeps it stable across the re-renders one install performs,
+// while still differing between installations. It is empty while the stack is
+// off, so a disabled stack never matches a route.
+func metricsRunID(c Components, clusterName string) string {
+	if !c.Metrics.Enabled {
+		return ""
+	}
+	return "ani-" + clusterName
+}
 
 // Components selects which components this run installs. Every switch is
 // independent and defaults to off.
@@ -95,6 +120,7 @@ func DefaultComponents() Components {
 			PrometheusStorageSize:   "5Gi",
 			AlertmanagerStorageSize: "1Gi",
 			PrometheusRetention:     "24h",
+			PrometheusRetentionSize: "4Gi",
 		},
 		Logging: LoggingComponent{
 			Backend:       loggingNone,
@@ -172,7 +198,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability rows are listed here from C1 onward because their typed
 // configuration and wiring exist; each role is added in its own card (C2-C4).
 // A row is only listed once its role and verification script are packaged.
-var ImplementedComponents = []string{"cert-manager", "postgresql", "valkey", "nats"}
+var ImplementedComponents = []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"}
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
 // negative, which resource.ParseQuantity alone accepts.
@@ -237,6 +263,19 @@ func (c Components) validateMetrics() error {
 	// Prometheus retention is a plain duration; alertmanager does not take one.
 	if !validRetention(m.PrometheusRetention, []string{"h", "d"}) {
 		return fmt.Errorf("components.metrics.prometheusRetention %q must be a positive integer followed by h or d (for example 24h or 7d)", m.PrometheusRetention)
+	}
+	// The on-disk cap must exist and must be smaller than the volume, or the
+	// volume fills up first and the cap is meaningless.
+	retentionSize, err := resource.ParseQuantity(m.PrometheusRetentionSize)
+	if err != nil || retentionSize.Sign() <= 0 {
+		return fmt.Errorf("components.metrics.prometheusRetentionSize %q must be a positive capacity (for example 4Gi)", m.PrometheusRetentionSize)
+	}
+	storageSize, err := resource.ParseQuantity(m.PrometheusStorageSize)
+	if err != nil {
+		return fmt.Errorf("components.metrics.prometheusStorageSize %q is not a valid capacity: %w", m.PrometheusStorageSize, err)
+	}
+	if retentionSize.Cmp(storageSize) >= 0 {
+		return fmt.Errorf("components.metrics.prometheusRetentionSize %q must be smaller than prometheusStorageSize %q, otherwise Prometheus fills its volume before the retention limit applies", m.PrometheusRetentionSize, m.PrometheusStorageSize)
 	}
 	return nil
 }
@@ -546,8 +585,15 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err != nil {
 		return nil, err
 	}
+	// Split image references for the charts that build "registry/repository:tag"
+	// themselves. Those charts must not be handed a whole reference in the
+	// registry field, or the resulting path is doubled and never pulls.
+	imageParts, err := SplitImageReferences(imageTable, registry, componentImageKeys())
+	if err != nil {
+		return nil, err
+	}
 
-	components := componentSpec(c.Components)
+	components := componentSpec(c.Components, c.Name)
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
 		nodeNames = append(nodeNames, n.Name)
@@ -615,6 +661,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		"ani": map[string]any{
 			"registry":       registry,
 			"images":         imageRefs,
+			"image_parts":    imageParts,
 			"components":     components,
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
@@ -634,11 +681,28 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	}, nil
 }
 
+// ComponentSpecForRender exposes componentSpec with the documented defaults for
+// a render check. It exists so a lab render exercises the same keys a role
+// reads instead of keeping a second copy that can drift out of step.
+//
+// The component defaults are used as they stand rather than run through
+// Validate: the render only needs the key shape, and Validate is the site gate
+// that needs a full cluster, so going through it would make an offline render
+// depend on a topology it is not describing.
+func ComponentSpecForRender(clusterName string) map[string]any {
+	c := DefaultComponents()
+	// The metrics stack is on for a render check: its fields are what the role
+	// template needs, and a disabled stack would render empty image fields.
+	c.Metrics.Enabled = true
+	return componentSpec(c, clusterName)
+}
+
 // componentSpec turns the typed component configuration into the map that the
 // roles read. It is separate from KubeKeyConfig so the spec shape can be tested
 // without going through the site validation gate, and so there is exactly one
-// place that decides which keys a role sees.
-func componentSpec(c Components) map[string]any {
+// place that decides which keys a role sees. clusterName is only used to derive
+// the run label that scopes Alertmanager routing to this installation.
+func componentSpec(c Components, clusterName string) map[string]any {
 	spec := map[string]any{}
 	for _, row := range c.Selection() {
 		entry := map[string]any{"enabled": row.Enabled}
@@ -653,10 +717,16 @@ func componentSpec(c Components) map[string]any {
 	// the site YAML, even when the stack is disabled.
 	spec["metrics"] = map[string]any{
 		"enabled":                   c.Metrics.Enabled,
+		"namespace":                 MetricsNamespace,
 		"storage_class":             c.Metrics.StorageClass,
 		"prometheus_storage_size":   c.Metrics.PrometheusStorageSize,
 		"alertmanager_storage_size": c.Metrics.AlertmanagerStorageSize,
 		"prometheus_retention":      c.Metrics.PrometheusRetention,
+		"prometheus_retention_size": c.Metrics.PrometheusRetentionSize,
+		// The run label is what scopes the Alertmanager route and the role's
+		// temporary objects to this installation. An empty value keeps a
+		// disabled stack from matching anything at all.
+		"run_id": metricsRunID(c, clusterName),
 	}
 	// The log backend is one string, not a pair of booleans, so a role cannot
 	// see two enabled backends. The loki/opensearch/fluent-bit rows above are

@@ -147,8 +147,12 @@ func TestKubeKeyConfigOfflineAndNetworkValues(t *testing.T) {
 	}
 }
 
+// testImageTable lists the images the component roles read. It holds the same
+// entries the packaged TSV does, so a role that starts reading a new image
+// fails here rather than rendering an empty field the chart would happily
+// concatenate.
 func testImageTable() ImageTable {
-	return ImageTable{
+	table := ImageTable{
 		"docker.changqingyun.cn/kubercloud/gateway:v1.8.3": {
 			Original:  "docker.changqingyun.cn/kubercloud/gateway:v1.8.3",
 			HaulerRef: "127.0.0.1:5000/kubercloud/gateway:v1.8.3",
@@ -156,6 +160,15 @@ func testImageTable() ImageTable {
 			Use:       "Envoy Gateway",
 		},
 	}
+	for _, key := range componentImageKeys() {
+		table[key.Original] = Image{
+			Original:  key.Original,
+			HaulerRef: "127.0.0.1:5000/" + strings.TrimPrefix(key.Original, strings.SplitN(key.Original, "/", 2)[0]+"/"),
+			Digest:    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			Use:       key.Group + "/" + key.Name,
+		}
+	}
+	return table
 }
 
 func TestInstallerNodeOrderIsIndependent(t *testing.T) {

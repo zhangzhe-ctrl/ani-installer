@@ -68,6 +68,13 @@ func (t ImageTable) LocalReference(original, registry string) (string, error) {
 	return strings.Replace(img.HaulerRef, placeholderRegistry, registry, 1), nil
 }
 
+// ComponentImageParts is SplitImageReferences with the installer's fixed key
+// list. It is exported so a render check can build the same context the roles
+// see without duplicating the key names.
+func ComponentImageParts(table ImageTable, registry string) (map[string]any, error) {
+	return SplitImageReferences(table, registry, componentImageKeys())
+}
+
 // ManifestURL returns the registry URL for the hauler_ref without doing any
 // image content rewrite.
 func ManifestURL(haulerRef string) (string, error) {
@@ -86,4 +93,101 @@ func pathSegmentsEscape(path string) string {
 		segments[i] = url.PathEscape(segment)
 	}
 	return strings.Join(segments, "/")
+}
+
+// SplitReference breaks a local reference into the parts a Helm chart
+// concatenates itself. Several charts build "registry/repository:tag", so
+// handing them a whole reference in the registry field produces a doubled path
+// that can never be pulled.
+func SplitReference(ref string) (registry, repository, tag string, err error) {
+	slash := strings.Index(ref, "/")
+	if slash < 0 {
+		return "", "", "", fmt.Errorf("image reference %q has no repository", ref)
+	}
+	registry = ref[:slash]
+	rest := ref[slash+1:]
+	// A tag is the last colon that appears after the last slash. Anything
+	// before that (including a registry port) is not a tag.
+	tagSep := strings.LastIndex(rest, ":")
+	if tagSep < 0 {
+		return "", "", "", fmt.Errorf("image reference %q has no tag", ref)
+	}
+	repository = rest[:tagSep]
+	tag = rest[tagSep+1:]
+	if registry == "" || repository == "" || tag == "" {
+		return "", "", "", fmt.Errorf("image reference %q is incomplete", ref)
+	}
+	return registry, repository, tag, nil
+}
+
+// ImageKey names one entry of SplitImageReferences. The values are the
+// template-facing names, so a role reads .ani.image_parts.metrics.prometheus
+// and the installer never repeats a repository or tag string twice.
+//
+// TagOverride replaces the tag taken from the locked reference. It is only for
+// charts that append a suffix themselves; when empty the locked tag is used.
+type ImageKey struct {
+	Group       string
+	Name        string
+	Original    string
+	TagOverride string
+}
+
+// componentImageKeys lists the images whose references a Chart divides up
+// itself. Each entry names the image as the lock file does, and the parts are
+// read from the same images.tsv the whole-reference map comes from, so a
+// version bump only happens in one place.
+//
+// TagOverride exists for the images whose tag in the lock carries a suffix the
+// Chart adds back. A chart that appends "-distroless" when distroless is true
+// must be given the plain version, or the tag doubles up and the reference
+// never resolves. The override is stated next to the locked entry it applies to
+// rather than in the role template, so there is one place to read.
+func componentImageKeys() []ImageKey {
+	return []ImageKey{
+		{Group: "metrics", Name: "operator", Original: "quay.io/prometheus-operator/prometheus-operator:v0.90.1"},
+		{Group: "metrics", Name: "configReloader", Original: "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1"},
+		{Group: "metrics", Name: "prometheus", Original: "quay.io/prometheus/prometheus:v3.11.3-distroless"},
+		{Group: "metrics", Name: "alertmanager", Original: "quay.io/prometheus/alertmanager:v0.32.1"},
+		{
+			Group:       "metrics",
+			Name:        "nodeExporter",
+			Original:    "quay.io/prometheus/node-exporter:v1.11.1-distroless",
+			TagOverride: "v1.11.1",
+		},
+		{Group: "metrics", Name: "kubeStateMetrics", Original: "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0"},
+		{Group: "metrics", Name: "webhookCertgen", Original: "ghcr.io/jkroepke/kube-webhook-certgen:1.8.3"},
+		{Group: "lab", Name: "python", Original: "docker.io/library/python:3.13.11-alpine3.23"},
+	}
+}
+
+// SplitImageReferences turns the listed images into per-name registry,
+// repository and tag values. Every entry must exist in the table: a key whose
+// image is missing would otherwise render an empty field, and the resulting
+// chart would reference a nonsense image rather than fail here.
+func SplitImageReferences(table ImageTable, registry string, keys []ImageKey) (map[string]any, error) {
+	groups := map[string]any{}
+	for _, key := range keys {
+		local, err := table.LocalReference(key.Original, registry)
+		if err != nil {
+			return nil, fmt.Errorf("image key %s/%s: %w", key.Group, key.Name, err)
+		}
+		_, repository, tag, err := SplitReference(local)
+		if err != nil {
+			return nil, fmt.Errorf("image key %s/%s: %w", key.Group, key.Name, err)
+		}
+		if key.TagOverride != "" {
+			tag = key.TagOverride
+		}
+		group, ok := groups[key.Group].(map[string]any)
+		if !ok {
+			group = map[string]any{}
+			groups[key.Group] = group
+		}
+		group[key.Name] = map[string]any{
+			"repository": repository,
+			"tag":        tag,
+		}
+	}
+	return groups, nil
 }

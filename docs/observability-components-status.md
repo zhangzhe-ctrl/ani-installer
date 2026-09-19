@@ -287,3 +287,135 @@ go test ./...（全仓，排除无测试包）                  -> 无失败输�
   以免在本卡扩大改动面。
 - 下一卡：**C2 / 2A 指标与告警**（`ani/metrics` role，kube-prometheus-stack 85.4.0，
   release `ani-metrics`，ns `ani-observability`），只在 Fedora 做代码/渲染/测试，live 仍 `not_verified`。
+
+---
+
+## C2 / attempt: c2-feda-20260919
+
+```text
+card / attempt: C2 指标栈 / c2-feda-20260919
+code_status: pass
+live_status: not_verified
+source hash / kk hash / artifact manifest hash / config hash:
+  images.tsv sha256 c4f899cfce8af5275440e70867ae053765b76de49f16cf0e8512062fdfa7ddf9
+  chart sha256 3b07b7c91f1eaec75a125d1938c4e10d3b1ef6076ff7226d031fadadb4651a60
+  rendered values sha256 8a5d1a94376de1257774e5eedecae6131e0c18bf7d37003cebcc5c2637c3149c
+  helm v3.20.0+gb2e4314（离线，--kube-version 1.35.8）
+KCN version / digest / validated status:
+  未使用、未修改、未回补；新版材料未提供 → 不启动三台安装
+enabled components / backend / chart and app versions:
+  components.metrics.enabled=true；kube-prometheus-stack 85.4.0（appVersion v0.90.1）
+  release ani-metrics；namespace ani-observability；单副本、无 HA、无 Grafana/Thanos
+snapshot 3/3 / offline before-after / install exit:
+  not_verified（本卡未接触测试集群）
+metrics scrape-query / firing-resolved / logs three-node ingestion:
+  not_verified（verify.sh 已实现真实 HTTP API 查询与 firing/resolved 双相，但未在节点执行）
+normal Pod rebuild persistence / PVC and Secret UIDs:
+  not_verified（verify.sh 已实现 UID 与 range-query 回读，但未在节点执行）
+retention configuration / actual expiry (separate):
+  配置 retention 24h / retentionSize 4Gi（< 卷 5Gi）；实际过期行为 not_verified
+known issue / owner / exact next step:
+  见下「已知问题 / 下一步」
+```
+
+### 代码变更
+
+**新增 role `ani/metrics`**（`kubekey/builtin/core/roles/ani/metrics/`）
+
+- `tasks/main.yaml`：建工作目录与 `connections.d`、建命名空间、校验打包 helm、渲染并收紧（0600）
+  values、`helm upgrade --install`（`--wait --timeout 1200s`，材料只在 artifact 内，无网络取用）；
+  等待 `deployment/ani-metrics-operator`、`statefulset/prometheus-ani-metrics-prometheus`、
+  `statefulset/alertmanager-ani-metrics-alertmanager`、`deployment/ani-metrics-kube-state-metrics`、
+  `daemonset/ani-metrics-prometheus-node-exporter`（含节点数核对），两个 PVC 用
+  `--for=jsonpath='{.status.phase}'=Bound` 等绑定；渲染并执行 `verify.sh`（0700）；
+  渲染 `connection.md` 到 `connections.d/metrics.md`。
+- `templates/values.yaml`：单副本指标栈，关 Grafana/windows、关 defaultRules、关
+  etcd/controller-manager/scheduler/kube-proxy/CoreDNS/kube-dns 目标（这些需要 loopback 端口），
+  CRD 随 Chart、关闭 CRD upgradeJob；admission webhook 用 cert-manager 之外的自签路径（`certManager.enabled=false`）；
+  Prometheus CR `replicas: 1`、`shards: 1`、`retention`/`retentionSize` 来自站点、RWO PVC、
+  `ruleSelector` 锁到 `release: ani-metrics` 且 `ruleNamespaceSelector` 锁到本命名空间、
+  `remoteWrite: []`、关 admin API 与 OTLP；Alertmanager CR 单副本、RWO PVC、
+  `alertmanagerConfigSelector` 锁到本 run 的 `run_id`；node-exporter 容忍 control-plane 污点、
+  用 distroless 且 **tag 写不带后缀的版本**。
+- `templates/verify.sh`：8 段真实验收 —— [1] 工作负载、[2] Prometheus HTTP API 实查
+  （`up{job="prometheus-node-exporter"}`、`count(node_uname_info)`、`count(kube_node_info)`、
+  `count(container_memory_working_set_bytes{...})`）、[3] 临时接收器（离线 python 镜像，
+  ConfigMap+Deployment+Service 落存请求体）、[4] 带 `sendResolved: true` 且按 `run_id` 限范围的
+  AlertmanagerConfig、[5] 用 `vector(1) == 1` 触发并按指纹核对接收、[6] 用 `vector(0) == 1`
+  触发 resolved 并核对指纹相等、[7] Prometheus PVC/STS UID + 重建前打样本标记、重建后
+  range-query 回读、[8] Alertmanager silence 建/重建/回读 + PVC 与 Secret UID 稳定；
+  结束时只删本卡自建的临时对象。
+- `templates/connection.md`：连接说明（命名空间、Chart 版本、工作负载、Service DNS、版本、
+  未覆盖范围、PVC、保留期、关闭项、告警/规则接收标签、Secret 仅记名字、校验入口），无明文凭据。
+
+**接线**
+
+- `builtin/core/playbooks/create_cluster.yaml`：在 `ani/nats` 后加
+  `role: ani/metrics`，`when` 锁到 `(index .ani.components "metrics").enabled`。
+- `pkg/ani/config.go`：`ImplementedComponents` 增加 `metrics`；`MetricsComponent` 增加
+  `PrometheusRetentionSize`（Kubernetes 容量量纲，非 `GB`）；`DefaultComponents()` 填 `4Gi`；
+  `validateMetrics` 增加保留量与卷容量关系校验（必须小于卷）；新增 `MetricsNamespace` 常量与
+  `metricsRunID`；`componentSpec` 现产出 `enabled/namespace/storage_class/prometheus_storage_size/
+  alertmanager_storage_size/prometheus_retention/prometheus_retention_size/run_id`。
+- `pkg/ani/images.go`：新增 `SplitReference` / `ImageKey` / `componentImageKeys()` /
+  `SplitImageReferences` / `ComponentImageParts`，把 Chart 自己拼接的镜像拆成
+  registry/repository/tag 三段。
+
+### 三个被测试与渲染当场抓到的真实缺陷（已修）
+
+1. **镜像双前缀**（最关键）：`kube-prometheus-stack` 的若干子 Chart 自己拼
+   `registry/repository:tag`。原先把整条本地引用塞进 `registry` 字段，渲染成
+   `192.0.2.11:5000/prometheus/node-exporter:v1.11.1-distroless/prometheus/node-exporter:v1.11.1-distroless`，
+   永远拉不到。修法：新增按段拆分并把 `registry` 只留主机名。
+2. **node-exporter 双后缀**：镜像锁里该镜像是 `…:v1.11.1-distroless`，而子 Chart 在
+   `distroless: true` 时会**自己再追加** `-distroless`。修法：`ImageKey.TagOverride` 把该键的 tag
+   显式取为 `v1.11.1`，由 Chart 补一次后缀。渲染实测为 `…/prometheus/node-exporter:v1.11.1-distroless`，
+   恰好一个后缀。
+3. **`4GB` 不是合法容量**：`resource.ParseQuantity("4GB")` 直接报错（只接受 `B/Ki/Mi/Gi/G` 等），
+   默认值与示例、测试全部改为 `4Gi`。
+
+另修同类问题两处：`SplitImageReferences(..., componentImageKeys)` 少写调用括号（编译失败）；
+`ComponentSpecForRender` 原先走 `Validate`，使离线渲染被三节点拓扑前置条件卡住，改为直接用
+组件默认值构造 spec。
+
+### 验收（Fedora，离线）
+
+- `gofmt -l pkg/ani` 无输出；`go build ./pkg/ani/` 通过；`go test ./pkg/ani` **ok**。
+- `${R} lab/c2-render-gate/render-values.sh <repo> <images.tsv> <out>`：用**真实 `pkg/ani` 代码**
+  构造渲染上下文（不是手抄一份 key），渲染 role 的 values，输出 6149 字节合法 YAML。
+- `render-gate.sh <chart.tgz> <values.yaml> <out>`：渲染 **76527 行**，全部门禁项通过：
+  - 等待对象齐备：`deployment/ani-metrics-operator`、`daemonset/ani-metrics-prometheus-node-exporter`、
+    `Prometheus/ani-metrics-prometheus`、`Alertmanager/ani-metrics-alertmanager`、ServiceMonitor、
+    两个 CRD；
+  - 渲染里**没有** StatefulSet（Prometheus/Alertmanager 的 STS 由 Operator 运行时生成，role 的
+    等待名是 `…-ani-metrics-prometheus` / `…-ani-metrics-alertmanager`）；
+  - 越界对象缺席：Grafana、ThanosRuler、Ingress、`ani-metrics-thanos`、`prometheus.thanos`；
+  - 唯一允许的 Thanos 字符串是 Operator 的关闭特性默认参数 `--thanos-default-base-image`，已标注；
+  - 镜像：**离线引用 7/7**，外来 0，关闭默认 1；7 个运行镜像逐个核对命中；
+  - node-exporter **无双重 `-distroless`**。
+- 证据：`~/ani-installer-runs/observability-20260919/evidence/c2-render-gate/`
+  （`values.yaml`、`rendered.yaml`、`rendered.yaml.workloads`、`provenance.txt`）。
+
+### 一处操作事故与修复（如实记录）
+
+第一次跑 `render-values.sh` 时把参数顺序写错（该脚本签名为 `<repo-root> <images.tsv> <out>`，
+误把 images.tsv 当输出路径），**覆盖了 `src/kubekey/ani/images.tsv`**。发现后立即用工作区内
+完好副本还原，`sha256` 与还原前后一致
+（`c4f899cfce8af5275440e70867ae053765b76de49f16cf0e8512062fdfa7ddf9`，与本地一致），
+材料未受损、渲染门禁复跑通过。同时给脚本加了防呆：第二参数必须形如 `*/images.tsv`、
+第三参数必须 `.yaml`、输入输出不得同路径、输出目录归属相对路径会显式转绝对路径
+（原先相对路径会被子进程的工作目录劫持）、覆盖非渲染产物时拒绝写入。
+
+### 本卡边界（未做）
+
+- 未实现 loki / opensearch / fluent-bit（未实现的启用仍以明确错误拒绝）。
+- 未加入 Grafana、Dashboards、Jaeger、ANI 业务、Milvus、计算/GPU、Harbor、HA。
+- 未接触测试集群 172.16.101.20/.21/.22；未使用快照、重置、清盘、清 CNI/OVN、
+  删失败 PVC/命名空间或重启循环。
+- 未提交、未推送（本卡完成时尚未提交）。
+
+### 已知问题 / 下一步
+
+- 上游阻塞不变：新版 kcn 未提供材料 → C2 的 live 保持 `not_verified`，不启动三节点安装。
+- 下一卡：**C3 / Loki + Fluent Bit**（`ani/loki`、`ani/fluent-bit` role），同样只在 Fedora
+  做代码/渲染/测试，live 仍 `not_verified`。

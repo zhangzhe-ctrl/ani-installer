@@ -1,0 +1,118 @@
+---
+# ANI metrics stack (official Chart kube-prometheus-stack 85.4.0).
+#
+# One release named ani-metrics in the ani-observability namespace: the
+# Prometheus Operator, one Prometheus, one Alertmanager, one kube-state-metrics
+# and a node-exporter DaemonSet. Grafana, Thanos, remote write and every
+# ingress are off. Prometheus and Alertmanager keep their data on ani-block RBD
+# PVCs, so a normal pod rebuild reads the same series and silences back.
+#
+# Skipped entirely when components.metrics is not enabled.
+#
+# Chart facts verified by rendering 85.4.0.tgz with these values on the build
+# host: operator Deployment ani-metrics-operator, Service ani-metrics-operator,
+# admission/CRD/cleanup hooks (create/patch/DELETE jobs), the three bundled
+# sub-chart workloads, and a Prometheus/Alertmanager CR whose image fields are
+# the only place those two images appear. The annotation on the CRs is what
+# makes the Operator reconcile them, so nothing is left "rendered but inert".
+#
+# Every image comes from {{ index .ani.images "..." }}; no remote registry is
+# contacted and there is no network access here.
+
+- name: ANI Metrics | Create work directory
+  command: |
+    install -d -m 0755 /etc/kubernetes/ani/metrics
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+
+- name: ANI Metrics | Create the observability namespace
+  command: |
+    kubectl create namespace {{ .ani.metrics.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+
+- name: ANI Metrics | Require the packaged Helm binary
+  command: test -x "{{ .ani.artifact_root }}/bin/helm"
+
+- name: ANI Metrics | Render the Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/metrics/values.yaml
+
+- name: ANI Metrics | Lock down the rendered values
+  command: chmod 0600 /etc/kubernetes/ani/metrics/values.yaml
+
+- name: ANI Metrics | Install the fixed Chart from the offline artifact
+  command: >-
+    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-metrics
+    {{ .ani.artifact_root }}/charts/kube-prometheus-stack/85.4.0.tgz
+    --namespace {{ .ani.metrics.namespace }} --create-namespace
+    --values /etc/kubernetes/ani/metrics/values.yaml
+    --wait --timeout 1200s
+
+# The Operator runs first and creates the two custom resources' workloads, so
+# waiting on the operator alone would return before Prometheus exists.
+- name: ANI Metrics | Wait for the Prometheus Operator
+  command: |
+    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+      deployment/ani-metrics-operator --timeout=600s
+
+- name: ANI Metrics | Wait for the Prometheus StatefulSet
+  command: |
+    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+      statefulset/prometheus-ani-metrics-prometheus --timeout=900s
+
+- name: ANI Metrics | Wait for the Alertmanager StatefulSet
+  command: |
+    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+      statefulset/alertmanager-ani-metrics-alertmanager --timeout=600s
+
+- name: ANI Metrics | Wait for kube-state-metrics
+  command: |
+    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+      deployment/ani-metrics-kube-state-metrics --timeout=600s
+
+- name: ANI Metrics | Wait for the node-exporter DaemonSet on every node
+  command: |
+    set -euo pipefail
+    want="$(kubectl get nodes --no-headers | wc -l)"
+    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+      daemonset/ani-metrics-prometheus-node-exporter --timeout=600s
+    got="$(kubectl -n {{ .ani.metrics.namespace }} get daemonset \
+      ani-metrics-prometheus-node-exporter -o jsonpath='{.status.numberReady}')"
+    if [ "$got" != "$want" ]; then
+      echo "node-exporter ready on $got of $want nodes" >&2
+      exit 1
+    fi
+
+- name: ANI Metrics | Wait for both data PVCs to bind
+  command: |
+    set -euo pipefail
+    for pvc in prometheus-ani-metrics-prometheus-db-prometheus-ani-metrics-prometheus-0 \
+               alertmanager-ani-metrics-alertmanager-db-alertmanager-ani-metrics-alertmanager-0; do
+      kubectl -n {{ .ani.metrics.namespace }} wait \
+        --for=jsonpath='{.status.phase}'=Bound "pvc/$pvc" --timeout=300s
+    done
+
+- name: ANI Metrics | Render component verification script
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/metrics/verify.sh
+
+- name: ANI Metrics | Make the verification script root-only and executable
+  command: |
+    chown root:root /etc/kubernetes/ani/metrics/verify.sh
+    chmod 0700 /etc/kubernetes/ani/metrics/verify.sh
+    test -x /etc/kubernetes/ani/metrics/verify.sh
+
+- name: ANI Metrics | Run component verification
+  command: |
+    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+      bash /etc/kubernetes/ani/metrics/verify.sh
+
+# Connection facts are rendered by the role that owns the resources, so the
+# installer never keeps a second copy of service names or Secret references.
+# The installer concatenates the fragments into connections.md after a
+# successful run; no fragment contains credentials.
+- name: ANI Metrics | Render connection facts fragment
+  template:
+    src: connection.md
+    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/metrics.md"

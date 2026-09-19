@@ -1,8 +1,11 @@
-# ANI 站点配置示例 —— 第二批 C0（累计：第一批四项 + 指标栈，不启用日志）
+# ANI 站点配置示例 —— 第二批 C2（累计：第一批四项 + 指标栈，不启用日志）
 #
 # 累计启用：certManager、postgresql、valkey、nats（第一批）+ metrics（本批指标栈）。
 # 日志保持关闭：logging.backend=none，因此不部署 Fluent Bit 或任一日志后端。
 # 默认 storageClass 为现有 Ceph RBD ani-block；本轮不引入新的 StorageClass。
+#
+# metrics 自 C2 起可真实部署（role + 校验脚本已随包发布）。
+# loki/opensearch/fluent-bit 仍未实现，启用会在部署前明确失败。
 
 name: ani-lab
 installerNode: node1
@@ -49,5 +52,7 @@ components:
     prometheusStorageSize: 5Gi
     alertmanagerStorageSize: 1Gi
     prometheusRetention: 24h
+    # 必须小于 prometheusStorageSize，否则卷会先被写满、时长保留永远不生效。
+    prometheusRetentionSize: 4Gi
   logging:
     backend: none

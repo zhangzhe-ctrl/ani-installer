@@ -256,7 +256,7 @@ func TestKubeKeyConfigCarriesMetricsAndLogging(t *testing.T) {
 	}
 	// The observability rows are not deployable in this card, so build the spec
 	// map directly: this asserts the exact keys a role will read.
-	components := componentSpec(c.Components)
+	components := componentSpec(c.Components, c.Name)
 	metrics, ok := components["metrics"].(map[string]any)
 	if !ok {
 		t.Fatalf("components.metrics missing")
@@ -277,7 +277,7 @@ func TestKubeKeyConfigCarriesMetricsAndLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse default: %v", err)
 	}
-	components = componentSpec(c.Components)
+	components = componentSpec(c.Components, c.Name)
 	metrics = components["metrics"].(map[string]any)
 	if metrics["enabled"] != false || metrics["prometheus_retention"] != "24h" ||
 		metrics["prometheus_storage_size"] != "5Gi" || metrics["alertmanager_storage_size"] != "1Gi" {
@@ -397,10 +397,20 @@ func TestComponentVerifyScriptsRenderAndParse(t *testing.T) {
 		"ani": map[string]any{
 			"registry": "192.0.2.11:5000",
 			"images": map[string]string{
-				"docker.io/alpine/openssl:3.5.4": "192.0.2.11:5000/alpine/openssl:3.5.4",
+				"docker.io/alpine/openssl:3.5.4":                      "192.0.2.11:5000/alpine/openssl:3.5.4",
+				"docker.io/library/python:3.13.11-alpine3.23":         "192.0.2.11:5000/library/python:3.13.11-alpine3.23",
+				"quay.io/prometheus/prometheus:v3.11.3-distroless":    "192.0.2.11:5000/prometheus/prometheus:v3.11.3-distroless",
+				"quay.io/prometheus/alertmanager:v0.32.1":             "192.0.2.11:5000/prometheus/alertmanager:v0.32.1",
+				"quay.io/prometheus/node-exporter:v1.11.1-distroless": "192.0.2.11:5000/prometheus/node-exporter:v1.11.1-distroless",
 			},
 			"components": map[string]any{
 				"cert-manager": map[string]any{"enabled": true},
+				"metrics": map[string]any{
+					"enabled":       true,
+					"namespace":     "ani-observability",
+					"run_id":        "ani-ani-lab",
+					"storage_class": "ani-block",
+				},
 			},
 		},
 		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
@@ -618,12 +628,22 @@ func TestConnectionFragmentsRenderSiteValues(t *testing.T) {
 				"postgresql": map[string]any{"enabled": true, "storage_class": "ani-block", "storage_size": "10Gi"},
 				"valkey":     map[string]any{"enabled": true, "storage_class": "ani-block", "storage_size": "2Gi"},
 				"nats":       map[string]any{"enabled": true, "storage_class": "ani-block", "storage_size": "5Gi"},
+				"metrics": map[string]any{
+					"enabled":                   true,
+					"namespace":                 "ani-observability",
+					"run_id":                    "ani-ani-lab",
+					"storage_class":             "ani-block",
+					"prometheus_storage_size":   "5Gi",
+					"alertmanager_storage_size": "1Gi",
+					"prometheus_retention":      "24h",
+					"prometheus_retention_size": "4Gi",
+				},
 			},
 		},
 		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
 	}
-	wantStorage := map[string]string{"postgresql": "10Gi", "valkey": "2Gi", "nats": "5Gi"}
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats"} {
+	wantStorage := map[string]string{"postgresql": "10Gi", "valkey": "2Gi", "nats": "5Gi", "metrics": "5Gi"}
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(root, name, "templates", "connection.md")
 			tmpl, err := template.New("connection.md").ParseFiles(path)
@@ -676,6 +696,17 @@ func contains(values []string, needle string) bool {
 	return false
 }
 
+// localRefSuffix mirrors the images.tsv hauler_ref shape (registry host
+// stripped, namespace kept) so a render test can build a plausible local
+// reference for any upstream image without hard-coding every path.
+func localRefSuffix(original string) string {
+	parts := strings.SplitN(original, "/", 2)
+	if len(parts) == 1 {
+		return original
+	}
+	return parts[1]
+}
+
 // TestEnabledBatchTwoComponentsFailUntilImplemented makes the not-implemented
 // gate real rather than vacuous: every observability row must be reachable in
 // the selection (so the loop cannot be skipped) and Validate must reject it
@@ -687,7 +718,6 @@ func TestEnabledBatchTwoComponentsFailUntilImplemented(t *testing.T) {
 		component string
 		site      string
 	}{
-		{"metrics", "components:\n  metrics:\n    enabled: true\n"},
 		{"loki", "components:\n  logging:\n    backend: loki\n"},
 		{"opensearch", "components:\n  certManager:\n    enabled: true\n  logging:\n    backend: opensearch\n"},
 		{"fluent-bit", "components:\n  logging:\n    backend: loki\n"},
@@ -713,8 +743,10 @@ func TestEnabledBatchTwoComponentsFailUntilImplemented(t *testing.T) {
 			t.Fatalf("Validate() error for %s = %v, want a not-implemented message", tc.component, err)
 		}
 	}
-	// Every observability row is covered, so the gate cannot silently regress.
-	for _, row := range []string{"metrics", "loki", "opensearch", "fluent-bit"} {
+	// Every remaining unimplemented observability row is covered, so the gate
+	// cannot silently regress. metrics is implemented as of C2 and is covered
+	// by its own role test instead.
+	for _, row := range []string{"loki", "opensearch", "fluent-bit"} {
 		if !covered[row] {
 			t.Fatalf("observability row %s has no not-implemented case", row)
 		}
@@ -805,15 +837,46 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	for _, original := range []string{
 		"docker.io/library/nats:2.14.6-alpine",
 		"docker.io/natsio/nats-server-config-reloader:0.23.0",
+		"quay.io/prometheus-operator/prometheus-operator:v0.90.1",
+		"quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1",
+		"quay.io/prometheus/prometheus:v3.11.3-distroless",
+		"quay.io/prometheus/alertmanager:v0.32.1",
+		"quay.io/prometheus/node-exporter:v1.11.1-distroless",
+		"registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0",
+		"ghcr.io/jkroepke/kube-webhook-certgen:1.8.3",
+		"docker.io/library/python:3.13.11-alpine3.23",
 	} {
-		complete[original] = "192.0.2.11:5000/" + strings.TrimPrefix(original, "docker.io/")
+		complete[original] = "192.0.2.11:5000/" + localRefSuffix(original)
+	}
+	// Charts that build "registry/repository:tag" themselves read the split
+	// parts, so the render context carries them the same way KubeKeyConfig
+	// does. Building them from the real key list keeps this test in step with
+	// the roles instead of duplicating the image names a second time.
+	table := ImageTable{}
+	for original := range complete {
+		table[original] = Image{Original: original, HaulerRef: "127.0.0.1:5000/" + localRefSuffix(original)}
+	}
+	imageParts, err := ComponentImageParts(table, "192.0.2.11:5000")
+	if err != nil {
+		t.Fatalf("ComponentImageParts() error = %v", err)
 	}
 	ctx := map[string]any{
 		"ani": map[string]any{
-			"registry": "192.0.2.11:5000",
-			"images":   complete,
+			"registry":    "192.0.2.11:5000",
+			"images":      complete,
+			"image_parts": imageParts,
 			"components": map[string]any{
 				"nats": map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
+				"metrics": map[string]any{
+					"enabled":                   true,
+					"namespace":                 "ani-observability",
+					"run_id":                    "ani-ani-lab",
+					"storage_class":             "ani-block",
+					"prometheus_storage_size":   "5Gi",
+					"alertmanager_storage_size": "1Gi",
+					"prometheus_retention":      "24h",
+					"prometheus_retention_size": "4Gi",
+				},
 			},
 		},
 		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
@@ -904,7 +967,7 @@ func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
 // document complete: a role that installs resources must render facts for them.
 func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani")
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats"} {
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics"} {
 		fragment := filepath.Join(root, name, "templates", "connection.md")
 		if _, err := os.Stat(fragment); err != nil {
 			t.Fatalf("component %s has no connection facts template: %v", name, err)
@@ -919,5 +982,278 @@ func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 		if !strings.Contains(string(tasks), "work/connections.d") {
 			t.Fatalf("%s tasks do not create the connections.d directory", name)
 		}
+	}
+}
+
+// TestMetricsRoleIsWiredAndOffline covers the C2 card's own claims: the role is
+// reachable from the playbook behind its switch, it installs from the packaged
+// Chart, every image it names is an offline reference, it does not deploy
+// Thanos or Grafana, and its verification reaches the real APIs. The role is
+// what makes the metrics row deployable, so these are the properties that must
+// hold before the row is listed as implemented.
+func TestMetricsRoleIsWiredAndOffline(t *testing.T) {
+	root := filepath.Join("..", "..")
+	role := filepath.Join(root, "builtin", "core", "roles", "ani", "metrics")
+
+	tasks, err := os.ReadFile(filepath.Join(role, "tasks", "main.yaml"))
+	if err != nil {
+		t.Fatalf("read metrics tasks: %v", err)
+	}
+	taskText := string(tasks)
+
+	// The playbook must gate the role on the component switch, exactly like the
+	// foundation roles, or an install would deploy it unconditionally.
+	playbook, err := os.ReadFile(filepath.Join(root, "builtin", "core", "playbooks", "create_cluster.yaml"))
+	if err != nil {
+		t.Fatalf("read create_cluster.yaml: %v", err)
+	}
+	playbookText := string(playbook)
+	if !strings.Contains(playbookText, "role: ani/metrics") {
+		t.Fatal("create_cluster.yaml does not reference ani/metrics")
+	}
+	if !strings.Contains(playbookText, `when: '{{ (index .ani.components "metrics").enabled }}'`) {
+		t.Fatal("ani/metrics is not gated on its component switch")
+	}
+
+	// The Chart comes from the offline artifact at the locked path.
+	if !strings.Contains(taskText, "charts/kube-prometheus-stack/85.4.0.tgz") {
+		t.Fatal("metrics tasks do not install the packaged kube-prometheus-stack 85.4.0 Chart")
+	}
+	if !strings.Contains(taskText, "{{ .ani.artifact_root }}/bin/helm") {
+		t.Fatal("metrics tasks do not use the packaged Helm binary")
+	}
+	// The role must wait on the real objects, not only on the Helm release, and
+	// it must wait for both PVCs to bind before the verification runs.
+	for _, want := range []string{
+		"--for=jsonpath='{.status.phase}'=Bound",
+		"statefulset/prometheus-ani-metrics-prometheus",
+		"statefulset/alertmanager-ani-metrics-alertmanager",
+		"daemonset/ani-metrics-prometheus-node-exporter",
+	} {
+		if !strings.Contains(taskText, want) {
+			t.Fatalf("metrics tasks do not wait on %q", want)
+		}
+	}
+	// The verification script is installed root-only and executed.
+	if !strings.Contains(taskText, "chmod 0700 /etc/kubernetes/ani/metrics/verify.sh") {
+		t.Fatal("metrics tasks do not lock down and execute the verification script")
+	}
+	// Only the chart material, never a network fetch.
+	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
+		if strings.Contains(taskText, bad) {
+			t.Fatalf("metrics tasks appear to fetch from the network (%q)", bad)
+		}
+	}
+
+	// Grafana and Thanos are explicitly out of scope for this batch.
+	for _, bad := range []string{"grafana", "thanos"} {
+		for _, line := range strings.Split(taskText, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") || trimmed == "" {
+				continue
+			}
+			if strings.Contains(strings.ToLower(trimmed), bad) {
+				t.Fatalf("metrics tasks reference %s outside a comment: %s", bad, trimmed)
+			}
+		}
+	}
+
+	// CRDs come from the chart, and the upgrade job stays off.
+	values, err := os.ReadFile(filepath.Join(role, "templates", "values.yaml"))
+	if err != nil {
+		t.Fatalf("read metrics values: %v", err)
+	}
+	valuesText := string(values)
+	for _, want := range []string{
+		"fullnameOverride: ani-metrics",
+		"crds:\n  enabled: true\n  upgradeJob:\n    enabled: false",
+		"admissionWebhooks:\n    certManager:\n      enabled: false",
+		"grafana:\n  enabled: false",
+		"windowsMonitoring:\n  enabled: false",
+		"defaultRules:\n  create: false",
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("metrics values do not contain %q", want)
+		}
+	}
+	// Control-plane targets that need published loopback ports stay off.
+	for _, want := range []string{
+		"kubeEtcd:\n  enabled: false",
+		"kubeControllerManager:\n  enabled: false",
+		"kubeScheduler:\n  enabled: false",
+		"kubeProxy:\n  enabled: false",
+		"coreDns:\n  enabled: false",
+		"kubeDns:\n  enabled: false",
+	} {
+		if !strings.Contains(valuesText, want) {
+			t.Fatalf("metrics values do not disable %q", want)
+		}
+	}
+	// node-exporter carries the plain tag because the sub-chart appends
+	// "-distroless" itself when distroless is true. The tag is read from the
+	// split image parts, so the assertion is on the exact template expression
+	// plus the tag the key list resolves to; a whole reference here, or a tag
+	// that already carries the suffix, would double up on the real render.
+	if !strings.Contains(valuesText, "tag: {{ .ani.image_parts.metrics.nodeExporter.tag }}") {
+		t.Fatal("node-exporter image must take its tag from the split image parts")
+	}
+	if !strings.Contains(valuesText, "distroless: true") {
+		t.Fatal("node-exporter must set distroless: true so the sub-chart appends the suffix once")
+	}
+	if !strings.Contains(valuesText, "repository: {{ .ani.image_parts.metrics.nodeExporter.repository }}") {
+		t.Fatal("node-exporter repository must come from the split image parts")
+	}
+	parts, err := ComponentImageParts(testImageTable(), "192.0.2.11:5000")
+	if err != nil {
+		t.Fatalf("ComponentImageParts() error = %v", err)
+	}
+	nodeExporter := parts["metrics"].(map[string]any)["nodeExporter"].(map[string]any)
+	if nodeExporter["tag"] != "v1.11.1" {
+		t.Fatalf("node-exporter tag = %v, want the plain v1.11.1 (the sub-chart appends -distroless)", nodeExporter["tag"])
+	}
+	// The rule and config selectors must be scoped, not left wide open.
+	if !strings.Contains(valuesText, "release: ani-metrics") {
+		t.Fatal("metrics values do not scope the Prometheus rule selector to this release")
+	}
+	if !strings.Contains(valuesText, "run_id:") {
+		t.Fatal("metrics values do not scope the AlertmanagerConfig selector to this run")
+	}
+}
+
+// TestMetricsVerifyExercisesRealApis pins the substance of the C2 acceptance:
+// the script must query the real HTTP APIs, drive a firing/resolved pair, and
+// rebuild pods. A script that only checked readiness would still render and
+// parse, so the claims are asserted on content.
+func TestMetricsVerifyExercisesRealApis(t *testing.T) {
+	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "metrics", "templates", "verify.sh")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read metrics verify.sh: %v", err)
+	}
+	script := string(data)
+
+	for _, want := range []struct{ needle, why string }{
+		{"/api/v1/query?", "must query the Prometheus HTTP API"},
+		{"/api/v1/query_range?", "must read the pre-rebuild sample back by range query"},
+		{"node_uname_info", "must prove node-exporter reads the machine"},
+		{"kube_node_info", "must prove kube-state-metrics reads the API"},
+		{"container_memory_working_set_bytes", "must check a real cAdvisor container metric"},
+		{"vector(1) == 1", "must drive a real firing transition"},
+		{"vector(0) == 1", "must resolve by evaluating to an empty vector"},
+		{"sendResolved: true", "resolved delivery must be configured"},
+		{"fingerprint", "the resolved notification must be matched on fingerprint"},
+		{"delete pod -l app.kubernetes.io/name=prometheus", "must rebuild the Prometheus pod"},
+		{"delete pod -l app.kubernetes.io/name=alertmanager", "must rebuild the Alertmanager pod"},
+		{"ani_metrics_rebuild_marker", "must write its own sample before the rebuild"},
+		{"silenceID", "must create and read back a real Alertmanager silence"},
+		{"rollout status", "must wait on the workload state rather than sleeping"},
+		{`.metadata.uid`, "must compare object identities across the rebuild"},
+		{"node-exporter ready on", "must fail when node-exporter does not cover every node"},
+	} {
+		if !strings.Contains(script, want.needle) {
+			t.Fatalf("metrics verify.sh does not contain %q: it %s", want.needle, want.why)
+		}
+	}
+
+	// The alert must fire by returning a sample and resolve by returning none,
+	// so the rule expressions must not use `bool`: with bool, vector(0) == 1
+	// would return the sample 0 and keep the alert firing forever. Only the
+	// expr lines are inspected, because the script explains the choice in
+	// comments.
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.Contains(line, "expr:") {
+			continue
+		}
+		if strings.Contains(line, "bool") {
+			t.Fatalf("rule expression uses a bool modifier and could never resolve: %s", strings.TrimSpace(line))
+		}
+	}
+	// Both transitions must be expressed as a comparison against a literal, so
+	// the non-firing case is an empty vector rather than a zero sample.
+	if !strings.Contains(script, `expr: vector(1) == 1`) {
+		t.Fatal("the firing rule must compare vector(1) against 1")
+	}
+	if !strings.Contains(script, `expr: vector(0) == 1`) {
+		t.Fatal("the resolved rule must compare vector(0) against 1")
+	}
+	// Nothing may write alerts straight into Alertmanager instead of letting
+	// Prometheus evaluate them.
+	for _, bad := range []string{"/api/v2/alerts", "/api/v1/alerts"} {
+		if strings.Contains(script, bad) {
+			t.Fatalf("metrics verify.sh posts to %s, which would bypass Prometheus evaluation", bad)
+		}
+	}
+	// The lab image must be the locked offline one, not a live pull.
+	if !strings.Contains(script, `index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`) {
+		t.Fatal("metrics verify.sh does not use the locked offline python image")
+	}
+	// Cleanup has to remove this run's temporary objects.
+	for _, want := range []string{
+		`delete prometheusrule "$RULE_NAME"`,
+		`delete alertmanagerconfig "$AMCFG_NAME"`,
+		`delete deployment "$RECV_DEPLOY"`,
+		`delete pod "$CLIENT_POD"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("metrics verify.sh does not clean up: %q", want)
+		}
+	}
+}
+
+// TestMetricsRetentionSizeMustFitInTheVolume keeps the on-disk cap meaningful:
+// a cap at or above the volume size would let Prometheus fill its PVC before
+// the time based retention ever applied.
+func TestMetricsRetentionSizeMustFitInTheVolume(t *testing.T) {
+	c, err := parseSite(t, "components:\n  metrics:\n    enabled: true\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(c); err != nil {
+		t.Fatalf("defaults must validate: %v", err)
+	}
+	if c.Components.Metrics.PrometheusRetentionSize != "4Gi" {
+		t.Fatalf("default prometheusRetentionSize = %q, want 4Gi", c.Components.Metrics.PrometheusRetentionSize)
+	}
+
+	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusStorageSize: 5Gi\n    prometheusRetentionSize: 8Gi\n")
+	if err != nil {
+		t.Fatalf("parse oversized cap: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("a retention cap larger than the volume must be rejected")
+	}
+
+	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusRetentionSize: not-a-size\n")
+	if err != nil {
+		t.Fatalf("parse bad cap: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("a non-capacity retention cap must be rejected")
+	}
+}
+
+// TestMetricsRunLabelScopesAlertRouting pins the value Alertmanager uses to
+// decide which configs it accepts: it must be non-empty while the stack is on
+// and empty while it is off, so a disabled stack never matches a route.
+func TestMetricsRunLabelScopesAlertRouting(t *testing.T) {
+	on, err := parseSite(t, "components:\n  metrics:\n    enabled: true\n")
+	if err != nil {
+		t.Fatalf("parse enabled: %v", err)
+	}
+	metrics := componentSpec(on.Components, on.Name)["metrics"].(map[string]any)
+	if metrics["run_id"] != "ani-ani-lab" {
+		t.Fatalf("enabled run_id = %v, want ani-ani-lab", metrics["run_id"])
+	}
+	if metrics["namespace"] != MetricsNamespace {
+		t.Fatalf("namespace = %v, want %s", metrics["namespace"], MetricsNamespace)
+	}
+
+	off, err := parseSite(t, "")
+	if err != nil {
+		t.Fatalf("parse default: %v", err)
+	}
+	metrics = componentSpec(off.Components, off.Name)["metrics"].(map[string]any)
+	if metrics["run_id"] != "" {
+		t.Fatalf("disabled run_id = %v, want an empty string", metrics["run_id"])
 	}
 }

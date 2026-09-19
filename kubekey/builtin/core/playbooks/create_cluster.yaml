@@ -113,5 +113,10 @@
       when: '{{ (index .ani.components "valkey").enabled }}'
     - role: ani/nats
       when: '{{ (index .ani.components "nats").enabled }}'
+    # The observability batch follows the foundation components: the metrics
+    # stack installs first because the log backend roles reuse its namespace,
+    # then the log collector. Each role is skipped when its switch is off.
+    - role: ani/metrics
+      when: '{{ (index .ani.components "metrics").enabled }}'
 
 - import_playbook: hook/post_install.yaml

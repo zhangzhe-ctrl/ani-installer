@@ -1,0 +1,169 @@
+# Rendered by the ANI metrics role for the official kube-prometheus-stack Chart
+# 85.4.0. Re-rendered by every install run; do not edit.
+#
+# Minimal single-replica stack in its own namespace, release name ani-metrics.
+# Grafana, Thanos, remote write, OTLP, the admin API, the Prometheus default
+# rule library and every control-plane scrape target that is not reachable
+# through the API server are off. The chart is installed from the offline
+# artifact and every image reference is rewritten to the local registry, so
+# nothing here contacts the internet.
+#
+# Images: Prometheus, Alertmanager and the config-reloader are named by the
+# Operator, not by the chart's own Pod templates (Prometheus and Alertmanager
+# are fields of their custom resources), so they are pinned through the
+# operator and CR specs below. node-exporter keeps the chart's "-distroless"
+# toggle: its tag field must be the plain version, because the sub-chart
+# appends the suffix itself.
+fullnameOverride: ani-metrics
+
+# Not part of this batch. Grafana would add its own PVC, Service and Secret.
+grafana:
+  enabled: false
+# Not part of this batch, and it would render a second metrics endpoint set.
+windowsMonitoring:
+  enabled: false
+
+# The chart's default rule library is a large production rule set. This batch
+# ships exactly one test rule (see the role's tasks) and makes no promise about
+# a production alert rule library, so the library stays off.
+defaultRules:
+  create: false
+
+# Control-plane targets this cluster does not expose. Scraping them would
+# require publishing scheduler/controller-manager/etcd/kube-proxy ports that
+# are deliberately bound to loopback, so they stay off instead of being
+# temporarily opened or handed a control-plane credential. The API server is
+# reached through the API server proxy and needs none of that.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+kubeDns:
+  enabled: false
+
+# CRDs come from the chart's own crds/ directory. The upgrade Job is a separate
+# Helm hook that would run its own image; it stays off.
+crds:
+  enabled: true
+  upgradeJob:
+    enabled: false
+
+prometheusOperator:
+  # The admission webhook keeps working without cert-manager: certgen issues
+  # its own self-signed CA, so the metrics stack has no dependency on the
+  # cert-manager component and the chart is usable with component set B as
+  # well as set A.
+  #
+  # Every image below splits into registry/repository/tag exactly as the chart
+  # expects. Setting registry to a full image reference would make the chart
+  # concatenate registry/repository/tag into a doubled path that never pulls,
+  # so each field carries only its own part.
+  admissionWebhooks:
+    certManager:
+      enabled: false
+    patch:
+      image:
+        registry: {{ .ani.registry }}
+        repository: {{ .ani.image_parts.metrics.webhookCertgen.repository }}
+        tag: {{ .ani.image_parts.metrics.webhookCertgen.tag }}
+  image:
+    registry: {{ .ani.registry }}
+    repository: {{ .ani.image_parts.metrics.operator.repository }}
+    tag: {{ .ani.image_parts.metrics.operator.tag }}
+  prometheusConfigReloader:
+    image:
+      registry: {{ .ani.registry }}
+      repository: {{ .ani.image_parts.metrics.configReloader.repository }}
+      tag: {{ .ani.image_parts.metrics.configReloader.tag }}
+
+prometheus:
+  prometheusSpec:
+    # Single replica: this is durability across a pod rebuild, not an HA claim.
+    # The samples live on the RBD PVC below.
+    replicas: 1
+    shards: 1
+    retention: {{ .ani.components.metrics.prometheus_retention }}
+    # Kept below the PVC size so the pod is not evicted by its own volume.
+    retentionSize: {{ .ani.components.metrics.prometheus_retention_size }}
+    image:
+      registry: {{ .ani.registry }}
+      repository: {{ .ani.image_parts.metrics.prometheus.repository }}
+      tag: {{ .ani.image_parts.metrics.prometheus.tag }}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: {{ .ani.components.metrics.storage_class }}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ .ani.components.metrics.prometheus_storage_size }}
+    # The release's own rules are the only ones Prometheus loads in this batch.
+    # Without this selector the Operator default (empty selector = every rule)
+    # would pull in anything else that happens to carry the release label.
+    ruleSelector:
+      matchLabels:
+        release: ani-metrics
+    # PrometheusRule resources are only accepted from the stack's namespace.
+    ruleNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ .ani.components.metrics.namespace }}
+    # Remote write, the administrative API and the OTLP receiver are off: this
+    # batch has no second Prometheus and no external endpoint to talk to. The
+    # write receiver stays on because the lab pushes the alert test's samples
+    # through it instead of standing up a second exporter.
+    remoteWrite: []
+    enableAdminAPI: false
+    enableOTLPReceiver: false
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    image:
+      registry: {{ .ani.registry }}
+      repository: {{ .ani.image_parts.metrics.alertmanager.repository }}
+      tag: {{ .ani.image_parts.metrics.alertmanager.tag }}
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: {{ .ani.components.metrics.storage_class }}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ .ani.components.metrics.alertmanager_storage_size }}
+    # Only AlertmanagerConfigs labelled with the current run are accepted, and
+    # only from this namespace. That keeps a stale object from widening the
+    # routing surface of a later run, and keeps a run's receiver out of every
+    # other run's notification path.
+    alertmanagerConfigSelector:
+      matchLabels:
+        run_id: {{ .ani.components.metrics.run_id }}
+    alertmanagerConfigNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ .ani.components.metrics.namespace }}
+
+prometheus-node-exporter:
+  # The DaemonSet has to reach the control-plane node too, which carries the
+  # cluster's taint in this lab.
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  image:
+    registry: {{ .ani.registry }}
+    repository: {{ .ani.image_parts.metrics.nodeExporter.repository }}
+    # The sub-chart appends "-distroless" to the tag when distroless is true,
+    # so the tag here is the plain version and the suffix is added exactly once.
+    tag: {{ .ani.image_parts.metrics.nodeExporter.tag }}
+    distroless: true
+
+kube-state-metrics:
+  image:
+    registry: {{ .ani.registry }}
+    repository: {{ .ani.image_parts.metrics.kubeStateMetrics.repository }}
+    tag: {{ .ani.image_parts.metrics.kubeStateMetrics.tag }}
