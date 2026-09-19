@@ -1,0 +1,53 @@
+# ANI 站点配置示例 —— 第二批 C0（累计：第一批四项 + 指标栈，不启用日志）
+#
+# 累计启用：certManager、postgresql、valkey、nats（第一批）+ metrics（本批指标栈）。
+# 日志保持关闭：logging.backend=none，因此不部署 Fluent Bit 或任一日志后端。
+# 默认 storageClass 为现有 Ceph RBD ani-block；本轮不引入新的 StorageClass。
+
+name: ani-lab
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - name: node1
+    address: 172.16.101.20
+  - name: node2
+    address: 172.16.101.21
+  - name: node3
+    address: 172.16.101.22
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: [ens35]
+    encapNetworks: [172.16.101.0/24]
+    intranetNetworks: [172.16.101.0/24, 10.96.0.0/16]
+registry:
+  port: 5000
+
+components:
+  certManager:
+    enabled: true
+  postgresql:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 10Gi
+  valkey:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 2Gi
+  nats:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 5Gi
+  metrics:
+    enabled: true
+    storageClass: ani-block
+    prometheusStorageSize: 5Gi
+    alertmanagerStorageSize: 1Gi
+    prometheusRetention: 24h
+  logging:
+    backend: none

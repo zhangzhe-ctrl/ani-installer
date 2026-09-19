@@ -202,6 +202,150 @@ excludedImages:
     reason: 不部署 NACK / operator / 多租户账号系统
 
 # ---------------------------------------------------------------------------
+# 第二批：指标、告警与可选日志后端（2026-09-19）
+#
+# 与第一批分开记录，避免把两批的固定材料混成一张表。
+# 候选版本依据 docs/research/observability-{metrics,logs}-materials-20260919.md，
+# 摘要为本轮在 Fedora 实测（Chart 重新下载 + skopeo 读取 manifest），不是转述。
+# 本批状态：materials_confirmed / installation_not_verified。
+# 新版 kcn 材料未提供，installer 不改组件源码、不制临时修复镜像。
+# ---------------------------------------------------------------------------
+batch2:
+  lockedAt: "2026-09-19"
+  plan: docs/observability-components-batch-execution-plan-20260919.md
+  status: materials_confirmed / installation_not_verified
+  notes:
+    - index 摘要是源仓库多架构 index；amd64ManifestDigest 是其中 linux/amd64 manifest 的摘要。
+      两者通常是不同的值，锁定时不得要求相等。
+    - kube-prometheus-stack 的 charts/ 已内含 crds/grafana/kube-state-metrics/
+      prometheus-node-exporter/prometheus-windows-exporter，目标机不执行 dependency update。
+    - node-exporter 的 tag 字段必须写不带 -distroless 的版本号：子 Chart 在
+      image.distroless=true 时追加 -distroless，写成全名会产生双重后缀。
+    - metrics 的 7 个运行镜像中，Prometheus/Alertmanager 由 Operator 在 CR 中二次生成，
+      reloader 出现在 Operator 的 --prometheus-config-reloader 参数，admission 两个 Job 是
+      Helm hook；均不能只扫描渲染后的 Deployment/Pod 来统计。
+
+  charts:
+    - name: kube-prometheus-stack
+      chartVersion: 85.4.0
+      appVersion: v0.90.1
+      source: https://github.com/prometheus-community/helm-charts/releases/download/kube-prometheus-stack-85.4.0/kube-prometheus-stack-85.4.0.tgz
+      sha256: 3b07b7c91f1eaec75a125d1938c4e10d3b1ef6076ff7226d031fadadb4651a60
+      artifactChartPath: charts/kube-prometheus-stack/85.4.0.tgz
+      release: ani-metrics
+      namespace: ani-observability
+      kubernetesDeclared: ">=1.25.0-0"
+      renderedWith: helm v3.20.0 + --kube-version 1.35.8
+      renderedLines: 1868
+    - name: loki
+      chartVersion: 18.13.3
+      appVersion: 3.7.8
+      source: https://github.com/grafana-community/helm-charts/releases/download/loki-18.13.3/loki-18.13.3.tgz
+      sha256: ddb31751a90269980332eb17ddbd67f2971fc1b0e847d6d1752a749c8e86232a
+      artifactChartPath: charts/loki/18.13.3.tgz
+      namespace: ani-observability
+      upstreamNote: Chart 已于 2026-03-16 迁移至 grafana-community 仓库；不使用旧 grafana/loki 入口
+      renderedLines: 438
+    - name: opensearch
+      chartVersion: 3.8.0
+      appVersion: 3.8.0
+      source: https://github.com/opensearch-project/helm-charts/releases/download/opensearch-3.8.0/opensearch-3.8.0.tgz
+      sha256: cad6c77d04ec2389be6f61b5422ce61e7264eb7145e42b4c78dbc00e9d7dbe4d
+      artifactChartPath: charts/opensearch/3.8.0.tgz
+      namespace: ani-observability
+      renderedLines: 318
+    - name: fluent-bit
+      chartVersion: 0.58.2
+      appVersion: 5.1.2
+      source: https://github.com/fluent/helm-charts/releases/download/fluent-bit-0.58.2/fluent-bit-0.58.2.tgz
+      sha256: 2404614ace4c7dc049b76fd39d13b695f7b66332c38095327ebaa8fc91f0b046
+      artifactChartPath: charts/fluent-bit/0.58.2.tgz
+      namespace: ani-observability
+      upstreamNote: preflight 输出曾被 §5 研究附录误写为 2404614a…e60f046；实际为 …f0b046，以实测为准
+      renderedLines: 228
+
+  metricsImages:
+    - original: quay.io/prometheus-operator/prometheus-operator:v0.90.1
+      haulerRef: 127.0.0.1:5000/prometheus-operator/prometheus-operator:v0.90.1
+      sourceManifestDigest: sha256:52a6a92d915ea2fa94314748d99db7a94922e3fe63274f6182fc033b9126b573
+      amd64ManifestDigest: sha256:c8aed26b2a0858b4beed8d6bc2215f7f6bdc6c96dd4de8e6e246c0a5b7a7876b
+      use: Prometheus Operator Deployment
+    - original: quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1
+      haulerRef: 127.0.0.1:5000/prometheus-operator/prometheus-config-reloader:v0.90.1
+      sourceManifestDigest: sha256:693faa0b87243cddca2cffb13586e4e2778b0cdf319cb2e601ba7af3fd19ef7d
+      amd64ManifestDigest: sha256:af7715ef28e2cc413a6a850b5f928f185245dbb38359156eca3d5f1eb676b93f
+      use: Operator --prometheus-config-reloader 参数（由 Operator 生成工作负载）
+    - original: quay.io/prometheus/prometheus:v3.11.3-distroless
+      haulerRef: 127.0.0.1:5000/prometheus/prometheus:v3.11.3-distroless
+      sourceManifestDigest: sha256:cff72a3f49918f41c4b5c8a6174dd8433036bebf7878120da538b3720ba3fa0d
+      amd64ManifestDigest: sha256:a1868e471c843677013c5fa2f569011e70d49b9e8f690719ea750b458840ec6d
+      use: Prometheus CR 镜像（位于自定义资源，不在 Pod 模板）
+    - original: quay.io/prometheus/alertmanager:v0.32.1
+      haulerRef: 127.0.0.1:5000/prometheus/alertmanager:v0.32.1
+      sourceManifestDigest: sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+      amd64ManifestDigest: sha256:82c38dcc97cd0fbf5d5e31ddfb304dbb3a6e411194477de5de82ec71b328bb40
+      use: Alertmanager CR 镜像（位于自定义资源，不在 Pod 模板）
+    - original: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
+      haulerRef: 127.0.0.1:5000/kube-state-metrics/kube-state-metrics:v2.19.0
+      sourceManifestDigest: sha256:6b2f0b6f2f86ac5b1aa883a033a8dd55bb96c16d191ec973393bdaadaddac914
+      amd64ManifestDigest: sha256:ad11a45eb9a69fa88a62df4de0959eda21531fd3263c25341d9d9d4da7730930
+      use: kube-state-metrics 捆绑子 Chart Deployment
+    - original: quay.io/prometheus/node-exporter:v1.11.1-distroless
+      haulerRef: 127.0.0.1:5000/prometheus/node-exporter:v1.11.1-distroless
+      sourceManifestDigest: sha256:6112664fd761bb964d8a2d3d0119d6c8402618a89edbb3a43c8f7b4090fb53c9
+      amd64ManifestDigest: sha256:19bafa75a9de0c9562adf4af595c99c5fe316bb94a297e611495f2dd2ed44a9c
+      use: node-exporter DaemonSet（父 Chart 覆盖 distroless；tag 写 v1.11.1）
+    - original: ghcr.io/jkroepke/kube-webhook-certgen:1.8.3
+      haulerRef: 127.0.0.1:5000/jkroepke/kube-webhook-certgen:1.8.3
+      sourceManifestDigest: sha256:8ce13c365c8e9ced0aad5ef350a53c50b7ca5817f99d856b9eec895db1056728
+      amd64ManifestDigest: sha256:44063cb072c85da7a0f33244b3054ab44b29a2b7416a319a90456bff21bebb18
+      use: admission Webhook create/patch 两个 Helm hook Job
+    - original: quay.io/thanos/thanos:v0.41.0
+      haulerRef: 127.0.0.1:5000/thanos/thanos:v0.41.0
+      sourceManifestDigest: null
+      amd64ManifestDigest: null
+      use: Operator --thanos-default-base-image 默认参数；本批不启用 Thanos，标记 unused_disabled_default
+      disabled: true
+      disabledReason: 本批关闭 ThanosRuler 与 Thanos 相关服务/sidecar，不为消掉字符串而部署 Thanos
+
+  logsImages:
+    - original: docker.io/grafana/loki:3.7.8
+      haulerRef: 127.0.0.1:5000/grafana/loki:3.7.8
+      sourceManifestDigest: sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
+      amd64ManifestDigest: sha256:81a6802ec4bd1b88c564494f06376889ed022998a188826190d26d2754ac2aae
+      use: Loki 单体 StatefulSet
+    - original: docker.io/opensearchproject/opensearch:3.8.0
+      haulerRef: 127.0.0.1:5000/opensearchproject/opensearch:3.8.0
+      sourceManifestDigest: sha256:fafe3fc3587088674669235575aa166228c48bdb940294a8cdbbc1da75236a40
+      amd64ManifestDigest: sha256:68a688de28fb9bb66601552650b91a52a9fd5e7eac5481dd2b225ecb66fd09b0
+      use: OpenSearch 单节点 StatefulSet；securityadmin.sh 初始化 Job 复用同版镜像
+    - original: docker.io/library/busybox:1.37.0
+      haulerRef: 127.0.0.1:5000/library/busybox:1.37.0
+      sourceManifestDigest: sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
+      amd64ManifestDigest: sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0
+      use: OpenSearch PVC 初始化（替换 Chart 隐式 busybox:latest）
+    - original: cr.fluentbit.io/fluent/fluent-bit:5.1.2
+      haulerRef: 127.0.0.1:5000/fluent/fluent-bit:5.1.2
+      sourceManifestDigest: sha256:d792375ca8e53be72fc25716c28f291f32c6fc6f4f31d12d0d14bc78cefe9226
+      amd64ManifestDigest: sha256:71cda445290efc2d45d565c12e0de4b15aa0182510276ad50c317aae1423d7ee
+      use: Fluent Bit DaemonSet（统一采集层，两个日志后端共用）
+
+  batch2ExcludedImages:
+    - original: docker.io/grafana/grafana:*
+      reason: 本批不部署 Grafana
+    - original: docker.io/library/memcached:*
+      reason: chunksCache/resultsCache 显式关闭，避免 Chart 默认约 8GiB/1GiB 缓存声明
+    - original: ghcr.io/jimmidyson/configmap-reload:*
+      reason: Fluent Bit hotReload.enabled=false
+  labToolImage:
+    - original: docker.io/library/python:3.13.11-alpine3.23
+      haulerRef: 127.0.0.1:5000/library/python:3.13.11-alpine3.23
+      sourceManifestDigest: sha256:2f607129b1b915a949320bf0c4831a73d1c1b1be663c2b1d8c93aa35a5f44a95
+      amd64ManifestDigest: sha256:0d8324e4e3453ec8586b886b95e8fc901689f936c413fdf6ae7d93a32a95956e
+      use: lab 的 HTTP webhook 接收器 / API 查询客户端 / 日志发射器；只跑标准库脚本，不走 pip/apk
+      scope: lab 与验收材料，不属于安装恢复逻辑，也不作为常驻生产服务
+
+# ---------------------------------------------------------------------------
 # 每批真实验证记录（安装未完成前保持 installation_not_verified）
 # ---------------------------------------------------------------------------
 verificationRecords: []

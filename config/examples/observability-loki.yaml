@@ -1,0 +1,57 @@
+# ANI 站点配置示例 —— 第二批 C0（累计：第一批四项 + 指标栈 + Loki 日志）
+#
+# 累计启用：certManager、postgresql、valkey、nats + metrics + logging.backend=loki。
+# 启用日志时自动部署 Fluent Bit；不额外提供容易造成"采集但无后端"的用户开关。
+# Loki/OpenSearch 是首装前二选一，不是热切换、双写或历史数据迁移。
+# 默认 storageClass 为现有 Ceph RBD ani-block。
+
+name: ani-lab
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - name: node1
+    address: 172.16.101.20
+  - name: node2
+    address: 172.16.101.21
+  - name: node3
+    address: 172.16.101.22
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: [ens35]
+    encapNetworks: [172.16.101.0/24]
+    intranetNetworks: [172.16.101.0/24, 10.96.0.0/16]
+registry:
+  port: 5000
+
+components:
+  certManager:
+    enabled: true
+  postgresql:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 10Gi
+  valkey:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 2Gi
+  nats:
+    enabled: true
+    storageClass: ani-block
+    storageSize: 5Gi
+  metrics:
+    enabled: true
+    storageClass: ani-block
+    prometheusStorageSize: 5Gi
+    alertmanagerStorageSize: 1Gi
+    prometheusRetention: 24h
+  logging:
+    backend: loki
+    storageClass: ani-block
+    storageSize: 5Gi
+    retentionDays: 3
