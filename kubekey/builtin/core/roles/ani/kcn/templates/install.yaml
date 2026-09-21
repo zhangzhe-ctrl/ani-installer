@@ -122,12 +122,29 @@ spec:
                           description: enableECMP indicates whether this route uses
                             equal-cost multi-path routing.
                           type: boolean
-                        nextHopIP:
+                        externalID:
                           description: |-
-                            nextHopIP is the next hop IP address. If the VPC/EIPGateway's logical router
-                            does not have a corresponding direct route, this route will not be applied.
-                            "discard" represents a blackhole route.
-                          pattern: ^(?:discard|(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)))$
+                            externalID is an optional identifier set by upper-layer applications for
+                            correlation and tracing purposes.
+                          type: string
+                        nextHopIP:
+                          description: nextHopIP is the next hop IP address. It is
+                            required when nextHopType is IPAddr.
+                          pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                          type: string
+                        nextHopResource:
+                          description: |-
+                            nextHopResource is the VPCAttachment resource in namespace/name format.
+                            It is required when nextHopType is VPCAttachment.
+                          type: string
+                        nextHopType:
+                          default: IPAddr
+                          description: 'nextHopType specifies the next hop type: IPAddr,
+                            Discard or VPCAttachment.'
+                          enum:
+                          - IPAddr
+                          - Discard
+                          - VPCAttachment
                           type: string
                         policy:
                           default: DstIP
@@ -140,7 +157,6 @@ spec:
                           type: string
                       required:
                       - cidr
-                      - nextHopIP
                       type: object
                     maxItems: 20
                     type: array
@@ -193,7 +209,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the EIPGateway has been validated and is ready to be applied
                   - "Ready": the EIPGateway is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -468,7 +484,7 @@ spec:
                   Condition types include:
                   - "Valid": the spec parameters are valid and the EIP has a valid IP address
                     (False when IP allocation fails or the specified IP is invalid)
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the EIP has been validated and is ready to be applied
                   - "Ready": the EIP is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -550,6 +566,108 @@ spec:
     storage: true
     subresources:
       status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: learnedroutes.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: LearnedRoute
+    listKind: LearnedRouteList
+    plural: learnedroutes
+    shortNames:
+    - lrt
+    singular: learnedroute
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.prefixes
+      name: Prefixes
+      type: string
+    - jsonPath: .spec.injectInto
+      name: InjectInto
+      type: string
+    - jsonPath: .spec.learnedFrom.kind
+      name: LearnedFromKind
+      type: string
+    - jsonPath: .spec.learnedFrom.name
+      name: LearnedFromName
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: LearnedRoute is the Schema for the learnedroutes API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of LearnedRoute
+            properties:
+              injectInto:
+                description: |-
+                  injectInto lists the route tables this learned route should be injected
+                  into, in namespace/name format. The RouteTable controller indexes LearnedRoute by this field.
+                items:
+                  type: string
+                type: array
+              learnedFrom:
+                description: learnedFrom identifies the source resource for frontend
+                  display.
+                properties:
+                  kind:
+                    description: kind is the source resource kind.
+                    enum:
+                    - VPCAttachment
+                    type: string
+                  name:
+                    description: name is the source resource name in namespace/name
+                      format.
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+              nextHopIP:
+                description: |-
+                  nextHopIP is the rewritten next hop IP address. The original next hop of a
+                  TR table static route is rewritten to the target attachment's lrp address;
+                pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                type: string
+              prefixes:
+                description: prefixes lists the CIDRs to be injected.
+                items:
+                  pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                  type: string
+                type: array
+            required:
+            - learnedFrom
+            - nextHopIP
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -653,7 +771,7 @@ spec:
                   Condition types include:
                   - "Valid": the spec is valid and the EIP is available for binding (False when
                     the spec is invalid or the EIP is occupied)
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the Nat has been validated and is ready to be applied
                   - "Ready": the NAT is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -822,6 +940,8 @@ spec:
                     priority:
                       description: priority specifies the rule priority. Lower values
                         have higher priority.
+                      maximum: 4000
+                      minimum: 1
                       type: integer
                     protocol:
                       description: 'protocol specifies the protocol: tcp, udp, icmp,
@@ -830,6 +950,8 @@ spec:
                       - tcp
                       - udp
                       - icmp
+                      - ipip
+                      - gre
                       - all
                       type: string
                     srcCIDR:
@@ -873,6 +995,8 @@ spec:
                     priority:
                       description: priority specifies the rule priority. Lower values
                         have higher priority.
+                      maximum: 4000
+                      minimum: 1
                       type: integer
                     protocol:
                       description: 'protocol specifies the protocol: tcp, udp, icmp,
@@ -881,6 +1005,8 @@ spec:
                       - tcp
                       - udp
                       - icmp
+                      - ipip
+                      - gre
                       - all
                       type: string
                     srcCIDR:
@@ -943,7 +1069,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the NetworkACL has been validated and is ready to be applied
                   - "Ready": the NetworkACL is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -1155,7 +1281,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the Nic has been validated and is ready to be applied
                   - "Ready": the Nic is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -1253,16 +1379,30 @@ spec:
     kind: RouteTable
     listKind: RouteTableList
     plural: routetables
+    shortNames:
+    - rt
     singular: routetable
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .metadata.generation
-      name: Generation
-      type: integer
-    - jsonPath: .status.observedGeneration
-      name: ObservedGeneration
-      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .spec.router.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.router.name
+      name: Router
+      type: string
+    - jsonPath: .status.routerApplied
+      name: RouterApplied
+      type: boolean
+    - jsonPath: .status.appliedSubresources
+      name: AppliedSubresources
+      type: string
+    - jsonPath: .status.learnedRoutes
+      name: LearnedRoutes
+      type: string
     name: v1
     schema:
       openAPIV3Schema:
@@ -1288,6 +1428,34 @@ spec:
           spec:
             description: spec defines the desired state of RouteTable
             properties:
+              router:
+                description: router delimits which resources may reference this route
+                  table. It is immutable.
+                properties:
+                  kind:
+                    default: VPC
+                    description: 'kind is the type of the router: VPC or TransitRouter.'
+                    enum:
+                    - VPC
+                    - TransitRouter
+                    type: string
+                    x-kubernetes-validations:
+                    - message: field is immutable
+                      rule: self == oldSelf
+                  name:
+                    description: name is the resource name in namespace/name format.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: field is immutable
+                      rule: self == oldSelf
+                required:
+                - name
+                type: object
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+                - message: field kind is immutable once set
+                  rule: '!has(oldSelf.kind) || has(self.kind)'
               routes:
                 description: routes lists the route entries in this route table.
                 items:
@@ -1302,12 +1470,29 @@ spec:
                       description: enableECMP indicates whether this route uses equal-cost
                         multi-path routing.
                       type: boolean
-                    nextHopIP:
+                    externalID:
                       description: |-
-                        nextHopIP is the next hop IP address. If the VPC/EIPGateway's logical router
-                        does not have a corresponding direct route, this route will not be applied.
-                        "discard" represents a blackhole route.
-                      pattern: ^(?:discard|(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)))$
+                        externalID is an optional identifier set by upper-layer applications for
+                        correlation and tracing purposes.
+                      type: string
+                    nextHopIP:
+                      description: nextHopIP is the next hop IP address. It is required
+                        when nextHopType is IPAddr.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                      type: string
+                    nextHopResource:
+                      description: |-
+                        nextHopResource is the VPCAttachment resource in namespace/name format.
+                        It is required when nextHopType is VPCAttachment.
+                      type: string
+                    nextHopType:
+                      default: IPAddr
+                      description: 'nextHopType specifies the next hop type: IPAddr,
+                        Discard or VPCAttachment.'
+                      enum:
+                      - IPAddr
+                      - Discard
+                      - VPCAttachment
                       type: string
                     policy:
                       default: DstIP
@@ -1320,37 +1505,30 @@ spec:
                       type: string
                   required:
                   - cidr
-                  - nextHopIP
                   type: object
-                maxItems: 50
+                maxItems: 100
                 type: array
+            required:
+            - router
             type: object
           status:
             description: status defines the observed state of RouteTable
             properties:
-              appliedResources:
-                additionalProperties:
-                  description: RouteAppliedResource records a VPC's application status
-                    for the route table.
-                  properties:
-                    appliedGeneration:
-                      description: |-
-                        appliedGeneration is the generation of the route table applied to the
-                        corresponding VPC. A non-zero value indicates the route table is bound to the VPC.
-                      format: int64
-                      type: integer
-                    appliedSubnets:
-                      additionalProperties:
-                        format: int64
-                        type: integer
-                      description: |-
-                        appliedSubnets lists the subnets within the VPC that use this route table.
-                        Key is the subnet name, value is the applied route table generation for that subnet.
-                      type: object
-                  type: object
-                description: |-
-                  appliedResources records which VPCs/subnets are currently applying this
-                  route table. Key is the VPC name, value is the applied resource record.
+              appliedSubresources:
+                description: appliedSubresources lists the subresources of router
+                  currently bound to this route table, in namespace/name format.
+                items:
+                  type: string
+                type: array
+              boundResources:
+                description: boundResources holds OVN-side identifiers for the applied
+                  route table.
+                properties:
+                  routeTableName:
+                    description: |-
+                      routeTableName is the OVN internal route table name. If the table is
+                      applied directly to a VPC, the name is "main".
+                    type: string
                 type: object
               conditions:
                 description: |-
@@ -1359,7 +1537,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the route table has been applied and its status is synced with the latest spec
+                  - "Initialized": the route table has been validated and is ready to be applied
                   - "Ready": the route table is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -1421,11 +1599,23 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              learnedRoutes:
+                additionalProperties:
+                  format: int64
+                  type: integer
+                description: |-
+                  learnedRoutes records the LearnedRoute resources injected into this table,
+                  mapping resource name (namespace/name) to its generation.
+                type: object
               observedGeneration:
                 description: observedGeneration is the generation of the spec that
                   has been reconciled.
                 format: int64
                 type: integer
+              routerApplied:
+                description: routerApplied indicates whether the router specified
+                  in spec.router is currently applying this route table.
+                type: boolean
             type: object
         required:
         - spec
@@ -1511,39 +1701,54 @@ spec:
                       enum:
                       - IPv4
                       type: string
-                    portRangeMax:
-                      description: portRangeMax specifies the maximum port in the
-                        range.
-                      format: int32
-                      type: integer
-                    portRangeMin:
-                      description: portRangeMin specifies the minimum port in the
-                        range.
-                      format: int32
-                      type: integer
+                    portRanges:
+                      description: portRanges specifies inclusive destination port
+                        ranges. Entries are combined with OR.
+                      items:
+                        description: PortRange defines an inclusive transport-layer
+                          destination port range.
+                        properties:
+                          max:
+                            description: max specifies the last port in the range.
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                          min:
+                            description: min specifies the first port in the range.
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                        required:
+                        - max
+                        - min
+                        type: object
+                      type: array
                     priority:
-                      description: priority specifies the rule priority. Higher values
+                      description: priority specifies the rule priority. max values
                         take precedence.
+                      maximum: 4000
+                      minimum: 1
                       type: integer
                     protocol:
                       description: 'protocol specifies the network protocol: tcp,
-                        udp, icmp, or all.'
+                        udp, icmp, ipip, gre, or all.'
                       enum:
                       - tcp
                       - udp
                       - icmp
+                      - ipip
+                      - gre
                       - all
                       type: string
-                    remoteAddress:
-                      description: remoteAddress specifies the remote IP address/CIDR.
-                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
-                      type: string
-                    remoteSgName:
-                      description: |-
-                        remoteSgName specifies the name of a remote SecurityGroup.
-                        The IPs of the VNics listed in that SecurityGroup's status.appliedVNics are used
-                        as the remote address set for this rule.
-                      type: string
+                    remoteAddresses:
+                      description: remoteAddresses specifies remote IP CIDRs. Entries
+                        are combined with OR.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
                   required:
                   - action
                   - ipVersion
@@ -1570,39 +1775,54 @@ spec:
                       enum:
                       - IPv4
                       type: string
-                    portRangeMax:
-                      description: portRangeMax specifies the maximum port in the
-                        range.
-                      format: int32
-                      type: integer
-                    portRangeMin:
-                      description: portRangeMin specifies the minimum port in the
-                        range.
-                      format: int32
-                      type: integer
+                    portRanges:
+                      description: portRanges specifies inclusive destination port
+                        ranges. Entries are combined with OR.
+                      items:
+                        description: PortRange defines an inclusive transport-layer
+                          destination port range.
+                        properties:
+                          max:
+                            description: max specifies the last port in the range.
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                          min:
+                            description: min specifies the first port in the range.
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                        required:
+                        - max
+                        - min
+                        type: object
+                      type: array
                     priority:
-                      description: priority specifies the rule priority. Higher values
+                      description: priority specifies the rule priority. max values
                         take precedence.
+                      maximum: 4000
+                      minimum: 1
                       type: integer
                     protocol:
                       description: 'protocol specifies the network protocol: tcp,
-                        udp, icmp, or all.'
+                        udp, icmp, ipip, gre, or all.'
                       enum:
                       - tcp
                       - udp
                       - icmp
+                      - ipip
+                      - gre
                       - all
                       type: string
-                    remoteAddress:
-                      description: remoteAddress specifies the remote IP address/CIDR.
-                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
-                      type: string
-                    remoteSgName:
-                      description: |-
-                        remoteSgName specifies the name of a remote SecurityGroup.
-                        The IPs of the VNics listed in that SecurityGroup's status.appliedVNics are used
-                        as the remote address set for this rule.
-                      type: string
+                    remoteAddresses:
+                      description: remoteAddresses specifies remote IP CIDRs. Entries
+                        are combined with OR.
+                      items:
+                        pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)/(?:3[0-2]|[12]?[0-9]))$
+                        type: string
+                      type: array
                   required:
                   - action
                   - ipVersion
@@ -1631,7 +1851,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the SecurityGroup has been validated and is ready to be applied
                   - "Ready": the SecurityGroup is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -1821,7 +2041,7 @@ spec:
                   Condition types include:
                   - "Valid": the spec is valid and the EIP is available for binding (False when
                     the spec is invalid or the EIP is occupied)
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the Snat has been validated and is ready to be applied
                   - "Ready": the SNAT is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -1942,12 +2162,16 @@ spec:
     - jsonPath: .status.v4availableIPs
       name: V4AVAILABLE
       type: integer
+    - jsonPath: .spec.allowedNamespaces
+      name: AllowedNamespaces
+      type: string
     - jsonPath: .spec.excludeIps
       name: EXCLUDEIPS
       priority: 1
       type: string
-    - jsonPath: .spec.allowedNamespaces
-      name: AllowedNamespaces
+    - jsonPath: .status.underlayState.chassisNode
+      name: ChassisNode
+      priority: 1
       type: string
     name: v1
     schema:
@@ -2061,8 +2285,8 @@ spec:
                   deliver traffic to the nodes. Invalid for Intranet/Public subnets.
                 type: boolean
               routeTable:
-                description: routeTable is the name of the route table used by this
-                  subnet. Only support for VPC subnets.
+                description: routeTable is the route table currently used, in namespace/name
+                  format. Only support for VPC subnets.
                 type: string
               type:
                 default: VPC
@@ -2121,18 +2345,19 @@ spec:
                 description: appliedRouteTable records the route table that has been
                   applied to the Subnet.
                 properties:
-                  appliedGeneration:
-                    description: appliedGeneration is the generation of the route
-                      table that has been applied.
-                    format: int64
-                    type: integer
                   routeTable:
-                    description: routeTable is the name of the applied route table.
+                    description: routeTable is the name of the applied route table,
+                      in namespace/name format.
                     type: string
                 required:
-                - appliedGeneration
                 - routeTable
                 type: object
+              attachments:
+                description: attachments lists the VPCAttachments whose attachmentPoints
+                  reference this subnet, in namespace/name format.
+                items:
+                  type: string
+                type: array
               boundResources:
                 description: boundResources holds OVN-related resource IDs.
                 properties:
@@ -2157,7 +2382,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the subnet has been validated and is ready to be applied
                   - "Ready": the subnet has been successfully created and is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -2238,9 +2463,7 @@ spec:
                   notReadyNodes:
                     description: notReadyNodes lists nodes where the underlay is not
                       ready.
-                    items:
-                      type: string
-                    type: array
+                    type: string
                   ready:
                     description: ready indicates whether the underlay is ready on
                       all nodes.
@@ -2280,6 +2503,262 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
+  name: transitrouters.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: TransitRouter
+    listKind: TransitRouterList
+    plural: transitrouters
+    shortNames:
+    - tr
+    singular: transitrouter
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.vpcAttachments
+      name: VPCAttachments
+      type: string
+    - jsonPath: .spec.allowedNamespaces
+      name: AllowedNamespaces
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: TransitRouter is the Schema for the transitrouters API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of TransitRouter
+            properties:
+              allowedNamespaces:
+                description: |-
+                  allowedNamespaces restricts which namespaces may attach a VPC to this
+                  TransitRouter. If empty, only the TransitRouter's own namespace is allowed.
+                properties:
+                  from:
+                    description: 'from specifies the namespace selection mode: All,
+                      Same, or Selector.'
+                    enum:
+                    - All
+                    - Same
+                    - Selector
+                    type: string
+                  selector:
+                    description: selector is used when from is Selector. Labels are
+                      ANDed.
+                    properties:
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: matchLabels is a map of key-value pairs. All
+                          labels must match (AND relation).
+                        type: object
+                    type: object
+                required:
+                - from
+                type: object
+              ipVersion:
+                default: IPv4
+                description: 'ipVersion specifies the IP version: IPv4, IPv6, or Dual.
+                  Defaults to IPv4. Immutable after creation.'
+                enum:
+                - IPv4
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              policyRoutes:
+                description: policyRoutes are user-specified routing policies for
+                  the TransitRouter (OVN parameters).
+                items:
+                  description: PolicyRoute defines a routing policy rule for the VPC
+                    gateway.
+                  properties:
+                    action:
+                      description: 'action specifies the action for the matched traffic:
+                        allow, drop, or reroute.'
+                      enum:
+                      - allow
+                      - drop
+                      - reroute
+                      type: string
+                    externalID:
+                      description: |-
+                        externalID is an optional identifier set by upper-layer applications for
+                        correlation and tracing purposes.
+                      type: string
+                    match:
+                      description: match specifies the OVN match condition, e.g. "ip4.src==10.0.1.0/24
+                        && ip4.dst==10.0.1.250".
+                      type: string
+                    nextHopIP:
+                      description: nextHopIP is required when action is reroute, specifying
+                        the next hop IP address.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                      type: string
+                    priority:
+                      description: priority specifies the rule priority (1-2000).
+                        Higher values take precedence.
+                      maximum: 2000
+                      minimum: 1
+                      type: integer
+                  required:
+                  - action
+                  - match
+                  - priority
+                  type: object
+                maxItems: 50
+                type: array
+              routeTable:
+                description: |-
+                  routeTable is the route table currently used, in namespace/name format.
+                  An empty string means no route table is bound and only system routes exist.
+                type: string
+            type: object
+            x-kubernetes-validations:
+            - message: field ipVersion is immutable once set
+              rule: '!has(oldSelf.ipVersion) || has(self.ipVersion)'
+          status:
+            description: status defines the observed state of TransitRouter
+            properties:
+              appliedRouteTable:
+                description: appliedRouteTable records the route table that has been
+                  applied to the TransitRouter.
+                properties:
+                  routeTable:
+                    description: routeTable is the name of the applied route table,
+                      in namespace/name format.
+                    type: string
+                required:
+                - routeTable
+                type: object
+              boundResources:
+                description: boundResources holds OVN related resource identifiers.
+                properties:
+                  chassisNode:
+                    description: chassisNode is the chassisNode corresponding to the
+                      l3gw.
+                    type: string
+                  router:
+                    description: router is the OVN logical router name.
+                    type: string
+                required:
+                - router
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the TransitRouter resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Initialized": the TransitRouter has been validated and is ready to be applied
+                  - "Ready": the TransitRouter has been successfully created and is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
+              vpcAttachments:
+                description: vpcAttachments lists the VPCAttachments attached to this
+                  TransitRouter, in namespace/name format.
+                items:
+                  type: string
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: vlannetworks.networking.kubercloud.com
 spec:
   group: networking.kubercloud.com
@@ -2301,6 +2780,9 @@ spec:
       type: integer
     - jsonPath: .spec.devName
       name: DevName
+      type: string
+    - jsonPath: .spec.vClusterName
+      name: VClusterName
       type: string
     - jsonPath: .status.subnet
       name: Subnet
@@ -2338,6 +2820,15 @@ spec:
                 x-kubernetes-validations:
                 - message: field is immutable
                   rule: self == oldSelf
+              vClusterName:
+                description: |-
+                  vClusterName is the name of the virtual cluster. Nodes in the same
+                  virtual cluster reside in the same Layer 2 domain and share the same
+                  physical device for VLAN interconnection. Immutable after creation.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
               vlanID:
                 description: vlanID is the VLAN identifier (0-4094). A value of 0
                   indicates no VLAN. Immutable after creation.
@@ -2350,6 +2841,7 @@ spec:
                   rule: self == oldSelf
             required:
             - devName
+            - vClusterName
             - vlanID
             type: object
           status:
@@ -2362,7 +2854,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the VlanNetwork has been validated and is ready to be applied
                   - "Ready": the VLAN network is effective and ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -2427,12 +2919,14 @@ spec:
               notReadyNodes:
                 description: notReadyNodes lists nodes where the VLAN network is not
                   ready.
-                items:
-                  type: string
-                type: array
+                type: string
               subnet:
-                description: / subnet specifies the subnet name associated with the
+                description: subnet specifies the subnet name associated with the
                   VLAN network.
+                type: string
+              topoVersion:
+                description: topoVersion is the MD5 checksum of the node list, used
+                  to detect changes and trigger reconciliation.
                 type: string
             type: object
         required:
@@ -2542,7 +3036,7 @@ spec:
                   Condition types include:
                   - "Valid": the spec parameters are valid and the IP address is valid
                     (False when IP allocation fails or the specified IP is invalid)
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the VNicIP has been validated and is ready to be applied
                   - "Ready": the VNicIP is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -2783,7 +3277,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the VNic has been validated and is ready to be applied
                   - "Ready": the VNic is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -2870,6 +3364,289 @@ spec:
                 description: primaryIP is the primary IP address assigned to this
                   vNic.
                 type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: vpcattachments.networking.kubercloud.com
+spec:
+  group: networking.kubercloud.com
+  names:
+    kind: VPCAttachment
+    listKind: VPCAttachmentList
+    plural: vpcattachments
+    shortNames:
+    - vpcatt
+    singular: vpcattachment
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.transitRouter
+      name: TransitRouter
+      type: string
+    - jsonPath: .spec.vpc
+      name: VPC
+      type: string
+    - jsonPath: .status.attachmentPoints[0].subnet
+      name: Subnet
+      type: string
+    - jsonPath: .status.attachmentPoints[0].ipAddress
+      name: IPAddress
+      type: string
+    - jsonPath: .status.attachmentPoints[0].gatewayIP
+      name: GatewayIP
+      type: string
+    - jsonPath: .spec.enableLearn.fromVPC
+      name: LearnFromVPC
+      type: boolean
+    - jsonPath: .spec.enableLearn.fromTransitRouter
+      name: LearnFromTR
+      type: boolean
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VPCAttachment is the Schema for the vpcattachments API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of VPCAttachment
+            properties:
+              attachmentPoints:
+                description: |-
+                  attachmentPoints lists the attachment points. The subnet set is immutable;
+                  ipAddress may still be adjusted.
+                items:
+                  description: VpcAttachmentPoint defines a desired attachment point
+                    on the VPC side.
+                  properties:
+                    ipAddress:
+                      description: |-
+                        ipAddress is the desired attachment point IP address. If empty, the CNI
+                        allocates one from the subnet.
+                      pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
+                      type: string
+                    subnet:
+                      description: |-
+                        subnet is the VPC subnet used to connect to the TransitRouter,
+                        in namespace/name format.
+                      type: string
+                  required:
+                  - subnet
+                  type: object
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - subnet
+                x-kubernetes-list-type: map
+                x-kubernetes-validations:
+                - message: attachmentPoints subnet set is immutable
+                  rule: self.map(p, p.subnet) == oldSelf.map(p, p.subnet)
+              enableLearn:
+                default: {}
+                description: |-
+                  enableLearn controls route learning. It takes effect only when the
+                  VPC/TransitRouter has an associated RouteTable.
+                properties:
+                  fromTransitRouter:
+                    default: true
+                    description: |-
+                      fromTransitRouter learns the TransitRouter's routes (other VPC CIDRs and
+                      routes configured on the TransitRouter's route table) and injects them
+                      into the RouteTable bound to this VPC side. If no route table is bound,
+                      no injection happens. Defaults to true.
+                    type: boolean
+                  fromVPC:
+                    default: true
+                    description: |-
+                      fromVPC learns this VPC's routes (publishes this VPC's CIDRs) and injects
+                      them into the RouteTable bound to this attachment's TransitRouter side.
+                      If no route table is bound, no injection happens. Defaults to true.
+                    type: boolean
+                type: object
+              routeTable:
+                description: |-
+                  routeTable is the route table currently used, in namespace/name format.
+                  An empty string means no route table is bound and the TransitRouter's
+                  bound route table is used directly.
+                type: string
+              transitRouter:
+                description: transitRouter is the associated TransitRouter in namespace/name
+                  format. It is immutable.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+              vpc:
+                description: |-
+                  vpc is the associated VPC in namespace/name format. It is immutable.
+                  The attachment must be in the same namespace as the VPC.
+                type: string
+                x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
+            required:
+            - transitRouter
+            - vpc
+            type: object
+          status:
+            description: status defines the observed state of VPCAttachment
+            properties:
+              appliedRouteTable:
+                description: appliedRouteTable records the route table that has been
+                  applied to the attachment.
+                properties:
+                  routeTable:
+                    description: routeTable is the name of the applied route table,
+                      in namespace/name format.
+                    type: string
+                required:
+                - routeTable
+                type: object
+              attachmentPoints:
+                description: attachmentPoints records the effective attachment point
+                  information.
+                items:
+                  description: VpcAttachmentPointStatus records the effective attachment
+                    point information.
+                  properties:
+                    gatewayIP:
+                      description: gatewayIP is the gateway IP of the VPC side subnet.
+                      type: string
+                    ipAddress:
+                      description: ipAddress is the attachment point IP address.
+                      type: string
+                    macAddress:
+                      description: macAddress is the attachment point MAC address.
+                      type: string
+                    subnet:
+                      description: subnet is the attachment point's subnet in namespace/name
+                        format.
+                      type: string
+                  type: object
+                type: array
+              boundResources:
+                description: boundResources holds OVN related resource identifiers.
+                properties:
+                  attachmentPort:
+                    description: attachmentPort is the lrp name on the ER side.
+                    type: string
+                type: object
+              conditions:
+                description: |-
+                  conditions represent the current state of the VPCAttachment resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Condition types include:
+                  - "Valid": the spec parameters are valid
+                  - "Initialized": the VPCAttachment has been validated and is ready to be applied
+                  - "Ready": the VPCAttachment has been successfully created and is ready for use
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              learnedRoutes:
+                description: learnedRoutes records the LearnedRoute objects created
+                  for this attachment.
+                properties:
+                  fromTransitRouter:
+                    description: fromTransitRouter is the name of the LearnedRoute
+                      learned from the TransitRouter.
+                    type: string
+                  fromVPC:
+                    description: fromVPC is the name of the LearnedRoute learned from
+                      the VPC.
+                    type: string
+                type: object
+              observedGeneration:
+                description: observedGeneration is the generation of the spec that
+                  has been reconciled.
+                format: int64
+                type: integer
             type: object
         required:
         - spec
@@ -2992,6 +3769,11 @@ spec:
                       - drop
                       - reroute
                       type: string
+                    externalID:
+                      description: |-
+                        externalID is an optional identifier set by upper-layer applications for
+                        correlation and tracing purposes.
+                      type: string
                     match:
                       description: match specifies the OVN match condition, e.g. "ip4.src==10.0.1.0/24
                         && ip4.dst==10.0.1.250".
@@ -3002,10 +3784,10 @@ spec:
                       pattern: ^(?:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0)\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?|0))$
                       type: string
                     priority:
-                      description: priority specifies the rule priority (1000-10000).
+                      description: priority specifies the rule priority (1-2000).
                         Higher values take precedence.
-                      maximum: 10000
-                      minimum: 1000
+                      maximum: 2000
+                      minimum: 1
                       type: integer
                   required:
                   - action
@@ -3015,7 +3797,7 @@ spec:
                 type: array
               routeTable:
                 description: |-
-                  routeTable is the name of the route table bound to this VPC.
+                  routeTable is the route table currently used, in namespace/name format.
                   Empty string means no route table is bound, only system routes apply.
                 type: string
             type: object
@@ -3029,18 +3811,19 @@ spec:
                 description: appliedRouteTable records the route table that has been
                   applied to the VPC.
                 properties:
-                  appliedGeneration:
-                    description: appliedGeneration is the generation of the route
-                      table that has been applied.
-                    format: int64
-                    type: integer
                   routeTable:
-                    description: routeTable is the name of the applied route table.
+                    description: routeTable is the name of the applied route table,
+                      in namespace/name format.
                     type: string
                 required:
-                - appliedGeneration
                 - routeTable
                 type: object
+              attachments:
+                description: attachments lists the VPCAttachments attached to this
+                  VPC, in namespace/name format.
+                items:
+                  type: string
+                type: array
               boundResources:
                 description: boundResources holds OVN-related resource IDs.
                 properties:
@@ -3061,7 +3844,7 @@ spec:
 
                   Condition types include:
                   - "Valid": the spec parameters are valid
-                  - "Applied": the resource has been applied and its status is synced with the latest spec
+                  - "Initialized": the VPC has been validated and is ready to be applied
                   - "Ready": the VPC has been successfully created and is ready for use
 
                   The status of each condition is one of True, False, or Unknown.
@@ -3313,6 +4096,7 @@ rules:
   resources:
   - eipgateways
   - eips
+  - learnedroutes
   - nats
   - networkacls
   - nics
@@ -3320,9 +4104,11 @@ rules:
   - securitygroups
   - snats
   - subnets
+  - transitrouters
   - vlannetworks
   - vnicips
   - vnics
+  - vpcattachments
   - vpcs
   verbs:
   - create
@@ -3337,6 +4123,7 @@ rules:
   resources:
   - eipgateways/finalizers
   - eips/finalizers
+  - learnedroutes/finalizers
   - nats/finalizers
   - networkacls/finalizers
   - nics/finalizers
@@ -3344,9 +4131,11 @@ rules:
   - securitygroups/finalizers
   - snats/finalizers
   - subnets/finalizers
+  - transitrouters/finalizers
   - vlannetworks/finalizers
   - vnicips/finalizers
   - vnics/finalizers
+  - vpcattachments/finalizers
   - vpcs/finalizers
   verbs:
   - update
@@ -3362,9 +4151,11 @@ rules:
   - securitygroups/status
   - snats/status
   - subnets/status
+  - transitrouters/status
   - vlannetworks/status
   - vnicips/status
   - vnics/status
+  - vpcattachments/status
   - vpcs/status
   verbs:
   - get
@@ -3445,6 +4236,8 @@ subjects:
   name: kcn-controller
   namespace: kcn-system
 ---
+# 上游 dev 已删除 ConfigMap kcn-config，本地恢复以保留三个站点注入点
+# （encapNetworks / intranetNetworks / managedDevices，2026-09-20 升级计划 §2A）。
 apiVersion: v1
 data:
   enablePortSecurity: "false"
@@ -3574,6 +4367,9 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: status.podIPs
+        # imagePullPolicy 偏离上游 Always：离线环境镜像经节点本地 registry 分发，
+        # IfNotPresent 避免每次 pod 启动都打 registry（上游 dev 清单 5 处 Always
+        # 统一改回 IfNotPresent，含 install-cni init 容器；决策点 1，2026-09-20 升级计划）。
         image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         livenessProbe:

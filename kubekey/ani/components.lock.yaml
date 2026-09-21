@@ -25,8 +25,11 @@ base:
   runc: v1.4.3
   hauler: v2.0.3
   # kcn: dev = docker.changqingyun.cn/kubercloud/kc-networking:dev
-  # 2026-09-20 升级（K-5 坏 netns 修复）；安装清单重写自上游 install-dev.yaml，
-  # 镜像以本地 tar 注入离线包（OCI index sha256:5a8cf98fcccf118c…，见 images.tsv）。
+  # 2026-09-21 二次供料（fix2，K-5 STS 原地重建修复）：安装清单重写自上游
+  # install-dev.yaml（32 段），镜像以本地 tar 注入离线包。amd64 manifest 摘要
+  # sha256:05ea46f8cdcb033158cd0c80eac41b88a63eeb87ee4e9f5823be97c94171563a
+  #（fix2 tar 为纯 docker-archive 无 index，manifest 为确定性构造，见 /tmp/kcn-tar-report.md）。
+  # 2026-09-20 首轮 index sha256:5a8cf98f… 已被本轮取代，见 images.tsv。
   kcn: dev
   envoyGateway: 既定定制版本（仓库已锁定，本轮不动）
   rook: v1.20.7
@@ -211,7 +214,8 @@ excludedImages:
 # 候选版本依据 docs/research/observability-{metrics,logs}-materials-20260919.md，
 # 摘要为本轮在 Fedora 实测（Chart 重新下载 + skopeo 读取 manifest），不是转述。
 # 本批状态：materials_confirmed / installation_not_verified。
-# kcn dev 材料已于 2026-09-20 用户提供并注入（见 base.kcn），installer 侧完成升级改造。
+# kcn dev 材料最新为 2026-09-21 二次供料 fix2（K-5 STS 原地重建修复，见 base.kcn），
+# 2026-09-20 首轮供料已被取代；installer 侧同步完成清单重写与镜像注入。
 # ---------------------------------------------------------------------------
 batch2:
   lockedAt: "2026-09-19"

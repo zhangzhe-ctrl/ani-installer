@@ -13,7 +13,7 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 	data := map[string]any{
 		"ani": map[string]any{
 			"images": map[string]string{
-				"docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2": "192.0.2.11:5000/kubercloud/kc-networking:v0.6.2",
+				"docker.changqingyun.cn/kubercloud/kc-networking:dev": "192.0.2.11:5000/kubercloud/kc-networking:dev",
 			},
 			"node_addresses": []string{"192.0.2.11", "192.0.2.12", "192.0.2.13"},
 			"network": map[string]any{
@@ -49,6 +49,10 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 			t.Fatalf("rendered manifest missing %q", want)
 		}
 	}
+	// fix2 (2026-09-21): upstream dropped ConfigMap kcn-config entirely, so
+	// 33.3.14.0/23 / 33.3.96.0/19 / 192.1.1.0/24 no longer exist even as
+	// upstream hardcoded values; the checks stay as guards since the locally
+	// restored ConfigMap must render injected values only.
 	for _, stale := range []string{
 		"33.3.1.201", "33.3.1.202", "33.3.1.203", "33.3.64.0/19",
 		"33.3.14.0/23", "33.3.96.0/19", "192.1.1.0/24",
@@ -58,11 +62,13 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 			t.Fatalf("rendered manifest still contains stale site value %q", stale)
 		}
 	}
-	// 2026-09-20 kcn dev upgrade: the dev manifest ships the leader fix
-	// upstream (leader-checker baked into the image, start-db.sh as a plain
-	// command array) and renames the OVN Services with the kcn- prefix.
-	// Assert the dev shapes and reject the v0.6.2 hand-patched ones.
+	// 2026-09-21 kcn dev fix2 upgrade: upstream ships three new CRDs
+	// (learnedroutes / transitrouters / vpcattachments) alongside the dev
+	// shapes already asserted below (kcn- prefixed OVN Services, start-db.sh).
 	for _, want := range []string{
+		"name: learnedroutes.networking.kubercloud.com",
+		"name: transitrouters.networking.kubercloud.com",
+		"name: vpcattachments.networking.kubercloud.com",
 		"name: kcn-ovn-nb",
 		"name: kcn-ovn-northd",
 		"name: kcn-ovn-sb",
