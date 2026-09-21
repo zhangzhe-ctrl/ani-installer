@@ -293,7 +293,7 @@ opensearch)
   # script fingerprints across a pod rebuild.
   grep -qE 'name: ani-opensearch-master$' "$OUT.workloads" \
     || { echo "no 'ani-opensearch-master' volumeClaimTemplate" >&2; exit 1; }
-  echo "  OK   ani-opensearch-master volumeClaimTemplate present (PVC becomes ani-opensearch-master-0)"
+  echo "  OK   ani-opensearch-master volumeClaimTemplate present (PVC becomes ani-opensearch-master-ani-opensearch-master-0)"
 
   echo "--- security is on and the demo configuration is not ---"
   grep -qF -- 'DISABLE_INSTALL_DEMO_CONFIG' "$OUT.workloads" || { echo "the demo-config guard env is missing" >&2; exit 1; }

@@ -78,6 +78,20 @@ echo "=== render fluent-bit values (opensearch backend) ==="
 BACKEND=opensearch "$LAB/render-values.sh" "$REPO" "$SRC/ani/images.tsv" fluent-bit \
   "$EVID/fluent-bit-values-opensearch.yaml"
 
+# The tasks files are rendered too, not just the values. A task that reads a
+# context key the role never receives renders to `<no value>` and only fails on
+# the node: the metrics role shipped exactly that — nine tasks read
+# `.ani.metrics.namespace`, which is the selection row and carries no namespace,
+# while the real key is `.ani.components.metrics.namespace`. Rendering the tasks
+# here turns that class of defect into an offline failure. Both files are
+# `text/template` over the same context, so the same program renders them.
+echo "=== render tasks files ==="
+for role in metrics loki fluent-bit; do
+  TEMPLATE_KIND=tasks BACKEND="${BACKEND:-loki}" \
+    "$LAB/render-values.sh" "$REPO" "$SRC/ani/images.tsv" "$role" \
+    "$EVID/$role-tasks.yaml"
+done
+
 echo "=== render loki chart ==="
 "$LAB/render-gate.sh" \
   "$CHARTS/loki-18.13.3.tgz" "$EVID/loki-values.yaml" "$EVID/loki-render.yaml" loki \

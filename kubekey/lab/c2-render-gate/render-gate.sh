@@ -95,6 +95,30 @@ strip_crds() {
 }
 strip_crds "$OUT" > "$OUT.workloads"
 
+echo "--- the Prometheus CR retentionSize carries the CRD byte format ---"
+# Checked on the CRD-stripped file, and only after that file has been rebuilt
+# from this run's render: reading it before the strip would silently consume a
+# stale .workloads left by an earlier run (exactly what happened when this
+# check first ran — the fresh render carried 4GiB while the assertion read the
+# previous run's file and reported the old 4Gi).
+# The Prometheus Operator CRD enforces
+#   spec.retentionSize: (^0|([0-9]*[.])?[0-9]+((K|M|G|T|E|P)i?)?B)$
+# — a trailing B is mandatory (4GiB valid, 4Gi rejected). Kubernetes quantities
+# spell the same size without the B, so the site config must carry the CRD
+# spelling and this check pins it end to end. (Failure A2 on 2026-09-19: the
+# installer accepted "4Gi" and the CRD webhook then bounced the whole metrics
+# install ~25 minutes into the run.)
+retention_sizes="$(grep -oE '^[[:space:]]+retentionSize:[[:space:]]*[^#[:space:]]+' "$OUT.workloads" | awk '{print $2}' | tr -d '"' | sort -u || true)"
+[ -n "$retention_sizes" ] || { echo "no retentionSize found in the rendered Prometheus CR" >&2; exit 1; }
+while IFS= read -r value; do
+  if printf '%s' "$value" | grep -qE '^0$|^([0-9]*[.])?[0-9]+((K|M|G|T|E|P)i?)?B$'; then
+    echo "  OK   retentionSize: $value"
+  else
+    echo "  BAD  retentionSize: $value does not match the Prometheus CRD pattern" >&2
+    exit 1
+  fi
+done <<< "$retention_sizes"
+
 for bad in \
   'name: ani-metrics-grafana' \
   'kind: ThanosRuler' \
