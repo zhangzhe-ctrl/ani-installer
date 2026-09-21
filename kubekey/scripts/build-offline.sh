@@ -11,6 +11,18 @@ REPOSITORY_ISO="${REPOSITORY_ISO:?set REPOSITORY_ISO to ubuntu-24.04-debs-amd64.
 KUBEKEY_ARTIFACT="${KUBEKEY_ARTIFACT:-}"
 HAULER_ARCHIVE="${HAULER_ARCHIVE:-}"
 HAULER_STORE="${HAULER_STORE:-}"
+# Local image injection: images that only exist as docker/OCI archives (no
+# reachable registry source, e.g. a vendor hand-off tar). EXTRA_IMAGE_TARS is a
+# whitespace-separated list of archives whose RepoTags must already use the
+# hauler naming shape -- the hauler_ref from images.tsv with the 127.0.0.1:5000/
+# placeholder prefix stripped (e.g. "kubercloud/kc-networking:dev"). Each entry
+# has a matching images.tsv row, and EXTRA_IMAGE_ORIGINALS lists those rows'
+# original_ref values so the pull loop below skips them instead of failing on
+# the unreachable upstream source. The 1:1 size match and the tsv membership
+# are guarded below; a wrong RepoTag inside a tar fails later at install time
+# when verifyRegistryImages cannot find the tsv's hauler_ref in the store.
+EXTRA_IMAGE_TARS="${EXTRA_IMAGE_TARS:-}"
+EXTRA_IMAGE_ORIGINALS="${EXTRA_IMAGE_ORIGINALS:-}"
 HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the fixed chart renders}"
 CHARTS_DIR="${CHARTS_DIR:-$ROOT/ani/charts}"
 COMPONENT_LOCK="${COMPONENT_LOCK:-$ROOT/ani/components.lock.yaml}"
@@ -27,6 +39,24 @@ if [[ -n "$HAULER_ARCHIVE" && -n "$HAULER_STORE" ]]; then
   echo "set only one of HAULER_ARCHIVE or HAULER_STORE" >&2
   exit 1
 fi
+if [[ -n "$EXTRA_IMAGE_TARS" && ( -n "$HAULER_ARCHIVE" || -n "$HAULER_STORE" ) ]]; then
+  echo "EXTRA_IMAGE_TARS only works with the default pull path; unset HAULER_ARCHIVE/HAULER_STORE" >&2
+  exit 1
+fi
+extra_tar_count=0
+for _ in $EXTRA_IMAGE_TARS; do extra_tar_count=$((extra_tar_count+1)); done
+extra_orig_count=0
+for _ in $EXTRA_IMAGE_ORIGINALS; do extra_orig_count=$((extra_orig_count+1)); done
+if [[ "$extra_tar_count" != "$extra_orig_count" ]]; then
+  echo "EXTRA_IMAGE_TARS ($extra_tar_count entries) and EXTRA_IMAGE_ORIGINALS ($extra_orig_count entries) must match 1:1" >&2
+  exit 1
+fi
+for original in $EXTRA_IMAGE_ORIGINALS; do
+  if ! awk -F'\t' -v o="$original" '$1==o{found=1} END{exit !found}' "$IMAGES_TSV"; then
+    echo "EXTRA_IMAGE_ORIGINALS entry $original is not a first-column image in $IMAGES_TSV" >&2
+    exit 1
+  fi
+done
 required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO" "$HELM_BIN" "$COMPONENT_LOCK")
 if [[ -z "$KUBEKEY_ARTIFACT" ]]; then
   required+=("$KK_BIN")
@@ -103,12 +133,24 @@ else
   while IFS=$'\t' read -r original hauler_ref actual_digest use_location; do
     [[ "$original" == "original_ref" ]] && continue
     [[ -z "$original" ]] && continue
+    if [[ " $EXTRA_IMAGE_ORIGINALS " == *" $original "* ]]; then
+      echo "skip $original: provided via EXTRA_IMAGE_TARS"
+      continue
+    fi
     rewrite="${hauler_ref#127.0.0.1:5000/}"
     "$HAULER_BIN" store add image "$original" \
       --platform linux/amd64 \
       --rewrite "$rewrite" \
       --store "$STORE"
   done < "$IMAGES_TSV"
+  for tar_path in $EXTRA_IMAGE_TARS; do
+    if [[ ! -f "$tar_path" ]]; then
+      echo "EXTRA_IMAGE_TARS entry not found: $tar_path" >&2
+      exit 1
+    fi
+    echo "loading extra image tar: $tar_path"
+    "$HAULER_BIN" store load -s "$STORE" -f "$tar_path"
+  done
   image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$IMAGES_TSV")"
   store_count="$("$HAULER_BIN" store info -s "$STORE" --type image -o json | grep -c '"Type": "image"')"
   if [[ "$store_count" != "$image_count" ]]; then

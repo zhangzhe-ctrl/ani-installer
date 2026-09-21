@@ -53,6 +53,7 @@ components:
     alertmanagerStorageSize: 1Gi
     prometheusRetention: 24h
     # 必须小于 prometheusStorageSize，否则卷会先被写满、时长保留永远不生效。
-    prometheusRetentionSize: 4Gi
+    # Prometheus Operator CRD 只接受带尾部 B 的字节量纲（4GiB 合法，4Gi 会被 CRD 拒收）。
+    prometheusRetentionSize: 4GiB
   logging:
     backend: none
