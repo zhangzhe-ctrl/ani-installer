@@ -39,22 +39,30 @@
 # minimum, and the chart's own remedy is a privileged init container. The
 # setting is a node property, so it is set on the node instead, where it also
 # survives a pod rebuild. The write is idempotent and applies at boot.
-- name: ANI OpenSearch | Raise vm.max_map_count on every node
+#
+# OpenSearch is not pinned to one node, so the setting is applied to every node
+# that can run a workload, not just the node this role happens to execute on.
+# An earlier version set it only on kube_control_plane[0], which would leave a
+# pod rescheduled to another node unable to start. The loop and delegate_to form
+# is the same one the kcn role uses for its node-level sysctls.
+- name: ANI OpenSearch | Raise vm.max_map_count on every schedulable node
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
   command: |
-    set -euo pipefail
+    sh -c 'set -e
     want=262144
-    cat > /etc/sysctl.d/90-ani-opensearch.conf <<'SYSCTL'
-    # Required by OpenSearch. Set here rather than by the Chart's privileged
+    cat > /etc/sysctl.d/90-ani-opensearch.conf <<EOF
+    # Required by OpenSearch. Set here rather than by the Chart privileged
     # init container, so the setting is a node property that also applies at
     # boot rather than being reapplied by every pod start.
-    vm.max_map_count = 262144
-    SYSCTL
+    vm.max_map_count = $want
+    EOF
     sysctl -w vm.max_map_count=$want >/dev/null
     current="$(sysctl -n vm.max_map_count)"
     if [ "$current" -lt "$want" ]; then
       echo "vm.max_map_count is $current, below the required $want" >&2
       exit 1
-    fi
+    fi'
 
 # The node certificate and the admin certificate come from the internal CA
 # cert-manager installed earlier in the batch. Two separate certificates: the
@@ -89,6 +97,24 @@
 - name: ANI OpenSearch | Lock down the rendered values
   command: chmod 0600 /etc/kubernetes/ani/opensearch/values.yaml
 
+# The security configuration Secret has to exist before Helm runs. The Chart
+# mounts it as a non-optional volume when securityConfig.config
+# .securityConfigSecret names it, so on a clean install the Pod would fail to
+# start, Helm --wait would time out, and the task that created the Secret would
+# never be reached. The Secret is created empty of credentials: it carries the
+# eight security configuration files, and the two bcrypt hashes in
+# internal_users.yml are filled in by the initialization Job below, which can
+# only run once the cluster is up. The Job therefore updates this Secret rather
+# than creating it, which is why it is applied here.
+- name: ANI OpenSearch | Render the security configuration files
+  template:
+    src: security-config.yaml
+    dest: /etc/kubernetes/ani/opensearch/security-config.yaml
+
+- name: ANI OpenSearch | Create the security configuration Secret
+  command: |
+    kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml
+
 - name: ANI OpenSearch | Install the fixed Chart from the offline artifact
   command: >-
     {{ .ani.artifact_root }}/bin/helm upgrade --install ani-opensearch-master
@@ -107,8 +133,23 @@
 - name: ANI OpenSearch | Wait for the data PVC to bind
   command: |
     set -euo pipefail
+    # A StatefulSet's PVC is named <claim template>-<statefulset>-<ordinal>, and
+    # this Chart's claim template is the same string as the StatefulSet name, so
+    # the PVC is `ani-opensearch-master-ani-opensearch-master-0`. The name is
+    # read from the rendered object rather than hardcoded: an earlier version
+    # waited on the pod-shaped name ani-opensearch-master-0, which never exists,
+    # and the derived form cannot drift from the Chart.
+    sts=ani-opensearch-master
+    template="$(kubectl -n {{ .ani.components.logging.namespace }} get statefulset "$sts" \
+      -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}')"
+    if [ -z "$template" ]; then
+      echo "statefulset/$sts declares no volume claim template" >&2
+      exit 1
+    fi
+    pvc="${template}-${sts}-0"
+    echo "waiting for pvc/$pvc"
     kubectl -n {{ .ani.components.logging.namespace }} wait \
-      --for=jsonpath='{.status.phase}'=Bound pvc/ani-opensearch-master-0 --timeout=300s
+      --for=jsonpath='{.status.phase}'=Bound "pvc/$pvc" --timeout=300s
 
 # The security index has to be seeded before the cluster is usable: with
 # allow_default_init_securityindex false the plugin will not create it on its
@@ -120,11 +161,6 @@
   template:
     src: security-init.yaml
     dest: /etc/kubernetes/ani/opensearch/security-init.yaml
-
-- name: ANI OpenSearch | Render the security configuration files
-  template:
-    src: security-config.yaml
-    dest: /etc/kubernetes/ani/opensearch/security-config.yaml
 
 - name: ANI OpenSearch | Render the index setup script
   template:
@@ -145,10 +181,20 @@
       test -x "/etc/kubernetes/ani/opensearch/$script"
     done
 
+# The security index has to be seeded before the cluster is usable: with
+# allow_default_init_securityindex false the plugin will not create it on its
+# own, so until securityadmin.sh runs every authenticated request is refused.
+# The password is generated by the Job on the node, the hash is computed with
+# the image's own tool, and only the hash and the collector credential are
+# written to the cluster.
+#
+# The Job and its RBAC are applied here, after the cluster answers. An earlier
+# version rendered this file and never applied it, then waited on a Job that did
+# not exist, so the wait could only ever time out.
 - name: ANI OpenSearch | Seed the security index and the collector credential
   command: |
     set -euo pipefail
-    kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml
+    kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml
 
     # The hashing Job creates the hash, the admin credential and the collector
     # credential in one step, so all three always agree. It is a one-shot Job

@@ -636,7 +636,7 @@ func TestConnectionFragmentsRenderSiteValues(t *testing.T) {
 					"prometheus_storage_size":   "5Gi",
 					"alertmanager_storage_size": "1Gi",
 					"prometheus_retention":      "24h",
-					"prometheus_retention_size": "4Gi",
+					"prometheus_retention_size": "4GiB",
 				},
 				// The log roles render from the same logging block: one
 				// backend string, one namespace, one derived retention.
@@ -948,7 +948,7 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 					"prometheus_storage_size":   "5Gi",
 					"alertmanager_storage_size": "1Gi",
 					"prometheus_retention":      "24h",
-					"prometheus_retention_size": "4Gi",
+					"prometheus_retention_size": "4GiB",
 				},
 				// The log roles render from the logging block; without it their
 				// templates would compare an empty backend and render no output
@@ -1089,6 +1089,92 @@ func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 			t.Fatalf("%s tasks do not create the connections.d directory", name)
 		}
 	}
+}
+
+// TestRoleTasksUseTheContextKeysTheInstallerProvides guards the defect class
+// that reached a real install: the metrics role's tasks read
+// `.ani.metrics.namespace` nine times, but the installer puts the metrics block
+// under `.ani.components`, and `.ani.metrics` is only the selection row, which
+// carries no namespace. The template rendered `<no value>`, the shell read it
+// as a redirection, and the install died on the first task. Rendering values
+// alone never caught it, so the assertion is on the task files themselves.
+//
+// Only the context prefixes the installer actually builds are accepted: the
+// component block, the split image parts, the registry and the network keys.
+func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
+	root := filepath.Join("..", "..")
+	aniRoles := filepath.Join(root, "builtin", "core", "roles", "ani")
+
+	roles, err := os.ReadDir(aniRoles)
+	if err != nil {
+		t.Fatalf("read ani roles: %v", err)
+	}
+
+	// A `.ani.<key>.` reference is only valid for these top-level keys.
+	valid := map[string]bool{
+		"components":  true,
+		"image_parts": true,
+		"registry":    true,
+		"network":     true,
+		"images":      true,
+	}
+
+	checked := 0
+	for _, role := range roles {
+		if !role.IsDir() {
+			continue
+		}
+		for _, rel := range []string{
+			filepath.Join("tasks", "main.yaml"),
+			filepath.Join("templates", "values.yaml"),
+			filepath.Join("templates", "verify.sh"),
+			filepath.Join("templates", "connection.md"),
+		} {
+			path := filepath.Join(aniRoles, role.Name(), rel)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				continue // not every role owns every file
+			}
+			checked++
+			for _, key := range aniContextKeys(string(raw)) {
+				if valid[key] {
+					continue
+				}
+				t.Fatalf("%s reads .ani.%s. which the installer does not build; "+
+					"the component block is .ani.components.%s. and the bare key only "+
+					"carries the selection row", path, key, key)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no role files were checked")
+	}
+}
+
+// aniContextKeys returns every distinct top-level key of a `.ani.<key>.`
+// reference in a role file. strings is enough here: the references are plain
+// ASCII template paths and a regexp would not earn its import.
+func aniContextKeys(text string) []string {
+	var keys []string
+	seen := map[string]bool{}
+	for _, rest := range strings.Split(text, ".ani.")[1:] {
+		end := strings.IndexByte(rest, '.')
+		if end <= 0 {
+			continue
+		}
+		key := rest[:end]
+		for _, r := range key {
+			if (r < 'a' || r > 'z') && r != '_' {
+				key = ""
+				break
+			}
+		}
+		if key != "" && !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // TestMetricsRoleIsWiredAndOffline covers the C2 card's own claims: the role is
@@ -1317,16 +1403,26 @@ func TestMetricsRetentionSizeMustFitInTheVolume(t *testing.T) {
 	if err := Validate(c); err != nil {
 		t.Fatalf("defaults must validate: %v", err)
 	}
-	if c.Components.Metrics.PrometheusRetentionSize != "4Gi" {
-		t.Fatalf("default prometheusRetentionSize = %q, want 4Gi", c.Components.Metrics.PrometheusRetentionSize)
+	if c.Components.Metrics.PrometheusRetentionSize != "4GiB" {
+		t.Fatalf("default prometheusRetentionSize = %q, want 4GiB", c.Components.Metrics.PrometheusRetentionSize)
 	}
 
-	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusStorageSize: 5Gi\n    prometheusRetentionSize: 8Gi\n")
+	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusStorageSize: 5Gi\n    prometheusRetentionSize: 8GiB\n")
 	if err != nil {
 		t.Fatalf("parse oversized cap: %v", err)
 	}
 	if err := Validate(c); err == nil {
 		t.Fatal("a retention cap larger than the volume must be rejected")
+	}
+
+	// "4Gi" is a valid Kubernetes quantity but lacks the trailing B the
+	// Prometheus CRD enforces on spec.retentionSize.
+	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusRetentionSize: 4Gi\n")
+	if err != nil {
+		t.Fatalf("parse cap without trailing B: %v", err)
+	}
+	if err := Validate(c); err == nil {
+		t.Fatal("a retention cap without the CRD's trailing B must be rejected")
 	}
 
 	c, err = parseSite(t, "components:\n  metrics:\n    enabled: true\n    prometheusRetentionSize: not-a-size\n")
@@ -1529,10 +1625,14 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 		t.Fatal("opensearch tasks do not use the packaged Helm binary")
 	}
 	// The single node is a StatefulSet, so waiting on a Deployment would never
-	// succeed, and the PVC the Chart renders is named after the cluster/group.
+	// succeed, and the PVC is derived from the Chart's claim template rather
+	// than hardcoded: <template>-<statefulset>-<ordinal>, where this Chart's
+	// template is the StatefulSet name. The pod-shaped name
+	// ani-opensearch-master-0 is not a PVC and shipped as a defect once.
 	for _, want := range []string{
 		"statefulset/ani-opensearch-master --timeout=900s",
-		"--for=jsonpath='{.status.phase}'=Bound pvc/ani-opensearch-master-0",
+		"jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}'",
+		`pvc="${template}-${sts}-0"`,
 		"job/ani-opensearch-security-init",
 		"90-ani-opensearch.conf",
 		"chmod 0700 \"/etc/kubernetes/ani/opensearch/$script\"",
@@ -1540,6 +1640,33 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 		if !strings.Contains(taskText, want) {
 			t.Fatalf("opensearch tasks do not contain %q", want)
 		}
+	}
+	// The security Secret must be applied before Helm runs, and the
+	// initialization Job must be applied at all. Both were defects: the Secret
+	// was created after `helm --wait`, which waits for a Pod that cannot start
+	// without it, and the Job was rendered but never submitted, so the wait on
+	// it could only time out.
+	secretApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml")
+	helmInstall := strings.Index(taskText, "helm upgrade --install ani-opensearch-master")
+	if secretApply < 0 {
+		t.Fatal("opensearch tasks never apply the security configuration Secret")
+	}
+	if helmInstall < 0 || secretApply > helmInstall {
+		t.Fatal("the security configuration Secret is applied after Helm, so a clean install deadlocks on a missing Secret")
+	}
+	initApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml")
+	initWait := strings.Index(taskText, "job/ani-opensearch-security-init")
+	if initApply < 0 {
+		t.Fatal("opensearch tasks render the security initialization Job but never apply it")
+	}
+	if initApply > initWait {
+		t.Fatal("the security initialization Job is waited on before it is applied")
+	}
+	// vm.max_map_count is a node property and OpenSearch is not pinned to one
+	// node, so the task has to reach every schedulable node rather than only the
+	// node the role runs on.
+	if !strings.Contains(taskText, `.groups.k8s_cluster | default list | toJson`) {
+		t.Fatal("vm.max_map_count is not applied across the cluster's nodes")
 	}
 	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
 		if strings.Contains(taskText, bad) {
@@ -1942,10 +2069,13 @@ func TestFluentBitVerifyProvesCollectionPath(t *testing.T) {
 			t.Fatalf("fluent-bit verify.sh performs a destructive operation (%q)", bad)
 		}
 	}
-	// The lab images must be the locked offline ones.
+	// The lab images must be the locked offline ones. The busybox key is
+	// pinned to the full table key: A20 (evidence h4loki-a24) showed a
+	// `busybox:1.37` spelling renders to a nil value and every marker pod
+	// dies with InvalidImageName, so the shorter string must never come back.
 	for _, want := range []string{
 		`index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`,
-		`index .ani.images "docker.io/library/busybox:1.37"`,
+		`index .ani.images "docker.io/library/busybox:1.37.0"`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("fluent-bit verify.sh does not use the locked offline image %s", want)

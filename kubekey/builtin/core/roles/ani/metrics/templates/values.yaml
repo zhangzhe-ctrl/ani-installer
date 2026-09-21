@@ -118,6 +118,12 @@ prometheus:
     # write receiver stays on because the lab pushes the alert test's samples
     # through it instead of standing up a second exporter.
     remoteWrite: []
+    # The write receiver is the flag the rebuild-durability check pushes its
+    # unique marker sample through; without it the Operator never adds
+    # --web.enable-remote-write-receiver and the POST to /api/v1/write 404s
+    # (failure A4: the comment below claimed the receiver was on, but the
+    # field itself was missing from the values render).
+    enableRemoteWriteReceiver: true
     enableAdminAPI: false
     enableOTLPReceiver: false
 

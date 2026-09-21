@@ -39,6 +39,119 @@ OUT_DIR="${ANI_VERIFY_OUTPUT_DIR:-/tmp/ani-metrics-verify-${RUN_ID}}"
 mkdir -p "$OUT_DIR"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# K-5: the base kcn/OVN layer occasionally hands a *rebuilt* pod a dead
+# sandbox -- the CNI answers add with a valid IP and even an ARP announce,
+# but the datapath blackholes the pod in both directions, and kubelet then
+# probe-restarts the container forever without ever rebuilding the sandbox,
+# so the pod can never recover by itself (recorded since B2 as appendix A of
+# the foundation status document, which documents "rebuild the pod" as the
+# recovery). Observed live on h4loki-a12/a14/a15/a17. The a17 live recovery
+# experiment (2026-09-20, evidence h4loki-a17-k5recovery-exp.log) pinned the
+# mechanism down: OVS br-int table=79 carries explicit anti-spoof drop flows
+# keyed on the dead pod's MAC/IP that survive pod recreation (three
+# consecutive rebuilt instances dead over 35+ minutes) AND both kcn agent
+# restarts alone, while a plain second rebuild never recovered either. What
+# did recover the slot in ~20s was restarting the kcn-cni-ds and kcn-ovs-ds
+# agents on the pod's node and THEN deleting the pod once more, so the
+# replacement is set up by a fresh CNI add against freshly started agents.
+# A rebuild that does not come back therefore gets: one bounded second
+# rebuild, then the agent restart + fresh rebuild, each step recorded in
+# $OUT_DIR/k5-retries.txt; a final failure still fails the run, so no real
+# defect can hide behind this.
+#
+# The waits themselves never use `kubectl rollout status`: on the lab's
+# kubectl v1.35 it can exit 0 both on timeout and on a stale STS status
+# ("readyReplicas" has not caught up with the deletion yet), which on a18
+# silently passed a prometheus pod that stayed un-Ready for 27 minutes
+# (evidence: h4loki-a18, k5-retries.txt has no "prometheus" entry). Every
+# K-5 wait below polls the kubelet-written pod Ready condition instead.
+k5_pod_ready() { # k5_pod_ready <selector> <timeout> — bounded wait until one Ready pod matches <selector>
+  local sel="$1" t="$2" deadline rdy
+  deadline=$(( $(date +%s) + ${t%s} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    rdy="$("${KUBECTL[@]}" -n "$NS" get pod -l "$sel" \
+      -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{end}' 2>/dev/null)"
+    [ "$rdy" = "True" ] && return 0
+    sleep 10
+  done
+  return 1
+}
+k5_workload_ready() { # k5_workload_ready <kind/name> <timeout> — bounded wait until every replica is Ready
+  local wl="$1" t="$2" deadline stats want have
+  deadline=$(( $(date +%s) + ${t%s} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    case "$wl" in
+      daemonset/*)
+        stats="$("${KUBECTL[@]}" -n "$NS" get "$wl" \
+          -o jsonpath='{.status.desiredNumberScheduled}{" "}{.status.numberReady}' 2>/dev/null)"
+        [ -n "$stats" ] && [ "${stats%% *}" != "0" ] \
+          && [ "${stats##* }" = "${stats%% *}" ] && return 0
+        ;;
+      *)
+        stats="$("${KUBECTL[@]}" -n "$NS" get "$wl" \
+          -o jsonpath='{.spec.replicas}{" "}{.status.readyReplicas}' 2>/dev/null)"
+        want="${stats%% *}"; have="${stats##* }"
+        [ -n "$stats" ] && [ "${want:-1}" != "0" ] \
+          && [ "${have:-0}" = "${want:-1}" ] && return 0
+        ;;
+    esac
+    sleep 10
+  done
+  return 1
+}
+k5_rebuild_wait() { # k5_rebuild_wait <selector> <what> <first-timeout> <second-timeout> <final-timeout>
+  local sel="$1" what="$2" t1="$3" t2="$4" t3="$5" pod node
+  if k5_pod_ready "$sel" "$t1"; then
+    return 0
+  fi
+  echo "  K5_RETRY $what: the rebuilt pod did not become ready within $t1 (base-layer netns flake, appendix A); rebuilding it once more"
+  echo "k5_retry $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
+  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
+  if k5_pod_ready "$sel" "$t2"; then
+    return 0
+  fi
+  echo "  K5_RETRY $what: still not ready within $t2; restarting the kcn data-plane agents on the pod node and rebuilding with a fresh CNI add (a17 recovery experiment)"
+  echo "k5_retry_dataplane $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
+  pod="$("${KUBECTL[@]}" -n "$NS" get pod -l "$sel" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  node="$("${KUBECTL[@]}" -n "$NS" get pod "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)"
+  if [ -n "$node" ]; then
+    k5_dp_agent_restart "$node" "$what"
+    k5_dp_agent_wait "kcn-cni-ds" "$node" \
+      || echo "  K5_RETRY $what: the kcn-cni-ds agent on $node is not Ready within 240s (continuing; the final wait is the arbiter)"
+    k5_dp_agent_wait "ovs" "$node" \
+      || echo "  K5_RETRY $what: the kcn-ovs-ds agent on $node is not Ready within 240s (continuing)"
+  fi
+  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
+  k5_pod_ready "$sel" "$t3"
+}
+k5_read_again() { # k5_read_again <selector> <what> — one bounded recovery re-entry after a post-Ready datapath death
+  local sel="$1" what="$2"
+  echo "  K5_RETRY $what: the rebuilt pod passed pod Ready but the query path died right after (a26: the netns died post-Ready, outbound no-route and inbound blackhole); re-entering the rebuild recovery once"
+  echo "k5_retry_sample_read $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
+  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
+  k5_rebuild_wait "$sel" "$what" 600s 420s 600s
+}
+k5_dp_agent_restart() { # k5_dp_agent_restart <node> <what> — restart the kcn data-plane agents (cni, ovs) on <node>
+  local node="$1" what="$2" k apod
+  for k in cni ovs; do
+    apod="$("${KUBECTL[@]}" -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$k" '$2==n && $1 ~ p {print $1; exit}')"
+    if [ -n "$apod" ]; then
+      echo "  K5_RETRY $what: restarting the kcn-$k data-plane agent on $node ($apod)"
+      "${KUBECTL[@]}" -n kcn-system delete pod "$apod" --timeout=180s >/dev/null 2>&1 || true
+    fi
+  done
+}
+k5_dp_agent_wait() { # k5_dp_agent_wait <name-pattern> <node> — bounded wait for a Ready kcn agent pod on <node>
+  local pat="$1" node="$2" i np rdy
+  for i in $(seq 1 48); do
+    np="$("${KUBECTL[@]}" -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$pat" '$2==n && $1 ~ p {print $1; exit}')"
+    rdy="$("${KUBECTL[@]}" -n kcn-system get pod "$np" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)"
+    [ "$rdy" = "true" ] && return 0
+    sleep 5
+  done
+  return 1
+}
+
 PROM_STS=statefulset/prometheus-ani-metrics-prometheus
 AM_STS=statefulset/alertmanager-ani-metrics-alertmanager
 RECV_NAME="ani-metrics-recv-${RUN_ID}"
@@ -89,15 +202,63 @@ print(json.dumps({"series": len(results), "points": len(points), "value": want})
 PY_EOF
 
 cat > "$OUT_DIR/write.py" <<'PY_EOF'
-import json, sys, urllib.request
+import struct, sys, urllib.request
+# Remote write v1: the receiver only speaks snappy-compressed protobuf
+# (WriteRequest), not JSON -- a JSON body is rejected with HTTP 400
+# "s2: corrupt input" (A11, observed live on attempt h4loki-a9 and reproduced
+# against the surviving cluster: JSON -> 400, the codecs below -> 204 and the
+# sample queryable). Both codecs are hand-rolled with the standard library
+# only: the lab image has no site-packages. Snappy literal tag, extended
+# form: upper six bits are 59+nbytes and the extra bytes hold len-1
+# little-endian.
+def varint(n):
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
+
+def snappy(raw):
+    # Pure-literal snappy block: varint of the uncompressed length, then one
+    # literal chunk per 65536 bytes. Decoders accept this without matches.
+    out = bytearray(varint(len(raw)))
+    i = 0
+    while i < len(raw):
+        chunk = raw[i:i + 65536]
+        ln = len(chunk)
+        if ln <= 60:
+            out.append((ln - 1) << 2)
+        else:
+            nbytes = ((ln - 1).bit_length() + 7) // 8
+            out.append((59 + nbytes) << 2)
+            out.extend((ln - 1).to_bytes(nbytes, "little"))
+        out.extend(chunk)
+        i += ln
+    return bytes(out)
+
+def ld(num, data):
+    return varint((num << 3) | 2) + varint(len(data)) + data
+
+def f64(num, raw8):
+    return varint((num << 3) | 1) + raw8
+
+def vi(num, value):
+    return varint((num << 3) | 0) + varint(value)
+
 base, name, run_id, value, ts = sys.argv[1:6]
-payload = json.dumps({"timeseries": [{
-    "labels": [{"name": "__name__", "value": name},
-               {"name": "run_id", "value": run_id}],
-    "samples": [{"value": float(value), "timestamp": int(ts)}],
-}]}).encode()
-req = urllib.request.Request(base + "/api/v1/write", data=payload,
-                             headers={"Content-Type": "application/json"})
+sample = f64(1, struct.pack("<d", float(value))) + vi(2, int(ts))
+series = ld(1, ld(1, b"__name__") + ld(2, name.encode())) \
+       + ld(1, ld(1, b"run_id") + ld(2, run_id.encode())) \
+       + ld(2, sample)
+body = snappy(ld(1, series))
+req = urllib.request.Request(base + "/api/v1/write", data=body,
+    headers={"Content-Type": "application/x-protobuf",
+             "Content-Encoding": "snappy",
+             "X-Prometheus-Remote-Write-Version": "0.1.0"})
 with urllib.request.urlopen(req, timeout=30) as resp:
     if resp.status not in (200, 204):
         sys.exit("remote write returned %s" % resp.status)
@@ -135,18 +296,20 @@ PY_EOF
 
 cat > "$OUT_DIR/fingerprint.py" <<'PY_EOF'
 import json, sys
-# $1 is a path to the stored request bodies (a JSON array of raw bodies, one
-# per request), $2 is the alert status to look for. Prints the fingerprint of
-# the first alert in that status.
-path, want = sys.argv[1], sys.argv[2]
-with open(path) as fh:
-    bodies = json.load(fh)
+# $1 is the stored request bodies as one JSON string (a JSON array of raw
+# bodies, one per request), $2 is the alert status to look for. Prints the
+# fingerprint of the first alert in that status. The content arrives as argv,
+# not as a node path: this helper runs inside the client pod, which has no
+# access to the node filesystem (A9, observed live on attempt h4loki-a7 --
+# a node path made this die with FileNotFoundError and, under pipefail,
+# killed the whole verify script silently).
+bodies, want = json.loads(sys.argv[1]), sys.argv[2]
 for raw in bodies:
     for alert in json.loads(raw).get("alerts", []):
         if alert.get("status") == want:
             print(alert.get("fingerprint", ""))
             sys.exit(0)
-sys.exit("no alert with status=%s in %s" % (want, path))
+sys.exit("no alert with status=%s in %d stored request bodies" % (want, len(bodies)))
 PY_EOF
 
 cat > "$OUT_DIR/am_status.py" <<'PY_EOF'
@@ -157,10 +320,11 @@ PY_EOF
 
 cat > "$OUT_DIR/silence_create.py" <<'PY_EOF'
 import json, sys, urllib.request
-# Reads the silence definition from a file given as $2 and posts it to $1.
-base, path = sys.argv[1], sys.argv[2]
-with open(path) as fh:
-    payload = json.load(fh)
+# $1 is the Alertmanager base URL, $2 the silence definition as one JSON
+# string. Same argv rule as fingerprint.py: this helper runs inside the
+# client pod, which has no access to the node filesystem (A9, observed live
+# on attempt h4loki-a7).
+base, payload = sys.argv[1], json.loads(sys.argv[2])
 req = urllib.request.Request(base + "/api/v2/silences",
                              data=json.dumps(payload).encode(),
                              headers={"Content-Type": "application/json"})
@@ -195,11 +359,9 @@ nodes_total="$("${KUBECTL[@]}" get nodes --no-headers | wc -l)"
 for obj in "$PROM_STS" "$AM_STS" \
            deployment/ani-metrics-operator \
            deployment/ani-metrics-kube-state-metrics; do
-  "${KUBECTL[@]}" -n "$NS" rollout status "$obj" --timeout=300s >/dev/null \
-    || fail "$obj is not rolled out"
+  k5_workload_ready "$obj" 300s || fail "$obj is not rolled out"
 done
-"${KUBECTL[@]}" -n "$NS" rollout status \
-  daemonset/ani-metrics-prometheus-node-exporter --timeout=300s >/dev/null \
+k5_workload_ready daemonset/ani-metrics-prometheus-node-exporter 300s \
   || fail "node-exporter DaemonSet is not rolled out"
 ne_ready="$("${KUBECTL[@]}" -n "$NS" get daemonset ani-metrics-prometheus-node-exporter \
   -o jsonpath='{.status.numberReady}')"
@@ -244,26 +406,66 @@ query_prom() { py "$OUT_DIR/query.py" "http://$PROM_SVC" "$1"; }
 # [2/8] real series through the Prometheus HTTP API
 # ---------------------------------------------------------------------------
 echo "[2/8] real series through the Prometheus HTTP API"
-up_json="$(query_prom 'up{job="prometheus-node-exporter"}')" || fail "up query failed"
-echo "  up{job=prometheus-node-exporter} series=$(printf '%s' "$up_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])' 2>/dev/null || echo '?')"
-py "$OUT_DIR/nodes_up.py" "$up_json" "$nodes_total" | tee "$OUT_DIR/up.out"
-grep -q '^series=' "$OUT_DIR/up.out" || fail "node-exporter targets are not all up"
+# The job label is a chart runtime fact, not something the values render
+# decides: kube-prometheus-stack 85.4.0 scrapes node-exporter as
+# job="node-exporter" (verified live — the Prometheus targets API lists
+# 3 up targets under that name, while "prometheus-node-exporter" matches
+# nothing and the daemonset keeps the ani-metrics- prefixed object name).
+#
+# Discovery and the first scrape are asynchronous: the StatefulSet reports
+# ready before kubernetes_sd has listed every node-exporter endpoint and
+# before the first samples have landed in the TSDB, so every query in this
+# section is polled with a bounded wait instead of asserted on the first
+# answer (failure A5: the first poll saw 1 of 3 node-exporter targets).
+up_ok=""
+up_last=""
+for _ in $(seq 1 60); do
+  if up_json="$(query_prom 'up{job="node-exporter"}')" \
+     && py "$OUT_DIR/nodes_up.py" "$up_json" "$nodes_total" > "$OUT_DIR/up.out" 2>&1 \
+     && grep -q '^series=' "$OUT_DIR/up.out"; then
+    up_ok=yes
+    break
+  fi
+  up_last="$(py "$OUT_DIR/nodes_up.py" "$up_json" "$nodes_total" 2>&1 | tail -1 || true)"
+  sleep 5
+done
+[ -n "$up_ok" ] || fail "node-exporter targets did not all report up within the 5m wait (last poll: ${up_last:-no answer})"
+echo "  $(cat "$OUT_DIR/up.out")"
 
 # One hostname series per node and one kube_node_info per node: these prove
 # node-exporter reads the machine and kube-state-metrics reads the API, rather
-# than each merely answering a health endpoint.
-got_uname="$(py "$OUT_DIR/scalar.py" "$(query_prom 'count(node_uname_info)')")"
-[ "$got_uname" = "$nodes_total" ] || fail "node_uname_info covers $got_uname of $nodes_total nodes"
-got_knodes="$(py "$OUT_DIR/scalar.py" "$(query_prom 'count(kube_node_info)')")"
-[ "$got_knodes" = "$nodes_total" ] || fail "kube_node_info covers $got_knodes of $nodes_total nodes"
+# than each merely answering a health endpoint. Same bounded wait: KSM and the
+# node-exporter pods report ready before their first samples are stored.
+uname_ok=""
+for _ in $(seq 1 60); do
+  got_uname="$(py "$OUT_DIR/scalar.py" "$(query_prom 'count(node_uname_info)')" 2>/dev/null || true)"
+  [ "$got_uname" = "$nodes_total" ] && { uname_ok=yes; break; }
+  sleep 5
+done
+[ -n "$uname_ok" ] || fail "node_uname_info did not cover all $nodes_total nodes within the 5m wait (last: ${got_uname:-no answer})"
+knodes_ok=""
+for _ in $(seq 1 60); do
+  got_knodes="$(py "$OUT_DIR/scalar.py" "$(query_prom 'count(kube_node_info)')" 2>/dev/null || true)"
+  [ "$got_knodes" = "$nodes_total" ] && { knodes_ok=yes; break; }
+  sleep 5
+done
+[ -n "$knodes_ok" ] || fail "kube_node_info did not cover all $nodes_total nodes within the 5m wait (last: ${got_knodes:-no answer})"
 echo "  node_uname_info=$got_uname kube_node_info=$got_knodes"
 
 # A real cAdvisor container metric, counted through the API. A positive count
 # means container series are being scraped, which is the claim; a bare
 # `up{job="kubelet"}` would not be.
-cadvisor="$(py "$OUT_DIR/scalar.py" \
-  "$(query_prom 'count(container_memory_working_set_bytes{container!="",container!="POD"})')")"
-[ "${cadvisor%%.*}" -gt 0 ] 2>/dev/null || fail "no cAdvisor container series is present (count=$cadvisor)"
+cadvisor_ok=""
+for _ in $(seq 1 60); do
+  cadvisor="$(py "$OUT_DIR/scalar.py" \
+    "$(query_prom 'count(container_memory_working_set_bytes{container!="",container!="POD"})')" 2>/dev/null || true)"
+  case "${cadvisor%%.*}" in
+    ""|*[!0-9]*) : ;;
+    *) [ "${cadvisor%%.*}" -gt 0 ] && { cadvisor_ok=yes; break; } ;;
+  esac
+  sleep 5
+done
+[ -n "$cadvisor_ok" ] || fail "no cAdvisor container series appeared within the 5m wait (last: ${cadvisor:-no answer})"
 echo "  container_memory_working_set_bytes series=$cadvisor"
 
 # ---------------------------------------------------------------------------
@@ -365,7 +567,7 @@ spec:
 RECV_EOF
 
 "${KUBECTL[@]}" apply --server-side -f "$OUT_DIR/receiver.yaml" >/dev/null
-"${KUBECTL[@]}" -n "$NS" rollout status "deployment/$RECV_DEPLOY" --timeout=300s >/dev/null \
+k5_workload_ready "deployment/$RECV_DEPLOY" 300s \
   || fail "temporary receiver did not become ready"
 recv_pod="$("${KUBECTL[@]}" -n "$NS" get pod -l "app=$RECV_NAME" \
   -o jsonpath='{.items[0].metadata.name}')"
@@ -401,7 +603,11 @@ metadata:
     run_id: "$RUN_LABEL"
 spec:
   route:
-    receiver: ani-metrics-recv
+    # The receiver name must carry this run's RUN_ID suffix: Alertmanager only
+    # reports the *loaded* receiver name in /api/v2/status, and [4/8] waits on
+    # $RECV_NAME there. A hardcoded name would never match and fake a timeout
+    # (A6, observed live on attempt h4loki-a4).
+    receiver: $RECV_NAME
     groupBy: ["alertname"]
     groupWait: 5s
     groupInterval: 5s
@@ -411,7 +617,7 @@ spec:
         value: "$RUN_LABEL"
         matchType: "="
   receivers:
-    - name: ani-metrics-recv
+    - name: $RECV_NAME
       webhookConfigs:
         - url: http://$RECV_NAME.$NS.svc.cluster.local:8080/
           sendResolved: true
@@ -456,6 +662,12 @@ spec:
           labels:
             run_id: "$RUN_LABEL"
             severity: test
+            # The Operator folds every AlertmanagerConfig into a sub-route that
+            # also matches namespace="<config namespace>" (namespace isolation),
+            # so the alert must carry the namespace label: without it AM drops
+            # the alert on the root "null" receiver and no webhook is ever sent
+            # (A8, observed live on attempt h4loki-a6).
+            namespace: $NS
           annotations:
             summary: "ANI metrics lifecycle test"
 RULE_EOF
@@ -489,8 +701,14 @@ grep -q 'AniMetricsLifecycleTest' "$OUT_DIR/reqs-firing.json" \
 grep -q "$RUN_LABEL" "$OUT_DIR/reqs-firing.json" \
   || fail "firing notification does not carry this run's unique label"
 
-firing_fp="$(py "$OUT_DIR/fingerprint.py" "$OUT_DIR/reqs-firing.json" firing 2>/dev/null | tail -1)"
-[ -n "$firing_fp" ] || fail "could not read a fingerprint from the firing notification"
+# The dump content is passed as argv, not as a node path: py() executes inside
+# the client pod, which cannot read node filesystem paths (A9, observed live
+# on attempt h4loki-a7). stderr stays visible and the assignment carries an
+# explicit failure so a broken extraction cannot kill this script silently
+# under pipefail again.
+firing_fp="$(py "$OUT_DIR/fingerprint.py" "$(cat "$OUT_DIR/reqs-firing.json")" firing | tail -1)" \
+  || fail "could not extract the fingerprint from the firing notification"
+[ -n "$firing_fp" ] || fail "firing notification carries no fingerprint"
 echo "  firing notification received: fingerprint=$firing_fp"
 
 # ---------------------------------------------------------------------------
@@ -508,7 +726,15 @@ grep -q 'vector(0) == 1' "$OUT_DIR/rule-resolved.yaml" \
 # a rule that merely stopped being evaluated would leave the alert firing.
 gone=""
 for _ in $(seq 1 90); do
-  n="$(py "$OUT_DIR/scalar.py" "$(query_prom "count($alert_sel)")" 2>/dev/null || echo '?')"
+  # count() over an empty selector returns an EMPTY vector, not a zero sample:
+  # once the alert resolves, scalar.py (which asserts exactly one series) can
+  # only fail, so n could never become "0" and this pass condition was
+  # unreachable by design (A10, observed live on attempt h4loki-a8 -- the
+  # alert really resolved and the receiver even recorded the resolved webhook
+  # while this poll kept waiting for a zero that count() never emits).
+  # `or vector(0)` returns exactly one sample in both states: 1 while firing,
+  # 0 once the series is gone.
+  n="$(py "$OUT_DIR/scalar.py" "$(query_prom "count($alert_sel) or vector(0)")" 2>/dev/null || echo '?')"
   if [ "$n" = "0" ]; then gone=yes; break; fi
   sleep 5
 done
@@ -523,7 +749,8 @@ done
 dump_requests "$OUT_DIR/reqs-resolved.json"
 [ -n "$got_resolved" ] || fail "receiver never got resolved although sendResolved: true is set"
 
-resolved_fp="$(py "$OUT_DIR/fingerprint.py" "$OUT_DIR/reqs-resolved.json" resolved 2>/dev/null | tail -1)"
+resolved_fp="$(py "$OUT_DIR/fingerprint.py" "$(cat "$OUT_DIR/reqs-resolved.json")" resolved | tail -1)" \
+  || fail "could not extract the fingerprint from the resolved notification"
 [ "$resolved_fp" = "$firing_fp" ] \
   || fail "resolved fingerprint $resolved_fp does not match firing fingerprint $firing_fp"
 echo "  resolved notification received: fingerprint=$resolved_fp (matches firing)"
@@ -556,9 +783,12 @@ done
 [ -n "$seen_before" ] || fail "the marker sample is not queryable before the rebuild"
 
 # A normal rebuild: delete the pod and let the StatefulSet recreate it. No
-# snapshot, no PVC deletion, no namespace surgery.
+# snapshot, no PVC deletion, no namespace surgery. The wait carries the K-5
+# bounded second rebuild plus the a17 agent-restart recovery (see
+# k5_rebuild_wait): the datapath flake must not be able to kill an otherwise
+# sound durability check.
 "${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=prometheus --timeout=180s >/dev/null
-"${KUBECTL[@]}" -n "$NS" rollout status "$PROM_STS" --timeout=900s >/dev/null \
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 600s 420s 600s \
   || fail "Prometheus did not come back after the rebuild"
 
 prom_pvc_after="$("${KUBECTL[@]}" -n "$NS" get "pvc/$prom_pvc" -o jsonpath='{.metadata.uid}')"
@@ -569,9 +799,20 @@ prom_sts_after="$("${KUBECTL[@]}" -n "$NS" get "$PROM_STS" -o jsonpath='{.metada
 # Range query across the window holding the pre-rebuild sample. An instant
 # query after the rebuild could be answered by a fresh scrape, so the assertion
 # is on the stored sample.
-range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
-  "$(( marker_ts / 1000 - 60 ))" "$(( marker_ts / 1000 + 180 ))" "$marker_value")" \
-  || fail "the pre-rebuild sample is not readable after the rebuild"
+# a26 (evidence h4loki-a26): the rebuilt pod can pass pod Ready and THEN have
+# its netns die before the assertion runs (prometheus logged outbound
+# no-route-to-host while node-side probes and the service endpoints all went
+# dark). One bounded recovery re-entry reuses the same chain the rebuild wait
+# uses; the sample lives on the PVC, so a second rebuild preserves it.
+range_out=""
+if ! range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
+    "$(( marker_ts / 1000 - 60 ))" "$(( marker_ts / 1000 + 180 ))" "$marker_value")"; then
+  k5_read_again "app.kubernetes.io/name=prometheus" "prometheus" \
+    || fail "Prometheus did not come back after the sample-read recovery"
+  range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
+    "$(( marker_ts / 1000 - 60 ))" "$(( marker_ts / 1000 + 180 ))" "$marker_value")" \
+    || fail "the pre-rebuild sample is not readable after the rebuild"
+fi
 printf '%s' "$range_out" > "$OUT_DIR/rebuild-range.json"
 echo "  pre-rebuild sample read back by range query: $range_out"
 
@@ -602,13 +843,17 @@ cat > "$OUT_DIR/silence.json" <<SILENCE_EOF
 }
 SILENCE_EOF
 
-silence_id="$(py "$OUT_DIR/silence_create.py" "http://$AM_SVC" "$OUT_DIR/silence.json")"
+# Same argv rule as the fingerprint extraction: the silence definition goes in
+# as content, not as a node path (A9, observed live on attempt h4loki-a7).
+silence_id="$(py "$OUT_DIR/silence_create.py" "http://$AM_SVC" "$(cat "$OUT_DIR/silence.json")")" \
+  || fail "could not create the Alertmanager silence"
 [ -n "$silence_id" ] || fail "Alertmanager did not return a silence ID"
 echo "  silence created: $silence_id"
 
-# Normal rebuild of Alertmanager only.
+# Normal rebuild of Alertmanager only, with the same K-5 bounded second
+# rebuild plus agent-restart recovery as [7/8].
 "${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=alertmanager --timeout=180s >/dev/null
-"${KUBECTL[@]}" -n "$NS" rollout status "$AM_STS" --timeout=600s >/dev/null \
+k5_rebuild_wait "app.kubernetes.io/name=alertmanager" "alertmanager" 600s 420s 600s \
   || fail "Alertmanager did not come back after the rebuild"
 
 am_pvc_after="$("${KUBECTL[@]}" -n "$NS" get "pvc/$am_pvc" -o jsonpath='{.metadata.uid}')"
@@ -618,12 +863,27 @@ am_secret_after="$("${KUBECTL[@]}" -n "$NS" get "secret/$am_secret" -o jsonpath=
 [ "$am_sts_after" = "$am_sts_before" ] || fail "Alertmanager StatefulSet was replaced"
 [ "$am_secret_after" = "$am_secret_before" ] || fail "Alertmanager generated Secret was replaced"
 
+# The read-back poll is factored out so the same 120s window can be re-run
+# after a recovery re-entry (see k5_read_again).
+am_silence_poll() { # am_silence_poll — poll the silence read for up to 120s; sets `got` and returns 0 when read back
+  local i
+  for i in $(seq 1 60); do
+    got="$(py "$OUT_DIR/silence_get.py" "http://$AM_SVC" "$silence_id" 2>/dev/null || true)"
+    if [ "$got" = "$silence_id" ]; then return 0; fi
+    sleep 2
+  done
+  return 1
+}
+
 silence_back=""
-for _ in $(seq 1 60); do
-  got="$(py "$OUT_DIR/silence_get.py" "http://$AM_SVC" "$silence_id" 2>/dev/null || true)"
-  if [ "$got" = "$silence_id" ]; then silence_back=yes; break; fi
-  sleep 2
-done
+if am_silence_poll; then silence_back=yes; fi
+# Same post-Ready blind window as [7/8]: one bounded recovery re-entry before
+# giving up (a26).
+if [ -z "$silence_back" ]; then
+  k5_read_again "app.kubernetes.io/name=alertmanager" "alertmanager" \
+    || fail "Alertmanager did not come back after the silence-read recovery"
+  if am_silence_poll; then silence_back=yes; fi
+fi
 [ -n "$silence_back" ] || fail "silence $silence_id is gone after the rebuild"
 echo "  silence read back by ID after rebuild: $got"
 

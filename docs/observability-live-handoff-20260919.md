@@ -1,5 +1,13 @@
 # 第二批真实安装失败记录与后续执行交接
 
+> **2026-09-19 后续**：本文件定义的 H1（两个 installer 缺陷）、H2（OpenSearch 编排 R1–R4）、
+> H3（独立构建新 code 包，复用 artifact）已在源码层完成并经回归检查反向验证，live 一律
+> `not_verified`（无节点操作）。执行记录见
+> [第二批组件状态](observability-components-status.md) 的「H1 / H2 / H3」章节与
+> `kubekey/docs/progress.md` 当日条目。新 code 包
+> `ani-code-h2fix-20260919`（kk sha256 `80bdb287a8bca3b9712e2f0c8f9a2c5d9a837ed54989c51ff40232e83508a5ec`）。
+> H4/H5/H6 仍阻塞在新版 kcn 材料上。下文按原样保留作为失败现场记录。
+
 ## 0. 当前结论与停止位置
 
 本文件覆盖旧 C5 文档中的完成结论。**第二批未完成，不能进入“已验证可用”的交付状态。**

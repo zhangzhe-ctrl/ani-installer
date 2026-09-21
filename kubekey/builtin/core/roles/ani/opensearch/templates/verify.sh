@@ -27,7 +27,14 @@ set -euo pipefail
 NS="{{ .ani.components.logging.namespace }}"
 RELEASE="ani-opensearch-master"
 STS="ani-opensearch-master"
-PVC="ani-opensearch-master-0"
+# A StatefulSet's PVC is <claim template>-<statefulset>-<ordinal>, and this
+# Chart's claim template is the StatefulSet name, so the PVC is
+# ani-opensearch-master-ani-opensearch-master-0. The name is derived from the
+# rendered StatefulSet rather than hardcoded: an earlier version used the
+# pod-shaped name ani-opensearch-master-0, which is never a PVC, and deriving it
+# keeps this check from repeating a constant that cannot be right.
+PVC="$(kubectl -n "$NS" get statefulset "$STS" \
+  -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}')-${STS}-0"
 RETENTION_ISO="{{ .ani.components.logging.retention_iso }}"
 RETENTION_DAYS="{{ .ani.components.logging.retention_days }}"
 

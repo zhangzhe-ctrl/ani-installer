@@ -148,8 +148,12 @@ ssh ubuntu@172.16.101.20 "( cat \$HOME/.ani_pw; printf '\n' ) | script -qec \"su
   本批每个组件的 `tasks/main.yaml` 都含这两步（metrics / loki / opensearch / fluent-bit），改 role 时不要删。
 
 ### 陷阱 #6（本批新增）：日志后端的 PVC 名字不是 Chart 默认前缀
-- Loki 的 PVC 是 `storage-ani-loki-0`；OpenSearch 的 PVC 是 **`ani-opensearch-master-0`**
-  （**不是** `data-ani-opensearch-master-0`）。
+- Loki 的 PVC 是 `storage-ani-loki-0`；OpenSearch 的 PVC 是
+  **`ani-opensearch-master-ani-opensearch-master-0`**
+  （StatefulSet 的 PVC 名是 `<claim template>-<statefulset>-<ordinal>`，而该 Chart 的
+  claim template 名就是 StatefulSet 名 `ani-opensearch-master`）。
+  **不是** `ani-opensearch-master-0`（那是 Pod 名的形状，从来不是 PVC 名），
+  也不是 `data-` 前缀。校验脚本从渲染出的 StatefulSet 推导该名字，不再硬编码。
 - OpenSearch Chart 的 `volumeClaimTemplates[0].metadata.name` 是模板
   `opensearch.uname` = `<clusterName>-<nodeGroup>`，所以名字里没有 `data-`。
 - 校验脚本里的 PVC 常量写错会表现为"PVC 明明 Bound 却校验失败"。
@@ -331,13 +335,18 @@ echo "VERIFY_EXIT=$?"
 
 命名空间：指标与日志都在 `ani-observability`（第一批组件在 `ani-platform`）。
 
-读凭据的方式（**不打印到屏幕、不落命令行**）：
+读凭据的方式（**不落磁盘、不写入 shell 历史**）：
 
 ```bash
-# 例：取 OpenSearch 管理员密码（值会进入管道，不要 tee 到文件或终端历史）
+# 例：取 OpenSearch 管理员密码。注意：这条命令会把密码**输出到终端**，
+# 因此只适用于交互式排查；脚本化场景请直接赋给变量，不要经过 stdout。
 kubectl -n ani-observability get secret ani-opensearch-admin \
   -o jsonpath='{.data.password}' | base64 -d
 ```
+
+上面这条会打印到屏幕，**不要**用它来证明"读凭据但不上屏"。真正不上屏的写法是把值直接
+喂给使用者（例如 `read -r PW <<<"$(... )"` 或经 `secretKeyRef` 注入容器），
+中间结果不经过终端。
 
 其余要点：
 
@@ -357,8 +366,15 @@ kubectl -n ani-observability get secret ani-opensearch-admin \
 | 门禁总入口（C2 指标）| `kubekey/lab/c2-render-gate/run-c2-gate.sh` |
 | 门禁总入口（C3 Loki + Fluent Bit）| `kubekey/lab/c3-render-gate/run-c3-gate.sh` |
 | 门禁总入口（C4 OpenSearch + Fluent Bit）| `kubekey/lab/c4-render-gate/run-c4-gate.sh` |
-| 通用 values 渲染 | `kubekey/lab/c3-render-gate/render-values.sh`（`ROLE` + `BACKEND` 变量）|
-| 通用渲染门 | `kubekey/lab/c3-render-gate/render-gate.sh`（`ROLE_ROOT` 可覆盖）|
+| 通用模板渲染（被上述门禁调用）| `kubekey/lab/{c2,c3,c4}-render-gate/render-values.sh`（三份内容一致；`ROLE` + `BACKEND` + `TEMPLATE_KIND`）|
+| 通用 Chart 渲染门 | `kubekey/lab/c2-render-gate/render-gate.sh`（C3/C4 为同名脚本，`ROLE_ROOT` 可覆盖）|
+
+**每张门禁都渲染 role 的 `tasks/main.yaml`**（`TEMPLATE_KIND=tasks`），不只是 `values.yaml`。
+这不是可有可无的附加项：真实安装的第一次失败正是任务模板读错上下文档位——九处
+`{{ .ani.metrics.namespace }}`（那是选择行，只有 `enabled`）而不是
+`{{ .ani.components.metrics.namespace }}`，渲染成 `<no value>` 后 `no` 被当成了重定向，
+节点上报 `/bin/bash: line 1: no: No such file or directory` 与 `error: no objects passed to apply`。
+只渲染 values / verify.sh / connection.md 的检查永远看不到这一类缺陷。
 
 > `kubekey/lab/*-render-gate/` 是**参考副本**，原件在 fedora 工作区
 > `~/ani-installer-runs/observability-20260919/lab/`。注意门禁通过 `ssh` 运行时，

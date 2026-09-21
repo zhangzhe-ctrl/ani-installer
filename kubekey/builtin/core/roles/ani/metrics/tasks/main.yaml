@@ -26,7 +26,7 @@
 
 - name: ANI Metrics | Create the observability namespace
   command: |
-    kubectl create namespace {{ .ani.metrics.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+    kubectl create namespace {{ .ani.components.metrics.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
 
 - name: ANI Metrics | Require the packaged Helm binary
   command: test -x "{{ .ani.artifact_root }}/bin/helm"
@@ -43,7 +43,7 @@
   command: >-
     {{ .ani.artifact_root }}/bin/helm upgrade --install ani-metrics
     {{ .ani.artifact_root }}/charts/kube-prometheus-stack/85.4.0.tgz
-    --namespace {{ .ani.metrics.namespace }} --create-namespace
+    --namespace {{ .ani.components.metrics.namespace }} --create-namespace
     --values /etc/kubernetes/ani/metrics/values.yaml
     --wait --timeout 1200s
 
@@ -51,31 +51,31 @@
 # waiting on the operator alone would return before Prometheus exists.
 - name: ANI Metrics | Wait for the Prometheus Operator
   command: |
-    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+    kubectl -n {{ .ani.components.metrics.namespace }} rollout status \
       deployment/ani-metrics-operator --timeout=600s
 
 - name: ANI Metrics | Wait for the Prometheus StatefulSet
   command: |
-    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+    kubectl -n {{ .ani.components.metrics.namespace }} rollout status \
       statefulset/prometheus-ani-metrics-prometheus --timeout=900s
 
 - name: ANI Metrics | Wait for the Alertmanager StatefulSet
   command: |
-    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+    kubectl -n {{ .ani.components.metrics.namespace }} rollout status \
       statefulset/alertmanager-ani-metrics-alertmanager --timeout=600s
 
 - name: ANI Metrics | Wait for kube-state-metrics
   command: |
-    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+    kubectl -n {{ .ani.components.metrics.namespace }} rollout status \
       deployment/ani-metrics-kube-state-metrics --timeout=600s
 
 - name: ANI Metrics | Wait for the node-exporter DaemonSet on every node
   command: |
     set -euo pipefail
     want="$(kubectl get nodes --no-headers | wc -l)"
-    kubectl -n {{ .ani.metrics.namespace }} rollout status \
+    kubectl -n {{ .ani.components.metrics.namespace }} rollout status \
       daemonset/ani-metrics-prometheus-node-exporter --timeout=600s
-    got="$(kubectl -n {{ .ani.metrics.namespace }} get daemonset \
+    got="$(kubectl -n {{ .ani.components.metrics.namespace }} get daemonset \
       ani-metrics-prometheus-node-exporter -o jsonpath='{.status.numberReady}')"
     if [ "$got" != "$want" ]; then
       echo "node-exporter ready on $got of $want nodes" >&2
@@ -87,7 +87,7 @@
     set -euo pipefail
     for pvc in prometheus-ani-metrics-prometheus-db-prometheus-ani-metrics-prometheus-0 \
                alertmanager-ani-metrics-alertmanager-db-alertmanager-ani-metrics-alertmanager-0; do
-      kubectl -n {{ .ani.metrics.namespace }} wait \
+      kubectl -n {{ .ani.components.metrics.namespace }} wait \
         --for=jsonpath='{.status.phase}'=Bound "pvc/$pvc" --timeout=300s
     done
 

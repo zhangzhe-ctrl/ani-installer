@@ -120,7 +120,7 @@ func DefaultComponents() Components {
 			PrometheusStorageSize:   "5Gi",
 			AlertmanagerStorageSize: "1Gi",
 			PrometheusRetention:     "24h",
-			PrometheusRetentionSize: "4Gi",
+			PrometheusRetentionSize: "4GiB",
 		},
 		Logging: LoggingComponent{
 			Backend:       loggingNone,
@@ -288,10 +288,18 @@ func (c Components) validateMetrics() error {
 		return fmt.Errorf("components.metrics.prometheusRetention %q must be a positive integer followed by h or d (for example 24h or 7d)", m.PrometheusRetention)
 	}
 	// The on-disk cap must exist and must be smaller than the volume, or the
-	// volume fills up first and the cap is meaningless.
-	retentionSize, err := resource.ParseQuantity(m.PrometheusRetentionSize)
+	// volume fills up first and the cap is meaningless. The Prometheus CRD
+	// mandates the trailing-B byte form (see PrometheusRetentionSize), so the
+	// check requires that spelling up front and strips the B before the
+	// quantity comparison — resource.ParseQuantity rejects GiB, while the CRD
+	// rejects Gi. (Failure A2 on 2026-09-19: the installer accepted "4Gi" and
+	// the CRD webhook then bounced the whole metrics install.)
+	if !strings.HasSuffix(m.PrometheusRetentionSize, "B") {
+		return fmt.Errorf("components.metrics.prometheusRetentionSize %q must be a byte capacity with a trailing B (for example 4GiB), matching the pattern the Prometheus CRD enforces", m.PrometheusRetentionSize)
+	}
+	retentionSize, err := resource.ParseQuantity(strings.TrimSuffix(m.PrometheusRetentionSize, "B"))
 	if err != nil || retentionSize.Sign() <= 0 {
-		return fmt.Errorf("components.metrics.prometheusRetentionSize %q must be a positive capacity (for example 4Gi)", m.PrometheusRetentionSize)
+		return fmt.Errorf("components.metrics.prometheusRetentionSize %q must be a positive capacity (for example 4GiB)", m.PrometheusRetentionSize)
 	}
 	storageSize, err := resource.ParseQuantity(m.PrometheusStorageSize)
 	if err != nil {

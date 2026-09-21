@@ -12,7 +12,7 @@
   - the Service is `ClusterIP` only — there is no NodePort, Ingress or Gateway,
     and no public endpoint by design
 - storage: one RBD PVC
-  - PVC `ani-opensearch-master-0`, StorageClass `{{ .ani.components.logging.storage_class }}`,
+  - PVC `ani-opensearch-master-ani-opensearch-master-0`, StorageClass `{{ .ani.components.logging.storage_class }}`,
     size `{{ .ani.components.logging.storage_size }}`, mounted at `/usr/share/opensearch/data`
   - the indices live on this volume, so a pod rebuild keeps the logs
 - retention: `{{ .ani.components.logging.retention_days }}` days

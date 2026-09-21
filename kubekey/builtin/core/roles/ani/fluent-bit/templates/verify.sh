@@ -37,7 +37,14 @@ NS="{{ .ani.components.logging.namespace }}"
 BACKEND="{{ .ani.components.logging.backend }}"
 DS="ani-fluent-bit"
 TOOL_IMAGE="{{ index .ani.images "docker.io/library/python:3.13.11-alpine3.23" }}"
-BUSYBOX_IMAGE="{{ index .ani.images "docker.io/library/busybox:1.37" }}"
+# A20 (evidence h4loki-a24): the key must match images.tsv EXACTLY -- the
+# table carries busybox:1.37.0, and this file once read busybox:1.37, which
+# index() resolved to nothing and rendered as a Go-template nil value, so
+# every marker pod failed with InvalidImageName on a real install. verify.sh
+# is only checked offline by TEMPLATE_KIND=verify of the render gate, whose
+# product-level scan would reject the nil spelling itself -- which is also
+# why this comment must never contain that literal.
+BUSYBOX_IMAGE="{{ index .ani.images "docker.io/library/busybox:1.37.0" }}"
 CLIENT_POD="ani-fluent-bit-verify-client"
 
 OUT_DIR="${ANI_VERIFY_OUTPUT_DIR:-/var/lib/ani-installer/logs}"
@@ -83,13 +90,30 @@ ready="$($KC get daemonset "$DS" -o jsonpath='{.status.numberReady}')"
 ds_uid="$($KC get daemonset "$DS" -o jsonpath='{.metadata.uid}')"
 note "DaemonSet UID $ds_uid"
 
-# The rendered config is read back from the running pod rather than from the
-# values file, so a chart that ignored a value would not pass.
+# The rendered config is read back from the cluster rather than from the
+# values file, so a chart that ignored a value would not pass. It is resolved
+# through the running collector's pod spec -- the volumes kubelet actually
+# mounts -- and then read from that ConfigMap over the API: the fluent-bit
+# image is distroless with no shell or coreutils, so exec-ing `cat` into the
+# collector is impossible (A18, evidence h4loki-a22: exec failed with
+# `cat: executable file not found in $PATH`). The collector being Ready is
+# what proves the mount happened; the ConfigMap is what kubelet projected.
 COLLECTOR_POD="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
   -o jsonpath='{.items[0].metadata.name}')"
 [ -n "$COLLECTOR_POD" ] || fail "no collector pod found"
-$KC exec "$COLLECTOR_POD" -- cat /fluent-bit/etc/fluent-bit.conf \
+CONF_CM=""
+for cm in $($KC get pod "$COLLECTOR_POD" -o jsonpath='{.spec.volumes[*].configMap.name}'); do
+  cm_data="$($KC get configmap "$cm" -o jsonpath='{.data}' 2>/dev/null || true)"
+  case "$cm_data" in
+    *'"fluent-bit.conf"'*) CONF_CM="$cm"; break ;;
+  esac
+done
+[ -n "$CONF_CM" ] || fail "no ConfigMap mounted by the collector carries fluent-bit.conf"
+$KC get configmap "$CONF_CM" -o jsonpath='{.data.fluent-bit\.conf}' \
   > "$EVIDENCE/rendered-fluent-bit.conf"
+[ -s "$EVIDENCE/rendered-fluent-bit.conf" ] \
+  || fail "the fluent-bit.conf read from ConfigMap $CONF_CM is empty"
+note "collector config read from ConfigMap $CONF_CM (mounted by $COLLECTOR_POD)"
 
 # Exactly one [OUTPUT] block, and it must be the selected backend. A leftover
 # chart default would be a second write path, sending every record to a host
@@ -168,7 +192,7 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo '$marker'; i=0; while [ \$i -lt 90 ]; do sleep 1; i=\$((i+1)); done"]
+        - "echo '$marker'; i=0; while [ \$i -lt 90 ]; do sleep 1; i=\$((i+1)); done"
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
@@ -307,17 +331,31 @@ py "$EVIDENCE/await_markers.py" "$BACKEND" \
 # text: a record with no pod or node is only half collected. The expected node
 # is derived from the marker's own -nN suffix, so the assertion is independent
 # of whatever the backend happened to return.
+#
+# A21 (evidence h4loki-a25): the helpers run inside the client pod, which has
+# no access to the installer node filesystem, so a host path passed as an
+# argument cannot be opened there. The query result is therefore uploaded into
+# the pod first and the checker reads the pod-local copy; the node-side file
+# written by tee below stays behind as run evidence. The sequence number is
+# parsed with a regex anchored on -nN- because the marker text continues with
+# the issuing host and the target node names, and a right-to-left split would
+# land inside those. The namespace is read from the last argument, not from a
+# length-derived index, because the node list already swallows every argument
+# between the file and the namespace.
 cat > "$EVIDENCE/check_metadata.py" <<'PY'
-import json, sys
+import json, re, sys
 
 found = json.load(open(sys.argv[1]))
-nodes = sys.argv[2:]
-expected_ns = sys.argv[2 + len(nodes)]
+nodes = sys.argv[2:-1]
+expected_ns = sys.argv[-1]
 
 REQUIRED = ("namespace", "pod", "container", "node")
 
 for marker, entry in sorted(found.items()):
-    idx = int(marker.rsplit("-n", 1)[-1].split("-")[0])
+    seq = re.search(r"-n(\d+)-", marker)
+    if not seq:
+        raise SystemExit(f"{marker}: cannot parse the marker sequence number")
+    idx = int(seq.group(1))
     want_node = nodes[idx - 1]
     want_pod = f"ani-log-marker-{idx}"
 
@@ -343,7 +381,9 @@ for marker, entry in sorted(found.items()):
                 raise SystemExit(f"{marker}: {key}={k8s.get(key)!r} but expected {want!r}")
 PY
 
-py "$EVIDENCE/check_metadata.py" "$EVIDENCE/markers-found.txt" \
+$KC exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/markers-found.json' \
+  < "$EVIDENCE/markers-found.txt"
+py "$EVIDENCE/check_metadata.py" /tmp/markers-found.json \
   "${NODES[@]}" "$NS" | tee "$EVIDENCE/metadata.txt"
 
 note "all $want_nodes markers found in $BACKEND with correct namespace/pod/container/node"
@@ -356,12 +396,17 @@ case "$BACKEND" in
   loki) BACKEND_KIND="statefulset"; BACKEND_NAME="ani-loki"
         BACKEND_PVC="storage-ani-loki-0"
         BACKEND_SELECTOR="app.kubernetes.io/name=loki" ;;
-  # The OpenSearch Chart names the volumeClaimTemplate after its cluster/group
-  # ("ani-opensearch-master"), so the PVC the Chart creates is
-  # ani-opensearch-master-0 — not data-<name>-0, which no chart in this batch
-  # renders.
+  # The OpenSearch Chart names the volumeClaimTemplate after its cluster/group,
+  # which is also the StatefulSet name, so the PVC is
+  # ani-opensearch-master-ani-opensearch-master-0 (<template>-<sts>-<ordinal>).
+  # The name is derived from the rendered StatefulSet rather than hardcoded:
+  # an earlier version used the pod-shaped name ani-opensearch-master-0, which
+  # is never a PVC.
   opensearch) BACKEND_KIND="statefulset"; BACKEND_NAME="ani-opensearch-master"
-        BACKEND_PVC="ani-opensearch-master-0"
+        BACKEND_PVC="$(kubectl -n "$NS" get statefulset ani-opensearch-master \
+          -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}')-ani-opensearch-master-0"
+        # The jsonpath above reads the claim template name (ani-opensearch-master),
+        # so the result is ani-opensearch-master-ani-opensearch-master-0.
         BACKEND_SELECTOR="app.kubernetes.io/name=opensearch" ;;
 esac
 
@@ -370,22 +415,107 @@ note "backend PVC $BACKEND_PVC UID before: $pvc_uid_before"
 
 old_backend_pod="$(kubectl -n "$NS" get pod -l "$BACKEND_SELECTOR" \
   -o jsonpath='{.items[0].metadata.name}')"
-note "rebuilding backend pod $old_backend_pod"
+old_backend_pod_uid="$(kubectl -n "$NS" get pod "$old_backend_pod" \
+  -o jsonpath='{.metadata.uid}')"
+note "rebuilding backend pod $old_backend_pod (uid $old_backend_pod_uid)"
 
 # The record is read before and after the rebuild, from the same query, so the
 # comparison is not affected by new data arriving in between.
+# K-5 (appendix A of the foundation status doc): the base kcn/OVN layer hands
+# a rebuilt pod a dead sandbox every so often -- valid IP, ARP announced, but
+# the datapath blackholes it and kubelet probe-restarts the container forever
+# without rebuilding the sandbox (observed live on h4loki-a12/a14/a15/a17).
+# The a17 live recovery experiment (2026-09-20, evidence
+# h4loki-a17-k5recovery-exp.log) refined the recovery: OVS br-int table=79
+# carries anti-spoof drop flows keyed on the dead pod's MAC/IP that survive
+# both pod recreation and agent restarts alone, so a plain second rebuild
+# never recovers the slot; what does (in ~20s) is restarting the kcn-cni-ds
+# and kcn-ovs-ds agents on the pod's node and THEN deleting the pod once
+# more, so its replacement is set up by a fresh CNI add against freshly
+# started agents. The wait below therefore gets: one bounded second rebuild,
+# then the agent restart + fresh rebuild, each step recorded in the evidence;
+# a final failure still fails the run.
+k5_dp_agent_restart() { # k5_dp_agent_restart <node> <what> — restart the kcn data-plane agents (cni, ovs) on <node>
+  local node="$1" what="$2" k apod
+  for k in cni ovs; do
+    apod="$(kubectl -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$k" '$2==n && $1 ~ p {print $1; exit}')"
+    if [ -n "$apod" ]; then
+      note "K5_RETRY $what: restarting the kcn-$k data-plane agent on $node ($apod)"
+      kubectl -n kcn-system delete pod "$apod" --timeout=180s >/dev/null 2>&1 || true
+    fi
+  done
+}
+k5_dp_agent_wait() { # k5_dp_agent_wait <name-pattern> <node> — bounded wait for a Ready kcn agent pod on <node>
+  local pat="$1" node="$2" i np rdy
+  for i in $(seq 1 48); do
+    np="$(kubectl -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$pat" '$2==n && $1 ~ p {print $1; exit}')"
+    rdy="$(kubectl -n kcn-system get pod "$np" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)"
+    [ "$rdy" = "true" ] && return 0
+    sleep 5
+  done
+  return 1
+}
+k5_dp_pod_node() { # k5_dp_pod_node <selector> <what> — restart the kcn data-plane agents on the first matching pod's node
+  local sel="$1" what="$2" pod node
+  pod="$(kubectl -n "$NS" get pod -l "$sel" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  node="$(kubectl -n "$NS" get pod "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)"
+  if [ -z "$node" ]; then
+    note "K5_RETRY $what: could not resolve the rebuilt pod's node (continuing without the agent restart)"
+    return 0
+  fi
+  k5_dp_agent_restart "$node" "$what"
+  k5_dp_agent_wait "kcn-cni-ds" "$node" \
+    || note "K5_RETRY $what: the kcn-cni-ds agent on $node is not Ready within 240s (continuing; the final wait is the arbiter)"
+  k5_dp_agent_wait "ovs" "$node" \
+    || note "K5_RETRY $what: the kcn-ovs-ds agent on $node is not Ready within 240s (continuing)"
+}
+k5_pod_ready() { # k5_pod_ready <selector> <timeout> — bounded wait until one Ready pod matches <selector>
+  # The wait never uses `kubectl rollout status`: on the lab's kubectl v1.35
+  # it can exit 0 on a timeout or on a stale workload status, which on a18
+  # silently passed a prometheus pod that stayed un-Ready for 27 minutes
+  # (evidence: h4loki-a18). The kubelet-written pod Ready condition is the
+  # honest signal, so the K-5 waits poll that instead.
+  local sel="$1" t="$2" deadline rdy
+  deadline=$(( $(date +%s) + ${t%s} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    rdy="$(kubectl -n "$NS" get pod -l "$sel" \
+      -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{end}' 2>/dev/null)"
+    [ "$rdy" = "True" ] && return 0
+    sleep 10
+  done
+  return 1
+}
 kubectl -n "$NS" delete pod "$old_backend_pod" --wait=true >/dev/null
-kubectl -n "$NS" rollout status "$BACKEND_KIND/$BACKEND_NAME" --timeout=600s
+if ! k5_pod_ready "$BACKEND_SELECTOR" 600s; then
+  note "K5_RETRY backend: the rebuilt pod did not become ready (base-layer netns flake, appendix A); rebuilding it once more"
+  echo "k5_retry backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+  kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
+  if ! k5_pod_ready "$BACKEND_SELECTOR" 420s; then
+    echo "k5_retry_dataplane backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+    k5_dp_pod_node "$BACKEND_SELECTOR" backend
+    kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
+    k5_pod_ready "$BACKEND_SELECTOR" 600s \
+      || fail "the rebuilt backend pod did not become Ready after the K-5 dataplane recovery"
+  fi
+fi
 
 pvc_uid_after="$(kubectl -n "$NS" get pvc "$BACKEND_PVC" -o jsonpath='{.metadata.uid}')"
 [ "$pvc_uid_before" = "$pvc_uid_after" ] \
   || fail "the backend PVC UID changed across the rebuild: $pvc_uid_before -> $pvc_uid_after"
 note "backend PVC UID unchanged: $pvc_uid_after"
 
+# A23 (evidence h4loki-a27): the backend is a StatefulSet, so a rebuilt pod
+# always comes back under the SAME name -- the old name-vs-name comparison
+# matched "ani-loki-0" against "ani-loki-0" and failed on a pod that HAD been
+# genuinely replaced (delete --wait succeeded, the new pod went Ready, the PVC
+# UID was unchanged). The replacement fact lives in the pod UID, not the name.
 new_backend_pod="$(kubectl -n "$NS" get pod -l "$BACKEND_SELECTOR" \
   -o jsonpath='{.items[0].metadata.name}')"
-[ "$new_backend_pod" != "$old_backend_pod" ] \
-  || fail "the backend pod was not actually replaced"
+new_backend_pod_uid="$(kubectl -n "$NS" get pod "$new_backend_pod" \
+  -o jsonpath='{.metadata.uid}')"
+[ "$new_backend_pod_uid" != "$old_backend_pod_uid" ] \
+  || fail "the backend pod was not actually replaced (uid $old_backend_pod_uid survived the rebuild)"
+note "backend pod replaced: $old_backend_pod/$old_backend_pod_uid -> $new_backend_pod/$new_backend_pod_uid"
 
 py "$EVIDENCE/await_markers.py" "$BACKEND" \
   "$([ "$BACKEND" = loki ] && echo "$LOKI_HOST" || echo "$OS_HOST")" \
@@ -408,24 +538,91 @@ victim_pod="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
   --field-selector "spec.nodeName=$victim_node" -o jsonpath='{.items[0].metadata.name}')"
 [ -n "$victim_pod" ] || fail "no collector pod on $victim_node"
 
-$KC exec "$victim_pod" -- sh -c \
-  'ls -la /var/lib/fluent-bit; echo "---"; ls -la /var/lib/fluent-bit/buffers 2>/dev/null || true' \
-  > "$EVIDENCE/cursor-before.txt"
+# The state directory is fingerprinted via a disposable busybox pod mounted on
+# the same per-node hostPath, not by exec-ing into the collector: the
+# fluent-bit image is distroless and has no shell or coreutils (A18, evidence
+# h4loki-a22). The inspector runs on the victim node with the exact hostPath
+# the collector mounts at /var/lib/fluent-bit (values: fluent-bit-state ->
+# /var/lib/ani-installer/fluent-bit), so it sees the collector's own files.
+# Read-only, and deleted after each use.
+cursor_ls() { # cursor_ls <node> <outfile>
+  local node="$1" out="$2" inspector="ani-fb-cursor-inspector" ph i
+  $KC delete pod "$inspector" --ignore-not-found --wait=true >/dev/null 2>&1 || true
+  cat <<EOF | $KC apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $inspector
+  labels:
+    ani-verify: cursor-inspector
+spec:
+  restartPolicy: Never
+  nodeName: $node
+  containers:
+    - name: inspect
+      image: $BUSYBOX_IMAGE
+      command: ["/bin/sh", "-c"]
+      args: ["ls -la /state; echo '---'; ls -la /state/buffers 2>/dev/null || true"]
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {memory: 32Mi}
+      volumeMounts:
+        - name: state
+          mountPath: /state
+          readOnly: true
+  volumes:
+    - name: state
+      hostPath:
+        path: /var/lib/ani-installer/fluent-bit
+        type: Directory
+EOF
+  ph=""; i=0
+  while [ "$i" -lt 60 ]; do
+    ph="$($KC get pod "$inspector" -o jsonpath='{.status.phase}' 2>/dev/null)"
+    [ "$ph" = "Succeeded" ] && break
+    [ "$ph" = "Failed" ] && fail "the cursor inspector pod on $node entered Failed phase"
+    sleep 2; i=$((i+1))
+  done
+  [ "$ph" = "Succeeded" ] || fail "the cursor inspector pod on $node did not finish in 120s"
+  $KC logs "$inspector" > "$out"
+  $KC delete pod "$inspector" --wait=true >/dev/null
+}
+
+cursor_ls "$victim_node" "$EVIDENCE/cursor-before.txt"
 cat "$EVIDENCE/cursor-before.txt"
 grep -q 'tail.db' "$EVIDENCE/cursor-before.txt" \
   || fail "the tail cursor database is not on the persistent directory"
 
 note "rebuilding collector pod $victim_pod on $victim_node"
 kubectl -n "$NS" delete pod "$victim_pod" --wait=true >/dev/null
-$KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
-  --field-selector "spec.nodeName=$victim_node" --timeout=300s
+# Same K-5 handling as the backend step above: the collector's sandbox can be
+# handed dead by the base layer, and the second-rebuild + agent-restart
+# recovery applies (the victim node is already known here).
+if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
+  --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
+  note "K5_RETRY collector: the rebuilt pod did not become ready (base-layer netns flake, appendix A); rebuilding it once more"
+  echo "k5_retry collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+  kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
+    --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
+  if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
+    --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
+    echo "k5_retry_dataplane collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+    k5_dp_agent_restart "$victim_node" collector
+    k5_dp_agent_wait "kcn-cni-ds" "$victim_node" \
+      || note "K5_RETRY collector: the kcn-cni-ds agent on $victim_node is not Ready within 240s (continuing)"
+    k5_dp_agent_wait "ovs" "$victim_node" \
+      || note "K5_RETRY collector: the kcn-ovs-ds agent on $victim_node is not Ready within 240s (continuing)"
+    kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
+      --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
+    $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
+      --field-selector "spec.nodeName=$victim_node" --timeout=300s
+  fi
+fi
 
 new_pod="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
   --field-selector "spec.nodeName=$victim_node" -o jsonpath='{.items[0].metadata.name}')"
 [ "$new_pod" != "$victim_pod" ] || fail "the collector pod was not replaced"
-$KC exec "$new_pod" -- sh -c \
-  'ls -la /var/lib/fluent-bit; echo "---"; ls -la /var/lib/fluent-bit/buffers 2>/dev/null || true' \
-  > "$EVIDENCE/cursor-after.txt"
+cursor_ls "$victim_node" "$EVIDENCE/cursor-after.txt"
 cat "$EVIDENCE/cursor-after.txt"
 grep -q 'tail.db' "$EVIDENCE/cursor-after.txt" \
   || fail "the tail cursor did not survive the collector pod rebuild"
@@ -446,7 +643,7 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo 'ANI-MARKER-$new_run'; i=0; while [ \$i -lt 120 ]; do sleep 1; i=\$((i+1)); done"]
+        - "echo 'ANI-MARKER-$new_run'; i=0; while [ \$i -lt 120 ]; do sleep 1; i=\$((i+1)); done"
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
@@ -517,18 +714,128 @@ note "== [5] retention expiry is out of scope for this run =="
 # claimed from a configured value.
 case "$BACKEND" in
   loki)
-    cat > "$EVIDENCE/retention.py" <<'PY'
-import json, sys, urllib.request
+    # A14: the first version of this branch called json.load() on the /config
+    # answer with a 10s socket timeout. Loki answers this endpoint with YAML
+    # text, not JSON, and streams the ~92KB dump slowly enough that a 10s
+    # timeout cut the body mid-read on a real install -- the same two defects
+    # the loki role's own [3] fixed (A11/A12) and proved there. This branch
+    # therefore runs the same fetch+parse+compare that passed a real install,
+    # including the 72h/3d duration equivalence: Loki echoes whatever unit the
+    # configuration used, and 72h and 3d are the same duration.
+    cat > "$EVIDENCE/query_config.py" <<'PY'
+import sys, time, urllib.request
+
 host = sys.argv[1]
-with urllib.request.urlopen(f"http://{host}/config", timeout=10) as r:
-    cfg = json.load(r)
-print("retention_period", cfg.get("limits_config", {}).get("retention_period"))
-print("compactor.retention_enabled", cfg.get("compactor", {}).get("retention_enabled"))
-print("compactor.delete_request_store", cfg.get("compactor", {}).get("delete_request_store"))
+text = None
+ctype = ""
+for attempt in range(3):
+    try:
+        with urllib.request.urlopen(f"http://{host}/config", timeout=60) as r:
+            text = r.read().decode()
+            ctype = r.headers.get("Content-Type", "")
+        break
+    except Exception as exc:
+        print(f"config fetch attempt {attempt + 1} failed: {exc}", file=sys.stderr)
+        text = None
+        time.sleep(5)
+if text is None:
+    raise SystemExit("could not fetch the /config dump after 3 attempts")
+
+
+def parse_yaml_scalars(text):
+    """Return {(section, key): value} for the two-level scalars this reads.
+
+    A scalar belongs to its section only at two-space indent; a list entry's
+    own fields (four-space) are flattened into the parent section; anything
+    deeper is a nested mapping's business and is skipped, so a same-named
+    deeper key cannot overwrite the section's own value.
+    """
+    out = {}
+    section = None
+    in_list_item = False
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        line = raw.strip()
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if indent == 0:
+            section = key if value == "" else None
+            in_list_item = False
+            continue
+        if section is None:
+            continue
+        if indent <= 2 and line.startswith("- "):
+            in_list_item = True
+            rest = line[2:]
+            if ":" in rest:
+                k, _, v = rest.partition(":")
+                v = v.strip().strip("\"'")
+                if v:
+                    out[(section, k.strip())] = v
+            continue
+        if value == "":
+            if indent <= 2:
+                in_list_item = False
+            continue
+        if indent == 2 or (in_list_item and indent == 4):
+            out[(section, key)] = value.strip("\"'")
+    return out
+
+
+cfg = parse_yaml_scalars(text)
+print("content_type", ctype.split(";")[0])
+for section, key in [
+    ("limits_config", "retention_period"),
+    ("compactor", "retention_enabled"),
+    ("compactor", "delete_request_store"),
+]:
+    print(f"{section}.{key}", cfg.get((section, key)))
+if ("limits_config", "retention_period") not in cfg:
+    raise SystemExit("config response did not parse as the expected YAML mapping")
 PY
-    py "$EVIDENCE/retention.py" "$LOKI_HOST" | tee "$EVIDENCE/retention.txt"
-    grep -qx "retention_period {{ .ani.components.logging.retention_hours }}h" "$EVIDENCE/retention.txt" \
-      || fail "the backend does not report the configured retention period"
+    py "$EVIDENCE/query_config.py" "$LOKI_HOST" | tee "$EVIDENCE/retention.txt"
+
+    grep -qx "content_type text/plain" "$EVIDENCE/retention.txt" \
+      || fail "Loki did not answer /config as YAML text, so this check reads the wrong format"
+
+    RETENTION_PERIOD_SECONDS="$(python3 - "{{ .ani.components.logging.retention_hours }}h" <<'PY'
+import re, sys
+m = re.fullmatch(r"(\d+)([smhd])", sys.argv[1])
+if not m:
+    raise SystemExit(f"unparseable retention period: {sys.argv[1]}")
+n, unit = int(m.group(1)), m.group(2)
+print(n * {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit])
+PY
+)"
+    echo "retention_period_seconds $RETENTION_PERIOD_SECONDS" >> "$EVIDENCE/retention.txt"
+
+    REPORTED_PERIOD="$(awk '$1 == "limits_config.retention_period" {print $2}' "$EVIDENCE/retention.txt")"
+    [ -n "$REPORTED_PERIOD" ] && [ "$REPORTED_PERIOD" != "None" ] \
+      || fail "Loki's effective config has no limits_config.retention_period"
+    REPORTED_SECONDS="$(python3 - "$REPORTED_PERIOD" <<'PY'
+import re, sys
+value = sys.argv[1].strip().strip('"')
+m = re.fullmatch(r"(\d+)(ns|us|ms|s|m|h|d|w|y)", value)
+if not m:
+    print("unparseable")
+    raise SystemExit(0)
+n, unit = int(m.group(1)), m.group(2)
+print(n * {"ns": 0, "us": 0, "ms": 0, "s": 1, "m": 60, "h": 3600,
+           "d": 86400, "w": 604800, "y": 31536000}[unit])
+PY
+)"
+    echo "reported_retention_period_seconds $REPORTED_SECONDS" >> "$EVIDENCE/retention.txt"
+    [ "$REPORTED_SECONDS" = "$RETENTION_PERIOD_SECONDS" ] \
+      || fail "Loki retains for $REPORTED_PERIOD ($REPORTED_SECONDS s), not the configured value ($RETENTION_PERIOD_SECONDS s)"
+
+    grep -qx "compactor.retention_enabled true" "$EVIDENCE/retention.txt" \
+      || fail "the compactor does not have retention_enabled, so nothing would ever be deleted"
+    grep -qx "compactor.delete_request_store filesystem" "$EVIDENCE/retention.txt" \
+      || fail "the compactor has no filesystem delete store"
     ;;
   opensearch)
     # The secured backend needs the same CA and credential the marker queries

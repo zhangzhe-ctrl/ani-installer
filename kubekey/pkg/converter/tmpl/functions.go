@@ -23,6 +23,15 @@ const recursionMaxNums = 1000
 
 // default function docs: http://masterminds.github.io/sprig
 
+// FuncMap returns the function map the installer uses for every template it
+// renders. It is exported so an offline render check can template a role file
+// with the same functions the installer provides: without it a check that
+// renders a file containing `default` or `toJson` fails on an undefined
+// function and reports a defect where there is none.
+func FuncMap() template.FuncMap {
+	return funcMap()
+}
+
 func funcMap() template.FuncMap {
 	var f = sprig.TxtFuncMap()
 	delete(f, "env")
