@@ -2,7 +2,7 @@
 - name: ANI KCN | Create work directory
   command: install -d -m 0755 /etc/kubernetes/ani
 
-- name: ANI KCN | Render v0.6.2 install manifest
+- name: ANI KCN | Render dev install manifest
   template:
     src: install.yaml
     dest: /etc/kubernetes/ani/kcn-install.yaml
@@ -14,7 +14,10 @@
     sh -c 'printf "%s\n" "net.ipv4.conf.default.rp_filter=0" > /etc/sysctl.d/99-ani-kcn.conf
     && sysctl -w net.ipv4.conf.default.rp_filter=0'
 
-- name: ANI KCN | Apply v0.6.2 install manifest
+- name: ANI KCN | Remove v0.6.2 Services superseded by dev renames
+  command: kubectl -n kcn-system delete service/ovn-nb service/ovn-northd service/ovn-sb --ignore-not-found
+
+- name: ANI KCN | Apply dev install manifest
   command: kubectl apply -f /etc/kubernetes/ani/kcn-install.yaml
 
 - name: ANI KCN | Wait for controller deployment

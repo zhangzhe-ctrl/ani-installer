@@ -368,6 +368,39 @@ spec:
                 x-kubernetes-validations:
                 - message: field is immutable
                   rule: self == oldSelf
+              qos:
+                description: qos defines the Quality of Service configuration for
+                  this EIP.
+                properties:
+                  bandwidth:
+                    description: |-
+                      bandwidth sets the max bandwidth limit for both ingress and egress in Mbps.
+                      It is a shortcut for setting both ingress.maxRate and egress.maxRate.
+                      If ingress or egress specifies maxRate, that value overrides this field for the corresponding direction.
+                    maximum: 102400
+                    minimum: 0
+                    type: integer
+                  egress:
+                    description: egress defines the bandwidth limits for outgoing
+                      traffic.
+                    properties:
+                      maxRate:
+                        description: maxRate is the maximum allowed bandwidth in Mbps.
+                        maximum: 102400
+                        minimum: 0
+                        type: integer
+                    type: object
+                  ingress:
+                    description: ingress defines the bandwidth limits for incoming
+                      traffic.
+                    properties:
+                      maxRate:
+                        description: maxRate is the maximum allowed bandwidth in Mbps.
+                        maximum: 102400
+                        minimum: 0
+                        type: integer
+                    type: object
+                type: object
               securityGroups:
                 description: securityGroups is the list of security groups bound to
                   this EIP.
@@ -2663,6 +2696,39 @@ spec:
                 x-kubernetes-validations:
                 - message: field is immutable
                   rule: self == oldSelf
+              qos:
+                description: qos defines the Quality of Service configuration for
+                  this VNic.
+                properties:
+                  bandwidth:
+                    description: |-
+                      bandwidth sets the max bandwidth limit for both ingress and egress in Mbps.
+                      It is a shortcut for setting both ingress.maxRate and egress.maxRate.
+                      If ingress or egress specifies maxRate, that value overrides this field for the corresponding direction.
+                    maximum: 102400
+                    minimum: 0
+                    type: integer
+                  egress:
+                    description: egress defines the bandwidth limits for outgoing
+                      traffic.
+                    properties:
+                      maxRate:
+                        description: maxRate is the maximum allowed bandwidth in Mbps.
+                        maximum: 102400
+                        minimum: 0
+                        type: integer
+                    type: object
+                  ingress:
+                    description: ingress defines the bandwidth limits for incoming
+                      traffic.
+                    properties:
+                      maxRate:
+                        description: maxRate is the maximum allowed bandwidth in Mbps.
+                        maximum: 102400
+                        minimum: 0
+                        type: integer
+                    type: object
+                type: object
               securityGroups:
                 description: securityGroups is the list of security groups bound to
                   this VNic.
@@ -3398,7 +3464,7 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ovn-nb
+  name: kcn-ovn-nb
   namespace: kcn-system
 spec:
   ports:
@@ -3414,7 +3480,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ovn-northd
+  name: kcn-ovn-northd
   namespace: kcn-system
 spec:
   ports:
@@ -3430,7 +3496,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ovn-sb
+  name: kcn-ovn-sb
   namespace: kcn-system
 spec:
   ports:
@@ -3508,7 +3574,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: status.podIPs
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 5
@@ -3561,7 +3627,7 @@ spec:
         - sh
         - -c
         - 'chown -R nobody: /var/log/kc-networking'
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         name: hostpath-init
         securityContext:
@@ -3637,25 +3703,7 @@ spec:
       containers:
       - command:
         - bash
-        - -c
-        - |
-          /kc-networking/start-db.sh &
-          db_pid=$!
-          /kc-networking/kc-networking-leader-checker --probeInterval="${OVN_LEADER_PROBE_INTERVAL}" &
-          checker_pid=$!
-          terminate() {
-            kill -TERM "$checker_pid" "$db_pid" 2>/dev/null || true
-            wait "$checker_pid" "$db_pid" 2>/dev/null || true
-            exit 0
-          }
-          trap terminate TERM INT
-          set +e
-          wait -n "$db_pid" "$checker_pid"
-          status=$?
-          set -e
-          kill -TERM "$checker_pid" "$db_pid" 2>/dev/null || true
-          wait "$checker_pid" "$db_pid" 2>/dev/null || true
-          exit "$status"
+        - /kc-networking/start-db.sh
         env:
         - name: NODE_IPS
           value: {{ .ani.node_addresses | join "," }}
@@ -3694,7 +3742,7 @@ spec:
           value: "1"
         - name: ENABLE_COMPACT
           value: "false"
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:
@@ -3746,7 +3794,7 @@ spec:
         - sh
         - -c
         - 'chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn'
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         name: hostpath-init
         securityContext:
@@ -3847,7 +3895,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.namespace
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 5
@@ -3931,13 +3979,32 @@ spec:
       hostPID: true
       initContainers:
       - command:
+        - /kc-networking/install-cni.sh
+        env:
+        - name: POD_IPS
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIPs
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
+        imagePullPolicy: IfNotPresent
+        name: install-cni
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /opt/cni/bin
+          name: cni-bin
+        - mountPath: /usr/local/bin
+          name: local-bin
+      - command:
         - sh
         - -xec
         - |
           chmod +t /usr/local/sbin
           iptables -V
           chown -R nobody: /var/log/kc-networking
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         name: hostpath-init
         securityContext:
@@ -3956,25 +4023,6 @@ spec:
           name: host-ns
         - mountPath: /var/log/kc-networking
           name: kc-networking-log
-      - command:
-        - /kc-networking/install-cni.sh
-        env:
-        - name: POD_IPS
-          valueFrom:
-            fieldRef:
-              apiVersion: v1
-              fieldPath: status.podIPs
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
-        imagePullPolicy: IfNotPresent
-        name: install-cni
-        securityContext:
-          privileged: true
-          runAsUser: 0
-        volumeMounts:
-        - mountPath: /opt/cni/bin
-          name: cni-bin
-        - mountPath: /usr/local/bin
-          name: local-bin
       nodeSelector:
         kubernetes.io/os: linux
       priorityClassName: system-node-critical
@@ -4105,7 +4153,7 @@ spec:
           value: "10000"
         - name: OVN_REMOTE_OPENFLOW_INTERVAL
           value: "180"
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:
@@ -4178,7 +4226,7 @@ spec:
           chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
           iptables -V
           /usr/share/openvswitch/scripts/ovs-ctl load-kmod
-        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:v0.6.2" }}
+        image: {{ index .ani.images "docker.changqingyun.cn/kubercloud/kc-networking:dev" }}
         imagePullPolicy: IfNotPresent
         name: hostpath-init
         securityContext:

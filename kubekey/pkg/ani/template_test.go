@@ -49,25 +49,37 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 			t.Fatalf("rendered manifest missing %q", want)
 		}
 	}
-	for _, stale := range []string{"33.3.1.201", "33.3.1.202", "33.3.1.203", "33.3.64.0/19"} {
+	for _, stale := range []string{
+		"33.3.1.201", "33.3.1.202", "33.3.1.203", "33.3.64.0/19",
+		"33.3.14.0/23", "33.3.96.0/19", "192.1.1.0/24",
+		"imagePullPolicy: Always",
+	} {
 		if strings.Contains(out, stale) {
 			t.Fatalf("rendered manifest still contains stale site value %q", stale)
 		}
 	}
+	// 2026-09-20 kcn dev upgrade: the dev manifest ships the leader fix
+	// upstream (leader-checker baked into the image, start-db.sh as a plain
+	// command array) and renames the OVN Services with the kcn- prefix.
+	// Assert the dev shapes and reject the v0.6.2 hand-patched ones.
 	for _, want := range []string{
-		"name: ovn-nb",
-		"name: ovn-northd",
-		"name: ovn-sb",
-		"/kc-networking/start-db.sh &",
-		"/kc-networking/kc-networking-leader-checker --probeInterval=\"${OVN_LEADER_PROBE_INTERVAL}\"",
+		"name: kcn-ovn-nb",
+		"name: kcn-ovn-northd",
+		"name: kcn-ovn-sb",
+		"- /kc-networking/start-db.sh",
 	} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("rendered manifest missing KCN leader fix %q", want)
+			t.Fatalf("rendered manifest missing KCN dev expectation %q", want)
 		}
 	}
-	for _, stale := range []string{"name: kcn-ovn-nb", "name: kcn-ovn-northd", "name: kcn-ovn-sb"} {
+	// The two-space indent pins the stale check to the Service metadata name;
+	// the dev port names ("- name: ovn-nb") must stay bare and must not trip.
+	for _, stale := range []string{
+		"  name: ovn-nb", "  name: ovn-northd", "  name: ovn-sb",
+		"start-db.sh &", "kc-networking-leader-checker",
+	} {
 		if strings.Contains(out, stale) {
-			t.Fatalf("rendered manifest still contains stale OVN Service name %q", stale)
+			t.Fatalf("rendered manifest still contains stale v0.6.2 Service name or hand-patched leader fix %q", stale)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(t.TempDir(), "kcn-install.yaml"), []byte(out), 0o600); err != nil {

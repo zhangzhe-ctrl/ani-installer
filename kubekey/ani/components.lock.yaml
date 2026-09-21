@@ -24,7 +24,10 @@ base:
   containerd: v2.3.4
   runc: v1.4.3
   hauler: v2.0.3
-  kcn: v0.6.2
+  # kcn: dev = docker.changqingyun.cn/kubercloud/kc-networking:dev
+  # 2026-09-20 升级（K-5 坏 netns 修复）；安装清单重写自上游 install-dev.yaml，
+  # 镜像以本地 tar 注入离线包（OCI index sha256:5a8cf98fcccf118c…，见 images.tsv）。
+  kcn: dev
   envoyGateway: 既定定制版本（仓库已锁定，本轮不动）
   rook: v1.20.7
   ceph: v20.2.4
@@ -208,7 +211,7 @@ excludedImages:
 # 候选版本依据 docs/research/observability-{metrics,logs}-materials-20260919.md，
 # 摘要为本轮在 Fedora 实测（Chart 重新下载 + skopeo 读取 manifest），不是转述。
 # 本批状态：materials_confirmed / installation_not_verified。
-# 新版 kcn 材料未提供，installer 不改组件源码、不制临时修复镜像。
+# kcn dev 材料已于 2026-09-20 用户提供并注入（见 base.kcn），installer 侧完成升级改造。
 # ---------------------------------------------------------------------------
 batch2:
   lockedAt: "2026-09-19"
