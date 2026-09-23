@@ -72,6 +72,12 @@ spec:
   privateKey:
     algorithm: RSA
     size: 2048
+    # A28: securityadmin.sh loads this key through Java's PKCS8 parser. The
+    # default PKCS1 encoding dies with "algid parse error, not a sequence"
+    # (observed live on kubeovn-full-h5a11), so the admin identity must be
+    # issued as PKCS8. The node certificate keeps PKCS1: the OpenSearch
+    # security plugin reads it directly.
+    encoding: PKCS8
     rotationPolicy: Always
   # The administrator authenticates with this certificate on the HTTP layer and
   # on the transport layer, so it needs both usages as well.

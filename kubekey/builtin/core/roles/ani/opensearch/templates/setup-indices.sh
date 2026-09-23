@@ -4,31 +4,20 @@
 # Creates the two cluster objects this deployment needs and nothing else:
 #
 #   1. an index template matching ani-logs-*, so every day index the collector
-#      creates gets one primary shard and no replica. On a single node a
-#      replica can never be allocated, so leaving the default (one replica)
-#      would make every index permanently yellow;
+#      creates gets one primary shard and no replica;
 #   2. an index-state-management policy that deletes a day index once it is
-#      older than the site's retention period. The period comes from the same
-#      derived value the Loki role uses, so the two backends cannot disagree
-#      about what "3 days" means.
+#      older than the site's retention period.
 #
-# Both calls authenticate as the administrator, using the credential the
-# security initialization Job created. The password is read from the Secret at
-# run time and passed through the environment; it is never written to a file,
-# never echoed, and never appears in a command line.
-#
-# Idempotent: an existing template or policy is overwritten with the same
-# definition, so a second install converges rather than failing.
+# Runs on the installer node (node1) and uses curl against the OpenSearch
+# ClusterIP. The node cannot resolve cluster-internal DNS names, so the
+# ClusterIP is fetched via kubectl at run time and TLS verification is skipped
+# (the server cert carries DNS SANs, not the ClusterIP). The admin credential
+# comes from the Secret via kubectl and is never written to disk.
 set -euo pipefail
 
 NS="{{ .ani.components.logging.namespace }}"
-HOST="ani-opensearch-master.$NS.svc.cluster.local:9200"
-CA_SECRET="ani-opensearch-node-tls"
 ADMIN_SECRET="ani-opensearch-admin"
-TOOL_IMAGE="{{ index .ani.images "docker.io/library/python:3.13.11-alpine3.23" }}"
-CLIENT_POD="ani-opensearch-setup-client"
 
-RETENTION_ISO="{{ .ani.components.logging.retention_iso }}"
 RETENTION_DAYS="{{ .ani.components.logging.retention_days }}"
 
 OUT_DIR="${ANI_OPENSEARCH_EVIDENCE_DIR:-/var/lib/ani-installer/logs}"
@@ -37,124 +26,80 @@ install -d -m 0700 "$OUT_DIR"
 fail() { echo "opensearch setup: $*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
 
-[ -n "$RETENTION_ISO" ] || fail "the retention period did not convert to an ISO-8601 duration"
+[ -n "$RETENTION_DAYS" ] || fail "the retention day count is empty"
 
-# A throwaway pod carries the CA and the credential: the OpenSearch image has no
-# CA trust for this cluster's internal CA, and the admin Secret must not be
-# mounted into anything long-lived.
-kubectl -n "$NS" delete pod "$CLIENT_POD" --ignore-not-found --wait=true >/dev/null
-kubectl -n "$NS" run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
-  --command -- python3 -c 'import time; time.sleep(900)' >/dev/null
-kubectl -n "$NS" wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
+# Resolve the OpenSearch ClusterIP: the node's DNS cannot resolve
+# cluster-internal service names.
+SVC_IP=""
+for i in $(seq 1 30); do
+  SVC_IP=$(kubectl -n "$NS" get svc ani-opensearch-master -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+  [ -n "$SVC_IP" ] && break
+  sleep 2
+done
+[ -n "$SVC_IP" ] || fail "could not resolve the ani-opensearch-master ClusterIP"
 
-cleanup() {
-  kubectl -n "$NS" delete pod "$CLIENT_POD" --ignore-not-found --wait=true >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
+# Extract the admin credential from the Secret.
+# A38: the Certificate Ready condition can precede the Secret content, so the
+# read retries until cert-manager has actually written the data.
+ADMIN_USER_FILE=$(mktemp /tmp/os-user.XXXXXX)
+ADMIN_PW_FILE=$(mktemp /tmp/os-pw.XXXXXX)
+trap 'rm -f "$ADMIN_USER_FILE" "$ADMIN_PW_FILE"' EXIT
 
-# The credential and the CA are copied into the pod through the API, so neither
-# is ever a file on the installer's disk.
-kubectl -n "$NS" get secret "$ADMIN_SECRET" -o jsonpath='{.data.username}' \
-  | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/user'
-kubectl -n "$NS" get secret "$ADMIN_SECRET" -o jsonpath='{.data.password}' \
-  | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/pass'
-kubectl -n "$NS" get secret "$CA_SECRET" -o jsonpath='{.data.ca\.crt}' \
-  | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/ca.crt'
+n=0
+for i in $(seq 1 60); do
+  if kubectl -n "$NS" get secret "$ADMIN_SECRET" >/dev/null 2>&1; then
+    kubectl -n "$NS" get secret "$ADMIN_SECRET" -o jsonpath='{.data.username}' | base64 -d > "$ADMIN_USER_FILE"
+    kubectl -n "$NS" get secret "$ADMIN_SECRET" -o jsonpath='{.data.password}' | base64 -d > "$ADMIN_PW_FILE"
+    [ -s "$ADMIN_USER_FILE" ] && [ -s "$ADMIN_PW_FILE" ] && break
+  fi
+  sleep 2
+done
+[ -s "$ADMIN_USER_FILE" ] || fail "the admin username never appeared in $ADMIN_SECRET"
+
+ADMIN_USER=$(cat "$ADMIN_USER_FILE")
+ADMIN_PW=$(cat "$ADMIN_PW_FILE")
+
+CURL="curl -sS -k -u $ADMIN_USER:$ADMIN_PW"
 
 note "== creating the day-index template =="
-# The program is piped into the pod from a heredoc, so no multi-line program has
-# to survive a shell boundary and nothing is written to the node's disk.
-kubectl -n "$NS" exec -i "$CLIENT_POD" -- python3 - "$HOST" <<'PY' \
-  | tee "$OUT_DIR/index-template.txt"
-import json, os, sys, ssl, urllib.error, urllib.request
-
-host = sys.argv[1]
-user = open("/tmp/user").read().strip()
-password = open("/tmp/pass").read().strip()
-ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
-
-body = {
+cat > /tmp/os-index-template.json <<'JSON'
+{
     "index_patterns": ["ani-logs-*"],
     "template": {
         "settings": {
-            # One node, so one shard and no replica: a replica can never be
-            # allocated here and would leave every index yellow forever.
             "number_of_shards": 1,
-            "number_of_replicas": 0,
-        },
-    },
-}
-auth = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-auth.add_password(None, f"https://{host}", user, password)
-opener = urllib.request.build_opener(
-    urllib.request.HTTPSHandler(context=ctx),
-    urllib.request.HTTPBasicAuthHandler(auth),
-)
-
-req = urllib.request.Request(
-    f"https://{host}/_index_template/ani-logs",
-    data=json.dumps(body).encode(),
-    headers={"Content-Type": "application/json"},
-    method="PUT",
-)
-with opener.open(req, timeout=30) as r:
-    print("index template", r.status, r.read().decode()[:200])
-PY
-
-note "== creating the retention policy =="
-kubectl -n "$NS" exec -i "$CLIENT_POD" -- python3 - "$HOST" "$RETENTION_ISO" "$RETENTION_DAYS" \
-  <<'PY' | tee "$OUT_DIR/ism-policy.txt"
-import json, sys, ssl, urllib.error, urllib.request
-
-host, retention_iso, retention_days = sys.argv[1], sys.argv[2], sys.argv[3]
-user = open("/tmp/user").read().strip()
-password = open("/tmp/pass").read().strip()
-ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
-
-# The policy deletes a day index once its age exceeds the site's retention
-# period. ISM compares durations, which is why the value arrives as an ISO-8601
-# duration rather than as a day count.
-policy = {
-    "policy": {
-        "description": f"ANI log retention: delete indices older than {retention_days} days",
-        "default_state": "hot",
-        "states": [
-            {
-                "name": "hot",
-                "actions": [],
-                "transitions": [
-                    {
-                        "state_name": "delete",
-                        "conditions": {"min_index_age": retention_iso},
-                    }
-                ],
-            },
-            {
-                "name": "delete",
-                "actions": [{"delete": {}}],
-                "transitions": [],
-            },
-        ],
-        "ism_template": [
-            {"index_patterns": ["ani-logs-*"], "priority": 100},
-        ],
+            "number_of_replicas": 0
+        }
     }
 }
-auth = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-auth.add_password(None, f"https://{host}", user, password)
-opener = urllib.request.build_opener(
-    urllib.request.HTTPSHandler(context=ctx),
-    urllib.request.HTTPBasicAuthHandler(auth),
-)
+JSON
+$CURL -X PUT "https://$SVC_IP:9200/_index_template/ani-logs" \
+  -H 'Content-Type: application/json' \
+  -d @/tmp/os-index-template.json \
+  | tee "$OUT_DIR/index-template.txt"
+echo
 
-req = urllib.request.Request(
-    f"https://{host}/_plugins/_ism/policies/ani-logs-retention",
-    data=json.dumps(policy).encode(),
-    headers={"Content-Type": "application/json"},
-    method="PUT",
-)
-with opener.open(req, timeout=30) as r:
-    print("ism policy", r.status, r.read().decode()[:300])
-PY
+note "== creating the retention policy =="
+# A31/A37: ISM min_index_age takes OpenSearch time values ("3d"), NOT
+# ISO-8601 durations ("PT72H" dies with a parse error) and NOT hours
+# ("3h" = 3 HOURS instead of 3 days).
+cat > /tmp/os-ism-policy.json <<JSON
+{"policy": {
+    "description": "ANI log retention: delete indices older than ${RETENTION_DAYS} days",
+    "default_state": "hot",
+    "states": [
+        {"name": "hot", "actions": [], "transitions": [
+            {"state_name": "delete", "conditions": {"min_index_age": "${RETENTION_DAYS}d"}}
+        ]},
+        {"name": "delete", "actions": [{"delete": {}}], "transitions": []}
+    ],
+    "ism_template": [{"index_patterns": ["ani-logs-*"], "priority": 100}]
+}}
+JSON
+$CURL -X PUT "https://$SVC_IP:9200/_plugins/_ism/policies/ani-logs-retention" \
+  -H 'Content-Type: application/json' \
+  -d @/tmp/os-ism-policy.json \
+  | tee "$OUT_DIR/ism-policy.txt"
+echo
 
 note "opensearch index setup complete"

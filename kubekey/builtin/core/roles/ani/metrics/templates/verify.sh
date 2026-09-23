@@ -339,6 +339,28 @@ with urllib.request.urlopen(base + "/api/v2/silence/" + sid, timeout=30) as resp
     print(json.load(resp).get("id", ""))
 PY_EOF
 
+cat > "$OUT_DIR/silence_gc.py" <<'PY_EOF'
+# Deletes every ACTIVE silence whose comment marks it as an ANI metrics
+# persistence check (A24, observed live on kubeovn-full-a6: the install-time
+# verify creates this silence with a 2h TTL and the cleanup block never
+# removed it, so a post-install verify run inside that window had its test
+# alert suppressed and [5/8] failed with an empty receiver). Scoped to our
+# own comment prefix: an operator silence is never touched.
+import json, sys, urllib.request
+base = sys.argv[1]
+with urllib.request.urlopen(base + "/api/v2/silences", timeout=30) as resp:
+    silences = json.load(resp)
+for s in silences:
+    if s.get("status", {}).get("state") != "active":
+        continue
+    if not str(s.get("comment", "")).startswith("ANI metrics persistence check"):
+        continue
+    req = urllib.request.Request(base + "/api/v2/silence/" + s["id"], method="DELETE")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        resp.read()
+    print("expired stale silence " + s["id"])
+PY_EOF
+
 cat > "$OUT_DIR/receiver_dump.py" <<'PY_EOF'
 import json, os, sys
 # Prints every request body the receiver stored under $1 as one JSON array.
@@ -349,6 +371,13 @@ for name in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         out.append(fh.read())
 print(json.dumps(out))
 PY_EOF
+
+# A26: failed runs skip their cleanup, and every object here carries the
+# deterministic run_id — leftover vector(1) rules keep the lifecycle alert
+# permanently firing and poison every later run. Expire stale silences and
+# delete previous runs' objects before anything else.
+"${KUBECTL[@]}" -n "$NS" delete prometheusrule,alertmanagerconfig -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
+"${KUBECTL[@]}" -n "$NS" delete deploy,svc,cm,pod -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
 
 # ---------------------------------------------------------------------------
 # [1/8] workloads
@@ -636,6 +665,13 @@ done
 printf '%s' "$cfg" > "$OUT_DIR/am-status.json"
 [ -n "$amcfg_ok" ] || fail "Alertmanager never loaded the route from $AMCFG_NAME"
 
+# A24: the install-time verify run leaves its persistence-check silence behind
+# (2h TTL, cleanup never removed it) with the same deterministic run_id. Any
+# verify run inside that window had its test alert suppressed and [5/8] died
+# on an empty receiver. Expire our own leftovers before firing this run's
+# alert; operator silences are never touched.
+py "$OUT_DIR/silence_gc.py" "http://$AM_SVC" || true
+
 # ---------------------------------------------------------------------------
 # [5/8] a real firing transition
 # ---------------------------------------------------------------------------
@@ -678,7 +714,8 @@ RULE_EOF
 # receiver got the notification. Either alone is not "firing".
 alert_sel="ALERTS{alertname=\"AniMetricsLifecycleTest\",run_id=\"$RUN_LABEL\"}"
 fired=""
-for _ in $(seq 1 90); do
+# A25: operator+reloader reload latency on the a6 cluster exceeded 7.5min; widened to 25min (A26) after a 19min reload lag was observed.
+for _ in $(seq 1 300); do
   state="$(py "$OUT_DIR/alertstate.py" "$(query_prom "$alert_sel")" 2>/dev/null || true)"
   if [ "$state" = "firing" ]; then fired=yes; break; fi
   sleep 5
@@ -687,7 +724,8 @@ done
 echo "  prometheus ALERTS alertstate=firing"
 
 got_firing=""
-for _ in $(seq 1 90); do
+# A25: operator+reloader reload latency on the a6 cluster exceeded 7.5min; widened to 25min (A26) after a 19min reload lag was observed.
+for _ in $(seq 1 300); do
   if receiver_has '"status":"firing"' || receiver_has '"status": "firing"'; then got_firing=yes; break; fi
   sleep 5
 done
@@ -725,7 +763,8 @@ grep -q 'vector(0) == 1' "$OUT_DIR/rule-resolved.yaml" \
 # evaluates to an empty vector, which is the only thing that resolves an alert;
 # a rule that merely stopped being evaluated would leave the alert firing.
 gone=""
-for _ in $(seq 1 90); do
+# A25: operator+reloader reload latency on the a6 cluster exceeded 7.5min; widened to 25min (A26) after a 19min reload lag was observed.
+for _ in $(seq 1 300); do
   # count() over an empty selector returns an EMPTY vector, not a zero sample:
   # once the alert resolves, scalar.py (which asserts exactly one series) can
   # only fail, so n could never become "0" and this pass condition was
@@ -742,7 +781,8 @@ done
 echo "  prometheus ALERTS series gone after expr change"
 
 got_resolved=""
-for _ in $(seq 1 90); do
+# A25: operator+reloader reload latency on the a6 cluster exceeded 7.5min; widened to 25min (A26) after a 19min reload lag was observed.
+for _ in $(seq 1 300); do
   if receiver_has '"status":"resolved"' || receiver_has '"status": "resolved"'; then got_resolved=yes; break; fi
   sleep 5
 done
@@ -891,6 +931,10 @@ echo "  silence read back by ID after rebuild: $got"
 # cleanup
 # ---------------------------------------------------------------------------
 echo "[cleanup] removing this run's temporary objects"
+# A24: this run's persistence-check silence must not outlive the run — it
+# matches the deterministic run_id and would suppress a later verify run's
+# identical test alert for its full 2h TTL.
+py "$OUT_DIR/silence_gc.py" "http://$AM_SVC" || true
 "${KUBECTL[@]}" -n "$NS" delete prometheusrule "$RULE_NAME" --ignore-not-found >/dev/null
 "${KUBECTL[@]}" -n "$NS" delete alertmanagerconfig "$AMCFG_NAME" --ignore-not-found >/dev/null
 "${KUBECTL[@]}" -n "$NS" delete deployment "$RECV_DEPLOY" --ignore-not-found >/dev/null

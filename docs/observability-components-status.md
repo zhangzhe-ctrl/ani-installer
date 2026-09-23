@@ -24,7 +24,41 @@ R1–R4 已修复并被回归检查反向验证；门禁现在渲染 role 的 `t
 | C4 | OpenSearch + Fluent Bit | pass（H2 修复编排 R1–R4 并回归验证） | not_verified：从未安装 |
 | C5 | 交付、状态、人工复现文档 | pass（文档缺陷已按 C5 复核意见修正） | not_verified：两组合完整验收未通过 |
 | H1/H2/H3 | 修复两次实测失败暴露的 installer 缺陷 + 独立构建新 code 包 | pass | not_verified（无节点操作） |
-| H4/H5/H6 | 两条日志组合的真实安装验收 | blocked：新 kcn 材料未提供 | not_verified |
+| H4/H5/H6 | 两条日志组合的真实安装验收 | blocked：新 kcn 材料未提供 | **H4 pass（2026-09-22，kube-ovn 栈，见文末）；H5/H6（opensearch 组合）仍 not_verified** |
+
+## H4 收官记录（2026-09-22，kube-ovn 栈）
+
+**结论：H4（loki-cumulative 全链真实安装验收）通过**——但网络栈为 kube-ovn
+v1.16.6（kcn 栈安装链被 envoy-gateway 换代网络死亡阻断，报告见
+docs/kcn-fix2-envoy-churn-report-20260921.md，等上游）。若平台最终回到 kcn 栈，
+H4 需按同一 runbook 在 kcn 栈下复验一次。
+
+安装：kubeovn-full-a6（profile: full + network.stack: kubeovn，exit=0，
+ani-code-kubeovn-base-a5 / ani-artifact-kubeovn-full-2026-09-22）。验收 verify 在
+安装后独立执行（metrics/loki/fluent-bit 全段）：
+
+| 验证段 | 结果 |
+| --- | --- |
+| metrics [1]–[8/8]（含 firing/resolved webhook、Prometheus PVC/STS 重建、silence 跨重建） | pass |
+| Loki [1]–[5]（含 [4] 清单排他、[5] 清理——A23 以来首次真实执行） | pass |
+| fluent-bit [1]–[5]（含 [3] A23 修复复验、[4] collector 重建游标保持） | pass |
+| cert-manager / postgresql / valkey / nats verify | pass |
+
+### 本轮新缺陷（已修，未提交）
+
+- **A24**：装机时 verify 留下的 persistence-check silence（2h TTL）cleanup 漏删，
+  与确定性 run_id（"ani-"+集群名）相撞 → 2h 内的装后 verify 测试告警被 suppress、
+  [5/8] 空 receiver。修复：verify 启动时按注释前缀清除本族残留 silence +
+  cleanup 补删本轮 silence。
+- **A25/A26**：失败轮跳过 cleanup 且对象均带确定性 run_id，残留 vector(1) 规则
+  令告警永久 firing 毒化后续轮；且 operator→rulefile→reload 链路实测延迟可达
+  ~19 分钟，超出 7.5 分钟窗口。修复：verify 启动按 run_id 预清理前轮对象
+  （prometheusrule/alertmanagerconfig/deploy/svc/cm/pod）+ [5/8][6/8] 窗口放宽至
+  25 分钟。
+
+证据：evidence/kubeovn-full-h4-acceptance/、evidence/h4-a6-verify-stdout.log、
+node1:/var/lib/ani-installer/ani-lab/h4-archive/。制品：
+ani-code-kubeovn-base-a24fix-20260922（含 A24-A26）。
 
 ## 上游依赖状态
 

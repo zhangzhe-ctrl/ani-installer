@@ -226,7 +226,9 @@ done
 # accepting a write.
 case "$BACKEND" in
   loki) LOKI_HOST="ani-loki.$NS.svc.cluster.local:3100" ;;
-  opensearch) OS_HOST="ani-opensearch-master.$NS.svc.cluster.local:9200" ;;
+  opensearch)
+    OS_HOST="ani-opensearch-master.$NS.svc.cluster.local:9200"
+    RETENTION_DAYS="{{ .ani.components.logging.retention_days }}" ;;
 esac
 
 # The secured backend needs the cluster's CA and a credential for every query.
@@ -240,6 +242,12 @@ if [ "$BACKEND" = opensearch ]; then
     | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/os_user'
   $KC get secret ani-opensearch-fluent-bit -o jsonpath='{.data.password}' \
     | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/os_pass'
+  # A36b: the ISM policy API is admin-only, so the client pod also carries the
+  # administrator credential for the retention-policy read.
+  $KC get secret ani-opensearch-admin -o jsonpath='{.data.username}' \
+    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/admin_user'
+  $KC get secret ani-opensearch-admin -o jsonpath='{.data.password}' \
+    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/admin_pass'
 fi
 
 cat > "$EVIDENCE/await_markers.py" <<'PY'
@@ -844,8 +852,10 @@ PY
 import base64, json, ssl, sys, urllib.request
 host = sys.argv[1]
 ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
-user = open("/tmp/os_user").read().strip()
-password = open("/tmp/os_pass").read().strip()
+# A36b: the ISM policy API is admin-only (the collector identity gets 403),
+# so this read uses the administrator credential.
+user = open("/tmp/admin_user").read().strip()
+password = open("/tmp/admin_pass").read().strip()
 token = base64.b64encode(f"{user}:{password}".encode()).decode()
 req = urllib.request.Request(f"https://{host}/_plugins/_ism/policies/ani-logs-retention")
 req.add_header("Authorization", "Basic " + token)
@@ -857,7 +867,7 @@ ages = [t.get("conditions", {}).get("min_index_age")
 print("min_index_age", ages)
 PY
     py "$EVIDENCE/retention.py" "$OS_HOST" | tee "$EVIDENCE/retention.txt"
-    grep -q "{{ .ani.components.logging.retention_iso }}" "$EVIDENCE/retention.txt" \
+    grep -qE "{{ .ani.components.logging.retention_iso }}|${RETENTION_DAYS}d" "$EVIDENCE/retention.txt" \
       || fail "the retention policy does not carry the configured retention period"
     ;;
 esac

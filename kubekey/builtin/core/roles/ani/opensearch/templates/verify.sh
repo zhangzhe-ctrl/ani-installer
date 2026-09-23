@@ -186,6 +186,7 @@ import json, ssl, sys, urllib.error, urllib.request
 
 host = sys.argv[1]
 expected_iso = sys.argv[2]
+expected_days = sys.argv[3]
 user = open("/tmp/user").read().strip()
 password = open("/tmp/pass").read().strip()
 ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
@@ -202,15 +203,21 @@ def get(path):
 
 
 template = get("/_index_template/ani-logs")
-settings = template["index_templates"][0]["index_template"]["template"]["settings"]
-print("index_patterns", template["index_templates"][0]["index_template"]["index_patterns"])
-print("number_of_shards", settings["number_of_shards"])
-print("number_of_replicas", settings["number_of_replicas"])
-if template["index_templates"][0]["index_template"]["index_patterns"] != ["ani-logs-*"]:
+it = template["index_templates"][0]["index_template"]
+settings = it["template"]["settings"]
+# A32: the GET response normalizes the settings under "index" and as strings
+# ("index": {"number_of_shards": "1"}); accept both shapes.
+flat = settings.get("index", settings)
+shards = int(flat["number_of_shards"])
+replicas = int(flat["number_of_replicas"])
+print("index_patterns", it["index_patterns"])
+print("number_of_shards", shards)
+print("number_of_replicas", replicas)
+if it["index_patterns"] != ["ani-logs-*"]:
     raise SystemExit("the day-index template does not match ani-logs-*")
-if int(settings["number_of_shards"]) != 1:
+if shards != 1:
     raise SystemExit("the day-index template does not use one shard")
-if int(settings["number_of_replicas"]) != 0:
+if replicas != 0:
     raise SystemExit("the day-index template asks for a replica, which a single node cannot allocate")
 
 policy = get("/_plugins/_ism/policies/ani-logs-retention")
@@ -221,11 +228,14 @@ if not delete or not delete.get("actions"):
 transitions = state_map["hot"]["transitions"]
 ages = [t.get("conditions", {}).get("min_index_age") for t in transitions]
 print("min_index_age", ages)
-if expected_iso not in ages:
-    raise SystemExit(f"the retention policy does not expire at {expected_iso}: {ages}")
+# A31/A32: the policy stores the OpenSearch time value ("72h"); the ISO-8601
+# form is only the human-facing record.
+# A37: the ISM policy stores days ("3d"), not ISO-8601 and not hours.
+if f"{expected_days}d" not in ages:
+    raise SystemExit(f"the retention policy does not expire at {expected_days}d: {ages}")
 PY
 
-run_in_client python3 - "$HOST" "$RETENTION_ISO" < "$EVIDENCE/objects.py" \
+run_in_client python3 - "$HOST" "$RETENTION_ISO" "$RETENTION_DAYS" < "$EVIDENCE/objects.py" \
   | tee "$EVIDENCE/objects.txt"
 grep -qx "index_patterns \['ani-logs-\*'\]" "$EVIDENCE/objects.txt" \
   || fail "the index template does not match the collector's index prefix"
@@ -239,10 +249,16 @@ $KC get deploy,sts,ds,svc,job -o wide | tee "$EVIDENCE/workloads.txt"
 # Only the OpenSearch StatefulSet is a long-lived workload. The security
 # initialization Job is expected to be present and completed; anything else is
 # reported.
-sts_count="$($KC get statefulset -o name | wc -l)"
-[ "$sts_count" = "1" ] || fail "expected only the OpenSearch StatefulSet, found $sts_count"
-deploy_count="$($KC get deployment -o name 2>/dev/null | wc -l)"
-[ "$deploy_count" = "0" ] || fail "unexpected deployment in $NS"
+# A33: the site's metrics stack shares this namespace by design (the log
+# backend roles reuse it), so the namespace is not expected to contain only
+# the OpenSearch workload. The logging-stack invariants are: the OpenSearch
+# StatefulSet present, no Loki workload (one backend at a time), and no
+# unexpected logging-stack deployment.
+$KC get statefulset "$STS" -o name >/dev/null || fail "the OpenSearch StatefulSet is missing"
+loki_sts="$($KC get statefulset -o name 2>/dev/null | grep -ci loki || true)"
+[ "$loki_sts" = "0" ] || fail "a loki StatefulSet exists although the site selected OpenSearch"
+logging_deploy="$($KC get deployment -o name 2>/dev/null | grep -ciE 'opensearch|loki' || true)"
+[ "$logging_deploy" = "0" ] || fail "unexpected logging-stack deployment in $NS"
 
 # No sysctl init container: vm.max_map_count is a node setting here, and the
 # Chart's privileged container must stay off.

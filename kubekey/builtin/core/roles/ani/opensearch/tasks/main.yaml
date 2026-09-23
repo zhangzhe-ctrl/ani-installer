@@ -77,6 +77,41 @@
   command: |
     kubectl apply -f /etc/kubernetes/ani/opensearch/certificates.yaml
 
+# A34/A34b: the Fluent Bit collector mounts ani-opensearch-fluent-bit-tls for
+# the TLS CA trust of the opensearch output. Nothing created it — the loki
+# backend needs no TLS, so the H4 run never exercised this path — and the helm
+# install hung on the missing secret (observed live on kubeovn-full-h5a20).
+# The CA is taken from the node certificate secret in THIS namespace: the
+# ClusterIssuer's ani-root-ca lives in the cert-manager namespace, and reading
+# it cross-namespace returned NotFound → an empty ca.crt → fluent-bit TLS init
+# failed (observed live on kubeovn-full-h5a21).
+- name: ANI OpenSearch | Publish the collector CA trust secret
+  # A38: the Certificate Ready condition can precede the Secret content, so
+  # the read below must retry until cert-manager has actually written the
+  # ca.crt — otherwise the collector secret is created with an EMPTY ca.crt
+  # and the fluent-bit TLS init fails on every boot (observed live on
+  # kubeovn-full-h5a28).
+  shell: |
+    set -euo pipefail
+    # A38v2: the retry read must tolerate the secret not existing yet — under
+    # pipefail the first NotFound killed the task silently (observed live on
+    # kubeovn-full-h5a29).
+    n=0
+    for i in $(seq 1 60); do
+      if kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls >/dev/null 2>&1; then
+        n=$(kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' | base64 -d | wc -c)
+        [ "$n" -gt 100 ] && break
+      fi
+      sleep 2
+    done
+    [ "$n" -gt 100 ] || { echo "ani-opensearch-node-tls ca.crt never appeared" >&2; exit 1; }
+    kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' \
+      | base64 -d \
+      | kubectl -n {{ .ani.components.logging.namespace }} create secret generic ani-opensearch-fluent-bit-tls \
+          --from-file=ca.crt=/dev/stdin \
+          --dry-run=client -o yaml \
+      | kubectl -n {{ .ani.components.logging.namespace }} apply --server-side -f -
+
 # cert-manager issues asynchronously, so the readiness of both Certificates is
 # waited on before anything reads the resulting Secrets. Without this the chart
 # would be installed with an empty TLS directory and OpenSearch would fail
@@ -209,6 +244,46 @@
       ani-opensearch-security-init -o jsonpath='{.status.succeeded}')"
     if [ "$succeeded" != "1" ]; then
       echo "the security initialization Job did not succeed" >&2
+      exit 1
+    fi
+
+# A41: after securityadmin.sh seeds the index, opensearch-security 3.8.0's
+# live config reload is not reliable — authentication answered 401/403/200
+# unpredictably on identical requests across kubeovn-full-h5a20..h5a35, no
+# matter how the seed itself was shaped. Restarting the pod forces the plugin
+# to load the seeded security index the way it loads it at boot, which is the
+# deterministic path. The deletion is awaited so the rollout status below can
+# never pass against the pod that is only just terminating.
+- name: ANI OpenSearch | Restart the OpenSearch pod so the seeded security config is loaded at boot
+  command: |
+    set -euo pipefail
+    kubectl -n {{ .ani.components.logging.namespace }} delete pod \
+      ani-opensearch-master-0 --wait --timeout=300s
+    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+      statefulset/ani-opensearch-master --timeout=900s
+    # A41b: Ready is not loaded. The security plugin loads the seeded
+    # configuration asynchronously after the cluster state recovers, and until
+    # it completes every request is refused with 401 — observed live on
+    # kubeovn-full-h5a36, where verify ran at pod age 57s and the
+    # administrator was refused, while the identical request against the same
+    # untouched cluster returned 200 minutes later. Poll the administrator
+    # credential until the cluster accepts it before anything else talks to
+    # the cluster.
+    svc="$(kubectl -n {{ .ani.components.logging.namespace }} get svc \
+      ani-opensearch-master -o jsonpath='{.spec.clusterIP}')"
+    u="$(kubectl -n {{ .ani.components.logging.namespace }} get secret \
+      ani-opensearch-admin -o jsonpath='{.data.username}' | base64 -d)"
+    p="$(kubectl -n {{ .ani.components.logging.namespace }} get secret \
+      ani-opensearch-admin -o jsonpath='{.data.password}' | base64 -d)"
+    ok=0
+    for i in $(seq 1 60); do
+      code="$(curl -s -k -o /dev/null -w '%{http_code}' -u "$u:$p" \
+        "https://$svc:9200/_cluster/health" || true)"
+      if [ "$code" = "200" ]; then ok=1; break; fi
+      sleep 5
+    done
+    if [ "$ok" != "1" ]; then
+      echo "the security configuration was not accepted 300s after the restart" >&2
       exit 1
     fi
 

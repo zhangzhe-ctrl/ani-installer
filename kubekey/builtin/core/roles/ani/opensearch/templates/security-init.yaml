@@ -47,6 +47,27 @@ spec:
     spec:
       restartPolicy: Never
       serviceAccountName: ani-opensearch-security-init
+      initContainers:
+        # A27: the work emptyDir is created root-owned, but this Job runs as
+        # uid 1000 (runAsNonRoot). Pre-own it from a root busybox so the main
+        # container can cp/chmod inside without touching the root directory's
+        # own ownership (the a7-a10 failures).
+        - name: security-config-ownership
+          image: {{ index .ani.images "docker.io/library/busybox:1.37.0" }}
+          # A30: the credential Secrets at the end of the script are written
+          # with kubectl, which the OpenSearch image does not ship. Copy the
+          # node's static kubectl into the work dir next to the ownership fix.
+          command: ["sh", "-c", "chown -R 1000:1000 /tmp/security-config && cp -f /host-kubectl/kubectl /tmp/kubectl-bin/kubectl && chmod 0555 /tmp/kubectl-bin/kubectl"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: work
+              mountPath: /tmp/security-config
+            - name: kubectl-bin
+              mountPath: /tmp/kubectl-bin
+            - name: host-kubectl
+              mountPath: /host-kubectl
+              readOnly: true
       containers:
         - name: security-init
           image: "{{ .ani.registry }}/{{ .ani.image_parts.logs.opensearch.repository }}:{{ .ani.image_parts.logs.opensearch.tag }}"
@@ -64,6 +85,9 @@ spec:
 
               # securityadmin.sh needs a JVM; the image ships one at this path.
               export JAVA_HOME="${JAVA_HOME:-$OS_HOME/jdk}"
+              # A30: kubectl for the credential Secrets comes from the work
+              # dir, seeded by the init container from the node.
+              export PATH="/tmp/kubectl-bin:$PATH"
 
               # ---------------------------------------------------------------
               echo "== generating credentials =="
@@ -95,21 +119,29 @@ spec:
 
               # ---------------------------------------------------------------
               echo "== preparing the security configuration =="
+              # A27: the emptyDir root is pre-owned by uid 1000 through the
+              # root init container below, so both the copy (times included)
+              # and the recursive chmod succeed as this user.
               cp -a /security-config/. "$CONFIG/"
+              # Defensive: keep the copied security config owner-writable even
+              # if a stricter source mode ever lands in the upstream material.
               chmod -R u+w "$CONFIG"
 
-              # The placeholder lines are replaced in order: the first is admin,
-              # the second is the reserved account. python is not needed; sed
-              # addresses each occurrence by line number, which is stable because
-              # the file is rendered from one template.
+              # The placeholder hashes are replaced in order: the first is
+              # admin, the second is the reserved account. A29: the sed
+              # substitutes only the placeholder VALUE — the earlier full-line
+              # rewrite hardcoded a 6-space indent that broke the file's 2-space
+              # structure and made securityadmin fail the whole upload with
+              # "expected <block end>, but found <block mapping start>"
+              # (observed live on kubeovn-full-h5a12).
               admin_line="$(grep -n 'PLACEHOLDER' "$CONFIG/internal_users.yml" | sed -n '1p' | cut -d: -f1)"
               reserved_line="$(grep -n 'PLACEHOLDER' "$CONFIG/internal_users.yml" | sed -n '2p' | cut -d: -f1)"
               if [ -z "$admin_line" ] || [ -z "$reserved_line" ]; then
                 echo "expected two placeholder hashes in internal_users.yml" >&2
                 exit 1
               fi
-              sed -i "${admin_line}s|.*|      hash: \"$ADMIN_HASH\"|" "$CONFIG/internal_users.yml"
-              sed -i "${reserved_line}s|.*|      hash: \"$RESERVED_HASH\"|" "$CONFIG/internal_users.yml"
+              sed -i "${admin_line}s|PLACEHOLDER-REPLACED-AT-INSTALL-TIME|$ADMIN_HASH|" "$CONFIG/internal_users.yml"
+              sed -i "${reserved_line}s|PLACEHOLDER-REPLACED-AT-INSTALL-TIME|$RESERVED_HASH|" "$CONFIG/internal_users.yml"
 
               if grep -q 'PLACEHOLDER' "$CONFIG/internal_users.yml"; then
                 echo "a placeholder hash was not replaced" >&2
@@ -136,13 +168,24 @@ spec:
                 reserved: false
                 cluster_permissions:
                   - "cluster_monitor"
+                  # A35: opensearch-security checks the bulk write at BOTH
+                  # levels — this cluster-level entry is required for the
+                  # _bulk endpoint, and the index-level "bulk[s]" below covers
+                  # the per-index check. Without BOTH the write always 403s.
+                  - "indices:data/write/bulk"
                 index_permissions:
                   - index_patterns:
                       - "ani-logs-*"
                     allowed_actions:
+                      - "read"
                       - "create_index"
                       - "indices:data/write/index"
                       - "indices:data/write/bulk"
+                      # A36a: the fluent-bit verify queries the markers back
+                      # through this identity, so read is required; A35-final:
+                      # bulk[s] is the form opensearch-security checks for
+                      # index requests arriving through the bulk endpoint.
+                      - "indices:data/write/bulk[s]"
                       - "indices:admin/mapping/put"
                       - "indices:admin/get"
                       - "indices:admin/create"
@@ -237,7 +280,16 @@ spec:
             # is read-only, so the configuration cannot be edited in place.
             - name: work
               mountPath: /tmp/security-config
+            - name: kubectl-bin
+              mountPath: /tmp/kubectl-bin
+              readOnly: true
       volumes:
+        - name: host-kubectl
+          hostPath:
+            path: /usr/local/bin
+            type: Directory
+        - name: kubectl-bin
+          emptyDir: {}
         - name: security-config
           secret:
             secretName: ani-opensearch-security-config
