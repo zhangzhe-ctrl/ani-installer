@@ -384,13 +384,58 @@ func containsString(values []string, needle string) bool {
 }
 
 type ClusterConfig struct {
-	Name           string       `yaml:"name"`
-	InstallerNode  string       `yaml:"installerNode"`
-	SSH            SSHConfig    `yaml:"ssh"`
-	Nodes          []NodeConfig `yaml:"nodes"`
-	Network        Network      `yaml:"network"`
-	RegistryConfig Registry     `yaml:"registry"`
-	Components     Components   `yaml:"components"`
+	Name string `yaml:"name"`
+	// Profile bounds how far the install chain runs:
+	//   "" / "full" — the whole chain (storage, ceph, foundation and
+	//                 observability components after the network stack)
+	//   "base"      — stop after the base cluster: kubernetes + CNI network
+	//                 stack (kcn batch incl. envoy+smoke, or kubeovn)
+	Profile       string       `yaml:"profile"`
+	InstallerNode string       `yaml:"installerNode"`
+	SSH           SSHConfig    `yaml:"ssh"`
+	Nodes         []NodeConfig `yaml:"nodes"`
+	Network       Network      `yaml:"network"`
+	RegistryConfig Registry    `yaml:"registry"`
+	Components    Components   `yaml:"components"`
+}
+
+// installProfile normalizes the configured profile for template use: an empty
+// value (site configs written before the switch existed) means the full chain.
+func installProfile(profile string) string {
+	if profile == "" {
+		return "full"
+	}
+	return profile
+}
+
+// componentImageKeysForRun filters the fixed split-reference key list down to
+// the groups the install chain can actually render. The base profile ends the
+// chain at the network stack: every component role below it is skipped by the
+// playbook, so a base-mode artifact (such as the kubeovn one) intentionally
+// ships none of the chart images, and requiring them here would fail the
+// install before any deployment begins. In the full profile a group's keys
+// are only required when its component switch is on, for the same reason: a
+// disabled stack's images never render, so they must not gate the run.
+// The lab group is kept unconditionally because its images ship with every
+// artifact and the smoke and verification jobs read them in any profile.
+func componentImageKeysForRun(c ClusterConfig) []ImageKey {
+	base := installProfile(c.Profile) == "base"
+	all := componentImageKeys()
+	keys := make([]ImageKey, 0, len(all))
+	for _, key := range all {
+		switch key.Group {
+		case "metrics":
+			if base || !c.Components.Metrics.Enabled {
+				continue
+			}
+		case "logs":
+			if base || !c.Components.loggingEnabled() {
+				continue
+			}
+		}
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 type SSHConfig struct {
@@ -406,6 +451,12 @@ type NodeConfig struct {
 }
 
 type Network struct {
+	// Stack selects the network stack, either-or:
+	//   "kcn"    — the self-developed batch: kcn CNI + envoy-gateway gateway
+	//              family + its smoke test (default when empty, for backward
+	//              compatibility with existing site configs)
+	//   "kubeovn" — Kube-OVN (v1.16.x); kcn, envoy and smoke are all skipped
+	Stack               string `yaml:"stack"`
 	ManagementInterface string `yaml:"managementInterface"`
 	PodCIDR             string `yaml:"podCIDR"`
 	ServiceCIDR         string `yaml:"serviceCIDR"`
@@ -416,6 +467,16 @@ type KCN struct {
 	ManagedDevices   []string `yaml:"managedDevices"`
 	EncapNetworks    []string `yaml:"encapNetworks"`
 	IntranetNetworks []string `yaml:"intranetNetworks"`
+}
+
+// networkStack normalizes the configured stack for template use: an empty
+// value (site configs written before the either-or switch existed) means the
+// self-developed kcn batch, so legacy configs keep their behavior.
+func networkStack(stack string) string {
+	if stack == "" {
+		return "kcn"
+	}
+	return stack
 }
 
 type Registry struct {
@@ -494,37 +555,57 @@ func Validate(c ClusterConfig) error {
 	if _, _, err := net.ParseCIDR(c.Network.ServiceCIDR); err != nil {
 		return fmt.Errorf("network.serviceCIDR %q is invalid: %w", c.Network.ServiceCIDR, err)
 	}
-	if len(c.Network.KCN.ManagedDevices) == 0 {
-		return fmt.Errorf("network.kcn.managedDevices is required")
+	stack := c.Network.Stack
+	if stack == "" {
+		stack = "kcn"
 	}
-	if len(c.Network.KCN.EncapNetworks) == 0 {
-		return fmt.Errorf("network.kcn.encapNetworks is required")
+	if stack != "kcn" && stack != "kubeovn" {
+		return fmt.Errorf("network.stack must be \"kcn\" or \"kubeovn\", got %q", c.Network.Stack)
 	}
-	if len(c.Network.KCN.IntranetNetworks) == 0 {
-		return fmt.Errorf("network.kcn.intranetNetworks is required")
+	switch c.Profile {
+	case "", "full", "base":
+	default:
+		return fmt.Errorf("profile must be \"full\" or \"base\", got %q", c.Profile)
 	}
-	for _, cidr := range append(c.Network.KCN.EncapNetworks, c.Network.KCN.IntranetNetworks...) {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return fmt.Errorf("kcn network %q is invalid: %w", cidr, err)
+	// The kcn subsection is only required for the kcn stack. When kubeovn is
+	// selected the site config may still carry the section (it is ignored),
+	// so an existing site file needs no edits to switch stacks.
+	if stack == "kcn" {
+		if len(c.Network.KCN.ManagedDevices) == 0 {
+			return fmt.Errorf("network.kcn.managedDevices is required")
+		}
+		if len(c.Network.KCN.EncapNetworks) == 0 {
+			return fmt.Errorf("network.kcn.encapNetworks is required")
+		}
+		if len(c.Network.KCN.IntranetNetworks) == 0 {
+			return fmt.Errorf("network.kcn.intranetNetworks is required")
+		}
+		for _, cidr := range append(c.Network.KCN.EncapNetworks, c.Network.KCN.IntranetNetworks...) {
+			if _, _, err := net.ParseCIDR(cidr); err != nil {
+				return fmt.Errorf("kcn network %q is invalid: %w", cidr, err)
+			}
 		}
 	}
 	if _, err := c.RegistryAddress(); err != nil {
 		return err
 	}
 
-	intranetNetworks := make(map[string]struct{}, len(c.Network.KCN.IntranetNetworks))
-	for _, network := range c.Network.KCN.IntranetNetworks {
-		if _, ipnet, err := net.ParseCIDR(network); err == nil {
-			intranetNetworks[ipnet.String()] = struct{}{}
+	// Encap-network routing consistency is a kcn-stack concern only.
+	if stack == "kcn" {
+		intranetNetworks := make(map[string]struct{}, len(c.Network.KCN.IntranetNetworks))
+		for _, network := range c.Network.KCN.IntranetNetworks {
+			if _, ipnet, err := net.ParseCIDR(network); err == nil {
+				intranetNetworks[ipnet.String()] = struct{}{}
+			}
 		}
-	}
-	for _, network := range c.Network.KCN.EncapNetworks {
-		_, ipnet, err := net.ParseCIDR(network)
-		if err != nil {
-			return fmt.Errorf("kcn network %q is invalid: %w", network, err)
-		}
-		if _, ok := intranetNetworks[ipnet.String()]; !ok {
-			return fmt.Errorf("network.kcn.intranetNetworks must include each encap network so KCN can route host traffic: %s", ipnet.String())
+		for _, network := range c.Network.KCN.EncapNetworks {
+			_, ipnet, err := net.ParseCIDR(network)
+			if err != nil {
+				return fmt.Errorf("kcn network %q is invalid: %w", network, err)
+			}
+			if _, ok := intranetNetworks[ipnet.String()]; !ok {
+				return fmt.Errorf("network.kcn.intranetNetworks must include each encap network so KCN can route host traffic: %s", ipnet.String())
+			}
 		}
 	}
 	return c.Components.validate()
@@ -618,8 +699,11 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	}
 	// Split image references for the charts that build "registry/repository:tag"
 	// themselves. Those charts must not be handed a whole reference in the
-	// registry field, or the resulting path is doubled and never pulls.
-	imageParts, err := SplitImageReferences(imageTable, registry, componentImageKeys())
+	// registry field, or the resulting path is doubled and never pulls. Only
+	// the groups this run can actually render are required: the base profile
+	// ends the chain at the network stack and its artifact (such as the
+	// kubeovn one) intentionally ships none of the chart images.
+	imageParts, err := SplitImageReferences(imageTable, registry, componentImageKeysForRun(c))
 	if err != nil {
 		return nil, err
 	}
@@ -694,11 +778,13 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"images":         imageRefs,
 			"image_parts":    imageParts,
 			"components":     components,
+			"profile":        installProfile(c.Profile),
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,
 			"installer_node": c.InstallerNode,
 			"network": map[string]any{
+				"stack":                networkStack(c.Network.Stack),
 				"management_interface": c.Network.ManagementInterface,
 				"pod_cidr":             c.Network.PodCIDR,
 				"service_cidr":         c.Network.ServiceCIDR,

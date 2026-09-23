@@ -19,6 +19,14 @@ notes:
   - Chart 与 app 版本分开记录，不从一个推测另一个。
 
 base:
+  # 网络栈二选一（站点配置 network.stack，缺省 kcn）：kcn = 自研批次（kcn CNI +
+  # envoy-gateway 家族 + smoke）；kubeovn = Kube-OVN（2026-09-22 材料就位并集成）。
+  # kubeovn: v1.16.6 — docker.io 官方镜像（kubeovn/kube-ovn、kubeovn/vpc-nat-gateway，
+  # amd64 RepoDigest 见 ani/images-kubeovn.tsv），默认拉取路径直达、无 tar 注入。
+  # 清单来自上游 one-step 安装器（v1.16.6 无独立 yaml 下载，heredoc 提取）：
+  # https://raw.githubusercontent.com/kubeovn/kube-ovn/refs/tags/v1.16.6/dist/images/install.sh
+  # （2026-09-22 实测，sha256 1c556393b4508cabe70bc56c0df107c4c34e67ecf9cafd0f0b086e4f244aeacd）。
+  # role ani/kubeovn 清单与等待列表已按真实材料重写；尚未真实安装实证（not_verified）。
   # 现有底座，本轮保留不升级
   kubernetes: v1.35.8
   containerd: v2.3.4
@@ -31,6 +39,8 @@ base:
   #（fix2 tar 为纯 docker-archive 无 index，manifest 为确定性构造，见 /tmp/kcn-tar-report.md）。
   # 2026-09-20 首轮 index sha256:5a8cf98f… 已被本轮取代，见 images.tsv。
   kcn: dev
+  # kubeovn 栈（network.stack: kubeovn）固定版本
+  kubeovn: v1.16.6
   envoyGateway: 既定定制版本（仓库已锁定，本轮不动）
   rook: v1.20.7
   ceph: v20.2.4

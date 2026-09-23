@@ -93,6 +93,65 @@ func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
 	}
 }
 
+func TestKubeOVNManifestTemplateUsesSiteInputs(t *testing.T) {
+	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "kubeovn", "templates", "kubeovn-install.yaml")
+	data := map[string]any{
+		"ani": map[string]any{
+			"images": map[string]string{
+				"docker.io/kubeovn/kube-ovn:v1.16.6":        "192.0.2.11:5000/kubeovn/kube-ovn:v1.16.6",
+				"docker.io/kubeovn/vpc-nat-gateway:v1.16.6": "192.0.2.11:5000/kubeovn/vpc-nat-gateway:v1.16.6",
+			},
+			"network": map[string]any{
+				"pod_cidr":             "10.16.0.0/16",
+				"service_cidr":         "10.96.0.0/16",
+				"management_interface": "ens34",
+			},
+		},
+	}
+
+	tmpl, err := template.New("kubeovn-install.yaml").ParseFiles(path)
+	if err != nil {
+		t.Fatalf("parse kubeovn template: %v", err)
+	}
+	builder := &strings.Builder{}
+	if err := tmpl.Execute(builder, data); err != nil {
+		t.Fatalf("execute kubeovn template: %v", err)
+	}
+	out := builder.String()
+
+	for _, want := range []string{
+		"image: 192.0.2.11:5000/kubeovn/kube-ovn:v1.16.6",
+		"image: 192.0.2.11:5000/kubeovn/vpc-nat-gateway:v1.16.6",
+		"--image=192.0.2.11:5000/kubeovn/kube-ovn:v1.16.6",
+		"--default-cidr=10.16.0.0/16",
+		"--service-cluster-ip-range=10.96.0.0/16",
+		"--iface=ens34",
+		"--default-interface-name=ens34",
+		// every workload of the v1.16.6 material, all in kube-system
+		"name: ovn-central", "name: ovs-ovn", "name: kube-ovn-controller",
+		"name: kube-ovn-cni", "name: kube-ovn-monitor", "name: kube-ovn-pinger",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rendered manifest missing %q", want)
+		}
+	}
+	// No rendered image value may still point at the upstream registry (the
+	// template header comment and the lookup keys legitimately mention the
+	// originals), and the official SVC_CIDR default (10.96.0.0/12) must be
+	// gone in favor of the site service_cidr.
+	for _, stale := range []string{
+		"image: docker.io/kubeovn", "--image=docker.io/kubeovn", "10.96.0.0/12", "KubeOVNMaterialsPending",
+		"--iface=\n", "--default-interface-name=\n",
+	} {
+		if strings.Contains(out, stale) {
+			t.Fatalf("rendered manifest still contains stale value %q", stale)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(t.TempDir(), "kubeovn-install.yaml"), []byte(out), 0o600); err != nil {
+		t.Fatalf("write rendered manifest: %v", err)
+	}
+}
+
 func TestANIEnvoyDoesNotCleanComponentState(t *testing.T) {
 	tasksPath := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "envoy", "tasks", "main.yaml")
 	tasksData, err := os.ReadFile(tasksPath)

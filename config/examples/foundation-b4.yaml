@@ -1,3 +1,4 @@
+profile: full
 # ANI 站点配置示例 —— 第一轮基础组件 B4（累计：四个组件全部启用）
 #
 # 累计启用：certManager、postgresql、valkey、nats。
@@ -17,6 +18,7 @@ nodes:
   - name: node3
     address: 172.16.101.22
 network:
+  stack: kcn
   managementInterface: ens34
   podCIDR: 10.16.0.0/16
   serviceCIDR: 10.96.0.0/16

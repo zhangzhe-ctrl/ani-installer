@@ -171,6 +171,47 @@ func testImageTable() ImageTable {
 	return table
 }
 
+// TestKubeKeyConfigBaseProfileSkipsComponentImages guards the base-mode
+// install: the kubeovn artifact ships no component chart images, so a base
+// profile must build image_parts from the lab images alone instead of failing
+// on the first absent metrics or logs reference.
+func TestKubeKeyConfigBaseProfileSkipsComponentImages(t *testing.T) {
+	baseTable := ImageTable{}
+	for _, key := range componentImageKeys() {
+		if key.Group != "lab" {
+			continue
+		}
+		baseTable[key.Original] = Image{
+			Original:  key.Original,
+			HaulerRef: "127.0.0.1:5000/library/" + key.Name + ":test",
+			Digest:    "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			Use:       key.Group + "/" + key.Name,
+		}
+	}
+
+	c := validConfig()
+	c.Profile = "base"
+	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", baseTable)
+	if err != nil {
+		t.Fatalf("KubeKeyConfig() error = %v", err)
+	}
+	parts := spec["ani"].(map[string]any)["image_parts"].(map[string]any)
+	if len(parts) != 1 {
+		t.Fatalf("base profile image_parts groups = %#v, want lab only", parts)
+	}
+	if _, ok := parts["lab"]; !ok {
+		t.Fatalf("base profile image_parts missing the lab group: %#v", parts)
+	}
+
+	// The full profile keeps the same strictness for the components the site
+	// actually enables: an enabled metrics stack without its images must fail.
+	c = validConfig()
+	c.Components.Metrics.Enabled = true
+	if _, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", baseTable); err == nil {
+		t.Fatal("full profile unexpectedly accepted an enabled metrics stack without its images")
+	}
+}
+
 func TestInstallerNodeOrderIsIndependent(t *testing.T) {
 	c := validConfig()
 	c.InstallerNode = "node3"
@@ -282,5 +323,66 @@ func TestKubeKeyConfigFollowsInstallerNodeOrder(t *testing.T) {
 	original := "docker.changqingyun.cn/kubercloud/gateway:v1.8.3"
 	if got := images[original]; got != "192.0.2.13:5000/kubercloud/gateway:v1.8.3" {
 		t.Fatalf("image reference = %q, want 192.0.2.13:5000/kubercloud/gateway:v1.8.3", got)
+	}
+}
+
+func TestNetworkStackSelection(t *testing.T) { // The default (empty stack) is the self-developed kcn batch: kcn fields
+	// stay required and the rendered map normalizes to "kcn".
+	c := validConfig()
+	if err := Validate(c); err != nil {
+		t.Fatalf("Validate() with empty stack = %v", err)
+	}
+	kk, err := KubeKeyConfig(c, "/tmp/ani-artifact.tgz", "/opt/ani-installer/artifacts", testImageTable())
+	if err != nil {
+		t.Fatalf("KubeKeyConfig() = %v", err)
+	}
+	network := kk["ani"].(map[string]any)["network"].(map[string]any)
+	if network["stack"] != "kcn" {
+		t.Fatalf("stack = %v, want normalized kcn", network["stack"])
+	}
+
+	// An explicit kubeovn stack skips every kcn-specific validation, so an
+	// existing site file can switch stacks without touching network.kcn.
+	kubeovn := validConfig()
+	kubeovn.Network.Stack = "kubeovn"
+	kubeovn.Network.KCN = KCN{}
+	if err := Validate(kubeovn); err != nil {
+		t.Fatalf("Validate() with kubeovn stack = %v", err)
+	}
+
+	// Anything else is rejected.
+	bogus := validConfig()
+	bogus.Network.Stack = "calico"
+	if err := Validate(bogus); err == nil {
+		t.Fatal("Validate() unexpectedly accepted stack=calico")
+	}
+}
+
+func TestInstallProfileSelection(t *testing.T) {
+	// Empty profile normalizes to "full" in the rendered map.
+	c := validConfig()
+	if err := Validate(c); err != nil {
+		t.Fatalf("Validate() with empty profile = %v", err)
+	}
+	kk, err := KubeKeyConfig(c, "/tmp/ani-artifact.tgz", "/opt/ani-installer/artifacts", testImageTable())
+	if err != nil {
+		t.Fatalf("KubeKeyConfig() = %v", err)
+	}
+	if got := kk["ani"].(map[string]any)["profile"]; got != "full" {
+		t.Fatalf("profile = %v, want normalized full", got)
+	}
+
+	// base is accepted and passes through.
+	base := validConfig()
+	base.Profile = "base"
+	if err := Validate(base); err != nil {
+		t.Fatalf("Validate() with base profile = %v", err)
+	}
+
+	// Anything else is rejected.
+	bogus := validConfig()
+	bogus.Profile = "minimal"
+	if err := Validate(bogus); err == nil {
+		t.Fatal("Validate() unexpectedly accepted profile=minimal")
 	}
 }

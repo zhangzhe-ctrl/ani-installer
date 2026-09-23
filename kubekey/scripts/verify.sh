@@ -57,17 +57,24 @@ node_count="$("${KUBECTL[@]}" get nodes -o name | wc -l)"
 ready_count=$("${KUBECTL[@]}" get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -cx True)
 [[ "$node_count" == "3" && "$ready_count" == "3" ]]
 
-"${KUBECTL[@]}" wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=180s >/dev/null
-"${KUBECTL[@]}" wait --for=condition=Ready pod/ani-smoke-backend -n ani-installer-smoke --timeout=180s >/dev/null
+# The Envoy gateway and the active smoke probe only exist on the kcn stack;
+# a kube-ovn install (network.stack: kubeovn) skips that whole batch, so the
+# waits and the probe below must not run there.
+NETWORK_STACK="$(awk '/^[[:space:]]*stack:/ {print $2; exit}' "$CONFIG")"
+NETWORK_STACK="${NETWORK_STACK:-kcn}"
+if [[ "$NETWORK_STACK" == "kcn" ]]; then
+  "${KUBECTL[@]}" wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=180s >/dev/null
+  "${KUBECTL[@]}" wait --for=condition=Ready pod/ani-smoke-backend -n ani-installer-smoke --timeout=180s >/dev/null
 
-set +e
-KUBECONFIG_FILE="$KUBECONFIG_FILE" ANI_SMOKE_OUTPUT="$VERIFY_LOG_DIR" \
-  bash "$PROBE" 2>&1 | tee "$VERIFY_LOG_DIR/verify.stdout"
-PROBE_RC="${PIPESTATUS[0]}"
-set -e
-if [[ "$PROBE_RC" -ne 0 ]]; then
-  echo "active smoke probe failed; exit=$PROBE_RC; log=$VERIFY_LOG_DIR/verify.stdout" >&2
-  exit "$PROBE_RC"
+  set +e
+  KUBECONFIG_FILE="$KUBECONFIG_FILE" ANI_SMOKE_OUTPUT="$VERIFY_LOG_DIR" \
+    bash "$PROBE" 2>&1 | tee "$VERIFY_LOG_DIR/verify.stdout"
+  PROBE_RC="${PIPESTATUS[0]}"
+  set -e
+  if [[ "$PROBE_RC" -ne 0 ]]; then
+    echo "active smoke probe failed; exit=$PROBE_RC; log=$VERIFY_LOG_DIR/verify.stdout" >&2
+    exit "$PROBE_RC"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -147,4 +154,8 @@ if [[ "$COMPONENT_RC" -ne 0 ]]; then
 fi
 
 image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$IMAGE_TABLE")"
-echo "ANI artifact verification passed: cluster=$CLUSTER_NAME artifact=$ARTIFACT_ROOT registry=$image_count images, nodes=3, network=ANI-NETWORK-OK, Envoy HTTP=ANI-INSTALLER-OK, components=${COMPONENT_SUMMARY[*]}"
+if [[ "$NETWORK_STACK" == "kcn" ]]; then
+  echo "ANI artifact verification passed: cluster=$CLUSTER_NAME artifact=$ARTIFACT_ROOT registry=$image_count images, nodes=3, network=ANI-NETWORK-OK, Envoy HTTP=ANI-INSTALLER-OK, components=${COMPONENT_SUMMARY[*]}"
+else
+  echo "ANI artifact verification passed: cluster=$CLUSTER_NAME artifact=$ARTIFACT_ROOT registry=$image_count images, nodes=3, network=ANI-NETWORK-OK (kube-ovn), components=${COMPONENT_SUMMARY[*]}"
+fi

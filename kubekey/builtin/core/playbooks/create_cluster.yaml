@@ -97,22 +97,38 @@
     - kube_control_plane[0]
   roles:
     - cni
-    - ani/kcn
-    - ani/envoy
-    - ani/smoke
-    - storageclass
-    - ani/ceph
+    # The network stack is either-or, selected by network.stack in the site
+    # config: "kcn" (the default, also for configs written before the switch
+    # existed) installs the self-developed batch — kcn CNI, the envoy-gateway
+    # gateway family it depends on, and the envoy-based smoke test — while
+    # "kubeovn" installs Kube-OVN instead and skips that whole batch.
+    - role: ani/kcn
+      when: '{{ eq .ani.network.stack "kcn" }}'
+    - role: ani/envoy
+      when: '{{ eq .ani.network.stack "kcn" }}'
+    - role: ani/smoke
+      when: '{{ eq .ani.network.stack "kcn" }}'
+    - role: ani/kubeovn
+      when: '{{ eq .ani.network.stack "kubeovn" }}'
+    # profile: base stops here — everything below is skipped and the chain
+    # ends with the base cluster (kubernetes + CNI network stack). profile:
+    # full (the default) continues with storage, ceph and every component.
+    - role: storageclass
+      when: '{{ ne .ani.profile "base" }}'
+    - role: ani/ceph
+      when: '{{ ne .ani.profile "base" }}'
     # Foundation components follow the storage classes in the documented order:
     # cert-manager -> postgresql -> valkey -> nats. Each role is skipped
-    # completely when its switch is off.
+    # completely when its switch is off (or when the base profile cut the
+    # chain short).
     - role: ani/cert-manager
-      when: '{{ (index .ani.components "cert-manager").enabled }}'
+      when: '{{ and (index .ani.components "cert-manager").enabled (ne .ani.profile "base") }}'
     - role: ani/postgresql
-      when: '{{ (index .ani.components "postgresql").enabled }}'
+      when: '{{ and (index .ani.components "postgresql").enabled (ne .ani.profile "base") }}'
     - role: ani/valkey
-      when: '{{ (index .ani.components "valkey").enabled }}'
+      when: '{{ and (index .ani.components "valkey").enabled (ne .ani.profile "base") }}'
     - role: ani/nats
-      when: '{{ (index .ani.components "nats").enabled }}'
+      when: '{{ and (index .ani.components "nats").enabled (ne .ani.profile "base") }}'
     # The observability batch follows the foundation components: the metrics
     # stack installs first because the log backend roles reuse its namespace,
     # then the log backend the site selected, then the collector. Each role is
@@ -124,12 +140,12 @@
     # a deployment with no backend never gets a collector, because the
     # collector has nowhere to write.
     - role: ani/metrics
-      when: '{{ (index .ani.components "metrics").enabled }}'
+      when: '{{ and (index .ani.components "metrics").enabled (ne .ani.profile "base") }}'
     - role: ani/loki
-      when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") }}'
+      when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") (ne .ani.profile "base") }}'
     - role: ani/opensearch
-      when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") }}'
+      when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") (ne .ani.profile "base") }}'
     - role: ani/fluent-bit
-      when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") }}'
+      when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") (ne .ani.profile "base") }}'
 
 - import_playbook: hook/post_install.yaml

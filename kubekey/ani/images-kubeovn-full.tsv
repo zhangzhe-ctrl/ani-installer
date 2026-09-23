@@ -1,0 +1,48 @@
+original_ref	hauler_ref	actual_digest	use_location
+docker.io/library/haproxy:2.9.6-alpine	127.0.0.1:5000/library/haproxy:2.9.6-alpine	sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5	KubeKey artifact; unused because control_plane_endpoint.type=local
+docker.io/plndr/kube-vip:v0.7.2	127.0.0.1:5000/plndr/kube-vip:v0.7.2	sha256:9d12df52ee3d95d4bc28fe19fcddb970f10705ac59566070d8dc142f593c4277	KubeKey artifact; unused because control_plane_endpoint.type=local
+registry.k8s.io/kube-apiserver:v1.35.8	127.0.0.1:5000/kubernetes/kube-apiserver:v1.35.8	sha256:cc20b3167f36d432c121a477e82b0bbd4d48e1609004b7fd73916ad62018924c	KubeKey/Kubernetes kube-apiserver
+registry.k8s.io/kube-controller-manager:v1.35.8	127.0.0.1:5000/kubernetes/kube-controller-manager:v1.35.8	sha256:544ad10d3bb84c52e612cdccd73ec1a803eb1700face93cdc75753ca89e914ff	KubeKey/Kubernetes kube-controller-manager
+registry.k8s.io/kube-proxy:v1.35.8	127.0.0.1:5000/kubernetes/kube-proxy:v1.35.8	sha256:f0174bfc4bf1afaa6ec1b575c478498d8dd4fb4e375ca4db527beb41f09b0190	KubeKey/Kubernetes kube-proxy
+registry.k8s.io/kube-scheduler:v1.35.8	127.0.0.1:5000/kubernetes/kube-scheduler:v1.35.8	sha256:9e9432917144239709bea763461d44c281566f281588e24a0fd060f107d9b7d3	KubeKey/Kubernetes kube-scheduler
+registry.k8s.io/pause:3.10.1	127.0.0.1:5000/kubernetes/pause:3.10.1	sha256:3b040af9bc594a02f1bb068d329d95c13f8d0139e3cc8b224737f0bf2c93bd87	Kubernetes sandbox image
+registry.k8s.io/coredns/coredns:v1.13.1	127.0.0.1:5000/coredns/coredns:v1.13.1	sha256:a0f0a739ccd102b7ea7ecf9b0c2bd0af9520a3b2e16d6718065660e954924ea6	Kubernetes CoreDNS
+registry.k8s.io/dns/k8s-dns-node-cache:1.26.4	127.0.0.1:5000/dns/k8s-dns-node-cache:1.26.4	sha256:55470ded85dfacf7ddd0f9bcf541a3d9654002bc3cac654e62a63d0c1f1d62fe	KubeKey artifact; nodelocaldns disabled
+registry.k8s.io/etcd:v3.6.6	127.0.0.1:5000/kubernetes/etcd:v3.6.6	sha256:da34fe69aa499157f3c9fb018ade396ed1ef1095998443ec44e7db96d2134848	Kubernetes stacked etcd
+docker.io/library/busybox:1.37.0	127.0.0.1:5000/library/busybox:1.37.0	sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0	ANI smoke backend and client
+docker.io/rook/ceph:v1.20.7	127.0.0.1:5000/rook/ceph:v1.20.7	sha256:2f970c4256179d56fa9f7867a634701f533103908c4e2ad43cf3954c1f7e33f9	Rook Ceph operator v1.20.7
+quay.io/ceph/ceph:v20.2.4	127.0.0.1:5000/ceph/ceph:v20.2.4	sha256:6bb1c8a42fbc0bf87938946990b65174466997bc11c31eb5a323225a779fd8f9	Ceph v20.2.4 daemon image (mon/osd/mgr/mds/rgw) and toolbox
+quay.io/cephcsi/ceph-csi-operator:v1.0.4	127.0.0.1:5000/cephcsi/ceph-csi-operator:v1.0.4	sha256:c62933fd4083635f969f8a61932af45dba9902d48867e2b5d98a69d8e4344eb6	ceph-csi-operator v1.0.4
+quay.io/cephcsi/cephcsi:v3.17.1	127.0.0.1:5000/cephcsi/cephcsi:v3.17.1	sha256:0b62db8afc9b174619186c87084a8952157daa719415c598603be22b63cc1293	Ceph CSI plugin v3.17.1 (rbd + cephfs)
+quay.io/csiaddons/k8s-sidecar:v0.14.0	127.0.0.1:5000/csiaddons/k8s-sidecar:v0.14.0	sha256:69092d026323307933fba2bed9c57d864f2a92cfd385d644b478442ded0d2886	CSI addons sidecar v0.14.0
+registry.k8s.io/sig-storage/csi-provisioner:v6.2.0	127.0.0.1:5000/sig-storage/csi-provisioner:v6.2.0	sha256:6be9f63ca4caa6c46aae55aa372500949d8a21473d72f819da1f746076b32d4e	CSI external-provisioner v6.2.0
+registry.k8s.io/sig-storage/csi-attacher:v4.12.0	127.0.0.1:5000/sig-storage/csi-attacher:v4.12.0	sha256:b9dc9a714a484ccdeeb6f86d88d4db9b7a5ecfc5a55da6db3a60bb3fa33c278a	CSI external-attacher v4.12.0
+registry.k8s.io/sig-storage/csi-resizer:v2.1.0	127.0.0.1:5000/sig-storage/csi-resizer:v2.1.0	sha256:589e525cddef6d768e68da1f0bc9ffd0a24bf3add3dd010648eb7189976fde79	CSI external-resizer v2.1.0
+registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0	127.0.0.1:5000/sig-storage/csi-snapshotter:v8.5.0	sha256:da081c27e8a6d91f36042c1942362d0515ced8d06e18c11b8f893e58c4d6d797	CSI external-snapshotter v8.5.0
+registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.17.0	127.0.0.1:5000/sig-storage/csi-node-driver-registrar:v2.17.0	sha256:f9de845b170155199f2a2a3f9531cf13d78e31235e9db6b6582a8b0db0a50dad	CSI node-driver-registrar v2.17.0
+gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v0.2.2	127.0.0.1:5000/sig-storage/objectstorage-sidecar:v0.2.2	sha256:c7166a73a303c43c8c1dca3e81aacf2fa85e98b46bcab0b64249cde19fa67979	RGW object-storage sidecar v0.2.2 (Rook image set)
+quay.io/ceph/cosi:v0.1.4	127.0.0.1:5000/ceph/cosi:v0.1.4	sha256:8939634644dc270e8a9c3ae1e4dd5adb03973e9f31db649638c33828bfcefc0b	Ceph COSI driver v0.1.4 (Rook image set)
+docker.io/alpine/openssl:3.5.4	127.0.0.1:5000/alpine/openssl:3.5.4	sha256:b3a40181a3234df05d3702c48fd1c3690261b4d90b5ef418a2e84b9bf533ad37	cert-manager 证书链/SAN/有效期验证工具 Job
+quay.io/jetstack/cert-manager-controller:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-controller:v1.21.2	sha256:57bb397c639e0e94184ba67848e5dad04284f24645e521e764a0ee5f5002f286	cert-manager v1.21.2 controller Deployment
+quay.io/jetstack/cert-manager-webhook:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-webhook:v1.21.2	sha256:b929259301ee75270ab4651d5e6bd4ba7b6624b1ce48ba767d064295a9312101	cert-manager v1.21.2 webhook Deployment
+quay.io/jetstack/cert-manager-cainjector:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-cainjector:v1.21.2	sha256:aa2bc58725d92a643f5069dde58abc93b65566ded8951348873ac9ee7efef66c	cert-manager v1.21.2 cainjector Deployment
+quay.io/jetstack/cert-manager-startupapicheck:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-startupapicheck:v1.21.2	sha256:ed347b0ab607058f139b83f41567109456b9776330b63da8086a120afb7f1729	cert-manager v1.21.2 startupapicheck 安装后 hook Job
+quay.io/jetstack/cert-manager-acmesolver:v1.21.2	127.0.0.1:5000/jetstack/cert-manager-acmesolver:v1.21.2	sha256:dc5c5b8456d1a50af47a240987e85afce352b5c1155a8a4698b7c91eac19f407	cert-manager controller --acme-http01-solver-image 默认引用（本轮不启用 ACME）
+docker.io/library/postgres:17.11-bookworm	127.0.0.1:5000/library/postgres:17.11-bookworm	sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6	PostgreSQL 17.11 单实例 StatefulSet 与 psql 客户端 Job
+docker.io/valkey/valkey:8.1.10-alpine	127.0.0.1:5000/valkey/valkey:8.1.10-alpine	sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7	Valkey 8.1.10 单实例 StatefulSet 与 valkey-cli 客户端 Job
+docker.io/library/nats:2.14.6-alpine	127.0.0.1:5000/library/nats:2.14.6-alpine	sha256:065e8355c20a5575b3c77224be1855e8103fd148b68fba05130b9b8ddfa40ccc	NATS 2.14.6 单实例 StatefulSet（JetStream fileStore）
+docker.io/natsio/nats-server-config-reloader:0.23.0	127.0.0.1:5000/natsio/nats-server-config-reloader:0.23.0	sha256:1418d42cea39ea729c1d34ca26ba33d967abdf040bad45ec1314c807bfacc56f	NATS server config reloader sidecar
+docker.io/natsio/nats-box:0.19.7	127.0.0.1:5000/natsio/nats-box:0.19.7	sha256:40c8442312af09e36818ea3500244ab5c18ce22fa2678885940e6a97f93f96ff	NATS CLI 一次性验证/持久化 Job（非常驻 natsBox）
+quay.io/prometheus-operator/prometheus-operator:v0.90.1	127.0.0.1:5000/prometheus-operator/prometheus-operator:v0.90.1	sha256:c8aed26b2a0858b4beed8d6bc2215f7f6bdc6c96dd4de8e6e246c0a5b7a7876b	Prometheus Operator v0.90.1 Deployment
+quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1	127.0.0.1:5000/prometheus-operator/prometheus-config-reloader:v0.90.1	sha256:af7715ef28e2cc413a6a850b5f928f185245dbb38359156eca3d5f1eb676b93f	Operator --prometheus-config-reloader 参数引用的 config reloader
+quay.io/prometheus/prometheus:v3.11.3-distroless	127.0.0.1:5000/prometheus/prometheus:v3.11.3-distroless	sha256:a1868e471c843677013c5fa2f569011e70d49b9e8f690719ea750b458840ec6d	Prometheus CR 镜像（Operator 二次生成工作负载）
+quay.io/prometheus/alertmanager:v0.32.1	127.0.0.1:5000/prometheus/alertmanager:v0.32.1	sha256:82c38dcc97cd0fbf5d5e31ddfb304dbb3a6e411194477de5de82ec71b328bb40	Alertmanager CR 镜像（Operator 二次生成工作负载）
+registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0	127.0.0.1:5000/kube-state-metrics/kube-state-metrics:v2.19.0	sha256:ad11a45eb9a69fa88a62df4de0959eda21531fd3263c25341d9d9d4da7730930	kube-state-metrics 2.19.0 Deployment
+quay.io/prometheus/node-exporter:v1.11.1-distroless	127.0.0.1:5000/prometheus/node-exporter:v1.11.1-distroless	sha256:19bafa75a9de0c9562adf4af595c99c5fe316bb94a297e611495f2dd2ed44a9c	node-exporter 1.11.1 distroless DaemonSet
+ghcr.io/jkroepke/kube-webhook-certgen:1.8.3	127.0.0.1:5000/jkroepke/kube-webhook-certgen:1.8.3	sha256:44063cb072c85da7a0f33244b3054ab44b29a2b7416a319a90456bff21bebb18	admission Webhook create/patch hook Job
+docker.io/grafana/loki:3.7.8	127.0.0.1:5000/grafana/loki:3.7.8	sha256:81a6802ec4bd1b88c564494f06376889ed022998a188826190d26d2754ac2aae	Loki 3.7.8 单体 StatefulSet
+docker.io/opensearchproject/opensearch:3.8.0	127.0.0.1:5000/opensearchproject/opensearch:3.8.0	sha256:68a688de28fb9bb66601552650b91a52a9fd5e7eac5481dd2b225ecb66fd09b0	OpenSearch 3.8.0 单节点 StatefulSet 与 securityadmin 初始化 Job
+cr.fluentbit.io/fluent/fluent-bit:5.1.2	127.0.0.1:5000/fluent/fluent-bit:5.1.2	sha256:71cda445290efc2d45d565c12e0de4b15aa0182510276ad50c317aae1423d7ee	Fluent Bit 5.1.2 DaemonSet 统一采集层
+docker.io/library/python:3.13.11-alpine3.23	127.0.0.1:5000/library/python:3.13.11-alpine3.23	sha256:0d8324e4e3453ec8586b886b95e8fc901689f936c413fdf6ae7d93a32a95956e	lab webhook 接收器/查询客户端/日志发射器（只跑标准库脚本）
+docker.io/kubeovn/kube-ovn:v1.16.6	127.0.0.1:5000/kubeovn/kube-ovn:v1.16.6	sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2	v1.16.6 多合一镜像：ovn-central/ovs-ovn/kube-ovn-cni/kube-ovn-controller/kube-ovn-monitor/kube-ovn-pinger 及各自 initContainers（含 controller --image= 参数）
+docker.io/kubeovn/vpc-nat-gateway:v1.16.6	127.0.0.1:5000/kubeovn/vpc-nat-gateway:v1.16.6	sha256:4f8f71b1ab5ee8b0dc2fa645539e997845bbfca7a06035afafada1847432064a	ConfigMap ovn-vpc-nat-config data.image（VPC NAT 网关按需启用时引用）

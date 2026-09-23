@@ -1203,7 +1203,7 @@ func TestMetricsRoleIsWiredAndOffline(t *testing.T) {
 	if !strings.Contains(playbookText, "role: ani/metrics") {
 		t.Fatal("create_cluster.yaml does not reference ani/metrics")
 	}
-	if !strings.Contains(playbookText, `when: '{{ (index .ani.components "metrics").enabled }}'`) {
+	if !strings.Contains(playbookText, `when: '{{ and (index .ani.components "metrics").enabled (ne .ani.profile "base") }}'`) {
 		t.Fatal("ani/metrics is not gated on its component switch")
 	}
 
@@ -1460,7 +1460,7 @@ func TestLokiRoleIsWiredAndOffline(t *testing.T) {
 	// Gating on the backend, not on the row, is what makes the two backends
 	// mutually exclusive: a deployment can never render both roles.
 	if !strings.Contains(playbookText,
-		`when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") }}'`) {
+		`when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") (ne .ani.profile "base") }}'`) {
 		t.Fatal("ani/loki is not gated on the selected logging backend")
 	}
 	// Order matters: the backend must be installed and verified before the
@@ -1596,7 +1596,7 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 	// Gating on the backend, not on the row, is what makes the two log backends
 	// mutually exclusive: a deployment can never render both roles.
 	if !strings.Contains(playbookText,
-		`when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") }}'`) {
+		`when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") (ne .ani.profile "base") }}'`) {
 		t.Fatal("ani/opensearch is not gated on the selected logging backend")
 	}
 	// Order matters: the backend must be installed and verified before the
@@ -1899,7 +1899,7 @@ func TestFluentBitRoleIsWiredAndOffline(t *testing.T) {
 	// Collection must be impossible without a backend: a collector with
 	// backend "none" would only fill its local buffer.
 	if !strings.Contains(playbookText,
-		`when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") }}'`) {
+		`when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") (ne .ani.profile "base") }}'`) {
 		t.Fatal("ani/fluent-bit is not gated on logging being enabled with a selected backend")
 	}
 

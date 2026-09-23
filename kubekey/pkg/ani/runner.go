@@ -138,10 +138,16 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		filepath.Join(paths.ArtifactRoot, "config", "components.lock.yaml"),
 		kkPath,
 	}
-	// Every enabled component must have its fixed Chart material in the artifact
-	// before deployment starts, so a missing chart fails here and not mid-install.
+	// Every installed component must have its fixed Chart material in the
+	// artifact before deployment starts, so a missing chart fails here and not
+	// mid-install. The base profile cuts the chain after the network stack and
+	// the playbook skips every component role, so their charts are not part of
+	// a base artifact and must not be demanded here (failure a2 on 2026-09-22:
+	// the kubeovn-base artifact ships no charts, and the site config keeps the
+	// component switches from its base copy, so the preflight died on
+	// charts/cert-manager/v1.21.2.tgz before the cluster install even began).
 	selection := map[string]bool{}
-	for _, row := range cluster.Components.Selection() {
+	for _, row := range effectiveSelection(cluster) {
 		selection[row.Name] = row.Enabled
 	}
 	for name, relative := range componentChartMaterials {
@@ -164,7 +170,7 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	if err := os.MkdirAll(paths.LogRoot, 0o700); err != nil {
 		return errors.Wrap(err, "create log directory")
 	}
-	if err := writeComponentSelection(filepath.Join(paths.WorkRoot, "components-selection.tsv"), configSHA256(configData), cluster.Components.Selection()); err != nil {
+	if err := writeComponentSelection(filepath.Join(paths.WorkRoot, "components-selection.tsv"), configSHA256(configData), effectiveSelection(cluster)); err != nil {
 		return err
 	}
 	logFile, err := os.OpenFile(filepath.Join(paths.LogRoot, "install.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
@@ -260,7 +266,7 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		fmt.Fprintf(logger, "KubeKey failed: %v\n", err)
 		return errors.Wrap(err, "KubeKey create cluster")
 	}
-	if err := writeConnections(filepath.Join(paths.RuntimeRoot, "connections.md"), paths.WorkRoot, cluster.Components.Selection()); err != nil {
+	if err := writeConnections(filepath.Join(paths.RuntimeRoot, "connections.md"), paths.WorkRoot, effectiveSelection(cluster)); err != nil {
 		return err
 	}
 	fmt.Fprintf(logger, "ANI install completed at %s\n", time.Now().Format(time.RFC3339))
@@ -306,6 +312,24 @@ func writeConnections(dest, workRoot string, rows []ComponentRow) error {
 		return errors.Wrapf(err, "write %s", dest)
 	}
 	return nil
+}
+
+// effectiveSelection applies the profile cut to the site's component switches.
+// The base profile ends the install with the base cluster (kubernetes + the
+// CNI network stack): the playbook gates every component role on
+// `ne .ani.profile "base"`, so no component is installed even when the site
+// config keeps its switch on. Everything downstream of the site config (the
+// chart preflight, components-selection.tsv, connections.md) must see the same
+// effective result, or the install demands material a base artifact never
+// ships.
+func effectiveSelection(c ClusterConfig) []ComponentRow {
+	rows := c.Components.Selection()
+	if installProfile(c.Profile) == "base" {
+		for i := range rows {
+			rows[i].Enabled = false
+		}
+	}
+	return rows
 }
 
 // componentChartMaterials maps a component to the fixed Chart path inside the

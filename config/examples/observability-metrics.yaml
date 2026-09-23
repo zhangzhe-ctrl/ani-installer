@@ -1,3 +1,4 @@
+profile: full
 # ANI 站点配置示例 —— 第二批 C2（累计：第一批四项 + 指标栈，不启用日志）
 #
 # 累计启用：certManager、postgresql、valkey、nats（第一批）+ metrics（本批指标栈）。
@@ -21,6 +22,7 @@ nodes:
   - name: node3
     address: 172.16.101.22
 network:
+  stack: kcn
   managementInterface: ens34
   podCIDR: 10.16.0.0/16
   serviceCIDR: 10.96.0.0/16
