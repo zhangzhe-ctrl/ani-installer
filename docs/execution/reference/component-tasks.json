@@ -1,0 +1,205 @@
+[
+  {
+    "id": "B00",
+    "title": "冻结既有底座和基础服务，不顺手升级",
+    "depends_on": [
+      "R16"
+    ],
+    "mode": "baseline",
+    "optional": false,
+    "taskFile": "tasks/B00.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B01",
+    "title": "Multus 接入；默认 VPC LoadBalancer 单独开关",
+    "depends_on": [
+      "R10",
+      "R11",
+      "B00"
+    ],
+    "mode": "fresh-cluster-network",
+    "optional": false,
+    "taskFile": "tasks/B01.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B02",
+    "title": "Milvus 单一固定组合",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B02.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B03",
+    "title": "Metrics Server：补齐PodMetrics API",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B03.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B04",
+    "title": "CSI快照控制器、快照类与恢复",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B04.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B05",
+    "title": "KubeVirt与CDI：先CPU虚拟机，再导入持久磁盘",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "conditional_dependencies": {
+      "snapshot": "B04",
+      "additionalNetwork": "B01"
+    },
+    "taskFile": "tasks/B05.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B06",
+    "title": "Volcano CPU 队列与gang调度",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B06.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B07",
+    "title": "Harbor、离线扫描、节点信任与准入接入",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B07.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B08",
+    "title": "Notebooks 控制器与CPU工作区",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B08.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B09",
+    "title": "Trainer与JobSet：CPU训练先闭环",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B09.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B10",
+    "title": "Hub / Model Registry 独立API",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B10.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B11",
+    "title": "KServe Standard，无Istio、无业务Envoy",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B11.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B12",
+    "title": "Pipelines：拆开依赖、执行器与工件验证",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": false,
+    "taskFile": "tasks/B12.md",
+    "status": "not_started"
+  },
+  {
+    "id": "B13",
+    "title": "选定组件的整体离线收官",
+    "depends_on": [
+      "B02",
+      "B03",
+      "B04",
+      "B05",
+      "B06",
+      "B07",
+      "B08",
+      "B09",
+      "B10",
+      "B11",
+      "B12"
+    ],
+    "mode": "acceptance",
+    "optional": false,
+    "taskFile": "tasks/B13.md",
+    "status": "not_started"
+  },
+  {
+    "id": "O01",
+    "title": "可选：Dex / 外部OIDC接入",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": true,
+    "taskFile": "tasks/O01.md",
+    "status": "not_started"
+  },
+  {
+    "id": "O02",
+    "title": "可选：Kata沙箱及kata-monitor",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "runtime-extension",
+    "optional": true,
+    "taskFile": "tasks/O02.md",
+    "status": "not_started"
+  },
+  {
+    "id": "O03",
+    "title": "可选：Jaeger持久化追踪",
+    "depends_on": [
+      "B00"
+    ],
+    "mode": "components",
+    "optional": true,
+    "taskFile": "tasks/O03.md",
+    "status": "not_started"
+  }
+]

@@ -1,0 +1,40 @@
+apiVersion: ani.execution/v1alpha1
+kind: TaskResult
+# 模板不是实际结果；全部由执行者用证据填写
+metadata:
+  taskID: REPLACE_TASK_ID
+  attemptID: REPLACE_UNIQUE_ATTEMPT
+  startedAt: null
+  finishedAt: null
+source:
+  head: null
+  treeSHA256: null
+  codeReleaseSHA256: null
+  artifactLockSHA256: null
+  effectiveConfigSHA256: null
+  snapshotIdentity: null
+prerequisites: []
+changedFiles: []
+commands: []   # 每项: host, cwd, commandRedacted, exitCode, evidencePath
+checks: []     # 每项: testID, expected, actual, status, evidencePath
+status:
+  code: not_started
+  materials: not_started
+  localTests: not_run
+  liveSmoke: not_run
+  persistence: not_run
+  cleanOffline: not_run
+  aniIntegration: not_run
+  overall: not_started
+# 代码任务可把不适用实机项写not_applicable，必须说明原因。
+# M/I/T/V局部完成只能写本阶段pass，不把整个组件标done。
+mutation:
+  changesStarted: false
+  targetIPs: []
+  remoteResultUnknown: false
+  evidencePreserved: false
+blockers: []
+notApplicableReasons: {}
+nextSuggestedTask: null
+nextTaskExecuted: false
+notes: []

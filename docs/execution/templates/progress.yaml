@@ -1,0 +1,286 @@
+apiVersion: ani.execution/v1alpha1
+kind: ExecutionProgress
+metadata:
+  revision: r1
+  createdAt: '2026-09-24'
+  note: 全部是未执行任务；本包辅助工具自测不改变产品任务状态
+tasks:
+- id: R00
+  title: 冻结工作树、校准旧文档和执行环境
+  dependsOn: []
+  status: not_started
+  selected: null
+  evidence: []
+- id: R01
+  title: 移除明文凭据，修正实验凭据使用方式
+  dependsOn:
+  - R00
+  status: not_started
+  selected: null
+  evidence: []
+- id: R02
+  title: 删除网络故障绕过，首错后停止变更
+  dependsOn:
+  - R00
+  status: not_started
+  selected: null
+  evidence: []
+- id: R03
+  title: 保证多命令 task 错误传播
+  dependsOn:
+  - R00
+  status: not_started
+  selected: null
+  evidence: []
+- id: R04
+  title: 建立唯一代码门禁和根级 CI
+  dependsOn:
+  - R02
+  - R03
+  status: not_started
+  selected: null
+  evidence: []
+- id: R05
+  title: Ceph 显式启用、磁盘授权和默认类保护
+  dependsOn:
+  - R04
+  status: not_started
+  selected: null
+  evidence: []
+- id: R06
+  title: 统一配置解释，新增只读 validate/run 输入
+  dependsOn:
+  - R04
+  status: not_started
+  selected: null
+  evidence: []
+- id: R07
+  title: 让批准的材料锁约束真实内容
+  dependsOn:
+  - R06
+  status: not_started
+  selected: null
+  evidence: []
+- id: R08
+  title: 按启用项校验完整镜像集合和真实渲染
+  dependsOn:
+  - R07
+  status: not_started
+  selected: null
+  evidence: []
+- id: R09
+  title: 预检前移、运行状态和互斥
+  dependsOn:
+  - R05
+  - R08
+  status: not_started
+  selected: null
+  evidence: []
+- id: R10
+  title: 修复 Kube-OVN CIDR/网关和地址校验
+  dependsOn:
+  - R06
+  - R08
+  status: not_started
+  selected: null
+  evidence: []
+- id: R11
+  title: 两种主 CNI 都做真实网络验证
+  dependsOn:
+  - R02
+  - R10
+  status: not_started
+  selected: null
+  evidence: []
+- id: R12
+  title: 让 SSH/API 等待真正响应超时和取消
+  dependsOn:
+  - R04
+  - R09
+  status: not_started
+  selected: null
+  evidence: []
+- id: R13
+  title: 分离安装探测、smoke 和专项 acceptance
+  dependsOn:
+  - R02
+  - R06
+  - R11
+  - R12
+  status: not_started
+  selected: null
+  evidence: []
+- id: R14
+  title: 固定自举 registry 生命周期和冷拉验证
+  dependsOn:
+  - R07
+  - R09
+  status: not_started
+  selected: null
+  evidence: []
+- id: R15
+  title: 最小新增组件入口，不重装底座
+  dependsOn:
+  - R05
+  - R08
+  - R09
+  - R13
+  - R14
+  status: not_started
+  selected: null
+  evidence: []
+- id: R16
+  title: 整改收官：真实离线验收与耗时记录
+  dependsOn:
+  - R01
+  - R02
+  - R03
+  - R04
+  - R05
+  - R06
+  - R07
+  - R08
+  - R09
+  - R10
+  - R11
+  - R12
+  - R13
+  - R14
+  - R15
+  status: not_started
+  selected: null
+  evidence: []
+- id: B00
+  title: 冻结既有底座和基础服务，不顺手升级
+  dependsOn:
+  - R16
+  status: not_started
+  selected: null
+  evidence: []
+- id: B01
+  title: Multus 接入；默认 VPC LoadBalancer 单独开关
+  dependsOn:
+  - R10
+  - R11
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B02
+  title: Milvus 单一固定组合
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B03
+  title: Metrics Server：补齐PodMetrics API
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B04
+  title: CSI快照控制器、快照类与恢复
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B05
+  title: KubeVirt与CDI：先CPU虚拟机，再导入持久磁盘
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+  conditionalDependencies:
+    snapshot: B04
+    additionalNetwork: B01
+- id: B06
+  title: Volcano CPU 队列与gang调度
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B07
+  title: Harbor、离线扫描、节点信任与准入接入
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B08
+  title: Notebooks 控制器与CPU工作区
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B09
+  title: Trainer与JobSet：CPU训练先闭环
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B10
+  title: Hub / Model Registry 独立API
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B11
+  title: KServe Standard，无Istio、无业务Envoy
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B12
+  title: Pipelines：拆开依赖、执行器与工件验证
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B13
+  title: 选定组件的整体离线收官
+  dependsOn:
+  - B02
+  - B03
+  - B04
+  - B05
+  - B06
+  - B07
+  - B08
+  - B09
+  - B10
+  - B11
+  - B12
+  status: not_started
+  selected: null
+  evidence: []
+- id: O01
+  title: 可选：Dex / 外部OIDC接入
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []
+- id: O02
+  title: 可选：Kata沙箱及kata-monitor
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []
+- id: O03
+  title: 可选：Jaeger持久化追踪
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []

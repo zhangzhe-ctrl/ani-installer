@@ -1,0 +1,2051 @@
+{
+  "date": "2026-09-24",
+  "scope": "document structure and local helper self-tests only",
+  "installerCodeModified": false,
+  "clusterOperationsPerformed": false,
+  "checks": [
+    {
+      "check": "python syntax show-task.py",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "python syntax source-snapshot.py",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot repeatable",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot detects changed bytes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot refuses overwrite",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot refuses output in input",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot omits credential-named files",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot does not emit file content",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "snapshot refuses external symlink",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task R00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task R07.1",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task B02.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task B05.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task O01.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task rejects ../../etc/passwd",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task rejects R99",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "show-task rejects B02;echo nope",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "yaml parse 06-version-register.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "yaml parse templates/progress.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "yaml parse templates/task-result.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "yaml parse templates/snapshot-restore.example.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "json parse reference/component-tasks.json",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "json parse reference/remediation-tasks.json",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "json parse reference/source-baseline.json",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "json parse evidence/kit-validation.json",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences 01-installer-blueprint.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link 01-installer-blueprint.md -> README.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link 01-installer-blueprint.md -> 02-remediation-plan.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link 01-installer-blueprint.md -> 03-component-batches.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link 01-installer-blueprint.md -> 04-manual-runbook.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences README.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 01-installer-blueprint.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 02-remediation-plan.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 03-component-batches.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 04-manual-runbook.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 05-model-instructions.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> 06-version-register.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> templates/progress.yaml",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> reference/official-sources.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link README.md -> reference/decision-corrections.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block README.md #1",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences 05-model-instructions.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences 04-manual-runbook.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #2",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #3",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #4",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #5",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #6",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #7",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #8",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #9",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #12",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 04-manual-runbook.md #13",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences 03-component-batches.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #14",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #15",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #16",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #17",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #18",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #19",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #20",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #21",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #22",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #23",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #24",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #25",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #26",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #27",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #28",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #29",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 03-component-batches.md #30",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences 02-remediation-plan.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link 02-remediation-plan.md -> 01-installer-blueprint.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #31",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #32",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #33",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #34",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #35",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #36",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #37",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #38",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #39",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #40",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #41",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #42",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #43",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #44",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #45",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #46",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block 02-remediation-plan.md #47",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences reference/previous-code-audit.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences reference/official-sources.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences reference/decision-corrections.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences templates/material-report.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B04-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B07-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B06-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B09-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B08-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O02-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B08-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B02-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B00-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R06.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R06.md #48",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B07-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B00-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O01-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B05.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B05.md #49",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B03-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B13-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B11-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B13-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B07-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B12-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B09-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B05-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O03.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/O03.md #50",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O03-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B10-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B01-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R03.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R03.md #51",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B12-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B05-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R07-2.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R07-2.md -> R07.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O01.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/O01.md #52",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R14.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R14.md #53",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O01-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B04.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B04.md #54",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R15-2.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R15-2.md -> R15.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B04-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B08-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B04-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B06-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R11.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R11.md #55",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B05-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B09-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B02-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R01.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R01.md #56",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B03.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B03.md #57",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R02.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R02.md #58",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B10-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R13.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R13.md #59",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O03-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R07-3.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R07-3.md -> R07.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B06-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B09.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B09.md #60",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B00.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B00.md #61",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B00-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R15.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R15.md #62",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B06.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B06.md #63",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B03-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R00.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R00.md #64",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B02-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B02-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R07.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R07.md #65",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O01-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O02-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B11.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B11.md #66",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B11-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B00-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R10.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R10.md #67",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B10-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B07.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B07.md #68",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R15-1.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R15-1.md -> R15.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O03-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B04-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B13-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O02.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/O02.md #69",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R16.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R16.md #70",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B13.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B13.md #71",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O02-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B01-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B10.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B10.md #72",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O02-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B11-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B03-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B09-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R09.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R09.md #73",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B07-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B13-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B10-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B05-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O01-I.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B03-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B01-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/O03-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R05.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R05.md #74",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B01-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R15-3.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R15-3.md -> R15.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R12.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R12.md #75",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B01.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B01.md #76",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B06-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R07-1.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "link tasks/R07-1.md -> R07.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B12.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B12.md #77",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B08.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B08.md #78",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B08-T.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R08.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R08.md #79",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B12-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B02.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/B02.md #80",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B11-M.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/R04.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "bash block tasks/R04.md #81",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences tasks/B12-V.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "balanced fences evidence/kit-validation.md",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A01",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A03",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A05",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A07",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A12",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A13",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A14",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "audit mapping A15",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R01 <- R00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R02 <- R00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R03 <- R00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R04 <- R02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R04 <- R03",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R05 <- R04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R06 <- R04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R07 <- R06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R08 <- R07",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R09 <- R05",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R09 <- R08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R10 <- R06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R10 <- R08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R11 <- R02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R11 <- R10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R12 <- R04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R12 <- R09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R13 <- R02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R13 <- R06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R13 <- R11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R13 <- R12",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R14 <- R07",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R14 <- R09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R15 <- R05",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R15 <- R08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R15 <- R09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R15 <- R13",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R15 <- R14",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R01",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R03",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R05",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R07",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R12",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R13",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R14",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency R16 <- R15",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B00 <- R16",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B01 <- R10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B01 <- R11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B01 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B02 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B03 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B04 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B05 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B06 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B07 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B08 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B09 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B10 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B11 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B12 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B02",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B03",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B04",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B05",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B06",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B07",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B08",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B09",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B10",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B11",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency B13 <- B12",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency O01 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency O02 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency O03 <- B00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "dependency DAG no cycle",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B00.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B00.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B00.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B00.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B01.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B01.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B01.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B01.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B02.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B02.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B02.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B02.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B03.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B03.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B03.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B03.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B04.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B04.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B04.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B04.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B05.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B05.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B05.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B05.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B06.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B06.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B06.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B06.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B07.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B07.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B07.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B07.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B08.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B08.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B08.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B08.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B09.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B09.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B09.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B09.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B10.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B10.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B10.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B10.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B11.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B11.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B11.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B11.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B12.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B12.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B12.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B12.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B13.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B13.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B13.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card B13.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O01.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O01.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O01.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O01.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O02.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O02.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O02.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O02.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O03.M",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O03.I",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O03.T",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "component stage card O03.V",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "kcn Envoy isolated",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "current versus proposed CLI marked",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "no made-up actual artifact digests",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "all product tasks initially not started",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "task cards not installer implementation",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "source ZIP fingerprint",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "summary": {
+    "checks": 407,
+    "passed": 407,
+    "failed": 0,
+    "bashBlocksSyntaxChecked": 81,
+    "componentVersionRecords": 96,
+    "taskCards": 108
+  }
+}

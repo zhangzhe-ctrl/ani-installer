@@ -1,0 +1,245 @@
+[
+  {
+    "id": "R00",
+    "title": "冻结工作树、校准旧文档和执行环境",
+    "issues": [],
+    "depends_on": [],
+    "kind": "remediation",
+    "taskFile": "tasks/R00.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R01",
+    "title": "移除明文凭据，修正实验凭据使用方式",
+    "issues": [
+      "A03"
+    ],
+    "depends_on": [
+      "R00"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R01.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R02",
+    "title": "删除网络故障绕过，首错后停止变更",
+    "issues": [
+      "A01"
+    ],
+    "depends_on": [
+      "R00"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R02.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R03",
+    "title": "保证多命令 task 错误传播",
+    "issues": [
+      "A06"
+    ],
+    "depends_on": [
+      "R00"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R03.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R04",
+    "title": "建立唯一代码门禁和根级 CI",
+    "issues": [
+      "A13"
+    ],
+    "depends_on": [
+      "R02",
+      "R03"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R04.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R05",
+    "title": "Ceph 显式启用、磁盘授权和默认类保护",
+    "issues": [
+      "A02"
+    ],
+    "depends_on": [
+      "R04"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R05.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R06",
+    "title": "统一配置解释，新增只读 validate/run 输入",
+    "issues": [
+      "A09",
+      "A10"
+    ],
+    "depends_on": [
+      "R04"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R06.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R07",
+    "title": "让批准的材料锁约束真实内容",
+    "issues": [
+      "A07"
+    ],
+    "depends_on": [
+      "R06"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R07.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R08",
+    "title": "按启用项校验完整镜像集合和真实渲染",
+    "issues": [
+      "A08"
+    ],
+    "depends_on": [
+      "R07"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R08.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R09",
+    "title": "预检前移、运行状态和互斥",
+    "issues": [
+      "A11"
+    ],
+    "depends_on": [
+      "R05",
+      "R08"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R09.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R10",
+    "title": "修复 Kube-OVN CIDR/网关和地址校验",
+    "issues": [
+      "A05"
+    ],
+    "depends_on": [
+      "R06",
+      "R08"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R10.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R11",
+    "title": "两种主 CNI 都做真实网络验证",
+    "issues": [
+      "A04"
+    ],
+    "depends_on": [
+      "R02",
+      "R10"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R11.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R12",
+    "title": "让 SSH/API 等待真正响应超时和取消",
+    "issues": [
+      "A12"
+    ],
+    "depends_on": [
+      "R04",
+      "R09"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R12.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R13",
+    "title": "分离安装探测、smoke 和专项 acceptance",
+    "issues": [
+      "A14"
+    ],
+    "depends_on": [
+      "R02",
+      "R06",
+      "R11",
+      "R12"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R13.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R14",
+    "title": "固定自举 registry 生命周期和冷拉验证",
+    "issues": [
+      "A15"
+    ],
+    "depends_on": [
+      "R07",
+      "R09"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R14.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R15",
+    "title": "最小新增组件入口，不重装底座",
+    "issues": [
+      "A14"
+    ],
+    "depends_on": [
+      "R05",
+      "R08",
+      "R09",
+      "R13",
+      "R14"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R15.md",
+    "status": "not_started"
+  },
+  {
+    "id": "R16",
+    "title": "整改收官：真实离线验收与耗时记录",
+    "issues": [],
+    "depends_on": [
+      "R01",
+      "R02",
+      "R03",
+      "R04",
+      "R05",
+      "R06",
+      "R07",
+      "R08",
+      "R09",
+      "R10",
+      "R11",
+      "R12",
+      "R13",
+      "R14",
+      "R15"
+    ],
+    "kind": "remediation",
+    "taskFile": "tasks/R16.md",
+    "status": "not_started"
+  }
+]

@@ -1,0 +1,1391 @@
+apiVersion: ani.execution.research/v1alpha1
+kind: InheritedVersionRegister
+metadata:
+  asOf: '2026-09-24'
+  revision: r1
+  inheritedResearchAsOf: '2026-09-23'
+  sourceFile: ANI-installer-version-matrix-20260923.yaml
+  sourceFileSHA256: fc3d13fa74abeb96aab32efde53b17dac909868bb8d28554377ea0f3c33c9bfa
+contract:
+  executableByInstaller: false
+  newImageDigestsCollected: false
+  allVersionsReverifiedThisTurn: false
+  integrationVerifiedThisTurn: false
+  purpose: 继承已选设计版本；逐批M阶段形成真实ComponentMaterialLock，不直接覆盖原锁
+scopeOverrides:
+  kcnEnvoy: dedicated_original_flow_do_not_reuse
+  businessEnvoy: independent_flow_deferred
+  haproxyAndKubeVip: material_inventory_only_unused_in_current_local_control_plane_path
+  deferred:
+  - lws
+  - vcluster
+  - gpu
+  - volcano-vgpu
+  - business-envoy-gateway
+  - business-envoy-ai-gateway
+  optional:
+  - dex
+  - oauth2-proxy
+  - kata
+  - jaeger
+  istio: not_selected
+  knative: not_selected
+components:
+- group: 既有底座与工具
+  id: os
+  name: Ubuntu Server
+  version: 24.04.4
+  chartVersion: null
+  status: retain
+  notes: amd64；离线对话现场历史值；内核 6.8.0-139，不表示任意硬件均已适配
+  sourceRefs:
+  - LOCAL-HTML
+- group: 既有底座与工具
+  id: kubernetes
+  name: Kubernetes
+  version: 1.35.8
+  chartVersion: null
+  status: retain
+  notes: kubeadm / kubelet / kubectl / 控制面保持同一补丁版本
+  sourceRefs:
+  - LOCAL-LOCK
+  - S42
+- group: 既有底座与工具
+  id: containerd
+  name: containerd
+  version: 2.3.4
+  chartVersion: null
+  status: retain
+  notes: 不因 Kubeflow 引入而升级
+  sourceRefs:
+  - LOCAL-LOCK
+  - S43
+- group: 既有底座与工具
+  id: runc
+  name: runc
+  version: 1.4.3
+  chartVersion: null
+  status: retain
+  notes: 节点运行时工具
+  sourceRefs:
+  - LOCAL-LOCK
+  - S44
+- group: 既有底座与工具
+  id: control-plane-etcd
+  name: Kubernetes 专用 etcd
+  version: 3.6.6
+  chartVersion: null
+  status: retain
+  notes: 保留上传镜像清单的固定版本；不代表本次重新验证
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 既有底座与工具
+  id: coredns
+  name: CoreDNS
+  version: 1.13.1
+  chartVersion: null
+  status: retain
+  notes: 保留上传镜像清单的固定版本；不代表本次重新验证
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 既有底座与工具
+  id: node-local-dns
+  name: NodeLocal DNS
+  version: 1.26.4
+  chartVersion: null
+  status: retain
+  notes: 保留上传镜像清单的固定版本；不代表本次重新验证
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 既有底座与工具
+  id: pause
+  name: pause
+  version: 3.10.1
+  chartVersion: null
+  status: retain
+  notes: 保留上传镜像清单的固定版本；不代表本次重新验证
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 既有底座与工具
+  id: kube-vip
+  name: kube-vip
+  version: 0.7.2
+  chartVersion: null
+  status: retain
+  notes: 保留上传镜像清单的固定版本；不代表本次重新验证
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 既有底座与工具
+  id: haproxy-current
+  name: HAProxy 既有版本
+  version: 2.9.6-alpine
+  chartVersion: null
+  status: retain-with-risk
+  notes: 2.9 分支已 EOL，保留历史记录，不作为新安装长期基线
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S41
+- group: 既有底座与工具
+  id: haproxy-target
+  name: HAProxy 整改目标
+  version: 3.0.27
+  chartVersion: null
+  status: remediation-candidate
+  notes: 3.0 LTS；先适配现有配置并验收 API HA，另行升级，不静默替换现场
+  sourceRefs:
+  - S41
+- group: 既有底座与工具
+  id: hauler
+  name: Hauler
+  version: 2.0.3
+  chartVersion: null
+  status: retain
+  notes: 物料服务/自举用途，非 Harbor 长期镜像仓库
+  sourceRefs:
+  - LOCAL-LOCK
+  - S55
+- group: 既有底座与工具
+  id: helm
+  name: Helm
+  version: 3.20.0
+  chartVersion: null
+  status: retain
+  notes: 上传锁内已有 tarball/binary SHA；本次未重新读取远端摘要
+  sourceRefs:
+  - LOCAL-LOCK
+  - S56
+- group: 既有底座与工具
+  id: kustomize
+  name: Kustomize
+  version: 5.8.1
+  chartVersion: null
+  status: conditional-dependency
+  notes: 随 Kubeflow 26.03 制包工具引入，目标机不在线 fetch
+  sourceRefs:
+  - S01
+- group: 网络与存储
+  id: kcn
+  name: kcn
+  version: dev
+  chartVersion: null
+  status: retain
+  notes: 允许展示 dev，发布仍固定构建源码/镜像/清单摘要；与 Kube-OVN 二选一
+  sourceRefs:
+  - LOCAL-LOCK
+- group: 网络与存储
+  id: kube-ovn
+  name: Kube-OVN
+  version: 1.16.6
+  chartVersion: null
+  status: repair
+  notes: 保留版本，修安装配置、Multus 链与 LB 能力开关；不是直接认定上游有 bug
+  sourceRefs:
+  - LOCAL-LOCK
+  - S17
+  - S18
+- group: 网络与存储
+  id: kube-ovn-nat
+  name: Kube-OVN VPC NAT Gateway
+  version: 1.16.6
+  chartVersion: null
+  status: repair
+  notes: 镜像已在包内；LB 模式需要正确渲染引用，不照抄浮动文档示例版本
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S17
+- group: 网络与存储
+  id: multus
+  name: Multus CNI
+  version: 4.3.1
+  chartVersion: null
+  status: implement
+  notes: 固定 release manifest，优先 thick plugin；NAD CRD 由一个安装角色管理
+  sourceRefs:
+  - S15
+- group: 网络与存储
+  id: cni-plugins
+  name: CNI plugins
+  version: 1.9.0
+  chartVersion: null
+  status: conditional-dependency
+  notes: 提供 macvlan / bridge / tuning 等节点二进制，按启用网络模式供应
+  sourceRefs:
+  - S16
+  - S17
+- group: 网络与存储
+  id: rook
+  name: Rook
+  version: 1.20.7
+  chartVersion: null
+  status: retain
+  notes: 沿用已有固定清单；不额外虚构已使用 Helm Chart
+  sourceRefs:
+  - LOCAL-LOCK
+  - S45
+- group: 网络与存储
+  id: ceph
+  name: Ceph：RBD / CephFS / RGW
+  version: 20.2.4
+  chartVersion: null
+  status: retain
+  notes: 复用现有对象存储；接入者使用独立账号、桶、前缀和容量限制
+  sourceRefs:
+  - LOCAL-LOCK
+  - S45
+- group: 网络与存储
+  id: ceph-csi
+  name: Ceph CSI
+  version: 3.17.1
+  chartVersion: null
+  status: retain
+  notes: 与现有 Rook 物料整组保留
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: ceph-csi-operator
+  name: Ceph CSI Operator
+  version: 1.0.4
+  chartVersion: null
+  status: retain
+  notes: 共享控制器单一管理者
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: csi-provisioner
+  name: CSI provisioner
+  version: 6.2.0
+  chartVersion: null
+  status: retain
+  notes: 继承现有存储镜像族
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: csi-attacher
+  name: CSI attacher
+  version: 4.12.0
+  chartVersion: null
+  status: retain
+  notes: 继承现有存储镜像族
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: csi-resizer
+  name: CSI resizer
+  version: 2.1.0
+  chartVersion: null
+  status: retain
+  notes: 继承现有存储镜像族
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: csi-snapshotter
+  name: CSI snapshotter sidecar
+  version: 8.5.0
+  chartVersion: null
+  status: retain
+  notes: 继承现有存储镜像族
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: node-driver-registrar
+  name: CSI node-driver-registrar
+  version: 2.17.0
+  chartVersion: null
+  status: retain
+  notes: 继承现有存储镜像族
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: snapshot-controller
+  name: Snapshot Controller + Snapshot CRDs
+  version: 8.5.0
+  chartVersion: null
+  status: conditional-dependency
+  notes: 卷/虚拟机快照功能启用时安装，API v1；与 CSI sidecar 是不同部署项；配置 RBD/CephFS VolumeSnapshotClass
+  sourceRefs:
+  - S20
+  - LOCAL-IMAGES
+- group: 网络与存储
+  id: csi-addons
+  name: CSI Addons sidecar
+  version: 0.14.0
+  chartVersion: null
+  status: material-only
+  notes: 上传清单已有物料，不能据此声称功能已启用
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: cosi-sidecar
+  name: COSI objectstorage-sidecar
+  version: 0.2.2
+  chartVersion: null
+  status: material-only
+  notes: 上传清单已有物料，不能据此声称功能已启用
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 网络与存储
+  id: ceph-cosi
+  name: Ceph COSI driver
+  version: 0.1.4
+  chartVersion: null
+  status: material-only
+  notes: 上传清单已有物料，不能据此声称功能已启用
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S45
+- group: 既有数据、证书与可观测性
+  id: cert-manager
+  name: cert-manager
+  version: 1.21.2
+  chartVersion: 1.21.2
+  status: retain
+  notes: controller / webhook / cainjector / startupapicheck / acmesolver 同版本；不降到 Kubeflow 原配 1.19.4
+  sourceRefs:
+  - LOCAL-LOCK
+  - S46
+- group: 既有数据、证书与可观测性
+  id: postgresql
+  name: PostgreSQL
+  version: 17.11-bookworm
+  chartVersion: null
+  status: retain
+  notes: 自管 StatefulSet；准备 pg_trgm；不把 TimescaleDB 视为强制依赖
+  sourceRefs:
+  - LOCAL-LOCK
+  - S51
+- group: 既有数据、证书与可观测性
+  id: valkey
+  name: Valkey
+  version: 8.1.10-alpine
+  chartVersion: null
+  status: retain
+  notes: 自管 StatefulSet，不编造 Helm Chart 版本
+  sourceRefs:
+  - LOCAL-LOCK
+  - S52
+- group: 既有数据、证书与可观测性
+  id: nats
+  name: NATS / JetStream
+  version: 2.14.6-alpine
+  chartVersion: 2.14.6
+  status: retain
+  notes: reloader 0.23.0；验证用 nats-box 0.19.7；保留持久化配置
+  sourceRefs:
+  - LOCAL-LOCK
+  - S47
+- group: 既有数据、证书与可观测性
+  id: prometheus-stack
+  name: kube-prometheus-stack / Operator
+  version: 0.90.1
+  chartVersion: 85.4.0
+  status: retain
+  notes: Operator 和 config-reloader 同版本；Grafana 当前关闭
+  sourceRefs:
+  - LOCAL-LOCK
+  - S48
+- group: 既有数据、证书与可观测性
+  id: prometheus
+  name: Prometheus
+  version: 3.11.3-distroless
+  chartVersion: null
+  status: retain
+  notes: 归属上述 stack 的既有物料，勿另行并装一套
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S48
+- group: 既有数据、证书与可观测性
+  id: alertmanager
+  name: Alertmanager
+  version: 0.32.1
+  chartVersion: null
+  status: retain
+  notes: 归属上述 stack 的既有物料，勿另行并装一套
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S48
+- group: 既有数据、证书与可观测性
+  id: kube-state-metrics
+  name: kube-state-metrics
+  version: 2.19.0
+  chartVersion: null
+  status: retain
+  notes: 归属上述 stack 的既有物料，勿另行并装一套
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S48
+- group: 既有数据、证书与可观测性
+  id: node-exporter
+  name: node-exporter
+  version: 1.11.1-distroless
+  chartVersion: null
+  status: retain
+  notes: 归属上述 stack 的既有物料，勿另行并装一套
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S48
+- group: 既有数据、证书与可观测性
+  id: webhook-certgen
+  name: kube-webhook-certgen
+  version: 1.8.3
+  chartVersion: null
+  status: retain
+  notes: 归属上述 stack 的既有物料，勿另行并装一套
+  sourceRefs:
+  - LOCAL-IMAGES
+  - S48
+- group: 既有数据、证书与可观测性
+  id: loki
+  name: Loki
+  version: 3.7.8
+  chartVersion: 18.13.3
+  status: retain
+  notes: 官方 grafana-community Chart；ANI 当前已有 Loki 查询适配
+  sourceRefs:
+  - LOCAL-LOCK
+  - S49
+- group: 既有数据、证书与可观测性
+  id: fluent-bit
+  name: Fluent Bit
+  version: 5.1.2
+  chartVersion: 0.58.2
+  status: retain
+  notes: 与日志后端一起验证采集、缓冲、续读
+  sourceRefs:
+  - LOCAL-LOCK
+  - S50
+- group: 既有数据、证书与可观测性
+  id: opensearch
+  name: OpenSearch
+  version: 3.8.0
+  chartVersion: 3.8.0
+  status: retain
+  notes: 当前代码/物料已有；不是 ANI Loki 查询适配的无缝替代品
+  sourceRefs:
+  - LOCAL-LOCK
+  - S53
+- group: 既有数据、证书与可观测性
+  id: metrics-server
+  name: Metrics Server
+  version: 0.9.0
+  chartVersion: 3.14.0
+  status: conditional-dependency
+  notes: metrics.k8s.io；不是 Prometheus；本版本要求 Kubernetes 1.34+
+  sourceRefs:
+  - S19
+- group: 继续实施的组件
+  id: milvus
+  name: Milvus
+  version: 2.6.24
+  chartVersion: 5.0.25
+  status: implement
+  notes: 冻结 standalone + RocksMQ + 专用 etcd + RGW；Chart 原配 app 2.6.21，本方案显式覆盖 2.6.24，属于待本地验收组合
+  sourceRefs:
+  - S21
+  - S22
+  - S23
+  - S25
+- group: 继续实施的组件
+  id: milvus-etcd
+  name: Milvus 专用 etcd
+  version: 3.5.25-r1
+  chartVersion: 8.12.0
+  status: conditional-dependency
+  notes: milvusdb/etcd；独立部署，禁止复用 Kubernetes 控制面 etcd
+  sourceRefs:
+  - S23
+  - S24
+- group: 继续实施的组件
+  id: milvus-wal
+  name: Milvus WAL：RocksMQ
+  version: embedded-in-2.6.24
+  chartVersion: null
+  status: conditional-dependency
+  notes: 不是独立容器或待安装服务；Standalone 单副本，不宣称可横向扩为 HA
+  sourceRefs:
+  - S25
+- group: 继续实施的组件
+  id: kubevirt
+  name: KubeVirt / virtctl
+  version: 1.9.0
+  chartVersion: null
+  status: implement
+  notes: 使用官方发布清单；配套 virt-* 动态镜像同 release；Kubernetes 1.34–1.36 为官方测试范围
+  sourceRefs:
+  - S26
+- group: 继续实施的组件
+  id: cdi
+  name: CDI（虚拟机磁盘导入）
+  version: 1.66.1
+  chartVersion: null
+  status: implement
+  notes: Containerized Data Importer；不是 GPU 的 Container Device Interface；包含 importer/uploadserver/cloner 动态镜像
+  sourceRefs:
+  - S27
+- group: 继续实施的组件
+  id: volcano
+  name: Volcano
+  version: 1.15.2
+  chartVersion: 1.15.2
+  status: implement
+  notes: 首先 CPU 队列/批调度/PodGroup；不因为启用 Volcano 自动安装 LWS/vGPU
+  sourceRefs:
+  - S28
+- group: 继续实施的组件
+  id: harbor
+  name: Harbor
+  version: 2.15.2
+  chartVersion: 1.19.2
+  status: implement
+  notes: 采用该 Chart 的完整匹配镜像族；本轮建议专用内置数据库/缓存，不顺带升级共享 PostgreSQL
+  sourceRefs:
+  - S29
+  - S30
+- group: 继续实施的组件
+  id: harbor-trivy-adapter
+  name: Harbor Trivy adapter 镜像
+  version: 2.15.2
+  chartVersion: null
+  status: conditional-dependency
+  notes: harbor-scanner-trivy 源码版本 0.38.0；镜像 tag 与 Harbor 对齐
+  sourceRefs:
+  - S30
+  - S31
+- group: 继续实施的组件
+  id: harbor-trivy
+  name: Harbor 内置 Trivy
+  version: 0.72.0
+  chartVersion: null
+  status: conditional-dependency
+  notes: 随 adapter 构建；单列漏洞 DB / Java DB 快照、下载时间与摘要，offlineScan 不等于已备齐漏洞库
+  sourceRefs:
+  - S31
+  - S30
+- group: 继续实施的组件
+  id: harbor-internal-state
+  name: Harbor 内置 harbor-db / valkey-photon
+  version: 2.15.2
+  chartVersion: null
+  status: conditional-dependency
+  notes: 按官方镜像 release 锁定，不将镜像 tag 当作 PostgreSQL/Valkey 上游版本号
+  sourceRefs:
+  - S30
+- group: Kubeflow 26.03 按需组件
+  id: kubeflow-release
+  name: Kubeflow Community Distribution 源基线
+  version: '26.03'
+  chartVersion: null
+  status: reference
+  notes: 版本口径为发行 tag 26.03；不是整套 example 安装；不混用 26.03.1 或 master
+  sourceRefs:
+  - S01
+  - S02
+- group: Kubeflow 26.03 按需组件
+  id: notebooks
+  name: Kubeflow Notebooks
+  version: 1.10.0
+  chartVersion: null
+  status: implement-on-demand
+  notes: Notebook CRD/controller；显式 USE_ISTIO=false；网页入口/鉴权由 ANI 适配，CPU Notebook 镜像另锁
+  sourceRefs:
+  - S01
+  - S03
+  - S04
+- group: Kubeflow 26.03 按需组件
+  id: trainer
+  name: Kubeflow Trainer
+  version: 2.1.0
+  chartVersion: null
+  status: implement-on-demand
+  notes: 独立 controller 与 runtime 资源；不默认安装 legacy Training Operator / Kueue
+  sourceRefs:
+  - S01
+  - S05
+- group: Kubeflow 26.03 按需组件
+  id: jobset
+  name: JobSet
+  version: 0.10.1
+  chartVersion: null
+  status: conditional-dependency
+  notes: Trainer 2.1.0 官方固定依赖；不是 LWS，LWS 暂缓不阻断它
+  sourceRefs:
+  - S05
+- group: Kubeflow 26.03 按需组件
+  id: kserve
+  name: KServe
+  version: 0.16.0
+  chartVersion: null
+  status: implement-on-demand
+  notes: 使用此 release 的固定部署材料；Standard 模式、禁用入口创建；不默认 LLMInferenceService/LWS/Knative
+  sourceRefs:
+  - S01
+  - S06
+- group: Kubeflow 26.03 按需组件
+  id: kserve-aux
+  name: KServe agent / router / storage-initializer
+  version: 0.16.0
+  chartVersion: null
+  status: conditional-dependency
+  notes: 按所选功能裁剪；kube-rbac-proxy 0.18.0；只锁实际选用的 ServingRuntime/CPU 镜像
+  sourceRefs:
+  - S06
+- group: Kubeflow 26.03 按需组件
+  id: hub
+  name: Kubeflow Hub（26.03 名称 Model Registry）
+  version: 0.3.7
+  chartVersion: null
+  status: implement-on-demand
+  notes: 保留该 release 的包名/镜像名；standalone REST；该版本 README 仍标 Alpha；可接现有 PG 专用库但组合待验
+  sourceRefs:
+  - S01
+  - S07
+  - S08
+  - S57
+- group: Kubeflow 26.03 按需组件
+  id: pipelines
+  name: Kubeflow Pipelines
+  version: 2.16.0
+  chartVersion: null
+  status: implement-on-demand
+  notes: platform-agnostic 独立部署；不是开箱即用的安全多租户发行版；默认 SeaweedFS 替换为现有 RGW需验收
+  sourceRefs:
+  - S01
+  - S09
+  - S14
+- group: Kubeflow 26.03 按需组件
+  id: argo-workflows
+  name: Argo Workflows
+  version: 3.7.3
+  chartVersion: null
+  status: conditional-dependency
+  notes: KFP 实际执行依赖，不是 Argo CD；随官方 KFP 固定清单裁剪
+  sourceRefs:
+  - S01
+  - S10
+- group: Kubeflow 26.03 按需组件
+  id: mlmd
+  name: ML Metadata / MLMD
+  version: 1.14.0
+  chartVersion: null
+  status: conditional-dependency
+  notes: KFP 固定元数据服务
+  sourceRefs:
+  - S11
+- group: Kubeflow 26.03 按需组件
+  id: kfp-mysql
+  name: KFP 专用 MySQL
+  version: 8.4.11
+  chartVersion: null
+  status: conditional-dependency
+  notes: 将 KFP 样例的浮动 8.4 固化为该补丁；保留 MLMD 所需认证兼容设置，独立账号，不照抄示例空口令
+  sourceRefs:
+  - S12
+  - S13
+- group: Kubeflow 26.03 按需组件
+  id: kfp-objectstore
+  name: KFP S3 工件后端：复用 Ceph RGW
+  version: 20.2.4
+  chartVersion: null
+  status: reuse-provider
+  notes: 专用 bucket / credentials / prefix；运行产物读写、预签名 URL、Pod 重建后持久化待验
+  sourceRefs:
+  - LOCAL-LOCK
+  - S09
+- group: 补充候选：不是用户本轮明确全部启用
+  id: dex
+  name: Dex / 外部 OIDC 接入
+  version: 2.45.0
+  chartVersion: null
+  status: optional
+  notes: 自部署时取 Kubeflow 26.03 版本；也可接已有 OIDC；与 ANI 的回调地址/Issuer/RBAC 对接
+  sourceRefs:
+  - S01
+- group: 补充候选：不是用户本轮明确全部启用
+  id: oauth2-proxy
+  name: OAuth2 Proxy
+  version: 7.14.3
+  chartVersion: null
+  status: optional
+  notes: 仅独立 UI 需要认证代理时加入；安装它不代表完整多租户隔离已实现
+  sourceRefs:
+  - S01
+  - S14
+- group: 补充候选：不是用户本轮明确全部启用
+  id: kata
+  name: Kata Containers / kata-deploy
+  version: 4.2.0
+  chartVersion: 4.2.0
+  status: optional
+  notes: 沙箱功能选择时单独实施；优先 Go/QEMU 发行 bundle，RuntimeClass=sandbox-kata；内核/固件/runtime 整组固化
+  sourceRefs:
+  - S32
+  - S33
+- group: 补充候选：不是用户本轮明确全部启用
+  id: kata-monitor
+  name: kata-monitor
+  version: 4.2.0-release-source
+  chartVersion: null
+  status: optional
+  notes: 来源为同版发行源码/bundle，未宣称存在独立 4.2.0 官方 monitor 镜像；需确认 kata_guest_meminfo 指标契约
+  sourceRefs:
+  - S32
+- group: 补充候选：不是用户本轮明确全部启用
+  id: jaeger
+  name: Jaeger
+  version: 2.20.0
+  chartVersion: 4.13.1
+  status: optional-not-scheduled
+  notes: 原讨论可选追踪；Chart common 子依赖 2.36.0；持久化后端尚需定型，不以 memory 模式冒充完成
+  sourceRefs:
+  - S54
+- group: 明确暂缓
+  id: lws
+  name: LeaderWorkerSet
+  version: 0.10.0
+  chartVersion: null
+  status: deferred
+  notes: 仅锁研究版本，不进入本轮默认物料和执行计划
+  sourceRefs:
+  - S37
+- group: 明确暂缓
+  id: vcluster
+  name: vCluster
+  version: 0.37.2
+  chartVersion: 0.37.2
+  status: deferred
+  notes: CLI / Chart / 控制面镜像同组；动态创建的离线镜像支撑以后实现
+  sourceRefs:
+  - S38
+- group: 明确暂缓
+  id: gpu-operator
+  name: NVIDIA GPU Operator
+  version: 26.7.0
+  chartVersion: 26.7.0
+  status: deferred
+  notes: 按该 release 官方 BOM 研究，硬件/驱动/宿主内核 profile 未闭合
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: gpu-driver
+  name: NVIDIA Driver 候选
+  version: 595.91.07
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: nvidia-toolkit
+  name: NVIDIA Container Toolkit
+  version: 1.20.0
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: nvidia-device-plugin
+  name: NVIDIA Device Plugin / GFD
+  version: 0.20.0
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: nvidia-driver-manager
+  name: NVIDIA Driver Manager
+  version: 0.12.0
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: dcgm-exporter
+  name: DCGM exporter
+  version: 4.6.0-4.8.3
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: dcgm
+  name: DCGM
+  version: 4.6.0-1
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: nfd
+  name: Node Feature Discovery
+  version: 0.19.0
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: mig-manager
+  name: MIG Manager
+  version: 0.15.0
+  chartVersion: null
+  status: deferred
+  notes: 随 GPU 组合暂缓；NFD 可被 Kata 按需复用但全局只允许一个管理者
+  sourceRefs:
+  - S34
+- group: 明确暂缓
+  id: volcano-vgpu
+  name: Volcano vGPU device-plugin
+  version: 1.12.0-image-reference
+  chartVersion: null
+  status: deferred-gated
+  notes: 官方静态清单引用 image v1.12.0；无对应已确认 Git release；需固定源码 commit、镜像 digest。README 只明确至 Volcano 1.15.0，不能宣称与 1.15.2 已官方验证
+  sourceRefs:
+  - S35
+  - S36
+- group: 明确暂缓
+  id: envoy-gateway-current
+  name: 既有定制 Envoy Gateway
+  version: 1.8.3-custom
+  chartVersion: null
+  status: deferred-retain-existing
+  notes: 保留上传定制镜像/digest；gateway-dev:latest 只能按已有 digest 冻结；不是自动卸载已运行组件
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 明确暂缓
+  id: envoy-proxy-current
+  name: 既有 Envoy proxy / ratelimit
+  version: 1.38.3 / 1e50889b
+  chartVersion: null
+  status: deferred-retain-existing
+  notes: 只记录现有材料；不和上游新候选混用
+  sourceRefs:
+  - LOCAL-IMAGES
+- group: 明确暂缓
+  id: envoy-gateway
+  name: 上游 Envoy Gateway 候选
+  version: 1.8.4
+  chartVersion: 1.8.4
+  status: deferred
+  notes: 使用正式 OCI 发行 Chart，不使用源码 Chart 的 latest 占位；自研改动先评估再复验
+  sourceRefs:
+  - S39
+- group: 明确暂缓
+  id: envoy-proxy
+  name: 上游 Envoy proxy 候选
+  version: 1.38.4
+  chartVersion: null
+  status: deferred
+  notes: 与 Envoy Gateway 1.8.4 发行记录对齐
+  sourceRefs:
+  - S39
+- group: 明确暂缓
+  id: envoy-ratelimit
+  name: 上游 ratelimit 候选
+  version: 8fe6ea42
+  chartVersion: null
+  status: deferred
+  notes: 与 Envoy Gateway 1.8.4 发行记录对齐
+  sourceRefs:
+  - S39
+- group: 明确暂缓
+  id: gateway-api
+  name: Gateway API CRDs
+  version: 1.5.1
+  chartVersion: null
+  status: deferred
+  notes: 以后共享单一 CRD owner；当前无网关的 KServe 路径不借机安装完整网关栈
+  sourceRefs:
+  - S40
+- group: 明确暂缓
+  id: envoy-ai-gateway
+  name: Envoy AI Gateway
+  version: 1.1.0
+  chartVersion: null
+  status: deferred
+  notes: 该版官方依赖 EG 1.8.1 / Envoy 1.38.1 / Gateway API 1.5.1 / Inference Extension 1.0.2；与 EG 1.8.4 合并为后续待验组合
+  sourceRefs:
+  - S40
+- group: 不启用，仅保留发行参考
+  id: istio
+  name: Istio
+  version: 1.29.0
+  chartVersion: null
+  status: not-selected
+  notes: 26.03 原配参考，不是当前建议安装或安全维护基线
+  sourceRefs:
+  - S01
+- group: 不启用，仅保留发行参考
+  id: knative
+  name: Knative Serving
+  version: 1.21.1
+  chartVersion: null
+  status: not-selected
+  notes: 仅未来需要 Serverless 模式再评估；本轮 KServe Standard 不装
+  sourceRefs:
+  - S01
+- group: 不启用，仅保留发行参考
+  id: legacy-training-operator
+  name: Legacy Training Operator
+  version: 1.9.2
+  chartVersion: null
+  status: not-selected
+  notes: 只有确需 PyTorchJob 等旧 API 时单独选择，不能当 Trainer 2.1 的隐含依赖
+  sourceRefs:
+  - S01
+- group: 不启用，仅保留发行参考
+  id: kubeflow-ui-family
+  name: Central Dashboard / Profiles / Web Apps
+  version: 1.10.0
+  chartVersion: null
+  status: not-selected
+  notes: 不默认部署；需要原生多租户界面时单独设计认证、路由和隔离
+  sourceRefs:
+  - S01
+baselineImageInventory:
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/library/haproxy:2.9.6-alpine
+  hauler_ref: 127.0.0.1:5000/library/haproxy:2.9.6-alpine
+  actual_digest: sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5
+  use_location: KubeKey artifact; unused because control_plane_endpoint.type=local
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/plndr/kube-vip:v0.7.2
+  hauler_ref: 127.0.0.1:5000/plndr/kube-vip:v0.7.2
+  actual_digest: sha256:9d12df52ee3d95d4bc28fe19fcddb970f10705ac59566070d8dc142f593c4277
+  use_location: KubeKey artifact; unused because control_plane_endpoint.type=local
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/kube-apiserver:v1.35.8
+  hauler_ref: 127.0.0.1:5000/kubernetes/kube-apiserver:v1.35.8
+  actual_digest: sha256:cc20b3167f36d432c121a477e82b0bbd4d48e1609004b7fd73916ad62018924c
+  use_location: KubeKey/Kubernetes kube-apiserver
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/kube-controller-manager:v1.35.8
+  hauler_ref: 127.0.0.1:5000/kubernetes/kube-controller-manager:v1.35.8
+  actual_digest: sha256:544ad10d3bb84c52e612cdccd73ec1a803eb1700face93cdc75753ca89e914ff
+  use_location: KubeKey/Kubernetes kube-controller-manager
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/kube-proxy:v1.35.8
+  hauler_ref: 127.0.0.1:5000/kubernetes/kube-proxy:v1.35.8
+  actual_digest: sha256:f0174bfc4bf1afaa6ec1b575c478498d8dd4fb4e375ca4db527beb41f09b0190
+  use_location: KubeKey/Kubernetes kube-proxy
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/kube-scheduler:v1.35.8
+  hauler_ref: 127.0.0.1:5000/kubernetes/kube-scheduler:v1.35.8
+  actual_digest: sha256:9e9432917144239709bea763461d44c281566f281588e24a0fd060f107d9b7d3
+  use_location: KubeKey/Kubernetes kube-scheduler
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/pause:3.10.1
+  hauler_ref: 127.0.0.1:5000/kubernetes/pause:3.10.1
+  actual_digest: sha256:3b040af9bc594a02f1bb068d329d95c13f8d0139e3cc8b224737f0bf2c93bd87
+  use_location: Kubernetes sandbox image
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/coredns/coredns:v1.13.1
+  hauler_ref: 127.0.0.1:5000/coredns/coredns:v1.13.1
+  actual_digest: sha256:a0f0a739ccd102b7ea7ecf9b0c2bd0af9520a3b2e16d6718065660e954924ea6
+  use_location: Kubernetes CoreDNS
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/dns/k8s-dns-node-cache:1.26.4
+  hauler_ref: 127.0.0.1:5000/dns/k8s-dns-node-cache:1.26.4
+  actual_digest: sha256:55470ded85dfacf7ddd0f9bcf541a3d9654002bc3cac654e62a63d0c1f1d62fe
+  use_location: KubeKey artifact; nodelocaldns disabled
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/etcd:v3.6.6
+  hauler_ref: 127.0.0.1:5000/kubernetes/etcd:v3.6.6
+  actual_digest: sha256:da34fe69aa499157f3c9fb018ade396ed1ef1095998443ec44e7db96d2134848
+  use_location: Kubernetes stacked etcd
+- sourceFile: ani/images.tsv
+  original_ref: docker.changqingyun.cn/kubercloud/kc-networking:dev
+  hauler_ref: 127.0.0.1:5000/kubercloud/kc-networking:dev
+  actual_digest: sha256:05ea46f8cdcb033158cd0c80eac41b88a63eeb87ee4e9f5823be97c94171563a
+  use_location: kcn dev fix2 (K-5 STS in-place rebuild fix; 2026-09-21 second feed from local docker-archive tar, constructed
+    amd64 manifest digest)
+- sourceFile: ani/images.tsv
+  original_ref: docker.changqingyun.cn/kubercloud/gateway:v1.8.3
+  hauler_ref: 127.0.0.1:5000/kubercloud/gateway:v1.8.3
+  actual_digest: sha256:3c3b5b6132002462b5c652cb9f1f72f532d3c848110e669f49690d9e11d9ce6e
+  use_location: Envoy Gateway controller and certgen
+- sourceFile: ani/images.tsv
+  original_ref: docker.changqingyun.cn/kubercloud/gateway-dev:latest
+  hauler_ref: 127.0.0.1:5000/kubercloud/gateway-dev:latest
+  actual_digest: sha256:82df373256bb31c9fdbbf4a5e26696276e56bf06f29902f8608b3e52b0cf3c44
+  use_location: Envoy Proxy shutdown-manager patch
+- sourceFile: ani/images.tsv
+  original_ref: docker.changqingyun.cn/kubercloud/envoy:distroless-v1.38.3
+  hauler_ref: 127.0.0.1:5000/kubercloud/envoy:distroless-v1.38.3
+  actual_digest: sha256:c8fecdf5574f1752be5de7d05c8161aca51ce81969e15e7ec6cafaad555ff065
+  use_location: Envoy Gateway data plane
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/library/busybox:1.37.0
+  hauler_ref: 127.0.0.1:5000/library/busybox:1.37.0
+  actual_digest: sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0
+  use_location: ANI smoke backend and client
+- sourceFile: ani/images.tsv
+  original_ref: docker.changqingyun.cn/kubercloud/ratelimit:1e50889b
+  hauler_ref: 127.0.0.1:5000/kubercloud/ratelimit:1e50889b
+  actual_digest: sha256:1a98dadfce8da0aab0c10bfcba0049c9aa17f22b89bc5d7fe51c552889c3fc35
+  use_location: Envoy Gateway rate limit deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/rook/ceph:v1.20.7
+  hauler_ref: 127.0.0.1:5000/rook/ceph:v1.20.7
+  actual_digest: sha256:2f970c4256179d56fa9f7867a634701f533103908c4e2ad43cf3954c1f7e33f9
+  use_location: Rook Ceph operator v1.20.7
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/ceph/ceph:v20.2.4
+  hauler_ref: 127.0.0.1:5000/ceph/ceph:v20.2.4
+  actual_digest: sha256:6bb1c8a42fbc0bf87938946990b65174466997bc11c31eb5a323225a779fd8f9
+  use_location: Ceph v20.2.4 daemon image (mon/osd/mgr/mds/rgw) and toolbox
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/cephcsi/ceph-csi-operator:v1.0.4
+  hauler_ref: 127.0.0.1:5000/cephcsi/ceph-csi-operator:v1.0.4
+  actual_digest: sha256:c62933fd4083635f969f8a61932af45dba9902d48867e2b5d98a69d8e4344eb6
+  use_location: ceph-csi-operator v1.0.4
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/cephcsi/cephcsi:v3.17.1
+  hauler_ref: 127.0.0.1:5000/cephcsi/cephcsi:v3.17.1
+  actual_digest: sha256:0b62db8afc9b174619186c87084a8952157daa719415c598603be22b63cc1293
+  use_location: Ceph CSI plugin v3.17.1 (rbd + cephfs)
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/csiaddons/k8s-sidecar:v0.14.0
+  hauler_ref: 127.0.0.1:5000/csiaddons/k8s-sidecar:v0.14.0
+  actual_digest: sha256:69092d026323307933fba2bed9c57d864f2a92cfd385d644b478442ded0d2886
+  use_location: CSI addons sidecar v0.14.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+  hauler_ref: 127.0.0.1:5000/sig-storage/csi-provisioner:v6.2.0
+  actual_digest: sha256:6be9f63ca4caa6c46aae55aa372500949d8a21473d72f819da1f746076b32d4e
+  use_location: CSI external-provisioner v6.2.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/sig-storage/csi-attacher:v4.12.0
+  hauler_ref: 127.0.0.1:5000/sig-storage/csi-attacher:v4.12.0
+  actual_digest: sha256:b9dc9a714a484ccdeeb6f86d88d4db9b7a5ecfc5a55da6db3a60bb3fa33c278a
+  use_location: CSI external-attacher v4.12.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+  hauler_ref: 127.0.0.1:5000/sig-storage/csi-resizer:v2.1.0
+  actual_digest: sha256:589e525cddef6d768e68da1f0bc9ffd0a24bf3add3dd010648eb7189976fde79
+  use_location: CSI external-resizer v2.1.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+  hauler_ref: 127.0.0.1:5000/sig-storage/csi-snapshotter:v8.5.0
+  actual_digest: sha256:da081c27e8a6d91f36042c1942362d0515ced8d06e18c11b8f893e58c4d6d797
+  use_location: CSI external-snapshotter v8.5.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.17.0
+  hauler_ref: 127.0.0.1:5000/sig-storage/csi-node-driver-registrar:v2.17.0
+  actual_digest: sha256:f9de845b170155199f2a2a3f9531cf13d78e31235e9db6b6582a8b0db0a50dad
+  use_location: CSI node-driver-registrar v2.17.0
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v0.2.2
+  hauler_ref: 127.0.0.1:5000/sig-storage/objectstorage-sidecar:v0.2.2
+  actual_digest: sha256:c7166a73a303c43c8c1dca3e81aacf2fa85e98b46bcab0b64249cde19fa67979
+  use_location: RGW object-storage sidecar v0.2.2 (Rook image set)
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/ceph/cosi:v0.1.4
+  hauler_ref: 127.0.0.1:5000/ceph/cosi:v0.1.4
+  actual_digest: sha256:8939634644dc270e8a9c3ae1e4dd5adb03973e9f31db649638c33828bfcefc0b
+  use_location: Ceph COSI driver v0.1.4 (Rook image set)
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/alpine/openssl:3.5.4
+  hauler_ref: 127.0.0.1:5000/alpine/openssl:3.5.4
+  actual_digest: sha256:b3a40181a3234df05d3702c48fd1c3690261b4d90b5ef418a2e84b9bf533ad37
+  use_location: cert-manager 证书链/SAN/有效期验证工具 Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/jetstack/cert-manager-controller:v1.21.2
+  hauler_ref: 127.0.0.1:5000/jetstack/cert-manager-controller:v1.21.2
+  actual_digest: sha256:57bb397c639e0e94184ba67848e5dad04284f24645e521e764a0ee5f5002f286
+  use_location: cert-manager v1.21.2 controller Deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/jetstack/cert-manager-webhook:v1.21.2
+  hauler_ref: 127.0.0.1:5000/jetstack/cert-manager-webhook:v1.21.2
+  actual_digest: sha256:b929259301ee75270ab4651d5e6bd4ba7b6624b1ce48ba767d064295a9312101
+  use_location: cert-manager v1.21.2 webhook Deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/jetstack/cert-manager-cainjector:v1.21.2
+  hauler_ref: 127.0.0.1:5000/jetstack/cert-manager-cainjector:v1.21.2
+  actual_digest: sha256:aa2bc58725d92a643f5069dde58abc93b65566ded8951348873ac9ee7efef66c
+  use_location: cert-manager v1.21.2 cainjector Deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/jetstack/cert-manager-startupapicheck:v1.21.2
+  hauler_ref: 127.0.0.1:5000/jetstack/cert-manager-startupapicheck:v1.21.2
+  actual_digest: sha256:ed347b0ab607058f139b83f41567109456b9776330b63da8086a120afb7f1729
+  use_location: cert-manager v1.21.2 startupapicheck 安装后 hook Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/jetstack/cert-manager-acmesolver:v1.21.2
+  hauler_ref: 127.0.0.1:5000/jetstack/cert-manager-acmesolver:v1.21.2
+  actual_digest: sha256:dc5c5b8456d1a50af47a240987e85afce352b5c1155a8a4698b7c91eac19f407
+  use_location: cert-manager controller --acme-http01-solver-image 默认引用（本轮不启用 ACME）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/library/postgres:17.11-bookworm
+  hauler_ref: 127.0.0.1:5000/library/postgres:17.11-bookworm
+  actual_digest: sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6
+  use_location: PostgreSQL 17.11 单实例 StatefulSet 与 psql 客户端 Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/valkey/valkey:8.1.10-alpine
+  hauler_ref: 127.0.0.1:5000/valkey/valkey:8.1.10-alpine
+  actual_digest: sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7
+  use_location: Valkey 8.1.10 单实例 StatefulSet 与 valkey-cli 客户端 Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/library/nats:2.14.6-alpine
+  hauler_ref: 127.0.0.1:5000/library/nats:2.14.6-alpine
+  actual_digest: sha256:065e8355c20a5575b3c77224be1855e8103fd148b68fba05130b9b8ddfa40ccc
+  use_location: NATS 2.14.6 单实例 StatefulSet（JetStream fileStore）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/natsio/nats-server-config-reloader:0.23.0
+  hauler_ref: 127.0.0.1:5000/natsio/nats-server-config-reloader:0.23.0
+  actual_digest: sha256:1418d42cea39ea729c1d34ca26ba33d967abdf040bad45ec1314c807bfacc56f
+  use_location: NATS server config reloader sidecar
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/natsio/nats-box:0.19.7
+  hauler_ref: 127.0.0.1:5000/natsio/nats-box:0.19.7
+  actual_digest: sha256:40c8442312af09e36818ea3500244ab5c18ce22fa2678885940e6a97f93f96ff
+  use_location: NATS CLI 一次性验证/持久化 Job（非常驻 natsBox）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/prometheus-operator/prometheus-operator:v0.90.1
+  hauler_ref: 127.0.0.1:5000/prometheus-operator/prometheus-operator:v0.90.1
+  actual_digest: sha256:c8aed26b2a0858b4beed8d6bc2215f7f6bdc6c96dd4de8e6e246c0a5b7a7876b
+  use_location: Prometheus Operator v0.90.1 Deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1
+  hauler_ref: 127.0.0.1:5000/prometheus-operator/prometheus-config-reloader:v0.90.1
+  actual_digest: sha256:af7715ef28e2cc413a6a850b5f928f185245dbb38359156eca3d5f1eb676b93f
+  use_location: Operator --prometheus-config-reloader 参数引用的 config reloader
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/prometheus/prometheus:v3.11.3-distroless
+  hauler_ref: 127.0.0.1:5000/prometheus/prometheus:v3.11.3-distroless
+  actual_digest: sha256:a1868e471c843677013c5fa2f569011e70d49b9e8f690719ea750b458840ec6d
+  use_location: Prometheus CR 镜像（Operator 二次生成工作负载）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/prometheus/alertmanager:v0.32.1
+  hauler_ref: 127.0.0.1:5000/prometheus/alertmanager:v0.32.1
+  actual_digest: sha256:82c38dcc97cd0fbf5d5e31ddfb304dbb3a6e411194477de5de82ec71b328bb40
+  use_location: Alertmanager CR 镜像（Operator 二次生成工作负载）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
+  hauler_ref: 127.0.0.1:5000/kube-state-metrics/kube-state-metrics:v2.19.0
+  actual_digest: sha256:ad11a45eb9a69fa88a62df4de0959eda21531fd3263c25341d9d9d4da7730930
+  use_location: kube-state-metrics 2.19.0 Deployment
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: quay.io/prometheus/node-exporter:v1.11.1-distroless
+  hauler_ref: 127.0.0.1:5000/prometheus/node-exporter:v1.11.1-distroless
+  actual_digest: sha256:19bafa75a9de0c9562adf4af595c99c5fe316bb94a297e611495f2dd2ed44a9c
+  use_location: node-exporter 1.11.1 distroless DaemonSet
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: ghcr.io/jkroepke/kube-webhook-certgen:1.8.3
+  hauler_ref: 127.0.0.1:5000/jkroepke/kube-webhook-certgen:1.8.3
+  actual_digest: sha256:44063cb072c85da7a0f33244b3054ab44b29a2b7416a319a90456bff21bebb18
+  use_location: admission Webhook create/patch hook Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/grafana/loki:3.7.8
+  hauler_ref: 127.0.0.1:5000/grafana/loki:3.7.8
+  actual_digest: sha256:81a6802ec4bd1b88c564494f06376889ed022998a188826190d26d2754ac2aae
+  use_location: Loki 3.7.8 单体 StatefulSet
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/opensearchproject/opensearch:3.8.0
+  hauler_ref: 127.0.0.1:5000/opensearchproject/opensearch:3.8.0
+  actual_digest: sha256:68a688de28fb9bb66601552650b91a52a9fd5e7eac5481dd2b225ecb66fd09b0
+  use_location: OpenSearch 3.8.0 单节点 StatefulSet 与 securityadmin 初始化 Job
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: cr.fluentbit.io/fluent/fluent-bit:5.1.2
+  hauler_ref: 127.0.0.1:5000/fluent/fluent-bit:5.1.2
+  actual_digest: sha256:71cda445290efc2d45d565c12e0de4b15aa0182510276ad50c317aae1423d7ee
+  use_location: Fluent Bit 5.1.2 DaemonSet 统一采集层
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/library/python:3.13.11-alpine3.23
+  hauler_ref: 127.0.0.1:5000/library/python:3.13.11-alpine3.23
+  actual_digest: sha256:0d8324e4e3453ec8586b886b95e8fc901689f936c413fdf6ae7d93a32a95956e
+  use_location: lab webhook 接收器/查询客户端/日志发射器（只跑标准库脚本）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/kubeovn/kube-ovn:v1.16.6
+  hauler_ref: 127.0.0.1:5000/kubeovn/kube-ovn:v1.16.6
+  actual_digest: sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2
+  use_location: v1.16.6 多合一镜像：ovn-central/ovs-ovn/kube-ovn-cni/kube-ovn-controller/kube-ovn-monitor/kube-ovn-pinger 及各自 initContainers（含
+    controller --image= 参数）
+- sourceFile: ani/images-kubeovn-full.tsv
+  original_ref: docker.io/kubeovn/vpc-nat-gateway:v1.16.6
+  hauler_ref: 127.0.0.1:5000/kubeovn/vpc-nat-gateway:v1.16.6
+  actual_digest: sha256:4f8f71b1ab5ee8b0dc2fa645539e997845bbfca7a06035afafada1847432064a
+  use_location: ConfigMap ovn-vpc-nat-config data.image（VPC NAT 网关按需启用时引用）
+sources:
+  S01:
+    title: Kubeflow 26.03 官方版本矩阵
+    url: https://www.kubeflow.org/docs/kubeflow-distribution/releases/kubeflow-26.03/
+  S02:
+    title: Kubeflow 26.03 固定发行源码
+    url: https://github.com/kubeflow/community-distribution/tree/26.03
+  S03:
+    title: Notebook Controller 1.10.0 默认资源
+    url: https://raw.githubusercontent.com/kubeflow/kubeflow/v1.10.0/components/notebook-controller/config/default/kustomization.yaml
+  S04:
+    title: Notebook Controller 1.10.0 USE_ISTIO 配置
+    url: https://raw.githubusercontent.com/kubeflow/kubeflow/v1.10.0/components/notebook-controller/config/manager/manager.yaml
+  S05:
+    title: Trainer 2.1.0 的 JobSet 固定依赖
+    url: https://raw.githubusercontent.com/kubeflow/trainer/v2.1.0/manifests/third-party/jobset/kustomization.yaml
+  S06:
+    title: KServe 0.16.0 资源配置与镜像
+    url: https://raw.githubusercontent.com/kserve/kserve/v0.16.0/charts/kserve-resources/values.yaml
+  S07:
+    title: Hub 0.3.7 README、成熟度与数据库后端
+    url: https://raw.githubusercontent.com/kubeflow/hub/v0.3.7/README.md
+  S08:
+    title: Hub 0.3.7 PostgreSQL 示例
+    url: https://raw.githubusercontent.com/kubeflow/hub/v0.3.7/docker-compose.yaml
+  S09:
+    title: KFP 2.16.0 独立部署依赖
+    url: https://raw.githubusercontent.com/kubeflow/pipelines/2.16.0/manifests/kustomize/env/platform-agnostic/kustomization.yaml
+  S10:
+    title: KFP 2.16.0 的 Argo 版本
+    url: https://raw.githubusercontent.com/kubeflow/pipelines/2.16.0/manifests/kustomize/third-party/argo/base/kustomization.yaml
+  S11:
+    title: KFP 2.16.0 的 MLMD 版本
+    url: https://raw.githubusercontent.com/kubeflow/pipelines/2.16.0/manifests/kustomize/base/metadata/base/metadata-grpc-deployment.yaml
+  S12:
+    title: KFP 2.16.0 的 MySQL 8.4 与认证配置
+    url: https://raw.githubusercontent.com/kubeflow/pipelines/2.16.0/manifests/kustomize/third-party/mysql/base/mysql-deployment.yaml
+  S13:
+    title: MySQL 8.4.11 官方发行记录
+    url: https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-11.html
+  S14:
+    title: KFP 官方安装模式与安全边界
+    url: https://www.kubeflow.org/docs/components/pipelines/operator-guides/installation/
+  S15:
+    title: Multus 官方发行记录
+    url: https://github.com/k8snetworkplumbingwg/multus-cni/releases
+  S16:
+    title: CNI plugins 1.9.0
+    url: https://raw.githubusercontent.com/containernetworking/plugins/v1.9.0/README.md
+  S17:
+    title: Kube-OVN 1.16.x LoadBalancer Service
+    url: https://kubeovn.github.io/docs/v1.16.x/en/guide/loadbalancer-service/
+  S18:
+    title: Kube-OVN 1.16.6
+    url: https://github.com/kubeovn/kube-ovn/releases/tag/v1.16.6
+  S19:
+    title: Metrics Server 官方发行记录
+    url: https://github.com/kubernetes-sigs/metrics-server/releases
+  S20:
+    title: CSI external-snapshotter 官方发行记录
+    url: https://github.com/kubernetes-csi/external-snapshotter/releases
+  S21:
+    title: Milvus 2.6.24
+    url: https://github.com/milvus-io/milvus/releases/tag/v2.6.24
+  S22:
+    title: Milvus Chart 5.0.25（原配应用 2.6.21）
+    url: https://raw.githubusercontent.com/zilliztech/milvus-helm/milvus-5.0.25/charts/milvus/Chart.yaml
+  S23:
+    title: Milvus Chart 5.0.25 配置
+    url: https://raw.githubusercontent.com/zilliztech/milvus-helm/milvus-5.0.25/charts/milvus/values.yaml
+  S24:
+    title: Milvus Chart 5.0.25 依赖 Chart
+    url: https://raw.githubusercontent.com/zilliztech/milvus-helm/milvus-5.0.25/charts/milvus/requirements.yaml
+  S25:
+    title: Milvus 2.6.24 消息存储模式
+    url: https://raw.githubusercontent.com/milvus-io/milvus/v2.6.24/configs/milvus.yaml
+  S26:
+    title: KubeVirt 官方版本与 Kubernetes 支持
+    url: https://kubevirt.io/user-guide/release_notes/
+  S27:
+    title: CDI 1.66.1
+    url: https://github.com/kubevirt/containerized-data-importer/releases/tag/v1.66.1
+  S28:
+    title: Volcano 1.15.2 兼容矩阵
+    url: https://raw.githubusercontent.com/volcano-sh/volcano/v1.15.2/README.md
+  S29:
+    title: Harbor Chart 1.19.2 / 应用 2.15.2
+    url: https://raw.githubusercontent.com/goharbor/harbor-helm/v1.19.2/Chart.yaml
+  S30:
+    title: Harbor 1.19.2 Chart 配置与完整镜像族
+    url: https://raw.githubusercontent.com/goharbor/harbor-helm/v1.19.2/values.yaml
+  S31:
+    title: Harbor 2.15.2 固定构建依赖
+    url: https://raw.githubusercontent.com/goharbor/harbor/v2.15.2/Makefile
+  S32:
+    title: Kata Containers 4.2.0
+    url: https://github.com/kata-containers/kata-containers/releases/tag/4.2.0
+  S33:
+    title: Kata 4.2.0 Chart 与可选 NFD
+    url: https://raw.githubusercontent.com/kata-containers/kata-containers/4.2.0/tools/packaging/kata-deploy/helm-chart/kata-deploy/Chart.yaml
+  S34:
+    title: NVIDIA GPU Operator 26.7 组件与平台支持
+    url: https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/26.7/platform-support.html
+  S35:
+    title: Volcano vGPU 插件兼容矩阵
+    url: https://raw.githubusercontent.com/Project-HAMi/volcano-vgpu-device-plugin/main/README.md
+  S36:
+    title: Volcano vGPU 官方静态清单（需另固化 commit）
+    url: https://raw.githubusercontent.com/Project-HAMi/volcano-vgpu-device-plugin/main/deployments/static/volcano-vgpu-device-plugin.yml
+  S37:
+    title: LWS 官方发行记录
+    url: https://github.com/kubernetes-sigs/lws/releases
+  S38:
+    title: vCluster 官方发行记录
+    url: https://github.com/loft-sh/vcluster/releases
+  S39:
+    title: Envoy Gateway 1.8.4 发行记录与配套版本
+    url: https://gateway.envoyproxy.io/news/releases/notes/v1.8.4/
+  S40:
+    title: Envoy AI Gateway 官方发行记录（重定向至 Agent Router）
+    url: https://github.com/envoyproxy/ai-gateway/releases
+  S41:
+    title: HAProxy 官方支持周期与发行版本
+    url: https://www.haproxy.org/
+  S42:
+    title: Kubernetes 1.35.8
+    url: https://github.com/kubernetes/kubernetes/releases/tag/v1.35.8
+  S43:
+    title: containerd 2.3.4
+    url: https://github.com/containerd/containerd/releases/tag/v2.3.4
+  S44:
+    title: runc 1.4.3
+    url: https://github.com/opencontainers/runc/releases/tag/v1.4.3
+  S45:
+    title: Rook 1.20.7 默认 CSI 组件
+    url: https://raw.githubusercontent.com/rook/rook/v1.20.7/deploy/examples/operator.yaml
+  S46:
+    title: cert-manager 1.21.2
+    url: https://github.com/cert-manager/cert-manager/releases/tag/v1.21.2
+  S47:
+    title: NATS Chart 2.14.6
+    url: https://raw.githubusercontent.com/nats-io/k8s/nats-2.14.6/helm/charts/nats/Chart.yaml
+  S48:
+    title: kube-prometheus-stack 85.4.0
+    url: https://raw.githubusercontent.com/prometheus-community/helm-charts/kube-prometheus-stack-85.4.0/charts/kube-prometheus-stack/Chart.yaml
+  S49:
+    title: Loki Chart 18.13.3
+    url: https://raw.githubusercontent.com/grafana-community/helm-charts/loki-18.13.3/charts/loki/Chart.yaml
+  S50:
+    title: Fluent Bit Chart 0.58.2
+    url: https://raw.githubusercontent.com/fluent/helm-charts/fluent-bit-0.58.2/charts/fluent-bit/Chart.yaml
+  S51:
+    title: PostgreSQL 17.11
+    url: https://www.postgresql.org/docs/17/release-17-11.html
+  S52:
+    title: Valkey 8.1.10
+    url: https://github.com/valkey-io/valkey/releases/tag/8.1.10
+  S53:
+    title: OpenSearch 官方 Helm Charts
+    url: https://github.com/opensearch-project/helm-charts
+  S54:
+    title: Jaeger 官方 Helm Chart 发行记录
+    url: https://github.com/jaegertracing/helm-charts/releases
+  S55:
+    title: Hauler 2.0.3
+    url: https://github.com/hauler-dev/hauler/releases/tag/v2.0.3
+  S56:
+    title: Helm 3.20.0
+    url: https://github.com/helm/helm/releases/tag/v3.20.0
+  S57:
+    title: Kubeflow Hub 名称说明
+    url: https://www.kubeflow.org/docs/components/hub/

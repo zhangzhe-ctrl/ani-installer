@@ -1,0 +1,32 @@
+# B04专项示例；不是可直接apply的成品。先替换全部REPLACE。
+# 只在专用测试namespace/测试PVC上执行；不要用业务PVC做验证。
+# VolumeSnapshotClass必须由B04按实际CSI driver/secret先创建。
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: ani-audit-snapshot
+  namespace: REPLACE_TEST_NAMESPACE
+  labels:
+    ani.example/test-run: REPLACE_RUN_ID
+spec:
+  volumeSnapshotClassName: REPLACE_VERIFIED_RBD_SNAPSHOT_CLASS
+  source:
+    persistentVolumeClaimName: REPLACE_TEST_SOURCE_PVC
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ani-audit-restored
+  namespace: REPLACE_TEST_NAMESPACE
+  labels:
+    ani.example/test-run: REPLACE_RUN_ID
+spec:
+  storageClassName: ani-block
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi  # 必须>=实际快照restoreSize；按测试源卷设定
+  dataSource:
+    name: ani-audit-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
