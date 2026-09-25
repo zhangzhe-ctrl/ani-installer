@@ -2493,19 +2493,22 @@ echo "REBUILD_RC=$?"
 		}
 	})
 
-	t.Run("control/HEAD recovery chain is detected", func(t *testing.T) {
+	t.Run("control/legacy recovery chain is detected", func(t *testing.T) {
 		// The discriminating control for this test: the pre-R02 script is
-		// materialised from git HEAD and driven with the same fake kubectl. It
-		// must show the repair behaviour (a second rebuild plus a kcn-system
-		// lookup) that the current script no longer performs.
-		head, err := exec.Command("git", "show", "HEAD:kubekey/builtin/core/roles/ani/metrics/templates/verify.sh").Output()
+		// materialised from the pinned blueprint commit (the last revision that
+		// still carries the repair behaviour) and driven with the same fake
+		// kubectl. It must show the repair behaviour (a second rebuild plus a
+		// kcn-system lookup) that the current script no longer performs.
+		// Pinned, not HEAD: once the fixed script is committed, HEAD no longer
+		// reproduces the old behaviour and the control would fail by design.
+		legacy, err := exec.Command("git", "show", "275827f17abeb0d84694d078d0bc2877307cf87e:kubekey/builtin/core/roles/ani/metrics/templates/verify.sh").Output()
 		if err != nil {
-			t.Skipf("git HEAD content unavailable: %v", err)
+			t.Skipf("pinned pre-R02 content unavailable (shallow clone?): %v", err)
 		}
 		// The pre-R02 file has no test seam, so only its helper definitions are
 		// taken (from `k5_pod_ready() {` up to the first body assignment). This
 		// is a control on the OLD text, not a copy of the current product test.
-		text := string(head)
+		text := string(legacy)
 		from := strings.Index(text, "k5_pod_ready() {")
 		to := strings.Index(text, "\nPROM_STS=")
 		if from < 0 || to < from {

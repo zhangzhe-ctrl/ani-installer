@@ -27,6 +27,10 @@ FAKE_ESXI_IP = "198.51.100.10"         # TEST-NET-2, never the ESXi host
 
 KUBEKEY = Path(__file__).resolve().parent.parent
 REPO = KUBEKEY.parent
+# The last revision whose run_on_node.sh still carries the pre-R01 defect.
+# Control fixtures must be pinned: once the fix lands in HEAD, "HEAD" stops
+# reproducing the old behaviour and the negative controls fail by design.
+LEGACY_REV = "275827f17abeb0d84694d078d0bc2877307cf87e"
 RUN_ON_NODE = REPO / "run_on_node.sh"
 RESTORE = REPO / "restore_esxi_snapshots.sh"
 BUILD_CODE = KUBEKEY / "scripts" / "build-code.sh"
@@ -374,18 +378,19 @@ def test_upload_failure_and_unique_paths(tmp: Path, res: Result) -> None:
 
 
 def test_negative_control(tmp: Path, res: Result) -> None:
-    """反向对照：旧版 run_on_node.sh（HEAD 中的版本）在上传失败后仍会执行残留脚本。
+    """反向对照：旧版 run_on_node.sh（钉死在 blueprint 提交的版本）在上传失败后仍会执行残留脚本。
 
     如果这一项不成立，说明本套测试缺乏鉴别力，其余用例的通过就不构成证据。
+    钉死而非 HEAD：收口提交把修复后的脚本带进 HEAD 后，HEAD 版不再复现旧缺陷。
     """
     print("CTRL 反向对照：旧版实现应被本套测试判定为有缺陷")
     base = tmp / "ctrl"
     base.mkdir(parents=True, exist_ok=True)
     legacy = base / "run_on_node.legacy.sh"
-    proc = subprocess.run(["git", "-C", str(REPO), "show", "HEAD:run_on_node.sh"],
+    proc = subprocess.run(["git", "-C", str(REPO), "show", f"{LEGACY_REV}:run_on_node.sh"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     if proc.returncode != 0:
-        res.failed.append("CTRL-R01: 无法取回 HEAD 版 run_on_node.sh")
+        res.failed.append("CTRL-R01: 无法取回 blueprint 提交版 run_on_node.sh（浅克隆？）")
         return
     legacy.write_text(proc.stdout, encoding="utf-8")
 

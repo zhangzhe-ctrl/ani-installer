@@ -37,6 +37,8 @@ import yaml
 
 KUBEKEY = Path(__file__).resolve().parent.parent
 ROLES = KUBEKEY / "builtin" / "core" / "roles" / "ani"
+# The last revision whose role tasks still carry the pre-R03 defect texts.
+LEGACY_REV = "275827f17abeb0d84694d078d0bc2877307cf87e"
 FAILURE_CODE = 42
 
 # External commands the ANI task blocks invoke. Each name gets the same
@@ -180,14 +182,19 @@ def role_task(role: str, name: str) -> str:
 
 
 def head_task(role: str, name: str) -> str:
-    """The pre-R03 text of a task, straight from git HEAD (control fixture)."""
+    """The pre-R03 text of a task, from the pinned blueprint commit (control fixture).
+
+    Pinned, not HEAD: once the R03 fixes are committed, HEAD no longer carries
+    the old task names/behaviour and the negative controls fail (or crash) by
+    design.
+    """
     rel = f"kubekey/builtin/core/roles/ani/{role}/tasks/main.yaml"
-    out = subprocess.run(["git", "-C", str(KUBEKEY.parent), "show", f"HEAD:{rel}"],
+    out = subprocess.run(["git", "-C", str(KUBEKEY.parent), "show", f"{LEGACY_REV}:{rel}"],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True).stdout
     for task in [t for t in yaml.safe_load(out) if isinstance(t, dict)]:
         if task.get("name") == name:
             return task["command"]
-    raise KeyError(f"HEAD {role}: {name}")
+    raise KeyError(f"pinned pre-R03 {role}: {name}")
 
 
 def commands_of(block: str) -> list[str]:

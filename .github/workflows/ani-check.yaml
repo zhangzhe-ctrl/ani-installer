@@ -55,6 +55,10 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+        with:
+          # The R02 control test materialises the pre-R02 script from a pinned
+          # historical commit; a shallow clone would not carry it.
+          fetch-depth: 0
 
       - name: Install the Go toolchain required by go.mod
         uses: actions/setup-go@v5
