@@ -123,7 +123,7 @@ tasks:
   dependsOn:
   - R02
   - R03
-  status: code_fixed_local_gate_pass_ci_not_run
+  status: code_fixed_local_gate_pass_ci_green
   selected: true
   stages:
     code: fixed
@@ -513,7 +513,7 @@ tasks:
   - ESXi 拒登根因结案（非锁、非节流）：ESXi root 口令与节点统一口令本就不同，早期重试全部是"正确口令配错账号"的合法拒绝；经用户人工核实并提供后按指示落盘 platform-20260918/access/esxi-password（0600 单文件，不复制），dry-run rc=0。密码整改仍记为用户决定本轮不整改。
   - r2 收官（选定组合 kcn+ubuntu24+amd64+site-a-r2）：首次 r2 尝试 490s 于 Repository 阶段败于 unattended-upgrades 持 dpkg 锁（新判据正确报 FAILED）；用户批准后 S4b 卫生化+重还原快照，run ani-ani-lab-20260925-120811 干净首装 1540s INSTALL_COMPLETED、公网URL命中=0（T-R16-01 pass）；smoke 606s 6 组件全过；PG/NATS 各一次计划内重建持久化实读通过；valkey 计划内新增底座不变（T-R16-02）、有界拒绝零写（T-R16-03）；loki live pass、opensearch 本地 pass+live not_verified（T-R16-04）。九阶段耗时见 r16-timing-table.md，终版交接见 task-result-r2-final.yaml（overall pass_selected_combination）。仅对该组合签发，其余组合差异见 r16-support-matrix.md。
   - 收口配置指纹澄清：实机验收/签发的 base 配置=site-a-r2 digest 67969228…（Valkey off）；003b0da3… 是 r1 含 Valkey 的 site-A，attempt-r2 中仅作 T-R16-02 计划内新增 target。原始证据不入库（仓外目录），但耗时表/支持矩阵/终版 task-result 三份已随推送公开于 docs/execution/evidence/R16-20260925/，公开读者可复核签发输入。
-  - 收口边界声明：R04 的 GitHub CI 首跑由本推送触发、推送后确认；R06–R14 的 live_pending 专项（SSH 断连实机、registry 冷启动、非默认 CIDR/引号变体实机、外部 SC 实机、kubeovn 全链、opensearch 实机）不因 R16 收口而闭合。范围外登记补全（与 status-decision 对齐）：run-state phase 成功轮停留 registry_content_verified；components execute 的 --kk 默认依赖 PATH（建议 os.Args[0] 兜底）。
+  - 收口边界声明：R04 的 GitHub CI 由本推送首跑并闭环（首跑红=对照时间炸弹，修复 a6c09ff 后二跑绿），详见 status-decision.md 收口段；R06–R14 的 live_pending 专项（SSH 断连实机、registry 冷启动、非默认 CIDR/引号变体实机、外部 SC 实机、kubeovn 全链、opensearch 实机）不因 R16 收口而闭合。范围外登记补全（与 status-decision 对齐）：run-state phase 成功轮停留 registry_content_verified；components execute 的 --kk 默认依赖 PATH（建议 os.Args[0] 兜底）。
 - id: B00
   title: 冻结既有底座和基础服务，不顺手升级
   dependsOn:
