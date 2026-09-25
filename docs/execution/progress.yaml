@@ -1,0 +1,650 @@
+apiVersion: ani.execution/v1alpha1
+kind: ExecutionProgress
+metadata:
+  revision: r1
+  createdAt: '2026-09-24'
+  note: >-
+    由 templates/progress.yaml 派生。R00 已按实际结果填写；其余未执行任务保持 not_started。
+    R00 只做只读校准与文档记录：未编译、未安装、未制包、未还原快照、未连接目标集群。
+    源码基线 2026-09-24 冻结：HEAD 275827f17abeb0d84694d078d0bc2877307cf87e，
+    treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
+  updatedAt: '2026-09-24'
+tasks:
+- id: R00
+  title: 冻结工作树、校准旧文档和执行环境
+  dependsOn: []
+  status: completed_local_calibration
+  selected: true
+  stages:
+    code: not_changed
+    materials: material_pending
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/source-baseline.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/fedora-ssh-probe.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/fedora-local-probe.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/kcn-material-check.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/haproxy-kubevip-usage.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/suspended-items-rulecheck.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R00-20260924/task-result.yaml
+  notes:
+  - ssh fedora 认证失败（exit 255），Fedora 远程核对未在本轮完成，工具/目录信息来自本机直读。
+  - kcn fix2 归档存在且文件摘要与既有报告一致；构造型 manifest 摘要未重算，实机安装未验证。
+  - HAProxy/kube-vip 仍在镜像清单，ANI 路径因 control_plane_endpoint.type=local 不执行；不启用、不升级。
+  - status: completed_local_calibration 仅表示本卡只读校准与文档记录完成，不代表任何产品整改落地。
+- id: R01
+  title: 移除明文凭据，修正实验凭据使用方式
+  dependsOn:
+  - R00
+  status: run_on_node_fixed_password_left_asis_by_user_decision
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    credentialRotation: user_decision_not_rotating
+    releaseArtifactScan: not_verified
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R01-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R01-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R01-20260924/test-run.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R01-20260924/test-run-final.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R01-20260924/task-result.yaml
+  notes:
+  - 最终实测 39/39 用例通过、exit 0，连跑三轮结果一致（含对 HEAD 旧实现的反向对照）；入口 kubekey/scripts/test-lab-credentials.py。
+  - 指纹不在仓内记录（避免文档自身改动与指纹互相引用）：以仓库外 R01 证据的 source-before.json / source-after.json 为准；fileCount 1110 -> 1112，仅预期的 2 新增 + 7 修改。
+  - 用户决定（2026-09-24）：本轮不轮换密码、不改账号、不强制改造凭据存放，密码专项不再阻塞后续任务；凭据相关改动不得标为已修复。
+  - 本卡保留的有效范围仅为 run_on_node 的上传/执行正确性（上传失败不执行旧 payload、唯一路径、参数与退出码正确、隔离 mock 测试）。
+  - 仓库外副本 /home/chabking/ani-ops/restore_esxi_snapshots.sh 仍含内置默认口令与明文注释，未修改（本轮不处理外部副本）；首选人工处理项另含仓内位置 docs/ani-installer-platform-iteration-execution-plan.md:68 的节点统一口令明文（属 HEAD 既有）。两处均登记为人工跟进，非本卡整改。
+  - R01 整改范围澄清：仓库内 restore_esxi_snapshots.sh 已删除内置 ESXi 明文默认值，改为 ESXI_PASS / ESXI_PASS_FILE 必填、0600 权限校验、缺凭据即退出码 67；本卡不轮换凭据本身。
+  - 发布体检只在 fixture 层验证（check-only 模式）；真实 code release / artifact 未在本卡生成，因此 not_verified。
+  - status code_fixed_tests_pass_rotation_pending 不得被简写成 R01 完成。
+- id: R02
+  title: 删除网络故障绕过，首错后停止变更
+  dependsOn:
+  - R00
+  status: code_fixed_local_tests_pass
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R02-20260924/target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R02-20260924/full-suite.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R02-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R02-20260924/task-result.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R02-20260924/preexisting-opensearch-failure.txt
+  notes:
+  - 目标测试 7/7 子测试通过、exit 0（含对 HEAD 旧实现的反向对照：旧实现访问 kcn-system 且重建两次）。
+  - 删除代理重启/重复重建/再入恢复；组件循环首错即停、后续记 not_run、退出码取首个失败。
+  - 回归 go test ./pkg/ani/... 仅剩 1 个既有基线失败（opensearch https:// 断言），文件本卡未触碰、内容等于 HEAD。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行（本卡不连接集群，不制包）。
+- id: R03
+  title: 保证多命令 task 错误传播
+  dependsOn:
+  - R00
+  status: code_fixed_local_tests_pass
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R03-20260924/r03-task-error-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R03-20260924/full-suite.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R03-20260924/build.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R03-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R03-20260924/task-result.yaml
+  notes:
+  - 测试脚本 scripts/test-ani-task-errors.py：77 项断言通过、exit 0，行为覆盖 58 个多命令块（含两条反向对照）。
+  - Ceph 的三次 apply 拆成三个 task；其余多命令块补 set -euo pipefail；单行管道块（create|apply）一并改为严格块。
+  - 命令替换用于 for 列表的 ceph storageclass 块改为显式判空，不再静默跳过整个循环。
+  - go build ./... 通过；go test ./pkg/ani/... 仅剩 1 个既有基线失败（opensearch https://），与本卡无关。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行（本卡不连接集群、不制包）。
+- id: R04
+  title: 建立唯一代码门禁和根级 CI
+  dependsOn:
+  - R02
+  - R03
+  status: code_fixed_local_gate_pass_ci_not_run
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R04-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R04-20260924/r04-gate-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R04-20260924/build.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R04-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R04-20260924/task-result.yaml
+  notes:
+  - 唯一门禁 kubekey/scripts/check-code.sh：CI 与 build-code.sh 调同一入口；本地整跑通过（R01 39 + R03 77 + R04 20 用例）。
+  - build-code.sh 在门禁前/后/构建后/封装后校验同一源码树指纹，任一变化即拒绝发布；输出目录在门禁通过前不创建。
+  - 既有失败 TestOpenSearchRoleIsWiredAndOffline 经收紧断言精度解决（仍禁止 helm repo/pull 与字面外链，注入测试证明有效）。
+  - 外部 CI 未接通：只有本地证据，不得写成 CI 已通过。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行。
+- id: R05
+  title: Ceph 显式启用、磁盘授权和默认类保护
+  dependsOn:
+  - R04
+  status: code_fixed_local_tests_pass_live_not_run
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R05-20260924/r05-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R05-20260924/r05-storage-safety.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R05-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R05-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R05-20260924/task-result.yaml
+  notes:
+  - 存储改为显式声明：profile=full 不再隐含 Ceph；playbook 两个 role 由 .ani.storage.enabled/provider 守卫。
+  - CephCluster 改为 useAllNodes/useAllDevices=false + 逐节点设备白名单；删除 ^sdb$ 扫描授权。
+  - 新增只读空盘预检（身份/整盘/父子链/挂载/签名/LVM/重复），在 Rook 拿到磁盘前按节点运行，且不格式化不清理。
+  - 默认类策略按 makeDefaultStorageClass 执行：false 不动任何标记；true 且已有其它默认类则失败并指名冲突。
+  - 目标测试 4/4（含真实上下文渲染 when 条件）；离线存储安全套件 34/34；唯一门禁 check-code 全绿 exit 0。
+  - 待人工：填写 config/examples 中的 /dev/disk/by-id 真实设备；多节点 delegate_to 下发与 T-R05-05 实机项均 not_run。
+- id: R06
+  title: 统一配置解释，新增只读 validate/run 输入
+  dependsOn:
+  - R04
+  status: code_fixed_local_tests_pass_materials_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R06-20260924/r06-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R06-20260924/cli-end-to-end.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R06-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R06-20260924/source-before.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R06-20260924/task-result.yaml
+  notes:
+  - 严格解析补齐：未知字段（原有）/重复键/第二个 YAML 文档/IPv4-only/installerNode==nodes[0]/profile=base 且启用组件即拒绝。
+  - 新增 pkg/ani/run_manifest.go 与 kk ani validate --config --package-root --output（只校验配置；materialsValidated=false，材料分支是 R07）。
+  - run.json/verify-facts.env 无秘密；configDigest 对规范化脱敏结构计算（注释/引号/键顺序等价同摘要）。
+  - scripts/verify.sh 删除全部 awk 读 YAML，改为 source kk ani validate 产出的 verify-facts.env；中间限制已写明。
+  - 目标测试 6/6；唯一门禁 check-code exit 0（含全部既有套件）。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行。
+- id: R07
+  title: 让批准的材料锁约束真实内容
+  dependsOn:
+  - R06
+  status: subtasks_done_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: partial
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R07.1-20260924/r071-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R07.2-20260924/r072-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R07.2-20260924/build-material-suite.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R07.2-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R07.2-20260924/task-result.yaml
+  notes:
+  - R07.1 完成（锁解析与纯函数校验）：materials.go 解析 components.lock.yaml（24 镜像/6 chart/1 工具/5 排除记录），sha256 格式/冲突/完整性校验，VerifyFileMaterial 与 VerifyImageDigests。
+  - R07.2 完成（制包接入）：build-offline.sh helm/ISO/chart 全部对照锁或源侧证据校验，Chart 按锁精确枚举（未知/损坏/缺失即失败），复制实际 CONFIG 并写 materials-source.txt；端到端套件 13/13（含 T-R07-05 重算 SHA256SUMS 无效与 T-R07-06 CONFIG 一致）。
+  - R07.3 完成（安装预检与 registry 实际内容比对）：verifyRegistryImages 重写为 served digest/manifest 类型/config+layer blob 存在性对照锁校验；注入镜像不得以 index 形式提供；非锁镜像保留 presence-only 基线并记录 served digest。httptest 隔离 registry 测试 4 个函数全过（T-R07-02/03/04 实际内容比对）。
+  - 目标测试 12/12 函数；唯一门禁 check-code exit 0（R01 39 + R03 73 + R05 34 + R07.2 13 + R04 20 套件全绿）。
+  - 剩余：真实集群上的端到端验证归 R16（安装预检届时实际执行）；R07 三个子卡本卡全部落地，代码完成。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行。
+- id: R08
+  title: 按启用项校验完整镜像集合和真实渲染
+  dependsOn:
+  - R07
+  status: code_fixed_local_tests_pass
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R08-20260924/r08-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R08-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R08-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R08-20260924/task-result.yaml
+  notes:
+  - 镜像键补齐为真实声明（CNI 二选一、五类组件镜像、验证工具），componentImageKeysForRun 按 stack/后端/开关裁剪；未选后端不再要求其镜像。
+  - 新增 kk ani render（生产 FuncMap + KubeKeyConfig/KubeKeyInventory 合并上下文，只渲染启用角色）与语义检查（<no value>/{{/REPLACE_/空镜像/heredoc YAML/GVK 重复），无 live API。
+  - 目标测试 6/6 函数；唯一门禁 check-code exit 0（全部既有套件全绿）。
+  - 安装时 bin/helm 校验属 runner.go（不在本卡范围）；helm template 结果归 R16 实机渲染验收。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行。
+- id: R09
+  title: 预检前移、运行状态和互斥
+  dependsOn:
+  - R05
+  - R08
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R09-20260924/r09-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R09-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R09-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R09-20260924/task-result.yaml
+  notes:
+  - 预检前移：config/摘要/材料/端口/unit/磁盘空间全部在第一写之前；失败写新报告（changesStarted=false）。
+  - flock 单写者 + 原子状态文件（run-id/源树指纹/锁摘要/目标节点/阶段逐级更新，失败停在最后完成阶段）；lab/experiment-lock.sh 实验锁入口交付。
+  - 目标测试 6/6 函数（T-R09-01..04 + lab 入口）；唯一门禁 check-code exit 0（全部既有套件全绿）。
+  - kk ani validate 补 validation.json 输出（卡片人工命令端到端验证通过）。
+  - liveSmoke/persistence/cleanOffline/aniIntegration 未执行。
+- id: R10
+  title: 修复 Kube-OVN CIDR/网关和地址校验
+  dependsOn:
+  - R06
+  - R08
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R10-20260924/r10-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R10-20260924/render-cli.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R10-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R10-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R10-20260924/task-result.yaml
+  notes:
+  - network.kubeovn{defaultGateway,joinCIDR} 落地；net/netip 严格契约（canonical IPv4、≤/30、两两不重叠、节点 IP 不落三段、网关须在 Pod 网内）。
+  - 模板 7904/7917 去硬编码（--default-gateway/--node-switch-cidr 改 .ani.network.kubeovn.*）；空网关按 Pod 网段派生首个可用地址。
+  - T-R10-01..03 全绿（TestKubeOVNGateway/TestNetworkCIDROverlap/TestIPv4Only 等，22 子用例）；kk ani render CLI 实测 10.244.0.0/16→10.244.0.1；唯一门禁 exit 0。
+  - loadBalancer/multus 字段严格解码拒绝（B01 范围）；kubeovn 渲染零 Envoy 文件。
+  - T-R10-04 真实非默认 CIDR 网络验收属 R11，not_run。
+- id: R11
+  title: 两种主 CNI 都做真实网络验证
+  dependsOn:
+  - R02
+  - R10
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R11-20260924/r11-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R11-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R11-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R11-20260924/task-result.yaml
+  notes:
+  - 通用网络探测独立为 smoke/templates/network-probe.sh（run 专用 namespace、跨节点 server/client、本地锁镜像、PodIP/ClusterIP/DNS + token body 断言、按对输出、失败留证不清理、成功按 run 精准清理）。
+  - probe.sh 收窄为 kcn 专属 Envoy 检查；verify.sh lib 增 ani_run_network_checks（kcn=网络+Envoy、kubeovn=仅网络、未知 stack 拒绝）；kubeovn 不再未测打印 ANI-NETWORK-OK。
+  - T-R11-01..04 全绿（TestNetworkProbe 12 子用例含 HTTP 级 6 负向 + TestKubeOVNDoesNotUseKCNEnvoy 3 子用例）；唯一门禁 exit 0。
+  - kk ani verify --only network 属 R13 后命令，not_run；实机网络验收（含 T-R10-04 遗留）属 live 轮次。
+- id: R12
+  title: 让 SSH/API 等待真正响应超时和取消
+  dependsOn:
+  - R04
+  - R09
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/r12-ssh-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/r12-ssh-race.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/r12-stage-deadline.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R12-20260924/task-result.yaml
+  notes:
+  - ExecuteCommand 使用 ctx：stdout 读取与 Wait 双取消点，取消只关本命令 session（共享 client 不动），新增 RemoteStateUnknownError（远端效果未知、禁止自动重放）。
+  - fake SSH server（127.0.0.1）覆盖永不退出/部分行+密码/远端成功无 EOF/正常退出/stderr/取消竞态；-race 干净；goroutine 稳定不累积。
+  - checker 等待入口限时：verify.sh KUBECTL --request-timeout=300s、curl connect/max 超时 + registry 阶段独立 deadline（ani_verify_registry）；network-probe/probe request-timeout=60s；ceph/fluent-bit verify 的 delete --wait=true 补 --timeout。
+  - T-R12-01..04 全绿；实机 SSH 断连专项 not_verified（live 轮次）。
+- id: R13
+  title: 分离安装探测、smoke 和专项 acceptance
+  dependsOn:
+  - R02
+  - R06
+  - R11
+  - R12
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R13-20260924/r13-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R13-20260924/cli-end-to-end.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R13-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R13-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R13-20260924/task-result.yaml
+  notes:
+  - 新增 pkg/ani/verify.go 分发器 + `kk ani verify`（--run/--state/--level/--only/--allow-pod-recreate/--script-dir/--kubeconfig/--output）；按 run.json 读组件/scope/身份，不解析 site YAML。
+  - smoke 只读（零 kubectl 调用、首错即停 not_run）；acceptance 需 --allow-pod-recreate，每目标一次计划内重建，UID/PVC UID/数据标记全记录，PVC 被换或数据丢失即 fail。
+  - 验收结果每 run 唯一（重跑拒绝）；首败后其余变更检查 not_run；安装记录与验收报告互不覆盖。
+  - verify.sh 组件段委托给新入口（selection 守卫保留）；role tasks/verify 脚本零改动（分层审计见 status-decision）。
+  - T-R13-01..05 全绿 + CLI 端到端（拒绝/重跑拒绝/smoke）；实机验收属 live 轮次。
+- id: R14
+  title: 固定自举 registry 生命周期和冷拉验证
+  dependsOn:
+  - R07
+  - R09
+  status: code_fixed_local_tests_pass_live_pending
+  selected: true
+  stages:
+    code: fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: not_run
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R14-20260924/r14-lifecycle-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R14-20260924/r14-registry-digest-regression.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R14-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R14-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R14-20260924/task-result.yaml
+  notes:
+  - 首装 systemctl 序列补 enable（daemon-reload→enable→restart，提取 startRegistryService）；unit 由本 run 新写（已存在即拒绝），enable 永不接管同名外部服务。
+  - writeRegistryService 拒绝 /tmp、/var/tmp、/run、/dev/shm 下的 hauler/store/registry-data/work 路径（重启后必须仍在）。
+  - 新增 InspectRegistryLifecycle 只读巡检（is-enabled/is-active/show，永不变更服务）；coldStart=not_verified，仅手工重启实验的证据文件可置 verified——is-enabled 不能替代冷启动证明。
+  - verify.sh registry 只读核对补 is-enabled；T-R14-01..04 全绿（T-R14-02 的冷拉证据属 live，not_verified）。
+  - 网络边界与非生产 HA 定位成文（RegistryNetworkBoundary/RegistryOwnershipNote）；Harbor 交接独立计划，无任何隐式停/删原服务。
+- id: R15
+  title: 最小新增组件入口，不重装底座
+  dependsOn:
+  - R05
+  - R08
+  - R09
+  - R13
+  - R14
+  status: r15_3_pass_defects567_fixed
+  selected: true
+  stages:
+    code: r15_1_2_fixed_project_resolution_fixed
+    materials: not_applicable
+    localTests: pass
+    liveSmoke: pass_r15_3_nats_smoke
+    persistence: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.1-20260924/r15-target-tests.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.1-20260924/cli-end-to-end.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.1-20260924/check-code-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.1-20260924/source-after.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.1-20260924/task-result.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.3-nats-20260925/task-result.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.3-nats-20260925/plan/output/components-plan-ani-components-ani-lab-20260925-105643.json
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.3-nats-20260925/components-execute-failure-log.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R15.3-nats-20260925/post-failure-base-unchanged.log
+  notes:
+  - R15.1 交付：pkg/ani/components_install.go 计划分发器 + `kk ani components install`（--only 必填/未知/暂缓/未 enabled 拒绝；闭包含 opensearch→fluent-bit；存储门拒绝不自动部署 Ceph；底座不变量逐项比对、新旧 digest 分记；helm release 所有权探测（同版本 already_installed 不升级、外部版本拒绝、manifest 对象存在即拒绝）；registry 镜像在位核验；输出计划 JSON + 新 run.json）。
+  - fake connector 证明计划轨迹零 mutating kubectl 动词、不触碰 create_cluster/CNI/Ceph/Envoy；新 run.json 可直接接 `kk ani verify --level smoke`。
+  - T-R15-01/02/03/05 全绿（10 子用例）；T-R15-04 实机案例属 R15.3，not_run。
+  - R15.2 交付：独立 playbook ani_components.yaml（仅 8 个组件 role，全部 scope 门控，零 create_cluster/CNI/Ceph 引用）+ `kk ani components execute`（digest 复核、already_installed 只读不执行、新 run 独立 runtime root 与 connections.md、失败保留日志不清理）；mock NATS 执行与 CLI plan→execute 端到端全过。
+  - 正常首装推进（第二轮）：访问/锁/ESXi恢复/断网隔离/制包(4.3G含NATS材料)/传输/SHA 全部成功；首装推进到 node1 离线 apt 后被第四个缺陷阻塞（artifact tarball 缺 repository ISO 分发声明 → apt 回落公网源 → 隔离下 DNS 失败）。
+  - 已修复代码缺陷2个：createRuntimeRoot 与状态写入顺序（首装必现失败）、设备跨节点去重误拒 /dev/sdb×3（蓝图§6.2 允许）；均门禁绿。
+  - 待修缺陷2个：build-offline chart 布局未按 lock artifactChartPath（已现场手工绕过）；artifact tarball 缺 repository ISO 分发声明（当前阻塞点）。
+  - ✅ 正常首装成功（2026-09-25 07:54 CST）：557 tasks 全过；3 节点 Ready v1.35.8；StorageClass ani-block(default)+ani-cephfs（NATS 持久化就绪）；registry enabled+active；安装器已生成 run.json/validation.json/verify-facts.env（node1:~/fi/run-record/，已取回证据目录）。
+  - 修复的 4 个代码缺陷均门禁绿；R15.3 新增 NATS 前置全部就绪（健康底座+run.json+ani-block+含 NATS 材料的 artifact）。
+  - R15.3 live 第五轮（2026-09-25）：前置只读核对全过；plan 成功 rc=0（run=ani-components-ani-lab-20260925-105643，base/new 摘要分记、不变量一致、仅 nats planned）。execute 实机失败 rc=1：kk run 只按本地目录解析 playbook，code release 不含 builtin/ → cannot find playbook ~/fi/code/builtin/core/playbooks/ani_components.yaml（playbook total=0，零集群变更，失败后复核底座不变）。属代码/打包缺陷（R15.2 预告核对项），live 规则禁止验收途中改代码 → 下一轮 code 修复（内嵌项目 annotation 或 release 随包 builtin+显式 --project-addr），随后重跑 execute+smoke。用户要求在安全暂停点转 T05（经确认系误发）；实验锁已释放、node1 现场保留。
+  - R15.3 第六轮闭环（2026-09-25）：项目解析缺陷经 code 轮修复（内嵌 builtin 物化+显式 --project-addr；untagged 11/11、tagged 物化 7/7、check-code 绿 tree 963da855、build-code 同指纹出 ani-code-20260925-111818）；重传后同 plan 重跑 execute：playbook 128/128，NATS STS 1/1、PVC nats-js-nats-0 Bound 5Gi(ani-block)；kk ani verify smoke --only nats rc=0（stream/PubAcks/consumed/pending/错误token拒绝真实断言，digest=913d85c2=plan 新摘要）；底座不变复核 pass（10 ns UID 逐项一致、base run.json sha 不变、connections.md 未动、nats.md 仅新增）。**缺陷6（未修，属 R15.2 交付层）**：role 连接片段路径硬编码底座运行根、与执行器读取路径不一致 → execute 报告与该 run connections.md 未产出；下一 code 轮修复后轻量 live 复确认，R15 因此不 done。证据：evidence/R15.3-nats-20260925/{task-result.yaml,r153-execute2-playbook-headtail.log,r153-smoke-report.json,r153-base-unchanged-post.log,r153-codefix-check-code.log}。
+  - 缺陷6/7 关闭轮（2026-09-25，code+轻量 live）：执行器改按 role 契约读规范运行根片段、connections.md 仍写本 run（fake kk 契约保真升级，先红后绿，红样=node1 原报错）；缺陷7=helm release secret 双层 base64 解码（node1 重规划暴露，夹具按真实编码重建）；runtimeBaseDir 改 var 供测试隔离。门禁绿 tree 3fca769b、release ani-code-20260925-123938、node1 重传 code-sha-OK。实机复确认：重规划 rc=0 nats=already_installed（真实解码通过）、execute 拒绝 nothing-to-execute 零调用、smoke 复跑 rc=0、底座 11 ns UID/run.json/registry/connections.md 全不变。报告端到端自然产出留待 R16/B 批首个 planned-addition（不删装重放属边界）。证据：r153-defect67-{check-code,build-code,code-sync}.log、r153-defect6-replan.log、r153-defect6-execute-refuse.log、r153-defect6-smoke2.log、r153-defect6-base-unchanged2.log（同证据目录）。
+- id: R16
+  title: 整改收官：真实离线验收与耗时记录
+  dependsOn:
+  - R01
+  - R02
+  - R03
+  - R04
+  - R05
+  - R06
+  - R07
+  - R08
+  - R09
+  - R10
+  - R11
+  - R12
+  - R13
+  - R14
+  - R15
+  status: pass_selected_combination_kcn
+  selected: true
+  stages:
+    code: not_applicable
+    materials: pass_rebuilt
+    localTests: pass
+    liveSmoke: pass
+    persistence: pass
+    cleanOffline: pass_selected_combination
+    aniIntegration: pass_planned_addition
+  evidence:
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/task-result.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-frozen-gate.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-esxi-dry-run.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-esxi-restore.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-isolation-verify.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/postgres-upstream-verification.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-install-console-r2-attempt-fail-dpkg.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-install-console-r2.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/haul-surgery-16-pgcheck.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-build-fixed-artifact.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-fixed-artifact-verify.log
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-material-fixed-ids.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-esxi-auth-failure-notes.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/task-result-r2.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-step5-local-verification.txt
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-support-matrix.md
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/task-result-r2-final.yaml
+  - /home/chabking/workspace/ani-installer-work/evidence/R16-20260925/r16-timing-table.md
+  - docs/execution/evidence/R16-20260925/task-result-r2-final.yaml
+  - docs/execution/evidence/R16-20260925/r16-timing-table.md
+  - docs/execution/evidence/R16-20260925/r16-support-matrix.md
+  notes:
+  - step3 支持矩阵与 step5 局部验证已完成（离线）：quoted-strings 中性（digest 不变）+ 带引号数字/布尔被类型严格拒绝；非默认 Pod CIDR/外部 SC（ceph off）validate rc=0；观察项：v2b podCIDR=encap 重叠离线未拒（范围外登记，live 未验）。见 r16-step5-local-verification.txt。
+  - 物料轮已闭合（attempt-r2 前置）：以 9/18 原始 B2 OCI 布局（extracted-b2，postgres:17.11-bookworm→7bade6d5 逐字节一致）为可信源，经 skopeo dir 传输+临时 registry 保真推送，绕开 hauler v1 摘要源 rewrite 缺陷（haul-surgery-6 记录其失败签名）；新 haul a9017e42（本地 serve 实测 tag→7bade6d5=锁 amd64 摘要）；build-offline 以冻结输入重建 artifact r16fixed-20260925-132455 rc=0、SHA256SUMS 19 项全对。
+  - r2 首装驱动就绪（r16-p2-rerun.sh：锁→ESXi 白名单重验→快照还原→SSH→隔离复核→净位断言→传输新 artifact→计时安装）。当前被 ESXi 侧节流挡住：同一凭据 12:52-12:54 登录成功、13:30 起 keyboard-interactive 被拒（凭据值经节点1登录实证未变；主机 HTTPS 200）。已停止盲试，静默 ≥26 分钟后仅做一次 dry-run 重试；若仍拒→blocker 交接（人工核查 ESXi root faillock，不属于本轮密码整改）。
+  - P0/P1 全过（冻结门禁 tree 3fca769b；ESXi 本轮实测 vmid5/6/7 快照1 恢复 3/3；隔离公网 rc=28/DNS-FAIL、MGMT-OK）；P2 首装 T0=05:01:21Z 于 registry 内容校验失败：postgres 服务摘要 91eb910c… ≠ 批准 7bade6d5…（merged haul 的 tag 漂移副本），其余全部镜像逐摘要匹配——校验器正确拦截，phase=install_failed，kubeadm 未执行。
+  - 批准 manifest/index 经 skopeo 实证仍可按 digest 从 upstream 寻址 → 修复=物料轮（按批准 digest 重拉 postgres、重建 haul+artifact），完成后以 ANI_ACK_PREVIOUS_RUN=ani-ani-lab-20260925-050121 重跑首装；现场保留（隔离态、registry 单元已写、未装 k8s），实验锁已释放。
+  - 另有范围外新缺陷已登记未动：缺陷8（kk ani render 的 heredoc 豁免清单未覆盖 metrics verify 的内嵌 PY 约定，启用 metrics 站点 render rc=1；安装路径不依赖 render）。
+  - ESXi 拒登根因结案（非锁、非节流）：ESXi root 口令与节点统一口令本就不同，早期重试全部是"正确口令配错账号"的合法拒绝；经用户人工核实并提供后按指示落盘 platform-20260918/access/esxi-password（0600 单文件，不复制），dry-run rc=0。密码整改仍记为用户决定本轮不整改。
+  - r2 收官（选定组合 kcn+ubuntu24+amd64+site-a-r2）：首次 r2 尝试 490s 于 Repository 阶段败于 unattended-upgrades 持 dpkg 锁（新判据正确报 FAILED）；用户批准后 S4b 卫生化+重还原快照，run ani-ani-lab-20260925-120811 干净首装 1540s INSTALL_COMPLETED、公网URL命中=0（T-R16-01 pass）；smoke 606s 6 组件全过；PG/NATS 各一次计划内重建持久化实读通过；valkey 计划内新增底座不变（T-R16-02）、有界拒绝零写（T-R16-03）；loki live pass、opensearch 本地 pass+live not_verified（T-R16-04）。九阶段耗时见 r16-timing-table.md，终版交接见 task-result-r2-final.yaml（overall pass_selected_combination）。仅对该组合签发，其余组合差异见 r16-support-matrix.md。
+  - 收口配置指纹澄清：实机验收/签发的 base 配置=site-a-r2 digest 67969228…（Valkey off）；003b0da3… 是 r1 含 Valkey 的 site-A，attempt-r2 中仅作 T-R16-02 计划内新增 target。原始证据不入库（仓外目录），但耗时表/支持矩阵/终版 task-result 三份已随推送公开于 docs/execution/evidence/R16-20260925/，公开读者可复核签发输入。
+  - 收口边界声明：R04 的 GitHub CI 首跑由本推送触发、推送后确认；R06–R14 的 live_pending 专项（SSH 断连实机、registry 冷启动、非默认 CIDR/引号变体实机、外部 SC 实机、kubeovn 全链、opensearch 实机）不因 R16 收口而闭合。范围外登记补全（与 status-decision 对齐）：run-state phase 成功轮停留 registry_content_verified；components execute 的 --kk 默认依赖 PATH（建议 os.Args[0] 兜底）。
+- id: B00
+  title: 冻结既有底座和基础服务，不顺手升级
+  dependsOn:
+  - R16
+  status: not_started
+  selected: null
+  evidence: []
+- id: B01
+  title: Multus 接入；默认 VPC LoadBalancer 单独开关
+  dependsOn:
+  - R10
+  - R11
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B02
+  title: Milvus 单一固定组合
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B03
+  title: Metrics Server：补齐PodMetrics API
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B04
+  title: CSI快照控制器、快照类与恢复
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B05
+  title: KubeVirt与CDI：先CPU虚拟机，再导入持久磁盘
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+  conditionalDependencies:
+    snapshot: B04
+    additionalNetwork: B01
+- id: B06
+  title: Volcano CPU 队列与gang调度
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B07
+  title: Harbor、离线扫描、节点信任与准入接入
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B08
+  title: Notebooks 控制器与CPU工作区
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B09
+  title: Trainer与JobSet：CPU训练先闭环
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B10
+  title: Hub / Model Registry 独立API
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B11
+  title: KServe Standard，无Istio、无业务Envoy
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B12
+  title: Pipelines：拆开依赖、执行器与工件验证
+  dependsOn:
+  - B00
+  status: not_started
+  selected: null
+  evidence: []
+- id: B13
+  title: 选定组件的整体离线收官
+  dependsOn:
+  - B02
+  - B03
+  - B04
+  - B05
+  - B06
+  - B07
+  - B08
+  - B09
+  - B10
+  - B11
+  - B12
+  status: not_started
+  selected: null
+  evidence: []
+- id: O01
+  title: 可选：Dex / 外部OIDC接入
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []
+- id: O02
+  title: 可选：Kata沙箱及kata-monitor
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []
+- id: O03
+  title: 可选：Jaeger持久化追踪
+  dependsOn:
+  - B00
+  status: not_started
+  selected: false
+  evidence: []

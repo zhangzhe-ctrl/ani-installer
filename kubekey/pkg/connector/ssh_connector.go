@@ -312,16 +312,42 @@ func buildSudoCommand(user, shell, cmd string) string {
 	return fmt.Sprintf("TERM=dumb; export LANG=C.UTF-8; SUDO_USER=%s; sudo -E %s -c \"$(cat << 'KUBEKEY_EOF'\n%s\nKUBEKEY_EOF\n)\"", user, shell, cmd)
 }
 
-// ExecuteCommand exec cmd with sudo
-func (c *sshConnector) ExecuteCommand(_ context.Context, cmd string) ([]byte, []byte, error) {
+// RemoteStateUnknownError marks commands whose local wait ended — through a
+// context deadline or cancellation — without any remote confirmation. The
+// remote command may already have taken effect (it cannot be revoked by
+// closing the local session), so this is explicitly NOT a "safe to retry"
+// signal: replaying without remote confirmation may repeat a state-changing
+// operation (R12/A12).
+type RemoteStateUnknownError struct {
+	Cause error
+	Cmd   string
+}
+
+func (e *RemoteStateUnknownError) Error() string {
+	return fmt.Sprintf("ssh command did not complete locally (%v); the remote effect is unknown — the command may already have taken effect and must not be replayed without remote confirmation: %q", e.Cause, e.Cmd)
+}
+
+func (e *RemoteStateUnknownError) Unwrap() error {
+	return e.Cause
+}
+
+// ExecuteCommand exec cmd with sudo.
+//
+// The caller's ctx is honoured (R12/A12): the stdout read (including the sudo
+// password prompt handling) and the session Wait each run with a cancellation
+// point. On cancellation only THIS command's session is closed — sessions are
+// created per command, so the SSH client shared with other tasks stays
+// usable. The returned error is a *RemoteStateUnknownError because nothing is
+// known about the remote side at that point.
+func (c *sshConnector) ExecuteCommand(ctx context.Context, cmd string) ([]byte, []byte, error) {
 	session, err := c.session()
 	if err != nil {
 		return nil, nil, err
 	}
 	defer session.Close()
 
-	cmd = buildSudoCommand(c.User, c.shell, cmd)
-	klog.V(5).InfoS("exec ssh command", "cmd", cmd)
+	wrapped := buildSudoCommand(c.User, c.shell, cmd)
+	klog.V(5).InfoS("exec ssh command", "cmd", wrapped)
 
 	in, err := session.StdinPipe()
 	if err != nil {
@@ -338,48 +364,89 @@ func (c *sshConnector) ExecuteCommand(_ context.Context, cmd string) ([]byte, []
 		return nil, nil, errors.Wrap(err, "failed to get stderr pipe")
 	}
 
-	if err = session.Start(cmd); err != nil {
+	if err = session.Start(wrapped); err != nil {
 		return nil, nil, errors.Wrap(err, "failed to start session")
 	}
+
+	// The stdout reader keeps the original byte-by-byte loop (the sudo
+	// password prompt is detected mid-line and answered on stdin) and signals
+	// completion through readDone. Closing the session on cancellation ends
+	// the blocked ReadByte instead of leaving it stuck forever.
+	readDone := make(chan struct{})
 	var (
-		output []byte
-		line   = ""
-		r      = bufio.NewReader(out)
+		output  []byte
+		readErr error
 	)
-
-	for {
-		b, err := r.ReadByte()
-		if err != nil {
-			break
-		}
-
-		output = append(output, b)
-
-		if b == byte('\n') {
-			line = ""
-			continue
-		}
-
-		line += string(b)
-
-		if (strings.HasPrefix(line, "[sudo] password for ") || strings.HasPrefix(line, "Password")) && strings.HasSuffix(line, ": ") {
-			_, err = in.Write([]byte(c.Password + "\n"))
+	go func() {
+		defer close(readDone)
+		var line string
+		r := bufio.NewReader(out)
+		for {
+			b, err := r.ReadByte()
 			if err != nil {
-				break
+				readErr = err
+				return
+			}
+			output = append(output, b)
+
+			if b == byte('\n') {
+				line = ""
+				continue
+			}
+
+			line += string(b)
+
+			if (strings.HasPrefix(line, "[sudo] password for ") || strings.HasPrefix(line, "Password")) && strings.HasSuffix(line, ": ") {
+				_, werr := in.Write([]byte(c.Password + "\n"))
+				if werr != nil {
+					readErr = werr
+					return
+				}
 			}
 		}
+	}()
+
+	// cancelled ends a local wait whose remote outcome is unknown. Closing
+	// this command's session unblocks both the reader and any pending Wait;
+	// the goroutines above are always reaped before returning.
+	cancelled := func(cause error) ([]byte, []byte, error) {
+		_ = session.Close()
+		<-readDone
+		return output, nil, &RemoteStateUnknownError{Cause: cause, Cmd: cmd}
 	}
 
-	outStr := strings.TrimPrefix(string(output), fmt.Sprintf("[sudo] password for %s:", c.User))
-	err = session.Wait()
-	var stderrBuffer bytes.Buffer
-	_, _ = io.Copy(&stderrBuffer, stderr)
-	outStr = strings.TrimSpace(outStr)
-	stderrData := stderrBuffer.Bytes()
-	if err != nil {
-		return []byte(outStr), nil, errors.Wrap(err, strings.TrimSpace(string(stderrData)))
+	select {
+	case <-ctx.Done():
+		return cancelled(ctx.Err())
+	case <-readDone:
 	}
-	return []byte(outStr), stderrData, nil
+	// A reader that stopped for a reason other than stdout EOF (e.g. the
+	// password write failed) is an execution failure, same as the original
+	// loop's break-and-fail path.
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return output, nil, errors.Wrap(readErr, "ssh command stdout read failed")
+	}
+
+	// A single Wait per session: the Wait goroutine is the only waiter, and a
+	// cancellation after stdout EOF still ends it through session.Close()
+	// instead of waiting forever on a remote that never exits.
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- session.Wait()
+	}()
+	select {
+	case <-ctx.Done():
+		return cancelled(ctx.Err())
+	case waitErr := <-waitCh:
+		var stderrBuffer bytes.Buffer
+		_, _ = io.Copy(&stderrBuffer, stderr)
+		outStr := strings.TrimSpace(strings.TrimPrefix(string(output), fmt.Sprintf("[sudo] password for %s:", c.User)))
+		stderrData := stderrBuffer.Bytes()
+		if waitErr != nil {
+			return []byte(outStr), nil, errors.Wrap(waitErr, strings.TrimSpace(string(stderrData)))
+		}
+		return []byte(outStr), stderrData, nil
+	}
 }
 
 // HostInfo from gatherFacts cache

@@ -212,20 +212,27 @@ func TestKubeKeyConfigBaseProfileSkipsComponentImages(t *testing.T) {
 	}
 }
 
-func TestInstallerNodeOrderIsIndependent(t *testing.T) {
+// TestInstallerNodeMustBeTheFirstNode pins the R06 contract: installerNode is
+// nodes[0] by definition, so a config that puts the installer on another node is
+// ambiguous about where the run happens and is rejected. The registry helper
+// itself still follows the installer node for a valid config.
+func TestInstallerNodeMustBeTheFirstNode(t *testing.T) {
 	c := validConfig()
 	c.InstallerNode = "node3"
-	if err := Validate(c); err != nil {
-		t.Fatalf("Validate() = %v", err)
+	err := Validate(c)
+	if err == nil {
+		t.Fatal("Validate() must reject installerNode != nodes[0]")
 	}
-	got, err := c.RegistryAddress()
-	if err != nil {
-		t.Fatalf("RegistryAddress() error = %v", err)
+	if !strings.Contains(err.Error(), "node1") {
+		t.Fatalf("error = %v, want it to name the expected first node", err)
 	}
-	if got != "192.0.2.13:5000" {
-		t.Fatalf("RegistryAddress() = %q, want 192.0.2.13:5000", got)
+
+	valid := validConfig()
+	got, err := valid.RegistryAddress()
+	if err != nil || got != "192.0.2.11:5000" {
+		t.Fatalf("RegistryAddress() = %q, want 192.0.2.11:5000", got)
 	}
-	spec, err := KubeKeyInventory(c)
+	spec, err := KubeKeyInventory(valid)
 	if err != nil {
 		t.Fatalf("KubeKeyInventory() error = %v", err)
 	}
@@ -233,14 +240,15 @@ func TestInstallerNodeOrderIsIndependent(t *testing.T) {
 	for _, name := range []string{"node1", "node2", "node3"} {
 		connector := hosts[name].(map[string]any)["connector"].(map[string]any)
 		want := "ssh"
-		if name == "node3" {
+		if name == "node1" {
 			want = "local"
 		}
 		if connector["type"] != want {
-			t.Fatalf("%s connector type = %v, want %s", name, connector["type"], want)
+			t.Fatalf("connector type for %s = %v, want %s", name, connector["type"], want)
 		}
 	}
 }
+
 func TestKubeadmEtcdTemplateUsesConfiguredRepository(t *testing.T) {
 	templates := []string{
 		"../../builtin/core/roles/kubernetes/init-kubernetes/templates/kubeadm/kubeadm-init.v1beta3",
@@ -306,23 +314,25 @@ func TestANITasksAvoidUnsupportedFileModule(t *testing.T) {
 	}
 }
 
-func TestKubeKeyConfigFollowsInstallerNodeOrder(t *testing.T) {
+// TestKubeKeyConfigFollowsTheInstallerNode keeps the substance of the old
+// order test under the R06 contract: the rendered config points at the
+// installer node's registry, and the installer node is nodes[0].
+func TestKubeKeyConfigFollowsTheInstallerNode(t *testing.T) {
 	c := validConfig()
-	c.InstallerNode = "node3"
 	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
 	if err != nil {
 		t.Fatalf("KubeKeyConfig() error = %v", err)
 	}
 	cri := spec["cri"].(map[string]any)["registry"].(map[string]any)
-	want := []string{"192.0.2.13:5000"}
+	want := []string{"192.0.2.11:5000"}
 	if !reflect.DeepEqual(cri["insecure_registries"], want) {
 		t.Fatalf("insecure_registries = %#v, want %#v", cri["insecure_registries"], want)
 	}
 	ani := spec["ani"].(map[string]any)
 	images := ani["images"].(map[string]string)
 	original := "docker.changqingyun.cn/kubercloud/gateway:v1.8.3"
-	if got := images[original]; got != "192.0.2.13:5000/kubercloud/gateway:v1.8.3" {
-		t.Fatalf("image reference = %q, want 192.0.2.13:5000/kubercloud/gateway:v1.8.3", got)
+	if got := images[original]; got != "192.0.2.11:5000/kubercloud/gateway:v1.8.3" {
+		t.Fatalf("image reference = %q, want 192.0.2.11:5000/kubercloud/gateway:v1.8.3", got)
 	}
 }
 

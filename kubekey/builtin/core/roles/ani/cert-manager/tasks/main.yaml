@@ -10,6 +10,7 @@
 
 - name: ANI cert-manager | Create work directory
   command: |
+    set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/cert-manager
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
@@ -49,6 +50,7 @@
 
 - name: ANI cert-manager | Wait for controller, webhook and cainjector rollout
   command: |
+    set -euo pipefail
     kubectl -n cert-manager rollout status deployment/cert-manager --timeout=600s
     kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=600s
     kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=600s
@@ -99,11 +101,13 @@
 
 - name: ANI cert-manager | Apply internal CA manifests
   command: |
+    set -euo pipefail
     kubectl create namespace ani-cert-test --dry-run=client -o yaml | kubectl apply --server-side -f -
     kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/cert-manager/20-internal-ca.yaml
 
 - name: ANI cert-manager | Wait for internal CA certificates to become Ready
   command: |
+    set -euo pipefail
     kubectl -n cert-manager wait certificate/ani-root-ca --for=condition=Ready --timeout=300s
     kubectl -n ani-cert-test wait certificate/ani-ca-test-leaf --for=condition=Ready --timeout=300s
     kubectl wait clusterissuer/ani-ca --for=condition=Ready --timeout=300s
@@ -115,12 +119,14 @@
 
 - name: ANI cert-manager | Make the verification script root-only and executable
   command: |
+    set -euo pipefail
     chown root:root /etc/kubernetes/ani/cert-manager/verify.sh
     chmod 0700 /etc/kubernetes/ani/cert-manager/verify.sh
     test -x /etc/kubernetes/ani/cert-manager/verify.sh
 
 - name: ANI cert-manager | Run component verification
   command: |
+    set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/cert-manager/verify.sh

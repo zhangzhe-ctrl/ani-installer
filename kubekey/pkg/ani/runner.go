@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,8 +28,17 @@ type InstallInput struct {
 
 const (
 	serviceUnitName = "ani-image-registry.service"
-	runtimeBaseDir  = "/var/lib/ani-installer"
 )
+
+// runtimeBaseDir is the canonical per-cluster runtime root. It is a variable
+// only so behaviour tests can point the component-role fragment contract at a
+// scratch directory (the production default is the path below).
+var runtimeBaseDir = "/var/lib/ani-installer"
+
+// systemdUnitDir is where the bootstrap registry unit is written. It is a
+// variable only so behaviour tests can point it at a scratch directory
+// without root.
+var systemdUnitDir = "/etc/systemd/system"
 
 type installPaths struct {
 	ArtifactRoot   string
@@ -155,15 +165,74 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 			required = append(required, filepath.Join(paths.ArtifactRoot, filepath.FromSlash(relative)))
 		}
 	}
-	for _, path := range required {
-		if _, err := os.Stat(path); err != nil {
-			return errors.Wrapf(err, "required artifact file %s", path)
+	// R09: every read-only check (config, digests, required materials, port,
+	// unit, disk space) runs BEFORE the first write. A failure writes a fresh
+	// preflight report with changesStarted=false and touches nothing else.
+	runID := fmt.Sprintf("ani-%s-%s", cluster.Name, time.Now().Format("20060102-150405"))
+	targets := make([]string, 0, len(cluster.Nodes))
+	for _, node := range cluster.Nodes {
+		targets = append(targets, node.Name)
+	}
+	report, err := RunPreflight(PreflightInput{
+		RunID:         runID,
+		Cluster:       &cluster,
+		PackageRoot:   input.PackageRoot,
+		ArtifactRoot:  paths.ArtifactRoot,
+		ReportBaseDir: runtimeBaseDir,
+		HelmPath:      filepath.Join(paths.ArtifactRoot, "bin", "helm"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Single-writer lock: a second installer process returns immediately. The
+	// lock file is never deleted and no process is ever killed.
+	releaseLock, err := AcquireInstallFlock(filepath.Join(runtimeBaseDir, "ani-install.lock"))
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
+	// A previous run that already changed the machines blocks a blind retry.
+	statePath := filepath.Join(runtimeBaseDir, cluster.Name, "run-state.json")
+	if previous, readErr := ReadRunState(statePath); readErr == nil {
+		if err := CheckStartAllowed(previous, os.Getenv("ANI_ACK_PREVIOUS_RUN")); err != nil {
+			return err
 		}
 	}
 
+	state := InstallState{
+		RunID:          runID,
+		StartedAt:      time.Now().Format(time.RFC3339),
+		Phase:          PhaseInstalling,
+		ChangesStarted: true,
+		RemoteResult:   RemoteResultDeterministic,
+		ClusterName:    cluster.Name,
+		Targets:        targets,
+		SourceTreeFp:   report.ConfigDigest,
+		KKPath:         kkPath,
+		ArtifactLock:   report.ArtifactLock,
+		ConfigDigest:   report.ConfigDigest,
+	}
+	// Atomic state record BEFORE the first write, then keep it accurate after
+	// every completed step (R09: a failure leaves the last completed phase).
+	// R15.3 field fix: the runtime root is created BEFORE the state record —
+	// the state file lives inside the runtime root, so writing the state
+	// first made createRuntimeRoot always hit fs.ErrExist and every FIRST
+	// install fail. The R09 safety order is preserved where it matters: the
+	// state record still precedes every remote/system-changing operation.
 	if err := createRuntimeRoot(paths.RuntimeRoot); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
+		return errors.Wrap(err, "create state directory")
+	}
+	if err := WriteRunStateAtomic(statePath, state); err != nil {
+		return err
+	}
+	defer func() {
+		_ = WriteRunStateAtomic(statePath, state)
+	}()
 	if err := os.MkdirAll(paths.WorkRoot, 0o700); err != nil {
 		return errors.Wrap(err, "create work directory")
 	}
@@ -179,12 +248,16 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	}
 	defer logFile.Close()
 	logger := newInstallLogger(logFile)
-	fmt.Fprintf(logger, "ANI install started at %s; artifact=%s kk=%s config=%s runtime=%s\n",
-		time.Now().Format(time.RFC3339), paths.ArtifactRoot, kkPath, configPath, paths.RuntimeRoot)
+	fmt.Fprintf(logger, "ANI install started at %s; artifact=%s kk=%s config=%s runtime=%s run=%s\n",
+		time.Now().Format(time.RFC3339), paths.ArtifactRoot, kkPath, configPath, paths.RuntimeRoot, runID)
 
 	if err := verifyArtifactChecksums(ctx, logger, paths.ArtifactRoot); err != nil {
+		state.Phase = PhaseInstallFailed
+		_ = WriteRunStateAtomic(statePath, state)
 		return err
 	}
+	state.Phase = PhaseArtifactVerified
+	_ = WriteRunStateAtomic(statePath, state)
 	imageRows, err := readLines(paths.ImageTablePath)
 	if err != nil {
 		return errors.Wrap(err, "read images.tsv")
@@ -235,20 +308,32 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	if err := writeRegistryService(paths.WorkRoot, paths.HaulerPath, paths.StoreDir, paths.RegistryDir, cluster.RegistryConfig.Port); err != nil {
 		return errors.Wrap(err, "write Hauler service")
 	}
-	for _, args := range [][]string{
-		{"daemon-reload"},
-		{"restart", serviceUnitName},
-	} {
-		if err := runLogged(ctx, logger, "systemctl", args...); err != nil {
-			return errors.Wrapf(err, "systemctl %v", args)
-		}
+	// R14/A15: the unit was freshly written by THIS run (writeRegistryService
+	// refuses a pre-existing one), so enabling it for boot is this run's own
+	// lifecycle action — never a takeover of a foreign service.
+	if err := startRegistryService(ctx, logger); err != nil {
+		return err
 	}
 	if err := waitRegistry(ctx, logger, registryAddress); err != nil {
+		state.Phase = PhaseInstallFailed
+		state.RemoteResult = RemoteResultDeterministic
+		_ = WriteRunStateAtomic(statePath, state)
 		return err
 	}
-	if err := verifyRegistryImages(ctx, logger, registryAddress, imageTable); err != nil {
+	state.Phase = PhaseRegistryReady
+	_ = WriteRunStateAtomic(statePath, state)
+	lock, err := LoadMaterialsLock(filepath.Join(paths.ArtifactRoot, "config", "components.lock.yaml"))
+	if err != nil {
 		return err
 	}
+	if err := verifyRegistryImages(ctx, logger, registryAddress, imageTable, lock, &cluster); err != nil {
+		state.Phase = PhaseInstallFailed
+		state.RemoteResult = RemoteResultDeterministic
+		_ = WriteRunStateAtomic(statePath, state)
+		return err
+	}
+	state.Phase = PhaseRegistryVerified
+	_ = WriteRunStateAtomic(statePath, state)
 	fmt.Fprintf(logger, "Hauler registry %s is ready and all %d image manifests are present\n", registryAddress, len(imageTable))
 
 	if err := os.MkdirAll(paths.KubeKeyWorkdir, 0o700); err != nil {
@@ -435,7 +520,20 @@ func writeRegistryService(runtimeWorkRoot, haulerPath, storeDir, registryDir str
 	if port <= 0 || port > 65535 {
 		return errors.New("invalid registry port")
 	}
-	unitPath := "/etc/systemd/system/" + serviceUnitName
+	// R14/A15: everything the unit references must live on permanent storage —
+	// a registry started from /tmp or similar dies with the cleanup and the
+	// reboot loses the only image source.
+	for field, path := range map[string]string{
+		"working directory": runtimeWorkRoot,
+		"hauler binary":     haulerPath,
+		"registry data":     registryDir,
+		"hauler store":      storeDir,
+	} {
+		if err := ensurePermanentPath(field, path); err != nil {
+			return err
+		}
+	}
+	unitPath := filepath.Join(systemdUnitDir, serviceUnitName)
 	if _, err := os.Stat(unitPath); err == nil {
 		return errors.Errorf("%s already exists; restore the clean snapshot before a new install", unitPath)
 	} else if !os.IsNotExist(err) {
@@ -461,6 +559,38 @@ WantedBy=multi-user.target
 	return os.WriteFile(unitPath, []byte(unit), 0o644)
 }
 
+// ensurePermanentPath refuses paths under temporary directories: the
+// bootstrap registry and its data must survive reboots (R14/A15 step 2).
+func ensurePermanentPath(field, path string) error {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		return errors.Errorf("%s %q must be an absolute path", field, path)
+	}
+	for _, tmp := range []string{"/tmp", "/var/tmp", "/run", "/var/run", "/dev/shm"} {
+		if clean == tmp || strings.HasPrefix(clean, tmp+"/") {
+			return errors.Errorf("%s %q is under the temporary directory %s; the registry must run from permanent storage or it will not survive a reboot", field, path, tmp)
+		}
+	}
+	return nil
+}
+
+// startRegistryService is the exact lifecycle sequence a fresh install runs
+// for the unit writeRegistryService just created: reload, enable for boot
+// (R14/A15 step 1), then start. It is only ever called right after THIS run
+// created the unit, so enable never touches a foreign service.
+func startRegistryService(ctx context.Context, logger io.Writer) error {
+	for _, args := range [][]string{
+		{"daemon-reload"},
+		{"enable", serviceUnitName},
+		{"restart", serviceUnitName},
+	} {
+		if err := runLogged(ctx, logger, "systemctl", args...); err != nil {
+			return errors.Wrapf(err, "systemctl %v", args)
+		}
+	}
+	return nil
+}
+
 func waitRegistry(ctx context.Context, logger io.Writer, registryAddress string) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://%s/v2/", registryAddress)
@@ -484,28 +614,111 @@ func waitRegistry(ctx context.Context, logger io.Writer, registryAddress string)
 	return errors.New("timed out waiting for Hauler registry /v2/")
 }
 
-func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable) error {
-	client := &http.Client{Timeout: 5 * time.Second}
+// hashRaw is the raw-byte sha256 used for the served manifest digest.
+func hashRaw(body []byte) []byte {
+	sum := sha256.Sum256(body)
+	return sum[:]
+}
+
+// verifyRegistryImages checks the actually served content of every image in the
+// table against the approved materials lock (R07.3): the served digest, the
+// manifest kind (index vs platform manifest), the config/layer digests it
+// references, and the blob existence for each of them. Images without a lock
+// entry (KubeKey-artifact and base images) keep the presence-only check and are
+// logged as not lock-verified — their digests stay unknown instead of being
+// fabricated.
+func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable, lock *MaterialsLock, cluster *ClusterConfig) error {
+	client := &http.Client{Timeout: 15 * time.Second}
+	verifiedAgainstLock := 0
+	// R15.3: component-scoped images are only verified when their component
+	// is enabled in THIS run. A disabled component's images may legitimately
+	// be absent from the registry (the artifact ships the full declared
+	// table, but a run never required them). Base/always rows (not scoped to
+	// any component) are always verified.
+	scoped := map[string]bool{}
+	required := map[string]bool{}
+	for _, k := range componentImageKeys() {
+		scoped[k.Original] = true
+	}
+	if cluster != nil {
+		for _, k := range componentImageKeysForRun(*cluster) {
+			required[k.Original] = true
+		}
+	}
 	for original, image := range table {
-		path, err := ManifestURL(image.HaulerRef)
+		if scoped[original] && cluster != nil && !required[original] {
+			fmt.Fprintf(logger, "image %s: skipped (component not enabled in this run)\n", original)
+			continue
+		}
+		manifestPath, err := ManifestURL(image.HaulerRef)
 		if err != nil {
 			return errors.Wrap(err, "build manifest URL")
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", registryAddress, path), nil)
+		repoPath, err := RepositoryPath(image.HaulerRef)
+		if err != nil {
+			return errors.Wrap(err, "build repository path")
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", registryAddress, manifestPath), nil)
 		if err != nil {
 			return errors.Wrap(err, "build image request")
 		}
-		req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json")
+		req.Header.Set("Accept", "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json")
 		resp, err := client.Do(req)
 		if err != nil {
 			return errors.Wrapf(err, "request image %s", original)
 		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			_ = runLogged(context.WithoutCancel(ctx), logger, "journalctl", "-u", serviceUnitName, "--no-pager", "-n", "100")
 			return errors.Errorf("image %s manifest returned HTTP %d", original, resp.StatusCode)
 		}
+		servedDigest := fmt.Sprintf("sha256:%s", hex.EncodeToString(hashRaw(body)))
+
+		served, parseErr := ParseServedImageManifest(body)
+		if parseErr != nil {
+			return errors.Wrapf(parseErr, "image %s", original)
+		}
+
+		// The config blob and every layer blob the manifest references must be
+		// present in the same repository (HEAD, cheap: no blob download).
+		blobs := append([]string{}, served.LayerDigests...)
+		if served.ConfigDigest != "" {
+			blobs = append([]string{served.ConfigDigest}, blobs...)
+		}
+		for _, blob := range blobs {
+			head, headErr := http.NewRequestWithContext(ctx, http.MethodHead, fmt.Sprintf("http://%s%s/blobs/%s", registryAddress, repoPath, url.PathEscape(blob)), nil)
+			if headErr != nil {
+				return errors.Wrapf(headErr, "build blob request for %s", original)
+			}
+			blobResp, err := client.Do(head)
+			if err != nil {
+				return errors.Wrapf(err, "request blob %s of image %s", blob, original)
+			}
+			_, _ = io.Copy(io.Discard, blobResp.Body)
+			_ = blobResp.Body.Close()
+			if blobResp.StatusCode != http.StatusOK {
+				return errors.Errorf("image %s: blob %s referenced by the served manifest returned HTTP %d",
+					original, blob, blobResp.StatusCode)
+			}
+		}
+
+		entry, locked := lock.ImageByOriginal(original)
+		if !locked {
+			fmt.Fprintf(logger, "image %s: served digest %s (no lock entry: verified for presence only, digest stays unknown)\n",
+				original, servedDigest)
+			continue
+		}
+		if err := VerifyServedManifest(*entry, servedDigest, served); err != nil {
+			return errors.Wrapf(err, "registry content does not match the approved materials lock")
+		}
+		verifiedAgainstLock++
+		kind := "platform manifest"
+		if served.IsIndex {
+			kind = "multi-arch index"
+		}
+		fmt.Fprintf(logger, "image %s: served %s digest %s matches the approved lock entry\n", original, kind, servedDigest)
 	}
+	fmt.Fprintf(logger, "%d of %d images verified against the approved materials lock\n", verifiedAgainstLock, len(table))
 	return nil
 }

@@ -10,7 +10,7 @@ TIMEOUT=300
 
 echo "[ceph-verify] busybox image = ${BUSYBOX}"
 
-kubectl delete ns "${NS}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
+kubectl delete ns "${NS}" --ignore-not-found --wait=true --timeout=300s >/dev/null 2>&1 || true
 kubectl create ns "${NS}" >/dev/null
 
 fail() {

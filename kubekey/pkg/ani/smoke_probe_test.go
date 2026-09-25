@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -55,9 +56,9 @@ func fakeWgetMain() int {
 	switch {
 	case strings.Contains(url, fakeBackendPodIP+":3000"):
 		target = "pod-ip"
-	case strings.Contains(url, fakeBackendSvcIP+"/"):
+	case strings.Contains(url, fakeBackendSvcIP+"/"), strings.Contains(url, fakeBackendSvcIP+":3000"):
 		target = "service-ip"
-	case strings.Contains(url, "ani-smoke-backend."):
+	case strings.Contains(url, "ani-smoke-backend."), strings.Contains(url, "ani-net-smoke-svc."):
 		target = "dns"
 	case strings.Contains(url, fakeEnvoySvcIP+":9090"):
 		target = "envoy"
@@ -68,6 +69,12 @@ func fakeWgetMain() int {
 	}
 	if wrongTarget == target {
 		fmt.Println("ANI-INSTALLER-WRONG")
+		return 0
+	}
+	// The generic network checker (R11) asserts the exact per-run token body;
+	// the fake kubectl exported it when it executed the client pod script.
+	if token := os.Getenv("FAKE_NET_TOKEN"); token != "" && target != "envoy" {
+		fmt.Println(token)
 		return 0
 	}
 	fmt.Println("ANI-INSTALLER-OK")
@@ -91,11 +98,21 @@ func fakeKubectlMain() int {
 	if len(rawArgs) >= 2 && rawArgs[0] == "--kubeconfig" {
 		rawArgs = rawArgs[2:]
 	}
+	// R12: the checker scripts prepend --request-timeout to every kubectl call.
+	if len(rawArgs) >= 1 && strings.HasPrefix(rawArgs[0], "--request-timeout=") {
+		rawArgs = rawArgs[1:]
+	}
 	if len(rawArgs) == 0 {
 		return 2
 	}
 	if rawArgs[0] == "create" {
+		if len(rawArgs) >= 2 && rawArgs[1] == "namespace" {
+			return 0
+		}
 		return fakeKubectlCreate()
+	}
+	if rawArgs[0] == "label" || rawArgs[0] == "delete" {
+		return 0
 	}
 	if rawArgs[0] == "logs" && len(rawArgs) > 1 {
 		name := rawArgs[1]
@@ -148,6 +165,9 @@ func fakeKubectlMain() int {
 	}
 
 	switch resource {
+	case "events", "namespace", "namespaces":
+		fmt.Println("fake events")
+		return 0
 	case "nodes":
 		if strings.Contains(strings.Join(rawArgs, " "), "status.conditions") {
 			fmt.Println("True\nTrue\nTrue")
@@ -220,6 +240,14 @@ func fakeKubectlPod(name string, rawArgs []string) int {
 	}
 	if strings.Contains(command, "spec.nodeName") {
 		value, err := os.ReadFile(filepath.Join(stateDir, name+".node"))
+		if err != nil {
+			return 1
+		}
+		fmt.Print(string(value))
+		return 0
+	}
+	if strings.Contains(command, "status.podIP") {
+		value, err := os.ReadFile(filepath.Join(stateDir, name+".podip"))
 		if err != nil {
 			return 1
 		}
@@ -301,6 +329,8 @@ func fakeKubectlService(name string, rawArgs []string, scenario string) int {
 	}
 	if strings.Contains(command, "spec.clusterIP") {
 		switch name {
+		case "ani-net-smoke-svc":
+			fmt.Println(fakeBackendSvcIP)
 		case "ani-smoke-backend":
 			fmt.Println(fakeBackendSvcIP)
 		case "ani-smoke-other":
@@ -357,6 +387,27 @@ func fakeKubectlCreate() int {
 		return 1
 	}
 	manifest := manifestBytes.String()
+	stateDir := os.Getenv("FAKE_STATE_DIR")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return 1
+	}
+
+	// R11: the generic network checker creates a run-scoped Service and
+	// server/client Pods. The Service has no shell args block; the server
+	// must report Running without actually serving; the client shell is
+	// really executed so its wget calls go through the fake wget.
+	if strings.Contains(manifest, "kind: Service") {
+		name := fakeManifestName(manifest, "ani-net-smoke-svc")
+		fmt.Println(name)
+		return 0
+	}
+	if strings.Contains(manifest, "generateName: ani-net-smoke-server-") {
+		return fakeRecordCreatedPod(manifest, stateDir, "ani-net-smoke-server-", "node-a", false)
+	}
+	if strings.Contains(manifest, "generateName: ani-net-smoke-client-") {
+		return fakeRecordCreatedPod(manifest, stateDir, "ani-net-smoke-client-", "node-b", true)
+	}
+
 	shellArg, err := fakeExtractShellArg(manifest)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -385,10 +436,6 @@ func fakeKubectlCreate() int {
 		exitCode = "1"
 	}
 
-	stateDir := os.Getenv("FAKE_STATE_DIR")
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return 1
-	}
 	files := map[string]string{
 		name + ".uid":      uid,
 		name + ".created":  created,
@@ -406,6 +453,81 @@ func fakeKubectlCreate() int {
 	}
 	fmt.Println(name)
 	return 0
+}
+
+// fakeManifestName extracts metadata.name from a created manifest.
+func fakeManifestName(manifest, fallback string) string {
+	for _, line := range strings.Split(manifest, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "name: "); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return fallback
+}
+
+// fakeRecordCreatedPod records a network-checker pod. For the server the
+// shell arg is NOT executed (it would run a real httpd); the pod reports
+// Running with a fixed PodIP. For the client the shell arg IS executed with
+// the per-run token exported, so its wget calls run through the fake wget.
+func fakeRecordCreatedPod(manifest, stateDir, generateName, node string, serve bool) int {
+	name := generateName + fakeRandom()
+	uid := "uid-" + fakeRandom()
+	created := "2026-09-24T00:00:00Z"
+	image := "192.0.2.10:5000/busybox:1.36"
+	phase := "Succeeded"
+	exitCode := "0"
+	output := ""
+
+	shellArg, argErr := fakeExtractShellArg(manifest)
+	if serve && argErr == nil {
+		token := fakeNetToken(manifest)
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "fake kubectl: client manifest carries no run token")
+			return 1
+		}
+		cmd := exec.Command("/bin/sh", "-ec", shellArg)
+		cmd.Env = append(os.Environ(), "FAKE_NET_TOKEN="+token)
+		out, err := cmd.CombinedOutput()
+		output = string(out)
+		if err != nil {
+			phase = "Failed"
+			exitCode = "1"
+		}
+	} else if !serve {
+		// Server: extract the shell arg only to validate the manifest shape;
+		// report Running with the shared fake PodIP.
+		phase = "Running"
+	}
+
+	files := map[string]string{
+		name + ".uid":      uid,
+		name + ".created":  created,
+		name + ".node":     node,
+		name + ".image":    image,
+		name + ".phase":    phase,
+		name + ".exit":     exitCode,
+		name + ".log":      output,
+		name + ".manifest": manifest,
+	}
+	if !serve {
+		files[name+".podip"] = fakeBackendPodIP
+	}
+	for filename, value := range files {
+		if err := os.WriteFile(filepath.Join(stateDir, filename), []byte(value), 0o600); err != nil {
+			return 1
+		}
+	}
+	fmt.Println(name)
+	return 0
+}
+
+// fakeNetToken extracts the per-run body token from a checker manifest.
+func fakeNetToken(manifest string) string {
+	re := regexp.MustCompile("ANI-NET-[A-Za-z0-9-]+-BODY")
+	if match := re.FindString(manifest); match != "" {
+		return match
+	}
+	return ""
 }
 
 func fakeExtractShellArg(manifest string) (string, error) {
@@ -449,11 +571,22 @@ type smokeProbeResult struct {
 }
 
 func runSmokeProbe(t *testing.T, scenario, failTarget, wrongTarget string) smokeProbeResult {
+	return runSmokeProbeScript(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "probe.sh"), "run-", scenario, failTarget, wrongTarget)
+}
+
+// runNetProbeHTTP drives the R11 generic network checker through the same
+// HTTP-level fake (the client pod shell really executes, its wget calls are
+// intercepted and recorded).
+func runNetProbeHTTP(t *testing.T, failTarget, wrongTarget string) smokeProbeResult {
+	return runSmokeProbeScript(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "network-probe.sh"), "net-run-", "success", failTarget, wrongTarget)
+}
+
+func runSmokeProbeScript(t *testing.T, scriptRel, outPrefix, scenario, failTarget, wrongTarget string) smokeProbeResult {
 	t.Helper()
 	if runtime.GOOS != "linux" {
 		t.Skip("probe integration test executes Linux shell commands")
 	}
-	probePath, err := filepath.Abs(filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "probe.sh"))
+	probePath, err := filepath.Abs(scriptRel)
 	if err != nil {
 		t.Fatalf("resolve probe path: %v", err)
 	}
@@ -486,6 +619,7 @@ func runSmokeProbe(t *testing.T, scenario, failTarget, wrongTarget string) smoke
 		"PATH="+binDir+":"+os.Getenv("PATH"),
 		"KUBECONFIG_FILE="+kubeconfig,
 		"ANI_SMOKE_OUTPUT="+outputBase,
+		"ANI_NETSMOKE_IMAGE=192.0.2.10:5000/busybox:1.36",
 		"FAKE_STATE_DIR="+stateDir,
 		"FAKE_CLUSTER="+scenario,
 		"FAKE_WGET_FAIL="+failTarget,
@@ -507,7 +641,7 @@ func runSmokeProbe(t *testing.T, scenario, failTarget, wrongTarget string) smoke
 	}
 	entries, _ := os.ReadDir(outputBase)
 	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), "run-") {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), outPrefix) {
 			result.runDir = filepath.Join(outputBase, entry.Name())
 		}
 	}
@@ -523,21 +657,27 @@ func readSmokeFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// TestSmokeProbeUsesFreshClientsAndAccurateEnvoyService covers the kcn-only
+// Envoy probe (R11 split): it must hit ONLY the Envoy Service of the
+// ani-smoke Gateway and use a fresh client.
 func TestSmokeProbeUsesFreshClientsAndAccurateEnvoyService(t *testing.T) {
 	result := runSmokeProbe(t, "success", "", "")
 	if result.exitCode != 0 {
 		t.Fatalf("probe exit=%d\n%s", result.exitCode, result.output)
 	}
 	requests := readSmokeFile(t, filepath.Join(result.stateDir, "requested.log"))
-	wants := []string{
+	if !strings.Contains(requests, "http://"+fakeEnvoySvcIP+":9090/\n") {
+		t.Fatalf("probe did not request the Envoy Service; requests:\n%s", requests)
+	}
+	// The generic Pod/Service/DNS probes moved to network-probe.sh (R11); the
+	// Envoy probe must not grow them back.
+	for _, stale := range []string{
 		"http://" + fakeBackendPodIP + ":3000/\n",
 		"http://" + fakeBackendSvcIP + "/\n",
 		"http://ani-smoke-backend.ani-installer-smoke.svc.cluster.local/\n",
-		"http://" + fakeEnvoySvcIP + ":9090/\n",
-	}
-	for _, want := range wants {
-		if !strings.Contains(requests, want) {
-			t.Fatalf("probe did not request %q; requests:\n%s", want, requests)
+	} {
+		if strings.Contains(requests, stale) {
+			t.Fatalf("Envoy probe still performs a generic network request %q; requests:\n%s", stale, requests)
 		}
 	}
 
@@ -545,19 +685,12 @@ func TestSmokeProbeUsesFreshClientsAndAccurateEnvoyService(t *testing.T) {
 	if !strings.Contains(summary, "envoy_service=ani-smoke\n") {
 		t.Fatalf("probe did not select the Envoy Service accurately; summary:\n%s", summary)
 	}
-	networkUID := smokeSummaryValue(t, summary, "network_client_uid")
 	envoyUID := smokeSummaryValue(t, summary, "envoy_client_uid")
-	if networkUID == "" || envoyUID == "" || networkUID == envoyUID {
-		t.Fatalf("probe did not create two fresh clients; summary:\n%s", summary)
-	}
-	if networkUID == smokeSummaryValue(t, summary, "old_network_client_uid") || envoyUID == smokeSummaryValue(t, summary, "old_client_uid") {
+	if envoyUID == "" || envoyUID == smokeSummaryValue(t, summary, "old_client_uid") {
 		t.Fatalf("probe reused an old client UID; summary:\n%s", summary)
 	}
-	networkLog := readSmokeFile(t, filepath.Join(result.runDir, "network-client.log"))
-	for _, marker := range []string{"NETWORK-POD-IP-OK", "NETWORK-SERVICE-IP-OK", "NETWORK-DNS-OK", "ANI-NETWORK-OK"} {
-		if !strings.Contains(networkLog, marker) {
-			t.Fatalf("network client log missing %q: %s", marker, networkLog)
-		}
+	if strings.Contains(summary, "network_result=") {
+		t.Fatalf("the Envoy probe must not report a network result any more; summary:\n%s", summary)
 	}
 	envoyLog := readSmokeFile(t, filepath.Join(result.runDir, "envoy-client.log"))
 	for _, marker := range []string{"ANI-INSTALLER-OK", "ANI-ENVOY-OK"} {
@@ -577,18 +710,14 @@ func smokeSummaryValue(t *testing.T, summary, key string) string {
 	return ""
 }
 
+// TestSmokeProbeFailsOnRequestOrResponseFailure covers the kcn Envoy probe;
+// the generic network failure matrix moved to TestNetworkProbe (R11 split).
 func TestSmokeProbeFailsOnNetworkRequestOrResponseFailure(t *testing.T) {
 	tests := []struct {
 		name        string
 		failTarget  string
 		wrongTarget string
 	}{
-		{name: "pod-ip-request-fails", failTarget: "pod-ip"},
-		{name: "service-ip-request-fails", failTarget: "service-ip"},
-		{name: "dns-request-fails", failTarget: "dns"},
-		{name: "pod-ip-response-is-wrong", wrongTarget: "pod-ip"},
-		{name: "service-ip-response-is-wrong", wrongTarget: "service-ip"},
-		{name: "dns-response-is-wrong", wrongTarget: "dns"},
 		{name: "envoy-request-fails", failTarget: "envoy"},
 		{name: "envoy-response-is-wrong", wrongTarget: "envoy"},
 	}
@@ -629,14 +758,14 @@ func TestSmokeProbeRejectsInaccurateEnvoyServiceSelection(t *testing.T) {
 }
 
 func TestSmokeProbeDoesNotTrustOldSucceededClient(t *testing.T) {
-	result := runSmokeProbe(t, "success", "pod-ip", "")
+	result := runSmokeProbe(t, "success", "envoy", "")
 	if result.exitCode == 0 {
 		t.Fatalf("probe unexpectedly passed with a failing new client\n%s", result.output)
 	}
 	summary := readSmokeFile(t, filepath.Join(result.runDir, "summary.txt"))
-	oldUID := smokeSummaryValue(t, summary, "old_network_client_uid")
-	newUID := smokeSummaryValue(t, summary, "network_client_uid")
-	if oldUID != "uid-old-ani-smoke-network-client" || newUID == "" || newUID == oldUID {
+	oldUID := smokeSummaryValue(t, summary, "old_client_uid")
+	newUID := smokeSummaryValue(t, summary, "envoy_client_uid")
+	if oldUID != "uid-old-ani-smoke-client" || newUID == "" || newUID == oldUID {
 		t.Fatalf("probe did not distinguish old and new clients; summary:\n%s", summary)
 	}
 }
@@ -657,9 +786,10 @@ func TestSmokeProbePackagingWiring(t *testing.T) {
 	}
 	for _, want := range []string{
 		`PROBE="$ROOT/probe.sh"`,
-		`ANI_SMOKE_OUTPUT="$VERIFY_LOG_DIR"`,
-		`bash "$PROBE"`,
-		`PROBE_RC="${PIPESTATUS[0]}"`,
+		`NETPROBE="$ROOT/network-probe.sh"`,
+		// R11: both stacks run the generic network smoke; only the kcn stack
+		// adds the Envoy probe — the split lives in ani_run_network_checks.
+		`ani_run_network_checks "$NETWORK_STACK" "$PROBE" "$NETPROBE" "$VERIFY_LOG_DIR"`,
 	} {
 		if !strings.Contains(verify, want) {
 			t.Fatalf("verify script missing wiring %q", want)
@@ -667,6 +797,9 @@ func TestSmokeProbePackagingWiring(t *testing.T) {
 	}
 	if !strings.Contains(build, "builtin/core/roles/ani/smoke/templates/probe.sh") {
 		t.Fatal("offline build script does not require probe.sh")
+	}
+	if !strings.Contains(build, "builtin/core/roles/ani/smoke/templates/network-probe.sh") {
+		t.Fatal("offline build script does not ship network-probe.sh")
 	}
 	for _, stale := range []string{"network-client-pod.yaml", "client-pod.yaml"} {
 		if strings.Contains(role, stale) || strings.Contains(verify, stale) || strings.Contains(build, stale) {

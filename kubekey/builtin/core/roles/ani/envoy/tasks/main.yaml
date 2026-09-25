@@ -32,7 +32,9 @@
     dest: /etc/kubernetes/ani/envoy-gateway.yaml
 
 - name: ANI Envoy | Write controller configuration
-  command: kubectl create configmap envoy-gateway-config -n envoy-gateway-system --from-file=envoy-gateway.yaml=/etc/kubernetes/ani/envoy-gateway.yaml --dry-run=client -o yaml | kubectl apply -f -
+  command: |
+    set -euo pipefail
+    kubectl create configmap envoy-gateway-config -n envoy-gateway-system --from-file=envoy-gateway.yaml=/etc/kubernetes/ani/envoy-gateway.yaml --dry-run=client -o yaml | kubectl apply -f -
 
 - name: ANI Envoy | Restart controller
   command: kubectl rollout restart deployment/envoy-gateway -n envoy-gateway-system

@@ -33,6 +33,19 @@ network:
 registry:
   port: 5000
 
+# R05/A02: 存储必须显式声明，profile: full 不再隐含 Ceph。
+# 三台节点各自的设备写成本节点的 /dev/disk/by-id/... 身份（不要用 /dev/sdb 这类
+# 会变的裸名字，部署前用 lsblk -o NAME,PATH,TYPE,SERIAL,WWN 确认）。
+# 未填写前预检会在拿到磁盘之前就失败，不会去扫盘或清盘。
+storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/REPLACE_WITH_NODE1_DATA_DEVICE]}
+    - {name: node2, devices: [/dev/disk/by-id/REPLACE_WITH_NODE2_DATA_DEVICE]}
+    - {name: node3, devices: [/dev/disk/by-id/REPLACE_WITH_NODE3_DATA_DEVICE]}
+
 components:
   certManager:
     enabled: true

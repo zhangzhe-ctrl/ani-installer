@@ -3,7 +3,9 @@
   command: install -d -m 0755 /etc/kubernetes/ani
 
 - name: ANI Smoke | Create namespace
-  command: kubectl create namespace ani-installer-smoke --dry-run=client -o yaml | kubectl apply -f -
+  command: |
+    set -euo pipefail
+    kubectl create namespace ani-installer-smoke --dry-run=client -o yaml | kubectl apply -f -
 
 - name: ANI Smoke | Render Gateway
   template:

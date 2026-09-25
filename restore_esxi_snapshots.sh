@@ -5,7 +5,7 @@
 # 在「单台 ESXi 主机」上，只还原白名单内的虚拟机快照。
 #
 # 拓扑（重要）：
-#   - ESXi 宿主机（管理网）：172.16.255.12   凭据 root/Beta123@   版本 8.0.3
+#   - ESXi 宿主机（管理网）：172.16.255.12   凭据由 ESXI_PASS / ESXI_PASS_FILE 提供（不写入本文件）   版本 8.0.3
 #   - 目标虚拟机（业务网 172.16.101.0/24）：
 #       172.16.101.20  test-installer-01
 #       172.16.101.21  test-installer-02
@@ -33,7 +33,12 @@ set -uo pipefail
 
 ESXI_HOST="${ESXI_HOST:-172.16.255.12}"
 ESXI_USER="${ESXI_USER:-root}"
-ESXI_PASS="${ESXI_PASS:-Beta123@}"
+# 凭据来源（本文件不再包含任何明文或默认密码）：
+#   1) 环境变量 ESXI_PASS；或
+#   2) ESXI_PASS_FILE 指向的 0600 凭据文件（取其第一行）。
+# 缺凭据时，必须在发起任何 ssh 之前以非零状态退出。
+ESXI_PASS="${ESXI_PASS:-}"
+ESXI_PASS_FILE="${ESXI_PASS_FILE:-}"
 ESXI_SSH_PORT="${ESXI_SSH_PORT:-22}"
 
 # 硬白名单：只有这些「客户机 IP」对应的 VM 才允许被还原
@@ -80,6 +85,30 @@ log()  { echo "[$(_ts)] $*"; }
 ok()   { echo "[$(_ts)] [ OK ] $*"; }
 warn() { echo "[$(_ts)] [WARN] $*" >&2; }
 err()  { echo "[$(_ts)] [FAIL] $*" >&2; }
+# ---------------- 凭据预检（任何网络连接之前） ----------------
+# 缺凭据 / 凭据文件不可读 / 权限过宽：一律以非零状态退出，错误消息不含秘密值。
+require_esxi_credentials() {
+  if [ -z "${ESXI_PASS:-}" ] && [ -n "${ESXI_PASS_FILE:-}" ]; then
+    if [ ! -r "$ESXI_PASS_FILE" ]; then
+      err "凭据文件不可读：$ESXI_PASS_FILE"
+      exit 67
+    fi
+    local mode
+    mode="$(stat -c '%a' "$ESXI_PASS_FILE" 2>/dev/null || echo unknown)"
+    if [ "$mode" != "600" ] && [ "$mode" != "400" ]; then
+      err "凭据文件权限必须为 0600（当前 $mode）：$ESXI_PASS_FILE"
+      exit 67
+    fi
+    ESXI_PASS="$(head -n1 "$ESXI_PASS_FILE" | tr -d '\r\n')"
+  fi
+  if [ -z "${ESXI_PASS:-}" ]; then
+    err "缺少 ESXi 登录凭据：请先设置环境变量 ESXI_PASS，或设置 ESXI_PASS_FILE 指向 0600 凭据文件。"
+    err "本脚本不再提供任何内置或默认密码；凭据不到位不发起任何网络连接。"
+    exit 67
+  fi
+  export ESXI_PASS
+}
+
 
 # ---------------- 免交互密码登录（SSH_ASKPASS + setsid） ----------------
 ASKPASS=""
@@ -153,6 +182,8 @@ main() {
     *) err "未知模式：$MODE（应为 dry-run 或 execute）"; exit 64 ;;
   esac
 
+  # 凭据预检必须早于 check_deps/setup_askpass/esxi_ssh：缺凭据时零网络连接。
+  require_esxi_credentials
   check_deps
   setup_askpass
 

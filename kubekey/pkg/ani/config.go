@@ -5,10 +5,17 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"text/template"
 
+	"github.com/cockroachdb/errors"
+	kkTmpl "github.com/kubesphere/kubekey/v4/pkg/converter/tmpl"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -106,6 +113,47 @@ type Components struct {
 	NATS        StorageComponent     `yaml:"nats"`
 	Metrics     MetricsComponent     `yaml:"metrics"`
 	Logging     LoggingComponent     `yaml:"logging"`
+}
+
+// Storage providers accepted by storage.provider.
+const (
+	storageProviderCeph     = "ceph"
+	storageProviderExternal = "external"
+)
+
+// StorageNode declares the devices one node contributes to the new Ceph cluster.
+// The list is site input on purpose: R05 (A02) removed the deviceFilter scan
+// that used to authorise whichever disk happened to be /dev/sdb.
+type StorageNode struct {
+	Name    string   `yaml:"name"`
+	Devices []string `yaml:"devices"`
+}
+
+// Storage decides where block storage comes from. It is never implicit: a
+// `profile: full` install used to run Rook/Ceph, authorise a scanned disk and
+// rewrite the cluster's default StorageClass without the site saying so.
+type Storage struct {
+	Enabled bool `yaml:"enabled"`
+	// Provider is required when Enabled is true:
+	//   "ceph"     — this run installs Rook/Ceph and its RBD/CephFS classes
+	//   "external" — storage already exists; only an existing class is used
+	Provider string `yaml:"provider"`
+	// Nodes lists every cluster node with the data devices it contributes. All
+	// three nodes must appear: a node without a declaration cannot be given a
+	// disk by means of useAllNodes.
+	Nodes []StorageNode `yaml:"nodes"`
+	// MakeDefaultStorageClass marks the RBD class as the cluster default. When
+	// false (the default) no default annotation is touched at all; when true and
+	// another class is already the default, the install fails instead of
+	// clearing somebody else's marker.
+	MakeDefaultStorageClass bool `yaml:"makeDefaultStorageClass"`
+	// ExternalClass is required when Provider is external.
+	ExternalClass string `yaml:"externalClass"`
+}
+
+// provider returns the normalised provider name.
+func (s Storage) provider() string {
+	return strings.TrimSpace(s.Provider)
 }
 
 // DefaultComponents returns the documented defaults for a site that does not
@@ -390,13 +438,14 @@ type ClusterConfig struct {
 	//                 observability components after the network stack)
 	//   "base"      — stop after the base cluster: kubernetes + CNI network
 	//                 stack (kcn batch incl. envoy+smoke, or kubeovn)
-	Profile       string       `yaml:"profile"`
-	InstallerNode string       `yaml:"installerNode"`
-	SSH           SSHConfig    `yaml:"ssh"`
-	Nodes         []NodeConfig `yaml:"nodes"`
-	Network       Network      `yaml:"network"`
-	RegistryConfig Registry    `yaml:"registry"`
-	Components    Components   `yaml:"components"`
+	Profile        string       `yaml:"profile"`
+	InstallerNode  string       `yaml:"installerNode"`
+	SSH            SSHConfig    `yaml:"ssh"`
+	Nodes          []NodeConfig `yaml:"nodes"`
+	Network        Network      `yaml:"network"`
+	RegistryConfig Registry     `yaml:"registry"`
+	Components     Components   `yaml:"components"`
+	Storage        Storage      `yaml:"storage"`
 }
 
 // installProfile normalizes the configured profile for template use: an empty
@@ -418,8 +467,18 @@ func installProfile(profile string) string {
 // disabled stack's images never render, so they must not gate the run.
 // The lab group is kept unconditionally because its images ship with every
 // artifact and the smoke and verification jobs read them in any profile.
+// componentImageKeysForRun filters the declared key list down to the images the
+// selected stack, profile and components actually require (R08/A08):
+//   - the two main CNIs are either-or, chosen by network.stack;
+//   - the log stack follows the selected backend — an unselected backend's
+//     images are not required;
+//   - foundation component images follow their own enabled switches;
+//   - the cert-manager verification image follows cert-manager;
+//   - the lab group ships with every artifact.
 func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 	base := installProfile(c.Profile) == "base"
+	stack := networkStack(c.Network.Stack)
+	backend := c.Components.Logging.LogBackend()
 	all := componentImageKeys()
 	keys := make([]ImageKey, 0, len(all))
 	for _, key := range all {
@@ -429,13 +488,90 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 				continue
 			}
 		case "logs":
-			if base || !c.Components.loggingEnabled() {
+			if base {
+				continue
+			}
+			switch key.Backend {
+			case "loki":
+				if backend != loggingLoki {
+					continue
+				}
+			case "opensearch":
+				if backend != loggingOpenSearch {
+					continue
+				}
+			case "fluent-bit":
+				if !c.Components.loggingEnabled() {
+					continue
+				}
+			}
+		case "kcn":
+			if base || stack != "kcn" {
+				continue
+			}
+		case "kubeovn":
+			if base || stack != "kubeovn" {
+				continue
+			}
+		case "components":
+			switch key.Name {
+			case "postgres":
+				if base || !c.Components.PostgreSQL.Enabled {
+					continue
+				}
+			case "valkey":
+				if base || !c.Components.Valkey.Enabled {
+					continue
+				}
+			case "nats", "natsConfigReloader", "natsBox":
+				if base || !c.Components.NATS.Enabled {
+					continue
+				}
+			}
+		case "verification":
+			if base || !c.Components.CertManager.Enabled {
 				continue
 			}
 		}
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// requiredChartPaths lists the artifact chart paths the enabled components need
+// (R08). Enabling a chart-backed component without its chart material fails the
+// artifact preflight instead of deadlocking mid-install.
+func requiredChartPaths(c ClusterConfig) []string {
+	base := installProfile(c.Profile) == "base"
+	if base {
+		return nil
+	}
+	var paths []string
+	if c.Components.CertManager.Enabled {
+		paths = append(paths, "charts/cert-manager/v1.21.2.tgz")
+	}
+	if c.Components.NATS.Enabled {
+		paths = append(paths, "charts/nats/2.14.6.tgz")
+	}
+	if c.Components.Metrics.Enabled {
+		paths = append(paths, "charts/kube-prometheus-stack/85.4.0.tgz")
+	}
+	if c.Components.loggingEnabled() {
+		switch c.Components.Logging.LogBackend() {
+		case loggingLoki:
+			paths = append(paths, "charts/loki/18.13.3.tgz")
+		case loggingOpenSearch:
+			paths = append(paths, "charts/opensearch/3.8.0.tgz", "charts/fluent-bit/0.58.2.tgz")
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// requiresHelmTool reports whether any enabled component renders from a Chart,
+// which makes the packaged helm binary a required material (R08).
+func requiresHelmTool(c ClusterConfig) bool {
+	return len(requiredChartPaths(c)) > 0
 }
 
 type SSHConfig struct {
@@ -461,6 +597,24 @@ type Network struct {
 	PodCIDR             string `yaml:"podCIDR"`
 	ServiceCIDR         string `yaml:"serviceCIDR"`
 	KCN                 KCN    `yaml:"kcn"`
+	// KubeOVN carries the Kube-OVN network settings (R10/A05). The subsection
+	// binds the kubeovn stack only; a kcn site may still carry it (ignored),
+	// mirroring how the kcn subsection is ignored under kubeovn.
+	KubeOVN KubeOVN `yaml:"kubeovn"`
+}
+
+// KubeOVN is the network.kubeovn subsection. The loadBalancer/multus fields of
+// the blueprint §6.3 target schema are separate B01 work and deliberately not
+// accepted here: strict decoding rejects them until that task lands.
+type KubeOVN struct {
+	// DefaultGateway is the pod network gateway. Empty derives the first
+	// usable IPv4 address of the pod CIDR (network address + 1), so a
+	// non-default pod CIDR no longer renders the historical 10.16.0.1.
+	DefaultGateway string `yaml:"defaultGateway"`
+	// JoinCIDR is the node (join) switch network. Empty keeps the historical
+	// 172.19.0.0/16 the template shipped before the value became
+	// configurable; it is a fallback, not a rule for every site.
+	JoinCIDR string `yaml:"joinCIDR"`
 }
 
 type KCN struct {
@@ -477,6 +631,149 @@ func networkStack(stack string) string {
 		return "kcn"
 	}
 	return stack
+}
+
+// defaultKubeOVNJoinCIDR keeps the join network the kubeovn template shipped
+// before the value became configurable (R10/A05). It is a fallback, not a
+// rule: a site whose address plan collides with it must set
+// network.kubeovn.joinCIDR explicitly — validation still runs on the resolved
+// value, so a colliding default is rejected instead of silently deployed.
+const defaultKubeOVNJoinCIDR = "172.19.0.0/16"
+
+// kubeovnNetwork holds the resolved Kube-OVN network values the template
+// context renders (canonical spellings, defaults applied).
+type kubeovnNetwork struct {
+	DefaultGateway string
+	JoinCIDR       string
+}
+
+// parseIPv4Prefix parses a site-config CIDR under the strict Kube-OVN network
+// contract (R10/A05): the value must be IPv4, spelled as the canonical network
+// address (no host bits, so "10.16.0.1/16" is rejected) and large enough to
+// carry usable addresses (/31 and /32 cannot serve the pod, service or join
+// networks this release deploys). The returned prefix is always masked.
+//
+// The address and prefix length are parsed separately instead of via
+// netip.ParsePrefix so the rejection of non-canonical spellings is this
+// contract's own, deterministic error rather than a Go-version-dependent one.
+func parseIPv4Prefix(field, cidr string) (netip.Prefix, error) {
+	addrStr, bitsStr, ok := strings.Cut(cidr, "/")
+	if !ok {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: a CIDR needs an address and a prefix length like 10.16.0.0/16", field, cidr)
+	}
+	addr, err := netip.ParseAddr(addrStr)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: %w", field, cidr, err)
+	}
+	bits, err := strconv.Atoi(bitsStr)
+	if err != nil || bits < 0 || bits > addr.BitLen() {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: bad prefix length %q", field, cidr, bitsStr)
+	}
+	if !addr.Is4() {
+		return netip.Prefix{}, fmt.Errorf("%s %q is not an IPv4 network; this release supports IPv4 only", field, cidr)
+	}
+	prefix := netip.PrefixFrom(addr, bits)
+	masked := prefix.Masked()
+	if prefix != masked {
+		return netip.Prefix{}, fmt.Errorf("%s %q is not the canonical network address; write %s", field, cidr, masked)
+	}
+	if bits > 30 {
+		return netip.Prefix{}, fmt.Errorf("%s %q is too small; /31 and /32 cannot serve the network", field, cidr)
+	}
+	return masked, nil
+}
+
+// resolveKubeOVNNetwork resolves the effective Kube-OVN network values and, on
+// the kubeovn stack, enforces the R10/A05 contract (blueprint §6.3):
+//   - pod, service and join networks are canonical IPv4 prefixes, at most /30,
+//     pairwise disjoint;
+//   - no node management address falls inside pod, service or join;
+//   - the pod gateway is either the configured one (an IPv4 address inside
+//     the pod network that is not its network address) or, when empty, the
+//     first usable address of the pod CIDR.
+//
+// On the kcn stack the Kube-OVN subsection is ignored (mirroring how the kcn
+// subsection is ignored under kubeovn), but the values are still derived so
+// the template context never renders <no value> when a site switches stacks.
+func resolveKubeOVNNetwork(c ClusterConfig) (kubeovnNetwork, error) {
+	joinRaw := strings.TrimSpace(c.Network.KubeOVN.JoinCIDR)
+	if joinRaw == "" {
+		joinRaw = defaultKubeOVNJoinCIDR
+	}
+	if networkStack(c.Network.Stack) != "kubeovn" {
+		// kcn stack: derive without the kubeovn-only contract. Validate has
+		// already checked both CIDRs with net.ParseCIDR; canonicalize through
+		// it so the derivation below works on the network address.
+		gateway := strings.TrimSpace(c.Network.KubeOVN.DefaultGateway)
+		if gateway == "" {
+			_, ipnet, err := net.ParseCIDR(c.Network.PodCIDR)
+			if err != nil {
+				return kubeovnNetwork{}, fmt.Errorf("network.podCIDR %q is invalid: %w", c.Network.PodCIDR, err)
+			}
+			pod, err := netip.ParsePrefix(ipnet.String())
+			if err != nil {
+				return kubeovnNetwork{}, fmt.Errorf("network.podCIDR %q is invalid: %w", c.Network.PodCIDR, err)
+			}
+			gateway = pod.Addr().Next().String()
+		}
+		return kubeovnNetwork{DefaultGateway: gateway, JoinCIDR: joinRaw}, nil
+	}
+
+	pod, err := parseIPv4Prefix("network.podCIDR", c.Network.PodCIDR)
+	if err != nil {
+		return kubeovnNetwork{}, err
+	}
+	svc, err := parseIPv4Prefix("network.serviceCIDR", c.Network.ServiceCIDR)
+	if err != nil {
+		return kubeovnNetwork{}, err
+	}
+	join, err := parseIPv4Prefix("network.kubeovn.joinCIDR", joinRaw)
+	if err != nil {
+		return kubeovnNetwork{}, err
+	}
+	if pod.Overlaps(svc) {
+		return kubeovnNetwork{}, fmt.Errorf("network.podCIDR %s overlaps network.serviceCIDR %s; the pod and service networks must be disjoint", pod, svc)
+	}
+	if pod.Overlaps(join) {
+		return kubeovnNetwork{}, fmt.Errorf("network.podCIDR %s overlaps network.kubeovn.joinCIDR %s; the pod and join networks must be disjoint", pod, join)
+	}
+	if svc.Overlaps(join) {
+		return kubeovnNetwork{}, fmt.Errorf("network.serviceCIDR %s overlaps network.kubeovn.joinCIDR %s; the service and join networks must be disjoint", svc, join)
+	}
+	for _, n := range c.Nodes {
+		addr, err := netip.ParseAddr(n.Address)
+		if err != nil {
+			return kubeovnNetwork{}, fmt.Errorf("node %q address %q is invalid: %w", n.Name, n.Address, err)
+		}
+		for _, clash := range []struct {
+			network netip.Prefix
+			field   string
+		}{{pod, "network.podCIDR"}, {svc, "network.serviceCIDR"}, {join, "network.kubeovn.joinCIDR"}} {
+			if clash.network.Contains(addr) {
+				return kubeovnNetwork{}, fmt.Errorf("node %q management address %s falls inside %s %s; node addresses must stay outside the pod, service and join networks", n.Name, addr, clash.field, clash.network)
+			}
+		}
+	}
+	gateway := strings.TrimSpace(c.Network.KubeOVN.DefaultGateway)
+	if gateway == "" {
+		// First usable address of the pod network: network address + 1. The
+		// prefix size check above keeps Next() from wrapping.
+		return kubeovnNetwork{DefaultGateway: pod.Addr().Next().String(), JoinCIDR: join.String()}, nil
+	}
+	gw, err := netip.ParseAddr(gateway)
+	if err != nil {
+		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %q is invalid: %w", gateway, err)
+	}
+	if !gw.Is4() {
+		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %q is not an IPv4 address", gateway)
+	}
+	if !pod.Contains(gw) {
+		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %s is outside the pod network %s; the gateway must belong to the pod CIDR", gw, pod)
+	}
+	if gw == pod.Addr() {
+		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %s is the network address of %s and cannot serve as the gateway", gw, pod)
+	}
+	return kubeovnNetwork{DefaultGateway: gw.String(), JoinCIDR: join.String()}, nil
 }
 
 type Registry struct {
@@ -503,6 +800,123 @@ func (c ClusterConfig) RegistryAddress() (string, error) {
 	return net.JoinHostPort(n.Address, strconv.Itoa(c.RegistryConfig.Port)), nil
 }
 
+// validateStorage enforces the explicit storage contract from R05 (A02).
+//
+// nodes is the set of topology node names already validated by Validate, so a
+// storage declaration can be checked against the cluster it will run on.
+func validateStorage(c ClusterConfig, nodes map[string]struct{}) error {
+	s := c.Storage
+	if !s.Enabled {
+		switch {
+		case s.provider() != "":
+			return fmt.Errorf("storage.provider is set (%q) but storage.enabled is false; enable storage or remove the provider", s.Provider)
+		case len(s.Nodes) > 0:
+			return fmt.Errorf("storage.nodes is set but storage.enabled is false; enable storage or remove the node declarations")
+		case strings.TrimSpace(s.ExternalClass) != "":
+			return fmt.Errorf("storage.externalClass is set but storage.enabled is false; enable storage or remove the class")
+		case s.MakeDefaultStorageClass:
+			return fmt.Errorf("storage.makeDefaultStorageClass is true but storage.enabled is false; enable storage or drop the flag")
+		}
+		// With no storage selected the built-in class does not exist, so no
+		// enabled component may quietly rely on it.
+		for _, row := range c.Components.Selection() {
+			if !row.Enabled {
+				continue
+			}
+			component := c.Components.storage(row.Name)
+			if component != nil && strings.TrimSpace(component.StorageClass) == DefaultStorageClass {
+				return fmt.Errorf("components.%s uses the built-in StorageClass %q, which only exists when storage.enabled is true with provider=%q; enable storage or point the component at an existing class", row.Name, DefaultStorageClass, storageProviderCeph)
+			}
+		}
+		return nil
+	}
+
+	switch s.provider() {
+	case "":
+		return fmt.Errorf("storage.enabled is true but storage.provider is empty; set provider to %q or %q", storageProviderCeph, storageProviderExternal)
+	case storageProviderCeph:
+		if len(s.Nodes) == 0 {
+			return fmt.Errorf("storage.provider=%q requires storage.nodes with the data devices of every node", storageProviderCeph)
+		}
+		declared := map[string]struct{}{}
+		var missing []string
+		for _, node := range s.Nodes {
+			name := strings.TrimSpace(node.Name)
+			if name == "" {
+				return fmt.Errorf("storage.nodes entries require a node name")
+			}
+			if _, ok := declared[name]; ok {
+				return fmt.Errorf("storage.nodes declares node %q twice", name)
+			}
+			declared[name] = struct{}{}
+			if len(node.Devices) == 0 {
+				return fmt.Errorf("storage.nodes[%s] declares no devices; every node needs its own data device", name)
+			}
+			// Device paths live in each node's own namespace: /dev/sdb on
+			// node1 and /dev/sdb on node2 are two different physical disks.
+			// The blueprint explicitly allows a site where every node's data
+			// disk is /dev/sdb (§6.2), so dedup applies WITHIN one node only
+			// (the same node cannot list the same device twice). A global
+			// path-string dedup here wrongly rejected that documented VM-farm
+			// shape and blocked the first install (R15.3 field finding).
+			nodeDevices := map[string]struct{}{}
+			for _, device := range node.Devices {
+				device = strings.TrimSpace(device)
+				if !strings.HasPrefix(device, "/dev/") {
+					return fmt.Errorf("storage.nodes[%s] device %q must be an absolute /dev path", name, device)
+				}
+				if _, ok := nodeDevices[device]; ok {
+					return fmt.Errorf("storage.nodes[%s] declares device %q twice; one device cannot serve the same node twice", name, device)
+				}
+				nodeDevices[device] = struct{}{}
+			}
+		}
+		for _, node := range c.Nodes {
+			if _, ok := declared[node.Name]; !ok {
+				missing = append(missing, node.Name)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("storage.nodes is missing cluster node(s) %s: every cluster node needs its own declared data device", strings.Join(missing, ", "))
+		}
+		for name := range declared {
+			if _, ok := nodes[name]; !ok {
+				return fmt.Errorf("storage.nodes declares %q, which is not one of the cluster nodes", name)
+			}
+		}
+		if strings.TrimSpace(s.ExternalClass) != "" {
+			return fmt.Errorf("storage.externalClass is only valid with provider=%q", storageProviderExternal)
+		}
+	case storageProviderExternal:
+		if strings.TrimSpace(s.ExternalClass) == "" {
+			return fmt.Errorf("storage.provider=%q requires storage.externalClass", storageProviderExternal)
+		}
+		if len(s.Nodes) > 0 {
+			return fmt.Errorf("storage.provider=%q must not declare storage.nodes: this run installs no Ceph", storageProviderExternal)
+		}
+		if s.MakeDefaultStorageClass {
+			return fmt.Errorf("storage.makeDefaultStorageClass is not allowed with provider=%q: that class is not ours to mark", storageProviderExternal)
+		}
+	default:
+		return fmt.Errorf("storage.provider must be %q or %q, got %q", storageProviderCeph, storageProviderExternal, s.Provider)
+	}
+	return nil
+}
+
+// storageNodesForTemplate renders the declared storage nodes for the playbook
+// and role templates, one entry per node with its device list.
+func storageNodesForTemplate(s Storage) []map[string]any {
+	out := make([]map[string]any, 0, len(s.Nodes))
+	for _, node := range s.Nodes {
+		devices := make([]string, 0, len(node.Devices))
+		for _, device := range node.Devices {
+			devices = append(devices, strings.TrimSpace(device))
+		}
+		out = append(out, map[string]any{"name": node.Name, "devices": devices})
+	}
+	return out
+}
+
 func Validate(c ClusterConfig) error {
 	if strings.TrimSpace(c.Name) == "" {
 		return fmt.Errorf("name is required")
@@ -522,8 +936,9 @@ func Validate(c ClusterConfig) error {
 		if strings.TrimSpace(n.Name) == "" {
 			return fmt.Errorf("each node requires a name")
 		}
-		if net.ParseIP(n.Address) == nil {
-			return fmt.Errorf("node %q address %q is not an IPv4/IPv6 address", n.Name, n.Address)
+		ip := net.ParseIP(n.Address)
+		if ip == nil || ip.To4() == nil {
+			return fmt.Errorf("node %q address %q is not an IPv4 address", n.Name, n.Address)
 		}
 		if _, exists := names[n.Name]; exists {
 			return fmt.Errorf("duplicate node name %q", n.Name)
@@ -534,8 +949,17 @@ func Validate(c ClusterConfig) error {
 		names[n.Name] = struct{}{}
 		addresses[n.Address] = struct{}{}
 	}
+	if err := validateStorage(c, names); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.SSH.User) == "" {
 		return fmt.Errorf("ssh.user is required")
+	}
+	// R06: the installer node is nodes[0] by definition of the run manifest and
+	// the verify facts; a config that claims otherwise is ambiguous about where
+	// the run happens and is rejected before anything executes.
+	if len(c.Nodes) > 0 && c.InstallerNode != c.Nodes[0].Name {
+		return fmt.Errorf("installerNode must be the first node %q, got %q", c.Nodes[0].Name, c.InstallerNode)
 	}
 	if c.SSH.Port <= 0 || c.SSH.Port > 65535 {
 		return fmt.Errorf("ssh.port must be between 1 and 65535")
@@ -566,6 +990,19 @@ func Validate(c ClusterConfig) error {
 	case "", "full", "base":
 	default:
 		return fmt.Errorf("profile must be \"full\" or \"base\", got %q", c.Profile)
+	}
+	// R06: profile: base ends the chain before storage and every component, so a
+	// config that still enables them is rejected here instead of being silently
+	// skipped by the playbook.
+	if installProfile(c.Profile) == "base" {
+		for _, row := range c.Components.Selection() {
+			if row.Enabled {
+				return fmt.Errorf("profile=base stops before components, but components.%s is enabled; use profile=full or disable it", row.Name)
+			}
+		}
+		if c.Storage.Enabled {
+			return fmt.Errorf("profile=base stops before storage, but storage.enabled is true; use profile=full or disable it")
+		}
 	}
 	// The kcn subsection is only required for the kcn stack. When kubeovn is
 	// selected the site config may still carry the section (it is ignored),
@@ -608,6 +1045,14 @@ func Validate(c ClusterConfig) error {
 			}
 		}
 	}
+	// R10/A05: the Kube-OVN network contract (canonical IPv4 CIDRs, disjoint
+	// pod/service/join networks, gateway inside the pod network, node
+	// addresses outside all three) binds the kubeovn stack only.
+	if networkStack(stack) == "kubeovn" {
+		if _, err := resolveKubeOVNNetwork(c); err != nil {
+			return err
+		}
+	}
 	return c.Components.validate()
 }
 
@@ -633,6 +1078,13 @@ func ParseClusterConfig(data []byte) (ClusterConfig, error) {
 			return ClusterConfig{}, fmt.Errorf("cluster config is empty")
 		}
 		return ClusterConfig{}, fmt.Errorf("parse cluster config: %w", err)
+	}
+	// Exactly one document: a second YAML document after the site config would
+	// otherwise be silently ignored, so the file the operator edits would not be
+	// the file that gets interpreted (R06/A09).
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return ClusterConfig{}, fmt.Errorf("cluster config must contain exactly one YAML document")
 	}
 	return cluster, nil
 }
@@ -717,6 +1169,13 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	for _, n := range c.Nodes {
 		nodeAddresses = append(nodeAddresses, n.Address)
 	}
+	// The Kube-OVN gateway and join network are derived/validated once here so
+	// the template renders canonical values and never its historical hardcoded
+	// literals (R10/A05).
+	kubeovnNet, err := resolveKubeOVNNetwork(c)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"zone": "",
 		"download": map[string]any{
@@ -774,11 +1233,18 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"nodelocaldns": map[string]any{"enabled": false},
 		},
 		"ani": map[string]any{
-			"registry":       registry,
-			"images":         imageRefs,
-			"image_parts":    imageParts,
-			"components":     components,
-			"profile":        installProfile(c.Profile),
+			"registry":    registry,
+			"images":      imageRefs,
+			"image_parts": imageParts,
+			"components":  components,
+			"profile":     installProfile(c.Profile),
+			"storage": map[string]any{
+				"enabled":                 c.Storage.Enabled,
+				"provider":                c.Storage.provider(),
+				"makeDefaultStorageClass": c.Storage.MakeDefaultStorageClass,
+				"externalClass":           c.Storage.ExternalClass,
+				"nodes":                   storageNodesForTemplate(c.Storage),
+			},
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,
@@ -788,6 +1254,10 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 				"management_interface": c.Network.ManagementInterface,
 				"pod_cidr":             c.Network.PodCIDR,
 				"service_cidr":         c.Network.ServiceCIDR,
+				"kubeovn": map[string]any{
+					"default_gateway": kubeovnNet.DefaultGateway,
+					"join_cidr":       kubeovnNet.JoinCIDR,
+				},
 				"kcn": map[string]any{
 					"managedDevices":   c.Network.KCN.ManagedDevices,
 					"encapNetworks":    c.Network.KCN.EncapNetworks,
@@ -946,4 +1416,314 @@ func LocalImageReferences(table ImageTable, registry string) (map[string]string,
 		refs[original] = ref
 	}
 	return refs, nil
+}
+
+// aniRoleEnabled reports whether an ANI role's files are part of the selected
+// install chain, so the render command skips disabled components instead of
+// failing on their deliberately absent materials.
+func aniRoleEnabled(role string, c ClusterConfig) bool {
+	switch role {
+	case "kcn", "envoy", "smoke":
+		return networkStack(c.Network.Stack) == "kcn" && installProfile(c.Profile) != "base"
+	case "kubeovn":
+		return networkStack(c.Network.Stack) == "kubeovn"
+	case "ceph":
+		return c.Storage.Enabled && c.Storage.provider() == storageProviderCeph && installProfile(c.Profile) != "base"
+	case "cert-manager":
+		return c.Components.CertManager.Enabled && installProfile(c.Profile) != "base"
+	case "postgresql":
+		return c.Components.PostgreSQL.Enabled && installProfile(c.Profile) != "base"
+	case "valkey":
+		return c.Components.Valkey.Enabled && installProfile(c.Profile) != "base"
+	case "nats":
+		return c.Components.NATS.Enabled && installProfile(c.Profile) != "base"
+	case "metrics":
+		return c.Components.Metrics.Enabled && installProfile(c.Profile) != "base"
+	case "loki":
+		return c.Components.Logging.LogBackend() == loggingLoki && installProfile(c.Profile) != "base"
+	case "opensearch":
+		return c.Components.Logging.LogBackend() == loggingOpenSearch && installProfile(c.Profile) != "base"
+	case "fluent-bit":
+		return c.Components.loggingEnabled() && installProfile(c.Profile) != "base"
+	default:
+		return true
+	}
+}
+
+// RenderSite renders every file of every enabled ANI role with the production
+// template context (R08): the same FuncMap, the same config generator and the
+// same image table the installer uses. The result is a plain map of relative
+// path -> rendered bytes, with no cluster access and no apply.
+type r08Heredoc struct {
+	delimiter string
+	body      string
+}
+
+// heredocBodies extracts the bodies of unquoted shell here-documents so their
+// content can be validated as YAML instead of being trusted by bash -n alone.
+func heredocBodies(content string) []r08Heredoc {
+	pattern := regexp.MustCompile(`(?m)^[^\n]*<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*$`)
+	lines := strings.Split(content, "\n")
+	var blocks []r08Heredoc
+	for index, line := range lines {
+		match := pattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		delimiter := match[1]
+		var body []string
+		for _, inner := range lines[index+1:] {
+			if strings.TrimSpace(inner) == delimiter {
+				blocks = append(blocks, r08Heredoc{delimiter: delimiter, body: strings.Join(body, "\n")})
+				break
+			}
+			body = append(body, inner)
+		}
+	}
+	return blocks
+}
+
+// RenderedFile pairs a rendered role file with its template source, so the
+// semantic checks can tell legitimate runtime-bound values apart from defects.
+type RenderedFile struct {
+	Name     string
+	Source   []byte
+	Rendered []byte
+}
+
+func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table ImageTable) ([]RenderedFile, error) {
+	spec, err := KubeKeyConfig(c, filepath.Join(artifactRoot, "packages", "kubekey-artifact.tgz"), artifactRoot, table)
+	if err != nil {
+		return nil, err
+	}
+	// The executor merges the inventory (hosts/groups) with the config map in
+	// production, so the render merges both generators too — no hand-written
+	// third context (R08).
+	inventory, err := KubeKeyInventory(c)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range inventory {
+		if _, exists := spec[key]; !exists {
+			spec[key] = value
+		}
+	}
+	files := []RenderedFile{}
+	walkErr := filepath.WalkDir(rolesDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".sh") && !strings.HasSuffix(path, ".txt")) {
+			return nil
+		}
+		roleRel, err := filepath.Rel(rolesDir, path)
+		if err != nil {
+			return err
+		}
+		role := strings.Split(filepath.ToSlash(roleRel), "/")[0]
+		if !aniRoleEnabled(role, c) {
+			return nil
+		}
+		parsed, parseErr := template.New(filepath.Base(path)).Funcs(kkTmpl.FuncMap()).ParseFiles(path)
+		if parseErr != nil {
+			return fmt.Errorf("parse %s: %w", path, parseErr)
+		}
+		tmpl := parsed
+		name := filepath.Base(path)
+		if name == "main.yaml" {
+			name = role + "-tasks-main.yaml"
+		} else if name == "verify.sh" {
+			name = role + "-verify.sh"
+		} else if name == "values.yaml" {
+			name = role + "-values.yaml"
+		} else {
+			name = role + "-" + name
+		}
+		source, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		rendered := &bytes.Buffer{}
+		if err := tmpl.Execute(rendered, spec); err != nil {
+			return fmt.Errorf("render %s: %w", path, err)
+		}
+		files = append(files, RenderedFile{Name: name, Source: source, Rendered: rendered.Bytes()})
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no role files were rendered from %s", rolesDir)
+	}
+	return files, nil
+}
+
+// renderSource keeps the template source of one rendered file.
+func renderSource(files []RenderedFile, name string) string {
+	for _, file := range files {
+		if file.Name == name {
+			return string(file.Source)
+		}
+	}
+	return ""
+}
+
+// vendorMaterialFile names the upstream documents the roles ship verbatim (with
+// only the image references rewritten): their schema placeholders are vendor
+// text, not defects.
+var vendorMaterialFiles = []string{"crds.yaml", "csi-operator.yaml", "install.yaml"}
+
+// ValidateRenderedArtifacts runs the semantic checks over rendered output that
+// a plain `bash -n` cannot provide (R08):
+//   - no unrendered or missing template values (`{{`, `<no value>`), except the
+//     two legitimate runtime-bound shapes (loop variables and command outputs
+//     registered by earlier tasks), which are detected from the template source;
+//   - no leftover placeholder or empty image references;
+//   - every shell heredoc body that claims to be YAML parses as YAML;
+//   - no duplicate apiVersion/kind/name resource in the rendered manifests.
+//
+// Upstream vendor documents (CRDs, the csi-operator manifest, the official
+// envoy install manifest) ship schema placeholders and their own structure, so
+// the shape checks skip them while the digest/identity checks do not.
+func ValidateRenderedArtifacts(files []RenderedFile) error {
+	var problems []string
+	sorted := make([]RenderedFile, 0, len(files))
+	for _, file := range files {
+		sorted = append(sorted, file)
+	}
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+
+	resourceNames := map[string]string{}
+	for _, file := range sorted {
+		content := string(file.Rendered)
+		source := string(file.Source)
+		vendor := false
+		for _, suffix := range vendorMaterialFiles {
+			if strings.HasSuffix(file.Name, "-"+suffix) {
+				vendor = true
+				break
+			}
+		}
+
+		if strings.Contains(content, "<no value>") {
+			loopBound := strings.Contains(source, ".item") || strings.Contains(source, "(item")
+			runtimeRegistered := strings.Contains(source, ".stdout")
+			if !loopBound && !runtimeRegistered {
+				problems = append(problems, fmt.Sprintf("%s: contains <no value> (an undefined template value rendered through)", file.Name))
+			}
+		}
+		if !vendor && strings.Contains(content, "{{") {
+			problems = append(problems, fmt.Sprintf("%s: contains unrendered {{...}} template delimiters", file.Name))
+		}
+		if strings.Contains(content, "REPLACE_") {
+			problems = append(problems, fmt.Sprintf("%s: contains a leftover REPLACE_ placeholder", file.Name))
+		}
+		// The image keys render repository/tag fields (SplitImageReferences);
+		// an empty one means a key resolved to nothing. A bare `image:` key with
+		// a nested map is legitimate YAML and is not flagged.
+		if !vendor && (regexp.MustCompile(`repository:\s*(""|$)`).MatchString(content) ||
+			regexp.MustCompile(`tag:\s*(""|$)`).MatchString(content)) {
+			problems = append(problems, fmt.Sprintf("%s: contains an empty image reference", file.Name))
+		}
+		if !vendor {
+			// Every shell heredoc body that claims to be YAML must actually
+			// parse. Heredocs with the PY delimiter are embedded python (the
+			// repo convention) and are executed from fixtures instead.
+			for _, block := range heredocBodies(content) {
+				if block.delimiter == "PY" {
+					continue
+				}
+				var probe any
+				if err := yaml.Unmarshal([]byte(block.body), &probe); err != nil {
+					problems = append(problems, fmt.Sprintf("%s: heredoc %s does not parse as YAML: %v", file.Name, block.delimiter, err))
+				}
+			}
+			// Rendered k8s resources must not repeat apiVersion/kind/name.
+			for _, doc := range strings.Split(content, "\n---\n") {
+				var resource struct {
+					APIVersion string `yaml:"apiVersion"`
+					Kind       string `yaml:"kind"`
+					Metadata   struct {
+						Name      string `yaml:"name"`
+						Namespace string `yaml:"namespace"`
+					} `yaml:"metadata"`
+				}
+				if yaml.Unmarshal([]byte(doc), &resource) != nil {
+					continue
+				}
+				if resource.APIVersion == "" || resource.Kind == "" || resource.Metadata.Name == "" {
+					continue
+				}
+				if !strings.Contains(resource.APIVersion, "/") && resource.APIVersion != "v1" {
+					continue
+				}
+				key := resource.APIVersion + "/" + resource.Kind + "/" + resource.Metadata.Namespace + "/" + resource.Metadata.Name
+				if previous, ok := resourceNames[key]; ok && previous != file.Name {
+					problems = append(problems, fmt.Sprintf("%s and %s both render %s", previous, file.Name, key))
+				}
+				resourceNames[key] = file.Name
+			}
+		}
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("rendered artifacts have %d problem(s):\n%s", len(problems), strings.Join(problems, "\n"))
+}
+
+// RunRender is the implementation of `kk ani render`: validate the config,
+// render every enabled role file with the production context, run the semantic
+// checks, and write the result into the output directory. It never touches a
+// live cluster and never applies anything.
+func RunRender(input ValidateInput, rolesDir string, stdout io.Writer) error {
+	cluster, err := LoadClusterConfig(input.ConfigFile)
+	if err != nil {
+		return err
+	}
+	if err := Validate(cluster); err != nil {
+		return errors.Wrap(err, "validate cluster config")
+	}
+	tableRows, err := os.ReadFile(filepath.Join(strings.TrimSpace(input.PackageRoot), "ani", "images.tsv"))
+	if err != nil {
+		if _, altErr := os.Stat(filepath.Join(strings.TrimSpace(input.PackageRoot), "images", "images.tsv")); altErr != nil {
+			return errors.Wrapf(err, "read %s/ani/images.tsv (the render needs the packaged image table)", input.PackageRoot)
+		}
+		tableRows, err = os.ReadFile(filepath.Join(strings.TrimSpace(input.PackageRoot), "images", "images.tsv"))
+		if err != nil {
+			return errors.Wrapf(err, "read the packaged image table under %s", input.PackageRoot)
+		}
+	}
+	table, err := LoadImageTable(strings.Split(string(tableRows), "\n"))
+	if err != nil {
+		return err
+	}
+	files, err := RenderSite(rolesDir, cluster, strings.TrimSpace(input.PackageRoot), table)
+	if err != nil {
+		return err
+	}
+	if err := ValidateRenderedArtifacts(files); err != nil {
+		return err
+	}
+	if strings.TrimSpace(input.Output) != "" {
+		if err := os.MkdirAll(input.Output, 0o755); err != nil {
+			return errors.Wrapf(err, "create render output directory %s", input.Output)
+		}
+		for _, file := range files {
+			target := filepath.Join(input.Output, file.Name)
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return errors.Wrapf(err, "create directory for %s", target)
+			}
+			if err := os.WriteFile(target, file.Rendered, 0o644); err != nil {
+				return errors.Wrapf(err, "write %s", target)
+			}
+		}
+	}
+	out := stdout
+	if out == nil {
+		out = os.Stdout
+	}
+	fmt.Fprintf(out, "rendered %d files for cluster=%s profile=%s network=%s (no live API access, nothing applied)\n",
+		len(files), cluster.Name, installProfile(cluster.Profile), networkStack(cluster.Network.Stack))
+	return nil
 }

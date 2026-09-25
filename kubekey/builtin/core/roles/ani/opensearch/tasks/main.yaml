@@ -25,11 +25,13 @@
 
 - name: ANI OpenSearch | Create work directory
   command: |
+    set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/opensearch
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
 - name: ANI OpenSearch | Create the observability namespace
   command: |
+    set -euo pipefail
     kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
 
 - name: ANI OpenSearch | Require the packaged Helm binary
@@ -300,6 +302,7 @@
 # which runs after this one.
 - name: ANI OpenSearch | Run component verification
   command: |
+    set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/opensearch/verify.sh

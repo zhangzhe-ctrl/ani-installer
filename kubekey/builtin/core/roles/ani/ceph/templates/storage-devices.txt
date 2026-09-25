@@ -1,0 +1,3 @@
+{{- range .ani.storage.nodes }}
+{{ .name }} {{ range .devices }}{{ . }} {{ end }}
+{{- end }}

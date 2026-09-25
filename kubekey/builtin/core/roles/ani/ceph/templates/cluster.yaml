@@ -59,11 +59,21 @@ spec:
     osd: system-node-critical
     mgr: system-cluster-critical
   storage:
-    useAllNodes: true
+    # An explicit allowlist, never discovery (R05/A02). Every node's devices are
+    # declared by the site config and verified by the pre-flight task before this
+    # manifest is applied: useAllNodes would also configure nodes with no
+    # declaration, and a device filter would authorise whichever disk happened to
+    # match. Rook is told exactly which devices, per node, may carry OSDs.
+    useAllNodes: false
     useAllDevices: false
-    # Each node has one blank 50G data disk /dev/sdb (sda is the system disk). Anchor the
-    # filter so only sdb is consumed; Rook also skips devices that carry a filesystem.
-    deviceFilter: "^sdb$"
+    nodes:
+{{- range .ani.storage.nodes }}
+      - name: {{ .name }}
+        devices:
+{{- range .devices }}
+          - name: {{ . }}
+{{- end }}
+{{- end }}
     allowDeviceClassUpdate: false
     allowOsdCrushWeightUpdate: false
     scheduleAlways: false

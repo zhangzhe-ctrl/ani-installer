@@ -11,6 +11,7 @@
 
 - name: ANI PostgreSQL | Create work directory
   command: |
+    set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/postgresql
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
@@ -35,6 +36,7 @@
 
 - name: ANI PostgreSQL | Create the application namespace
   command: |
+    set -euo pipefail
     kubectl create namespace ani-platform --dry-run=client -o yaml | kubectl apply --server-side -f -
 
 - name: ANI PostgreSQL | Create admin secret (superuser password)
@@ -93,12 +95,14 @@
 
 - name: ANI PostgreSQL | Make the verification script root-only and executable
   command: |
+    set -euo pipefail
     chown root:root /etc/kubernetes/ani/postgresql/verify.sh
     chmod 0700 /etc/kubernetes/ani/postgresql/verify.sh
     test -x /etc/kubernetes/ani/postgresql/verify.sh
 
 - name: ANI PostgreSQL | Run component verification
   command: |
+    set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/postgresql/verify.sh

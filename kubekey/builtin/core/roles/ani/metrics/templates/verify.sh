@@ -46,18 +46,20 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 # so the pod can never recover by itself (recorded since B2 as appendix A of
 # the foundation status document, which documents "rebuild the pod" as the
 # recovery). Observed live on h4loki-a12/a14/a15/a17. The a17 live recovery
-# experiment (2026-09-20, evidence h4loki-a17-k5recovery-exp.log) pinned the
-# mechanism down: OVS br-int table=79 carries explicit anti-spoof drop flows
-# keyed on the dead pod's MAC/IP that survive pod recreation (three
-# consecutive rebuilt instances dead over 35+ minutes) AND both kcn agent
-# restarts alone, while a plain second rebuild never recovered either. What
-# did recover the slot in ~20s was restarting the kcn-cni-ds and kcn-ovs-ds
-# agents on the pod's node and THEN deleting the pod once more, so the
-# replacement is set up by a fresh CNI add against freshly started agents.
-# A rebuild that does not come back therefore gets: one bounded second
-# rebuild, then the agent restart + fresh rebuild, each step recorded in
-# $OUT_DIR/k5-retries.txt; a final failure still fails the run, so no real
-# defect can hide behind this.
+# experiment (2026-09-20, evidence h4loki-a17-k5recovery-exp.log) showed that
+# restarting the kcn-cni-ds and kcn-ovs-ds agents on the pod's node and then
+# deleting the pod once more recovered the slot in ~20s.
+#
+# R02 removed that recovery from the acceptance path. A verification must not
+# repair the cluster it is verifying: the agent restarts, the repeated rebuild
+# and the post-Ready re-entry are gone, so a hit K-5 flake now fails the run
+# visibly instead of being papered over. What a wait may still do is the ONE
+# planned rebuild of the component's own pod that the durability check already
+# performs (delete the pod, let the StatefulSet recreate it); that single
+# rebuild stays here, recorded in $OUT_DIR/k5-retries.txt, and moving it to the
+# acceptance level is R13's decision. Nothing outside $NS is ever deleted, and
+# a timeout after that one rebuild records read-only evidence and returns
+# non-zero. The R02 task card is the authority for this change.
 #
 # The waits themselves never use `kubectl rollout status`: on the lab's
 # kubectl v1.35 it can exit 0 both on timeout and on a stale STS status
@@ -99,58 +101,53 @@ k5_workload_ready() { # k5_workload_ready <kind/name> <timeout> — bounded wait
   done
   return 1
 }
-k5_rebuild_wait() { # k5_rebuild_wait <selector> <what> <first-timeout> <second-timeout> <final-timeout>
-  local sel="$1" what="$2" t1="$3" t2="$4" t3="$5" pod node
+k5_rebuild_wait() { # k5_rebuild_wait <selector> <what> <first-timeout> <second-timeout>
+  # Bounded by design (R02): wait, then at most ONE planned rebuild of this
+  # component's own pod inside $NS, then wait again. No data-plane agent
+  # restart, no repeated delete, no post-Ready re-entry. A pod that is still
+  # not Ready after the planned rebuild records read-only evidence and returns
+  # non-zero, so the caller fails instead of repairing the cluster.
+  local sel="$1" what="$2" t1="$3" t2="$4"
   if k5_pod_ready "$sel" "$t1"; then
     return 0
   fi
-  echo "  K5_RETRY $what: the rebuilt pod did not become ready within $t1 (base-layer netns flake, appendix A); rebuilding it once more"
-  echo "k5_retry $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
+  echo "  K5_REBUILD $what: not Ready within $t1; performing the one planned rebuild of this component's pod"
+  echo "k5_rebuild_planned $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
   "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
   if k5_pod_ready "$sel" "$t2"; then
     return 0
   fi
-  echo "  K5_RETRY $what: still not ready within $t2; restarting the kcn data-plane agents on the pod node and rebuilding with a fresh CNI add (a17 recovery experiment)"
-  echo "k5_retry_dataplane $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
-  pod="$("${KUBECTL[@]}" -n "$NS" get pod -l "$sel" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-  node="$("${KUBECTL[@]}" -n "$NS" get pod "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)"
-  if [ -n "$node" ]; then
-    k5_dp_agent_restart "$node" "$what"
-    k5_dp_agent_wait "kcn-cni-ds" "$node" \
-      || echo "  K5_RETRY $what: the kcn-cni-ds agent on $node is not Ready within 240s (continuing; the final wait is the arbiter)"
-    k5_dp_agent_wait "ovs" "$node" \
-      || echo "  K5_RETRY $what: the kcn-ovs-ds agent on $node is not Ready within 240s (continuing)"
-  fi
-  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
-  k5_pod_ready "$sel" "$t3"
-}
-k5_read_again() { # k5_read_again <selector> <what> — one bounded recovery re-entry after a post-Ready datapath death
-  local sel="$1" what="$2"
-  echo "  K5_RETRY $what: the rebuilt pod passed pod Ready but the query path died right after (a26: the netns died post-Ready, outbound no-route and inbound blackhole); re-entering the rebuild recovery once"
-  echo "k5_retry_sample_read $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
-  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
-  k5_rebuild_wait "$sel" "$what" 600s 420s 600s
-}
-k5_dp_agent_restart() { # k5_dp_agent_restart <node> <what> — restart the kcn data-plane agents (cni, ovs) on <node>
-  local node="$1" what="$2" k apod
-  for k in cni ovs; do
-    apod="$("${KUBECTL[@]}" -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$k" '$2==n && $1 ~ p {print $1; exit}')"
-    if [ -n "$apod" ]; then
-      echo "  K5_RETRY $what: restarting the kcn-$k data-plane agent on $node ($apod)"
-      "${KUBECTL[@]}" -n kcn-system delete pod "$apod" --timeout=180s >/dev/null 2>&1 || true
-    fi
-  done
-}
-k5_dp_agent_wait() { # k5_dp_agent_wait <name-pattern> <node> — bounded wait for a Ready kcn agent pod on <node>
-  local pat="$1" node="$2" i np rdy
-  for i in $(seq 1 48); do
-    np="$("${KUBECTL[@]}" -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$pat" '$2==n && $1 ~ p {print $1; exit}')"
-    rdy="$("${KUBECTL[@]}" -n kcn-system get pod "$np" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)"
-    [ "$rdy" = "true" ] && return 0
-    sleep 5
-  done
+  echo "  K5_REBUILD $what: still not Ready within $t2; no further rebuild and no agent restart is attempted" >&2
+  k5_collect_failure_evidence "$sel" "$what" || true
   return 1
 }
+k5_collect_failure_evidence() { # k5_collect_failure_evidence <selector> <what> — read-only diagnostics, never changes the caller's result
+  local sel="$1" what="$2" rc=0 pods=""
+  {
+    echo "== k5 failure evidence: $what (selector $sel) =="
+    date -u +%Y-%m-%dT%H:%M:%SZ
+    echo "-- pods --"
+  } >> "$OUT_DIR/k5-failure-$what.txt" 2>&1 || rc=1
+  "${KUBECTL[@]}" -n "$NS" get pod -l "$sel" -o wide >> "$OUT_DIR/k5-failure-$what.txt" 2>&1 || rc=1
+  pods="$("${KUBECTL[@]}" -n "$NS" get pod -l "$sel" -o name 2>/dev/null || true)"
+  if [ -n "$pods" ]; then
+    # shellcheck disable=SC2086 # $pods is a newline-separated list of pod names
+    "${KUBECTL[@]}" -n "$NS" describe $pods >> "$OUT_DIR/k5-failure-$what.txt" 2>&1 || rc=1
+  fi
+  "${KUBECTL[@]}" -n "$NS" get events --sort-by=.lastTimestamp >> "$OUT_DIR/k5-failure-$what.txt" 2>&1 || rc=1
+  echo "k5_failure_evidence $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt" 2>&1 || rc=1
+  # Diagnostics are best-effort: a failing diagnostic command is recorded, and
+  # the caller keeps its own (already failing) result.
+  return "$rc"
+}
+
+# R02 test seam: with ANI_VERIFY_LIB_ONLY=1 this file only defines the helpers
+# above and returns, so the offline behaviour tests in pkg/ani can call the real
+# K-5 functions with a fake kubectl instead of re-implementing them. Production
+# runs never set the variable and take exactly the same path as before.
+if [ "${ANI_VERIFY_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 PROM_STS=statefulset/prometheus-ani-metrics-prometheus
 AM_STS=statefulset/alertmanager-ani-metrics-alertmanager
@@ -823,13 +820,13 @@ done
 [ -n "$seen_before" ] || fail "the marker sample is not queryable before the rebuild"
 
 # A normal rebuild: delete the pod and let the StatefulSet recreate it. No
-# snapshot, no PVC deletion, no namespace surgery. The wait carries the K-5
-# bounded second rebuild plus the a17 agent-restart recovery (see
-# k5_rebuild_wait): the datapath flake must not be able to kill an otherwise
-# sound durability check.
+# snapshot, no PVC deletion, no namespace surgery. The wait below may perform
+# ONE further planned rebuild of this component's own pod and then gives up
+# with read-only evidence (see k5_rebuild_wait); it never restarts the kcn
+# agents or repairs the datapath, so a real flake fails this check visibly.
 "${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=prometheus --timeout=180s >/dev/null
-k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 600s 420s 600s \
-  || fail "Prometheus did not come back after the rebuild"
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 600s 420s \
+  || fail "Prometheus did not come back after the rebuild (no further rebuild or agent restart is attempted)"
 
 prom_pvc_after="$("${KUBECTL[@]}" -n "$NS" get "pvc/$prom_pvc" -o jsonpath='{.metadata.uid}')"
 prom_sts_after="$("${KUBECTL[@]}" -n "$NS" get "$PROM_STS" -o jsonpath='{.metadata.uid}')"
@@ -838,21 +835,15 @@ prom_sts_after="$("${KUBECTL[@]}" -n "$NS" get "$PROM_STS" -o jsonpath='{.metada
 
 # Range query across the window holding the pre-rebuild sample. An instant
 # query after the rebuild could be answered by a fresh scrape, so the assertion
-# is on the stored sample.
-# a26 (evidence h4loki-a26): the rebuilt pod can pass pod Ready and THEN have
-# its netns die before the assertion runs (prometheus logged outbound
-# no-route-to-host while node-side probes and the service endpoints all went
-# dark). One bounded recovery re-entry reuses the same chain the rebuild wait
-# uses; the sample lives on the PVC, so a second rebuild preserves it.
+# is on the stored sample. a26 (evidence h4loki-a26) is the post-Ready blind
+# window: the rebuilt pod can pass Ready and THEN have its netns die. R02
+# removed the re-entry that used to rebuild the pod again here — one failing
+# read is now the check's answer, followed by read-only evidence.
 range_out=""
-if ! range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
-    "$(( marker_ts / 1000 - 60 ))" "$(( marker_ts / 1000 + 180 ))" "$marker_value")"; then
-  k5_read_again "app.kubernetes.io/name=prometheus" "prometheus" \
-    || fail "Prometheus did not come back after the sample-read recovery"
-  range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
+range_out="$(py "$OUT_DIR/range.py" "http://$PROM_SVC" "$marker_sel" \
     "$(( marker_ts / 1000 - 60 ))" "$(( marker_ts / 1000 + 180 ))" "$marker_value")" \
-    || fail "the pre-rebuild sample is not readable after the rebuild"
-fi
+  || { k5_collect_failure_evidence "app.kubernetes.io/name=prometheus" "prometheus" || true
+       fail "the pre-rebuild sample is not readable after the rebuild"; }
 printf '%s' "$range_out" > "$OUT_DIR/rebuild-range.json"
 echo "  pre-rebuild sample read back by range query: $range_out"
 
@@ -890,11 +881,11 @@ silence_id="$(py "$OUT_DIR/silence_create.py" "http://$AM_SVC" "$(cat "$OUT_DIR/
 [ -n "$silence_id" ] || fail "Alertmanager did not return a silence ID"
 echo "  silence created: $silence_id"
 
-# Normal rebuild of Alertmanager only, with the same K-5 bounded second
-# rebuild plus agent-restart recovery as [7/8].
+# Normal rebuild of Alertmanager only, with the same single planned rebuild on
+# failure as [7/8] (no agent restart, no repeated rebuild).
 "${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=alertmanager --timeout=180s >/dev/null
-k5_rebuild_wait "app.kubernetes.io/name=alertmanager" "alertmanager" 600s 420s 600s \
-  || fail "Alertmanager did not come back after the rebuild"
+k5_rebuild_wait "app.kubernetes.io/name=alertmanager" "alertmanager" 600s 420s \
+  || fail "Alertmanager did not come back after the rebuild (no further rebuild or agent restart is attempted)"
 
 am_pvc_after="$("${KUBECTL[@]}" -n "$NS" get "pvc/$am_pvc" -o jsonpath='{.metadata.uid}')"
 am_sts_after="$("${KUBECTL[@]}" -n "$NS" get "$AM_STS" -o jsonpath='{.metadata.uid}')"
@@ -903,8 +894,6 @@ am_secret_after="$("${KUBECTL[@]}" -n "$NS" get "secret/$am_secret" -o jsonpath=
 [ "$am_sts_after" = "$am_sts_before" ] || fail "Alertmanager StatefulSet was replaced"
 [ "$am_secret_after" = "$am_secret_before" ] || fail "Alertmanager generated Secret was replaced"
 
-# The read-back poll is factored out so the same 120s window can be re-run
-# after a recovery re-entry (see k5_read_again).
 am_silence_poll() { # am_silence_poll — poll the silence read for up to 120s; sets `got` and returns 0 when read back
   local i
   for i in $(seq 1 60); do
@@ -917,12 +906,12 @@ am_silence_poll() { # am_silence_poll — poll the silence read for up to 120s; 
 
 silence_back=""
 if am_silence_poll; then silence_back=yes; fi
-# Same post-Ready blind window as [7/8]: one bounded recovery re-entry before
-# giving up (a26).
+# Same post-Ready blind window as [7/8] (a26): R02 removed the re-entry that
+# used to rebuild the pod again here. One failed poll is the answer; the
+# read-only evidence below records the state and the run fails.
 if [ -z "$silence_back" ]; then
-  k5_read_again "app.kubernetes.io/name=alertmanager" "alertmanager" \
-    || fail "Alertmanager did not come back after the silence-read recovery"
-  if am_silence_poll; then silence_back=yes; fi
+  k5_collect_failure_evidence "app.kubernetes.io/name=alertmanager" "alertmanager" || true
+  fail "silence $silence_id could not be read back after the rebuild"
 fi
 [ -n "$silence_back" ] || fail "silence $silence_id is gone after the rebuild"
 echo "  silence read back by ID after rebuild: $got"

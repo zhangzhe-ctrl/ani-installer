@@ -8,3 +8,25 @@ _*.sh
 
 # Project-local memory / runtime state managed by WorkBuddy — never commit.
 .workbuddy/
+
+# Private lab credentials, site secrets and their exports — never commit.
+# Paths only: rotation of any leaked value is tracked as R01 manual follow-up.
+.qoder/
+lab.env
+access/
+askpass.sh
+node-password
+kubeconfig
+*.kubeconfig
+admin.conf
+config/private/
+*.local.yaml
+id_rsa
+id_ed25519
+*.key
+node-password.tmp
+_ron*.sh
+
+# Generated code releases and offline artifacts (multi-GB binaries with their
+# own SHA256SUMS). Identity is recorded in evidence, never committed.
+kubekey/build/

@@ -1,0 +1,70 @@
+name: ANI check
+
+# The single code gate for this repository.
+#
+# It runs exactly the script that a local developer and scripts/build-code.sh
+# run (kubekey/scripts/check-code.sh), so there is one gate implementation and
+# CI cannot drift from a local run.
+#
+# Deliberately NOT restricted to the upstream repository: every workflow under
+# kubekey/.github/workflows is guarded by a repository-equality condition, which
+# is why none of them ever ran for this fork. No job or step here carries such a
+# guard.
+on:
+  push:
+    paths:
+      - 'kubekey/pkg/**'
+      - 'kubekey/cmd/**'
+      - 'kubekey/builtin/**'
+      - 'kubekey/ani/**'
+      - 'kubekey/scripts/**'
+      - 'kubekey/go.mod'
+      - 'kubekey/go.sum'
+      - 'kubekey/Makefile'
+      # The lab tree (blueprint §4) is source too: its scripts run against the
+      # same roles and must not be able to land unchecked.
+      - 'kubekey/lab/**'
+      - 'docs/execution/**'
+      - '.github/workflows/ani-check.yaml'
+  pull_request:
+    paths:
+      - 'kubekey/pkg/**'
+      - 'kubekey/cmd/**'
+      - 'kubekey/builtin/**'
+      - 'kubekey/ani/**'
+      - 'kubekey/scripts/**'
+      - 'kubekey/go.mod'
+      - 'kubekey/go.sum'
+      - 'kubekey/Makefile'
+      - 'kubekey/lab/**'
+      - 'docs/execution/**'
+      - '.github/workflows/ani-check.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-code:
+    name: check-code.sh
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        # The Go module lives in kubekey/, not at the repository root.
+        working-directory: kubekey
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install the Go toolchain required by go.mod
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: kubekey/go.mod
+          cache-dependency-path: kubekey/go.sum
+
+      - name: Run the code gate
+        env:
+          # Fail instead of downloading another toolchain: the gate must test the
+          # toolchain the environment actually provides.
+          GOTOOLCHAIN: local
+        run: bash scripts/check-code.sh

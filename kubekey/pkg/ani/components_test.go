@@ -1,12 +1,19 @@
 package ani
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"text/template"
+
+	kkTmpl "github.com/kubesphere/kubekey/v4/pkg/converter/tmpl"
 )
 
 const siteConfigTemplate = `name: ani-lab
@@ -32,6 +39,14 @@ network:
     intranetNetworks: [192.0.2.0/24, 10.96.0.0/16]
 registry:
   port: 5000
+storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/ata-ani-data-01]}
+    - {name: node2, devices: [/dev/disk/by-id/ata-ani-data-02]}
+    - {name: node3, devices: [/dev/disk/by-id/ata-ani-data-03]}
 %s
 `
 
@@ -532,6 +547,16 @@ network:
   serviceCIDR: 10.96.0.0/16
   kcn: {managedDevices: [ens35], encapNetworks: [192.0.2.0/24], intranetNetworks: [192.0.2.0/24, 10.96.0.0/16]}
 registry: {port: 5000}
+# R05: an old foundation-batch config keeps working, but it now has to say where
+# its storage comes from instead of relying on profile: full implying Ceph.
+storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/ata-ani-data-01]}
+    - {name: node2, devices: [/dev/disk/by-id/ata-ani-data-02]}
+    - {name: node3, devices: [/dev/disk/by-id/ata-ani-data-03]}
 components:
   certManager: {enabled: true}
   postgresql: {enabled: true, storageClass: ani-block, storageSize: 10Gi}
@@ -1110,13 +1135,17 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		t.Fatalf("read ani roles: %v", err)
 	}
 
-	// A `.ani.<key>.` reference is only valid for these top-level keys.
+	// A `.ani.<key>.` reference is only valid for these top-level keys. "storage"
+	// joined the list in R05: the installer builds it from the site's storage
+	// selection (enabled/provider/nodes/makeDefaultStorageClass), so the Ceph
+	// role can be guarded and rendered by it.
 	valid := map[string]bool{
 		"components":  true,
 		"image_parts": true,
 		"registry":    true,
 		"network":     true,
 		"images":      true,
+		"storage":     true,
 	}
 
 	checked := 0
@@ -1231,10 +1260,8 @@ func TestMetricsRoleIsWiredAndOffline(t *testing.T) {
 		t.Fatal("metrics tasks do not lock down and execute the verification script")
 	}
 	// Only the chart material, never a network fetch.
-	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
-		if strings.Contains(taskText, bad) {
-			t.Fatalf("metrics tasks appear to fetch from the network (%q)", bad)
-		}
+	if bad := externalMaterialFetch(taskText); bad != "" {
+		t.Fatalf("metrics tasks appear to fetch from the network (%q)", bad)
 	}
 
 	// Grafana and Thanos are explicitly out of scope for this batch.
@@ -1439,6 +1466,34 @@ func TestMetricsRetentionSizeMustFitInTheVolume(t *testing.T) {
 // loki row being on), must take its Chart from the offline artifact, must wait
 // on the objects the Chart really renders, and must keep every default-on
 // component of the Loki Chart disabled.
+// externalMaterialFetch returns the first network material fetch found in a
+// role's task text, or "" when there is none.
+//
+// R04 narrowed this from a bare `strings.Contains(tasks, "https://")`, which
+// also flagged a runtime call to a service *inside* the cluster
+// (opensearch's `curl https://$svc:9200/_cluster/health`); that is not a
+// material fetch. The ban is unchanged for what these tests were written to
+// catch: `helm repo`/`helm pull` and any *literal* external URL. A URL whose host
+// is a shell variable or a rendered template value is an in-cluster address and
+// is allowed; scripts/test-check-code.py injects a literal external URL and
+// proves the gate still fails on it.
+var httpsLiteralRe = regexp.MustCompile(`https://([^\s"'/]*)`)
+
+func externalMaterialFetch(tasks string) string {
+	for _, bad := range []string{"helm repo", "helm pull"} {
+		if strings.Contains(tasks, bad) {
+			return bad
+		}
+	}
+	for _, match := range httpsLiteralRe.FindAllStringSubmatch(tasks, -1) {
+		host := match[1]
+		if host != "" && !strings.HasPrefix(host, "$") && !strings.Contains(host, "{{") {
+			return "https://" + host
+		}
+	}
+	return ""
+}
+
 func TestLokiRoleIsWiredAndOffline(t *testing.T) {
 	root := filepath.Join("..", "..")
 	role := filepath.Join(root, "builtin", "core", "roles", "ani", "loki")
@@ -1492,10 +1547,8 @@ func TestLokiRoleIsWiredAndOffline(t *testing.T) {
 			t.Fatalf("loki tasks do not contain %q", want)
 		}
 	}
-	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
-		if strings.Contains(taskText, bad) {
-			t.Fatalf("loki tasks appear to fetch from the network (%q)", bad)
-		}
+	if bad := externalMaterialFetch(taskText); bad != "" {
+		t.Fatalf("loki tasks appear to fetch from the network (%q)", bad)
 	}
 	// Grafana is a later batch and must not appear at all.
 	for _, line := range strings.Split(taskText, "\n") {
@@ -1668,10 +1721,8 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 	if !strings.Contains(taskText, `.groups.k8s_cluster | default list | toJson`) {
 		t.Fatal("vm.max_map_count is not applied across the cluster's nodes")
 	}
-	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
-		if strings.Contains(taskText, bad) {
-			t.Fatalf("opensearch tasks appear to fetch from the network (%q)", bad)
-		}
+	if bad := externalMaterialFetch(taskText); bad != "" {
+		t.Fatalf("opensearch tasks appear to fetch from the network (%q)", bad)
 	}
 	// The Chart's privileged sysctl init container must stay off; the node
 	// setting is written by the role instead.
@@ -1920,10 +1971,8 @@ func TestFluentBitRoleIsWiredAndOffline(t *testing.T) {
 			t.Fatalf("fluent-bit tasks do not contain %q", want)
 		}
 	}
-	for _, bad := range []string{"helm repo", "https://", "helm pull"} {
-		if strings.Contains(taskText, bad) {
-			t.Fatalf("fluent-bit tasks appear to fetch from the network (%q)", bad)
-		}
+	if bad := externalMaterialFetch(taskText); bad != "" {
+		t.Fatalf("fluent-bit tasks appear to fetch from the network (%q)", bad)
 	}
 
 	values, err := os.ReadFile(filepath.Join(role, "templates", "values.yaml"))
@@ -2178,5 +2227,917 @@ func TestMetricsRunLabelScopesAlertRouting(t *testing.T) {
 	metrics = componentSpec(off.Components, off.Name)["metrics"].(map[string]any)
 	if metrics["run_id"] != "" {
 		t.Fatalf("disabled run_id = %v, want an empty string", metrics["run_id"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// R02 (A01): the verification path must never repair the cluster it verifies,
+// and the top-level component loop must stop at the first failure.
+//
+// These tests drive the *rendered* role scripts and the real component loop
+// with a fake kubectl on PATH. They are behavioural: the K-5 helpers are the
+// real ones from the templates, so re-adding an agent restart, a second rebuild
+// or a post-Ready re-entry makes them fail.
+// ---------------------------------------------------------------------------
+
+// r02Timestamp is the fake kubectl's marker for its own call log.
+const r02TemplateKind = "verify.sh"
+
+func r02RenderScript(t *testing.T, relPath string, ctx map[string]any) string {
+	t.Helper()
+	tmpl, err := template.New(r02TemplateKind).ParseFiles(relPath)
+	if err != nil {
+		t.Fatalf("parse %s: %v", relPath, err)
+	}
+	rendered := &strings.Builder{}
+	if err := tmpl.Execute(rendered, ctx); err != nil {
+		t.Fatalf("execute %s: %v", relPath, err)
+	}
+	out := rendered.String()
+	if strings.Contains(out, "{{") {
+		t.Fatalf("rendered %s still contains template delimiters", relPath)
+	}
+	path := filepath.Join(t.TempDir(), "verify.sh")
+	if err := os.WriteFile(path, []byte(out), 0o700); err != nil {
+		t.Fatalf("write rendered %s: %v", relPath, err)
+	}
+	return path
+}
+
+func r02Context() map[string]any {
+	return map[string]any{
+		"ani": map[string]any{
+			"registry": "192.0.2.11:5000",
+			"images": map[string]string{
+				"docker.io/library/python:3.13.11-alpine3.23": "192.0.2.11:5000/library/python:3.13.11-alpine3.23",
+				"docker.io/library/busybox:1.37.0":            "192.0.2.11:5000/library/busybox:1.37.0",
+				"docker.io/alpine/openssl:3.5.4":              "192.0.2.11:5000/alpine/openssl:3.5.4",
+			},
+			"components": map[string]any{
+				"metrics": map[string]any{
+					"enabled":       true,
+					"namespace":     "ani-observability",
+					"run_id":        "ani-ani-lab",
+					"storage_class": "ani-block",
+				},
+				"logging": map[string]any{
+					"enabled":   true,
+					"namespace": "ani-observability",
+					"backend":   "loki",
+				},
+			},
+		},
+		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
+	}
+}
+
+// r02FakeKubectl writes a fake kubectl that records every argv and answers the
+// few queries the K-5 helpers make. It never contacts a cluster.
+func r02FakeKubectl(t *testing.T) (binDir string, logPath string) {
+	t.Helper()
+	dir := t.TempDir()
+	logPath = filepath.Join(dir, "kubectl-calls.log")
+	if err := os.WriteFile(logPath, nil, 0o600); err != nil {
+		t.Fatalf("create kubectl log: %v", err)
+	}
+	// The kcn data-plane queries only exist so the pre-R02 control script can
+	// follow its old recovery path without waiting: the fake answers them and
+	// never sleeps.
+	body := `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$KUBECTL_LOG"
+case "$*" in
+  *"get pods"*)
+    echo "kcn-cni-ds-abc node1"; exit 0 ;;
+  *"containerStatuses"*)
+    echo "true"; exit 0 ;;
+  *"get pod"*"-o wide"*)
+    if [ -n "${FAKE_FAIL_DIAG:-}" ]; then echo "fake kubectl: api unavailable" >&2; exit 1; fi
+    echo "NAME READY STATUS"; exit 0 ;;
+  *"get events"*)
+    if [ -n "${FAKE_FAIL_DIAG:-}" ]; then echo "fake kubectl: api unavailable" >&2; exit 1; fi
+    echo "LAST SEEN TYPE REASON"; exit 0 ;;
+  *"get pod"*".spec.nodeName"*)
+    echo "node1"; exit 0 ;;
+  *"get pod"*".items[0].metadata.name"*)
+    echo "ani-metrics-prometheus-0"; exit 0 ;;
+  *"get pod"*"jsonpath"*"Ready"*)
+    if [ -n "${FAKE_READY:-}" ]; then echo "True"; fi
+    exit 0 ;;
+  *"get pod"*"-o name"*)
+    exit 0 ;;
+  *"describe"*)
+    if [ -n "${FAKE_FAIL_DIAG:-}" ]; then exit 1; fi
+    echo "fake describe"; exit 0 ;;
+esac
+exit 0
+`
+	script := filepath.Join(dir, "kubectl")
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatalf("write fake kubectl: %v", err)
+	}
+	// A no-op sleep keeps the bounded waits deterministic and instant; the
+	// deadline arithmetic still uses the real clock, so a 0s timeout performs
+	// no iteration and a satisfied wait returns immediately.
+	noSleep := "#!/usr/bin/env bash\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte(noSleep), 0o700); err != nil {
+		t.Fatalf("write fake sleep: %v", err)
+	}
+	return dir, logPath
+}
+
+func r02RunBash(t *testing.T, script string, env map[string]string) (stdout, stderr string, code int) {
+	t.Helper()
+	cmd := exec.Command("bash", "-c", script)
+	cmd.Env = append(os.Environ(), "PATH="+env["PATH"])
+	for key, value := range env {
+		if key == "PATH" {
+			continue
+		}
+		cmd.Env = append(cmd.Env, key+"="+value)
+	}
+	outBuf := &strings.Builder{}
+	errBuf := &strings.Builder{}
+	cmd.Stdout = outBuf
+	cmd.Stderr = errBuf
+	err := cmd.Run()
+	code = 0
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("run bash: %v", err)
+		}
+		code = exitErr.ExitCode()
+	}
+	return outBuf.String(), errBuf.String(), code
+}
+
+func r02Count(logContent, needle string) int {
+	return strings.Count(logContent, needle)
+}
+
+// TestVerifyNeverRepairsNetwork: a K-5 wait that never sees a Ready pod must
+// fail the check, and the call log must contain no kcn-system/CNI/OVS mutation,
+// no repeated rebuild and no post-Ready recovery re-entry.
+func TestVerifyNeverRepairsNetwork(t *testing.T) {
+	metricsRel := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "metrics", "templates", "verify.sh")
+	fluentRel := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "fluent-bit", "templates", "verify.sh")
+
+	t.Run("metrics/unready pod fails without repairing the datapath", func(t *testing.T) {
+		rendered := r02RenderScript(t, metricsRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		outDir := t.TempDir()
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 0s 0s
+rc=$?
+echo "REBUILD_RC=$rc"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":        binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":    rendered,
+			"OUT_DIR":     outDir,
+			"KUBECTL_LOG": callLog,
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "REBUILD_RC=1") {
+			t.Fatalf("k5_rebuild_wait must return non-zero when the pod never becomes Ready; got:\n%s\n%s", stdout, stderr)
+		}
+		logContent, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read kubectl log: %v", err)
+		}
+		calls := string(logContent)
+		for _, forbidden := range []string{"kcn-system", "rollout restart", "patch ", "kcn-cni", "kcn-ovs"} {
+			if strings.Contains(calls, forbidden) {
+				t.Fatalf("verification touched the network layer (%q):\n%s", forbidden, calls)
+			}
+		}
+		if got := r02Count(calls, "delete pod -l app.kubernetes.io/name=prometheus"); got != 1 {
+			t.Fatalf("expected exactly one planned rebuild of the component's own pod, got %d:\n%s", got, calls)
+		}
+		evidence, err := os.ReadFile(filepath.Join(outDir, "k5-failure-prometheus.txt"))
+		if err != nil {
+			t.Fatalf("failure evidence was not written: %v", err)
+		}
+		if !strings.Contains(string(evidence), "get events") && !strings.Contains(calls, "get events") {
+			t.Fatalf("failure evidence did not collect events:\n%s\n%s", string(evidence), calls)
+		}
+	})
+
+	t.Run("metrics/normal path still waits and never rebuilds", func(t *testing.T) {
+		rendered := r02RenderScript(t, metricsRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+export FAKE_READY=1
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 5s 5s
+echo "REBUILD_RC=$?"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":        binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":    rendered,
+			"OUT_DIR":     t.TempDir(),
+			"KUBECTL_LOG": callLog,
+			"FAKE_READY":  "1",
+		})
+		// FAKE_READY has to reach the fake kubectl, so it is exported for the call.
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "REBUILD_RC=0") {
+			t.Fatalf("a Ready pod must pass the wait; got:\n%s\n%s", stdout, stderr)
+		}
+		logContent, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read kubectl log: %v", err)
+		}
+		if strings.Contains(string(logContent), "delete pod") {
+			t.Fatalf("no rebuild may happen on the normal path:\n%s", string(logContent))
+		}
+	})
+
+	t.Run("metrics/failing diagnostics keep the original failure", func(t *testing.T) {
+		rendered := r02RenderScript(t, metricsRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 0s 0s
+echo "REBUILD_RC=$?"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":           binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":       rendered,
+			"OUT_DIR":        t.TempDir(),
+			"KUBECTL_LOG":    callLog,
+			"FAKE_FAIL_DIAG": "1",
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "REBUILD_RC=1") {
+			t.Fatalf("a failing diagnostic must not change the primary failure: got\n%s\n%s", stdout, stderr)
+		}
+	})
+
+	t.Run("control/HEAD recovery chain is detected", func(t *testing.T) {
+		// The discriminating control for this test: the pre-R02 script is
+		// materialised from git HEAD and driven with the same fake kubectl. It
+		// must show the repair behaviour (a second rebuild plus a kcn-system
+		// lookup) that the current script no longer performs.
+		head, err := exec.Command("git", "show", "HEAD:kubekey/builtin/core/roles/ani/metrics/templates/verify.sh").Output()
+		if err != nil {
+			t.Skipf("git HEAD content unavailable: %v", err)
+		}
+		// The pre-R02 file has no test seam, so only its helper definitions are
+		// taken (from `k5_pod_ready() {` up to the first body assignment). This
+		// is a control on the OLD text, not a copy of the current product test.
+		text := string(head)
+		from := strings.Index(text, "k5_pod_ready() {")
+		to := strings.Index(text, "\nPROM_STS=")
+		if from < 0 || to < from {
+			t.Fatalf("could not locate the pre-R02 helper block")
+		}
+		dir := t.TempDir()
+		legacyHelpers := filepath.Join(dir, "legacy-helpers.sh")
+		helpers := "NS=ani-observability\nKUBECTL=(kubectl --kubeconfig /dev/null)\n" + text[from:to] + "\n"
+		if err := os.WriteFile(legacyHelpers, []byte(helpers), 0o600); err != nil {
+			t.Fatalf("write legacy helpers: %v", err)
+		}
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export KUBECTL_LOG="$KUBECTL_LOG"
+export OUT_DIR="$OUT_DIR"
+source "$LEGACY_HELPERS"
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 0s 0s 0s
+echo "REBUILD_RC=$?"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":           binDir + ":" + os.Getenv("PATH"),
+			"LEGACY_HELPERS": legacyHelpers,
+			"OUT_DIR":        t.TempDir(),
+			"KUBECTL_LOG":    callLog,
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		logContent, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read kubectl log: %v", err)
+		}
+		calls := string(logContent)
+		if !strings.Contains(calls, "kcn-system") {
+			t.Fatalf("the pre-R02 script should have touched kcn-system; the control does not reproduce it:\n%s", calls)
+		}
+		if got := r02Count(calls, "delete pod -l app.kubernetes.io/name=prometheus"); got < 2 {
+			t.Fatalf("the pre-R02 script should rebuild twice, got %d deletes:\n%s", got, calls)
+		}
+	})
+
+	t.Run("fluent-bit/data-plane repair helpers are gone", func(t *testing.T) {
+		rendered := r02RenderScript(t, fluentRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+for fn in k5_dp_agent_restart k5_dp_agent_wait k5_dp_pod_node k5_read_again; do
+  if declare -F "$fn" >/dev/null 2>&1; then echo "STILL_DEFINED=$fn"; fi
+done
+k5_pod_ready "app.kubernetes.io/name=fluent-bit" 0s
+echo "POD_READY_RC=$?"
+export FAKE_FAIL_DIAG=1
+k5_collect_failure_evidence backend || true
+echo "EVIDENCE_TOLERATED_RC=$?"
+ls "$EVIDENCE"/k5-failure-backend.txt >/dev/null 2>&1 && echo "EVIDENCE_FILE=yes"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":           binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":       rendered,
+			"OUT_DIR":        t.TempDir(),
+			"KUBECTL_LOG":    callLog,
+			"FAKE_FAIL_DIAG": "1",
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if strings.Contains(stdout, "STILL_DEFINED=") {
+			t.Fatalf("a data-plane repair helper still exists:\n%s", stdout)
+		}
+		if !strings.Contains(stdout, "POD_READY_RC=1") {
+			t.Fatalf("an unready backend must fail the bounded wait:\n%s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "EVIDENCE_TOLERATED_RC=0") {
+			t.Fatalf("a failing diagnostic must not kill the caller (|| true):\n%s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "EVIDENCE_FILE=yes") {
+			t.Fatalf("the failure evidence file was not written:\n%s\n%s", stdout, stderr)
+		}
+		if strings.Contains(stdout, "kcn-system") {
+			t.Fatalf("fluent-bit verification named the network layer:\n%s", stdout)
+		}
+	})
+}
+
+// TestVerifyStopsAfterFirstFailure: the component loop must run every enabled
+// component on the clean path, and must stop at the first failure, recording
+// the remaining enabled components as not_run without executing their scripts.
+func TestVerifyStopsAfterFirstFailure(t *testing.T) {
+	verifyRel := filepath.Join("..", "..", "scripts", "verify.sh")
+	binDir, callLog := r02FakeKubectl(t)
+
+	writeSelection := func(t *testing.T, configPath string, enabled map[string]bool) string {
+		t.Helper()
+		raw, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("read config: %v", err)
+		}
+		sum := sha256.Sum256(raw)
+		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit"}
+		var b strings.Builder
+		fmt.Fprintf(&b, "# config_sha256=%s\n", hex.EncodeToString(sum[:]))
+		for _, name := range names {
+			state := "false"
+			if enabled[name] {
+				state = "true"
+			}
+			fmt.Fprintf(&b, "%s\t%s\n", name, state)
+		}
+		path := filepath.Join(t.TempDir(), "components-selection.tsv")
+		if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+			t.Fatalf("write selection: %v", err)
+		}
+		return path
+	}
+
+	stubDir := func(t *testing.T, certManagerExit int, markerDir string) string {
+		t.Helper()
+		dir := t.TempDir()
+		certDir := filepath.Join(dir, "cert-manager")
+		pgDir := filepath.Join(dir, "postgresql")
+		if err := os.MkdirAll(certDir, 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.MkdirAll(pgDir, 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		cert := "#!/usr/bin/env bash\necho 'cert-manager stub ran'\nexit " + strconv.Itoa(certManagerExit) + "\n"
+		pg := "#!/usr/bin/env bash\necho 'postgresql stub ran'\ntouch " + markerDir + "/postgresql-ran\n"
+		if err := os.WriteFile(filepath.Join(certDir, "verify.sh"), []byte(cert), 0o700); err != nil {
+			t.Fatalf("write cert stub: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(pgDir, "verify.sh"), []byte(pg), 0o700); err != nil {
+			t.Fatalf("write pg stub: %v", err)
+		}
+		return dir
+	}
+
+	configPath := filepath.Join(t.TempDir(), "site.yaml")
+	if err := os.WriteFile(configPath, []byte("name: ani-lab\ninstallerNode: node1\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	runLoop := func(t *testing.T, selection, scriptDir, logDir string) (string, string, int) {
+		t.Helper()
+		return r02RunBash(t, `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export KUBECONFIG_FILE=/dev/null
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$VERIFY"
+set +e
+ani_verify_components "$CONFIG" "$SELECTION" "$SCRIPT_DIR" "$LOG_DIR"
+echo "LOOP_RC=$?"
+`, map[string]string{
+			"PATH":        binDir + ":" + os.Getenv("PATH"),
+			"VERIFY":      verifyRel,
+			"CONFIG":      configPath,
+			"SELECTION":   selection,
+			"SCRIPT_DIR":  scriptDir,
+			"LOG_DIR":     logDir,
+			"KUBECTL_LOG": callLog,
+		})
+	}
+
+	t.Run("first failure stops the loop and later components are not_run", func(t *testing.T) {
+		markerDir := t.TempDir()
+		scriptDir := stubDir(t, 3, markerDir)
+		selection := writeSelection(t, configPath, map[string]bool{"cert-manager": true, "postgresql": true})
+		logDir := t.TempDir()
+		stdout, stderr, code := runLoop(t, selection, scriptDir, logDir)
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "LOOP_RC=3") {
+			t.Fatalf("the loop must return the FIRST failure's exit code (3); got:\n%s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stderr, "postgresql=not_run") {
+			t.Fatalf("the later enabled component must be recorded not_run:\n%s", stderr)
+		}
+		if _, err := os.Stat(filepath.Join(markerDir, "postgresql-ran")); err == nil {
+			t.Fatalf("the second component's verify script ran after the first failure")
+		}
+	})
+
+	t.Run("clean path still runs every enabled component", func(t *testing.T) {
+		markerDir := t.TempDir()
+		scriptDir := stubDir(t, 0, markerDir)
+		selection := writeSelection(t, configPath, map[string]bool{"cert-manager": true, "postgresql": true})
+		logDir := t.TempDir()
+		stdout, stderr, code := runLoop(t, selection, scriptDir, logDir)
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		if !strings.Contains(stdout, "LOOP_RC=0") {
+			t.Fatalf("the clean path must return 0; got:\n%s\n%s", stdout, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(markerDir, "postgresql-ran")); err != nil {
+			t.Fatalf("the second enabled component did not run on the clean path: %v", err)
+		}
+		if !strings.Contains(stdout+stderr, "cert-manager=pass") || !strings.Contains(stdout+stderr, "postgresql=pass") {
+			t.Fatalf("the summary must show both passes:\n%s\n%s", stdout, stderr)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// R05 (A02): storage is explicit site input. These tests drive the real site
+// parsing, the real template context (KubeKeyConfig) and the real templates, so
+// a re-introduced implicit Ceph, a scanned disk or a default-class grab fails.
+// ---------------------------------------------------------------------------
+
+const r05Site = `name: ani-lab
+installerNode: node1
+ssh: {user: ubuntu, port: 22, password: pw}
+nodes:
+  - {name: node1, address: 192.0.2.11}
+  - {name: node2, address: 192.0.2.12}
+  - {name: node3, address: 192.0.2.13}
+network:
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn: {managedDevices: [ens35], encapNetworks: [192.0.2.0/24], intranetNetworks: [192.0.2.0/24, 10.96.0.0/16]}
+registry: {port: 5000}
+%s
+`
+
+const r05CephStorage = `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/ata-ani-data-01]}
+    - {name: node2, devices: [/dev/disk/by-id/ata-ani-data-02]}
+    - {name: node3, devices: [/dev/disk/by-id/ata-ani-data-03]}
+`
+
+func r05Parse(t *testing.T, suffix string) (ClusterConfig, error) {
+	t.Helper()
+	return ParseClusterConfig([]byte(strings.Replace(r05Site, "%s", suffix, 1)))
+}
+
+func r05MustValidate(t *testing.T, suffix string) ClusterConfig {
+	t.Helper()
+	c, err := r05Parse(t, suffix)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(c); err != nil {
+		t.Fatalf("expected the config to validate, got: %v", err)
+	}
+	return c
+}
+
+// r05RenderTemplate renders a role template with the real installer context.
+// extra carries the variables a looped task would see (item, groups) so a role
+// task file can be rendered as one iteration of its loop.
+func r05RenderTemplate(t *testing.T, path string, c ClusterConfig, extra ...map[string]any) string {
+	t.Helper()
+	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
+	if err != nil {
+		t.Fatalf("KubeKeyConfig: %v", err)
+	}
+	for _, add := range extra {
+		for key, value := range add {
+			spec[key] = value
+		}
+	}
+	tmpl, err := template.New(filepath.Base(path)).Funcs(kkTmpl.FuncMap()).ParseFiles(path)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	rendered := &strings.Builder{}
+	if err := tmpl.Execute(rendered, spec); err != nil {
+		t.Fatalf("execute %s: %v", path, err)
+	}
+	return rendered.String()
+}
+
+// r05EvalCondition renders a role's `when:` condition with the real context and
+// returns the resulting expression text ("true"/"false").
+func r05EvalCondition(t *testing.T, condition string, c ClusterConfig) string {
+	t.Helper()
+	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
+	if err != nil {
+		t.Fatalf("KubeKeyConfig: %v", err)
+	}
+	tmpl, err := template.New("when").Funcs(kkTmpl.FuncMap()).Parse(condition)
+	if err != nil {
+		t.Fatalf("parse condition %q: %v", condition, err)
+	}
+	rendered := &strings.Builder{}
+	if err := tmpl.Execute(rendered, spec); err != nil {
+		t.Fatalf("execute condition %q: %v", condition, err)
+	}
+	return strings.TrimSpace(rendered.String())
+}
+
+// r05PlaybookWhen returns the `when:` line that guards the named role.
+func r05PlaybookWhen(t *testing.T, role string) string {
+	t.Helper()
+	path := filepath.Join("..", "..", "builtin", "core", "playbooks", "create_cluster.yaml")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read playbook: %v", err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	for index, line := range lines {
+		if strings.TrimSpace(line) != "- role: "+role {
+			continue
+		}
+		for _, next := range lines[index+1:] {
+			if strings.HasPrefix(strings.TrimSpace(next), "when:") && strings.HasPrefix(next, "      ") {
+				// The playbook writes the condition as a single-quoted YAML
+				// scalar; the engine sees it without those quotes.
+				condition := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(next), "when:"))
+				return strings.Trim(condition, "'")
+			}
+			if strings.HasPrefix(strings.TrimSpace(next), "- ") {
+				break
+			}
+		}
+		t.Fatalf("role %s has no when: condition", role)
+	}
+	t.Fatalf("playbook has no role %s", role)
+	return ""
+}
+
+// T-R05-01
+func TestCephRequiresExplicitSelection(t *testing.T) {
+	// (a) profile: full alone must no longer mean "install Ceph": the config
+	//     stays valid, but nothing about it selects storage.
+	fullOnly, err := r05Parse(t, "profile: full")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := Validate(fullOnly); err != nil {
+		t.Fatalf("profile: full with no storage and no components is a valid base cluster: %v", err)
+	}
+	if fullOnly.Storage.Enabled {
+		t.Fatal("storage must default to disabled")
+	}
+
+	// (b) the switch must not be contradicted.
+	for name, suffix := range map[string]string{
+		"provider without enabled":     "storage: {provider: ceph}\n",
+		"nodes without enabled":        "storage: {nodes: [{name: node1, devices: [/dev/disk/by-id/a]}]}\n",
+		"default flag without enabled": "storage: {makeDefaultStorageClass: true}\n",
+	} {
+		c, err := r05Parse(t, suffix)
+		if err != nil {
+			t.Fatalf("%s: parse: %v", name, err)
+		}
+		if err := Validate(c); err == nil {
+			t.Fatalf("%s must be rejected", name)
+		}
+	}
+
+	// (c) the playbook guard must be the explicit storage switch, not the profile.
+	cephWhen := r05PlaybookWhen(t, "ani/ceph")
+	storageclassWhen := r05PlaybookWhen(t, "storageclass")
+	for role, condition := range map[string]string{"ani/ceph": cephWhen, "storageclass": storageclassWhen} {
+		if !strings.Contains(condition, ".ani.storage.enabled") {
+			t.Fatalf("%s is not guarded by .ani.storage.enabled: %s", role, condition)
+		}
+	}
+	if !strings.Contains(cephWhen, ".ani.storage.provider") {
+		t.Fatalf("the Ceph role must also require provider=ceph: %s", cephWhen)
+	}
+
+	// (d) rendering that condition with the real context: off -> false.
+	off := r05MustValidate(t, "")
+	if got := r05EvalCondition(t, cephWhen, off); got != "false" {
+		t.Fatalf("with storage disabled the Ceph guard renders %q, want false", got)
+	}
+	// An external provider must not run the Ceph role either.
+	external := r05MustValidate(t, "storage: {enabled: true, provider: external, externalClass: ani-external}\n")
+	if got := r05EvalCondition(t, cephWhen, external); got != "false" {
+		t.Fatalf("with provider=external the Ceph guard renders %q, want false", got)
+	}
+	cephOn := r05MustValidate(t, r05CephStorage)
+	if got := r05EvalCondition(t, cephWhen, cephOn); got != "true" {
+		t.Fatalf("with storage.enabled+ceph the guard renders %q, want true", got)
+	}
+
+	// (e) the CephCluster template must not scan for disks any more.
+	clusterYAML := r05RenderTemplate(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "ceph", "templates", "cluster.yaml"), cephOn)
+	for _, forbidden := range []string{"deviceFilter", "useAllNodes: true", "useAllDevices: true"} {
+		if strings.Contains(clusterYAML, forbidden) {
+			t.Fatalf("rendered CephCluster still contains %q", forbidden)
+		}
+	}
+	if !strings.Contains(clusterYAML, "useAllNodes: false") || !strings.Contains(clusterYAML, "useAllDevices: false") {
+		t.Fatal("rendered CephCluster must pin useAllNodes/useAllDevices to false")
+	}
+	for _, device := range []string{"/dev/disk/by-id/ata-ani-data-01", "/dev/disk/by-id/ata-ani-data-02", "/dev/disk/by-id/ata-ani-data-03"} {
+		if !strings.Contains(clusterYAML, device) {
+			t.Fatalf("rendered CephCluster is missing the declared device %s", device)
+		}
+	}
+}
+
+// T-R05-02 / T-R05-03
+func TestCephDeviceAllowlist(t *testing.T) {
+	// The allowlist is only what the site declared.
+	rejected := map[string]string{
+		"missing node declaration": `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+`,
+		"node without devices": `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+    - {name: node2, devices: []}
+    - {name: node3, devices: [/dev/disk/by-id/c]}
+`,
+		"relative device path": `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [sdb]}
+    - {name: node2, devices: [/dev/disk/by-id/b]}
+    - {name: node3, devices: [/dev/disk/by-id/c]}
+`,
+		"node declared twice": `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+    - {name: node1, devices: [/dev/disk/by-id/b]}
+    - {name: node3, devices: [/dev/disk/by-id/c]}
+`,
+		"unknown node": `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+    - {name: node2, devices: [/dev/disk/by-id/b]}
+    - {name: node9, devices: [/dev/disk/by-id/c]}
+`,
+		"ceph with externalClass": `storage:
+  enabled: true
+  provider: ceph
+  externalClass: ani-external
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+    - {name: node2, devices: [/dev/disk/by-id/b]}
+    - {name: node3, devices: [/dev/disk/by-id/c]}
+`,
+		"external without a class":       "storage: {enabled: true, provider: external}\n",
+		"external with devices":          "storage: {enabled: true, provider: external, externalClass: x, nodes: [{name: node1, devices: [/dev/disk/by-id/a]}]}\n",
+		"external making itself default": "storage: {enabled: true, provider: external, externalClass: x, makeDefaultStorageClass: true}\n",
+		"unknown provider":               "storage: {enabled: true, provider: nfs}\n",
+	}
+	for name, suffix := range rejected {
+		c, err := r05Parse(t, suffix)
+		if err != nil {
+			t.Fatalf("%s: parse: %v", name, err)
+		}
+		if err := Validate(c); err == nil {
+			t.Fatalf("%s must be rejected", name)
+		}
+	}
+
+	// R15.3 field finding: device paths are per-node namespaces. The same
+	// path on two DIFFERENT nodes is the blueprint-allowed VM-farm shape
+	// (/dev/sdb on every node) and must validate; the same path twice on ONE
+	// node is still a declaration error.
+	vmFarm, err := r05Parse(t, `storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/sdb]}
+    - {name: node2, devices: [/dev/sdb]}
+    - {name: node3, devices: [/dev/sdb]}
+`)
+	if err != nil {
+		t.Fatalf("parse vm-farm fixture: %v", err)
+	}
+	if err := Validate(vmFarm); err != nil {
+		t.Fatalf("the blueprint-allowed /dev/sdb-per-node site must validate: %v", err)
+	}
+	if got := vmFarm.Storage.Nodes[0].Devices; len(got) != 1 || got[0] != "/dev/sdb" {
+		t.Fatalf("vm-farm fixture devices: %+v", got)
+	}
+	sameNodeTwice, parseErr := r05Parse(t, `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/sdb, /dev/sdb]}
+    - {name: node2, devices: [/dev/sdb]}
+    - {name: node3, devices: [/dev/sdb]}
+`)
+	if parseErr != nil {
+		t.Fatalf("parse same-node-twice fixture: %v", parseErr)
+	}
+	if err := Validate(sameNodeTwice); err == nil {
+		t.Fatal("the same device listed twice on one node must be rejected")
+	}
+
+	// A partial declaration must name the missing nodes and must not suggest
+	// useAllNodes as a way out.
+	c, err := r05Parse(t, `storage:
+  enabled: true
+  provider: ceph
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/a]}
+`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	err = Validate(c)
+	if err == nil {
+		t.Fatal("authorising only node1 on a three-node topology must be rejected")
+	}
+	if !strings.Contains(err.Error(), "node2") || !strings.Contains(err.Error(), "node3") {
+		t.Fatalf("error = %v, want it to name the nodes without a declared device", err)
+	}
+	if strings.Contains(err.Error(), "useAllNodes") {
+		t.Fatalf("error = %v, must not offer useAllNodes as a fix", err)
+	}
+
+	// A declaration for a node outside the topology is a typo, not a new node.
+	valid := r05MustValidate(t, r05CephStorage)
+	if got := valid.Storage.Nodes; len(got) != 3 {
+		t.Fatalf("valid fixture parsed %d storage nodes, want 3", len(got))
+	}
+}
+
+// T-R05-04
+func TestDefaultStorageClassConflict(t *testing.T) {
+	// The flag is refused where the class is not ours to mark.
+	for name, suffix := range map[string]string{
+		"external provider": "storage: {enabled: true, provider: external, externalClass: x, makeDefaultStorageClass: true}\n",
+		"storage disabled":  "storage: {makeDefaultStorageClass: true}\n",
+	} {
+		c, err := r05Parse(t, suffix)
+		if err != nil {
+			t.Fatalf("%s: parse: %v", name, err)
+		}
+		if err := Validate(c); err == nil {
+			t.Fatalf("%s must be rejected", name)
+		}
+	}
+
+	// With makeDefaultStorageClass=false the task must not have any patch at all.
+	taskPath := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "ceph", "tasks", "main.yaml")
+	loopCtx := map[string]any{
+		"item":   "node1",
+		"groups": map[string]any{"k8s_cluster": []any{"node1", "node2", "node3"}},
+	}
+	raw, err := os.ReadFile(taskPath)
+	if err != nil {
+		t.Fatalf("read ceph tasks: %v", err)
+	}
+	tasks := string(raw)
+	if strings.Contains(tasks, "is-default-class\":\"false\"") {
+		t.Fatal("the storage tasks still clear other components' default StorageClass markers")
+	}
+	if !strings.Contains(tasks, "makeDefaultStorageClass") {
+		t.Fatal("the default-class task does not read the site's makeDefaultStorageClass flag")
+	}
+	if !strings.Contains(tasks, "refusing to change or remove another component's default marker") {
+		t.Fatal("a conflicting default StorageClass must fail with an explicit conflict message")
+	}
+
+	// Rendering the task command with the real context: the flag reaches the shell,
+	// and the shipped device list carries only the declared devices.
+	off := r05MustValidate(t, "")
+	tasksYAML := r05RenderTemplate(t, taskPath, off, loopCtx)
+	if !strings.Contains(tasksYAML, "if [ 'false' != 'true' ]") {
+		t.Fatal("with the flag off the rendered task must short-circuit before any patch")
+	}
+	onDefault := r05MustValidate(t, `storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-id/ata-ani-data-01]}
+    - {name: node2, devices: [/dev/disk/by-id/ata-ani-data-02]}
+    - {name: node3, devices: [/dev/disk/by-id/ata-ani-data-03]}
+`)
+	if rendered := r05RenderTemplate(t, taskPath, onDefault, loopCtx); !strings.Contains(rendered, "if [ 'true' != 'true' ]") {
+		t.Fatal("with the flag on the rendered task must continue to the conflict check")
+	}
+	deviceList := r05RenderTemplate(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "ceph", "templates", "storage-devices.txt"), onDefault)
+	for _, want := range []string{"node1 /dev/disk/by-id/ata-ani-data-01", "node2 /dev/disk/by-id/ata-ani-data-02", "node3 /dev/disk/by-id/ata-ani-data-03"} {
+		if !strings.Contains(deviceList, want) {
+			t.Fatalf("rendered device list is missing %q:\n%s", want, deviceList)
+		}
+	}
+	// The pre-flight task must run for its own node and read the shipped list.
+	if !strings.Contains(tasksYAML, "ceph-preflight.sh node1") {
+		t.Fatal("the pre-flight task must be invoked with its own node name")
+	}
+	if !strings.Contains(tasksYAML, "ANI_CEPH_DEVICE_LIST") && !strings.Contains(tasksYAML, "storage-devices.txt") {
+		t.Fatal("the pre-flight task must be able to find the declared device list")
+	}
+}
+
+// TestExampleSiteConfigsMatchTheSchema keeps the shipped example site configs
+// parseable and valid: R05 made storage explicit, so an example that still
+// relies on `profile: full` implying Ceph would fail here instead of on a node.
+func TestExampleSiteConfigsMatchTheSchema(t *testing.T) {
+	examples, err := filepath.Glob(filepath.Join("..", "..", "..", "config", "examples", "*.yaml"))
+	if err != nil {
+		t.Fatalf("glob examples: %v", err)
+	}
+	if len(examples) == 0 {
+		t.Fatal("no example site configs were found")
+	}
+	for _, path := range examples {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		c, err := ParseClusterConfig(raw)
+		if err != nil {
+			t.Fatalf("%s: parse: %v", path, err)
+		}
+		if err := Validate(c); err != nil {
+			t.Fatalf("%s: validate: %v", filepath.Base(path), err)
+		}
+		if !c.Storage.Enabled || c.Storage.provider() != "ceph" {
+			t.Fatalf("%s must declare its storage explicitly (R05)", filepath.Base(path))
+		}
 	}
 }

@@ -1,0 +1,114 @@
+apiVersion: ani.execution/v1alpha1
+kind: TaskResult
+metadata:
+  taskID: R16
+  attemptID: R16-live-20260925-r2
+  startedAt: 2026-09-25T12:04Z
+  finishedAt: 2026-09-25T13:20Z
+source:
+  head: 275827f17abeb0d84694d078d0bc2877307cf87e
+  treeSHA256: 3fca769bf9874af4ef4dc528e8620c5d56fd68adc3c8d50f41a2dfc0a2c22031
+  codeReleaseSHA256: 40a84ff25460f1f475f2b3d561bbdeeecad164ede8cefad04c008bf1a8e5fe9b
+  artifactLockSHA256: e6e4b3f2053ac43d6bc35672340b471c054b8b0390ec90c8cb7080b7908dccf1
+  effectiveConfigSHA256: base=67969228dca842bd28a9efd7f514f57e2d92f47c06a04e5c6ca5cd69037d94e2
+    addtarget=003b0da327e3621ce0ec0654892a1a6e4ce8c32432ced665f9a41c6c9a28a9f6
+  snapshotIdentity: r2 实测：dry-run 白名单 3 台（vmid5/6/7 snapshotId=1 经 IP 匹配本轮重验）；execute
+    还原 3/3 成功 64s（r16-esxi-dry-run-r3-cred.log / r16-esxi-restore-r2.log）
+prerequisites:
+- R16 r1（物料缺口定性）、物料轮闭合（task-result-r2.yaml）、ESXi 独立凭据更正（esxi-password 0600，用户 15:2x
+  授权更新）
+changedFiles:
+- (lab drivers only) r16-p2-rerun.sh：四分支判据+launch 脚本+ESXi 凭据源+S4b unattended 停用；r16-p4-add.sh：plan
+  文件发现+--kk 传参。产品源码零改动（树指纹 3fca769b 全程不变）
+commands:
+- host: node1
+  cwd: /home/ubuntu/fi
+  commandRedacted: kk ani install（干净快照+隔离，T0=12:08:11Z）
+  exitCode: 0
+  evidencePath: r16-install-console-r2.log / run-record-r2/
+- host: node1
+  cwd: /home/ubuntu/fi/code
+  commandRedacted: kk ani verify smoke(6组件)+acceptance(PG,NATS 各一次重建 --allow-pod-recreate)
+  exitCode: 0
+  evidencePath: r16-p3.log / r16-smoke / r16-acceptance
+- host: node1
+  cwd: /home/ubuntu/fi/code
+  commandRedacted: kk ani components install --only valkey（计划内新增）+ execute --kk
+  exitCode: 0
+  evidencePath: r16-p4-flow.log / r16-p4-execute.log / r16-p4-smoke.log
+- host: node1
+  cwd: /home/ubuntu/fi/code
+  commandRedacted: kk ani components install --only postgresql（已装组件重复规划=T-R16-03 注入）
+  exitCode: 1
+  evidencePath: r16-p4-refuse-postgresql.log（准确拒绝+ns-UID 零写差）
+- host: local
+  cwd: fedora
+  commandRedacted: 物料手术+serve 实证+build-offline+artifact 自校验（13:11-13:26）
+  exitCode: 0
+  evidencePath: haul-surgery-*.log(22份) / r16-build-fixed-artifact.log
+- host: local
+  cwd: fedora
+  commandRedacted: restore_esxi_snapshots dry-run/execute、isolation apply/verify、S4b
+    环境卫生
+  exitCode: 0
+  evidencePath: r16-esxi-*-r2*/r16-isolation-*-r2*/r16-unattended-off-*
+checks:
+- testID: T-R16-01-clean-offline-install
+  expected: 原始干净快照完整安装；断网覆盖主机与工作负载；无公网代理/缓存掩盖
+  actual: 还原3/3→隔离verify rc=0→pristine断言CLEAN→1540s INSTALL_COMPLETED；控制台公网URL命中=0；smoke/acceptance
+    全真实断言
+  status: pass
+- testID: T-R16-02-single-addition
+  expected: 健康底座新增单组件；原底座配置/UID不变
+  actual: valkey plan→execute(36s)→smoke 实读写 pass；ns-UID 前后全等；底座 run.json sha 不变；6
+    个原 connections 片段 sha 不变
+  status: pass
+- testID: T-R16-03-fault-injection-stop
+  expected: 一次故障注入准确失败并停止变更，报告/日志可追
+  actual: postgresql 重复规划 rc=1（ownership-marker 拒绝文案准确）且 ns-UID 零写差；历史缺陷5停止签名（playbook
+    解析失败即停在写前）在本轮 r2 首试复证（dpkg 失败 490s 内完整停在 Repository 任务）
+  status: pass
+- testID: T-R16-04-backends-independent
+  expected: loki 与 opensearch 分支独立证明
+  actual: loki 分支实机 pass（含 fluent-bit 收集器链路 smoke）；opensearch 分支本地 R03-coverage-opensearch
+    全 PASS、实机 not_verified（后端互斥，需独立站点轮）
+  status: pass_with_not_verified
+- testID: persistence-one-recreate
+  expected: 一次计划内 Pod 重建验证持久化
+  actual: PG+NATS 各一次重建 ACCEPT_RC=0，数据实读通过，PVC 绑定不变
+  status: pass
+- testID: materials-lock-enforcement
+  expected: 批准摘要在真实链路生效
+  actual: r1 反证（漂移即拦）+ r2 正证（重锚定后 registry_content_verified 通过、装成）
+  status: pass
+status:
+  code: not_applicable
+  materials: pass_rebuilt
+  localTests: pass
+  liveSmoke: pass
+  persistence: pass
+  cleanOffline: pass
+  aniIntegration: pass_planned_addition_valkey
+  overall: pass_selected_combination
+mutation:
+  changesStarted: true
+  targetIPs:
+  - 172.16.101.20
+  - 172.16.101.21
+  - 172.16.101.22
+  remoteResultUnknown: false
+  evidencePreserved: true
+blockers: []
+notApplicableReasons:
+  code: live 模式禁止验收中改代码；全程树指纹不变，缺陷记录移交后续 code 卡
+nextSuggestedTask: R16 已完成选定行签发。建议：①opensearch 后端独立站点轮（补 F 行 live 证据）；②code 卡处理缺陷8（render
+  heredoc 豁免）+ run-state phase/字段两处范围外观察 + executor --kk 默认值（os.Args[0] 兜底）；③B 系列业务集成。本卡不自动执行下一张。
+nextTaskExecuted: false
+notes:
+- 覆盖矩阵/耗时/九阶段：r16-support-matrix.md、r16-timing-table.md。未验组合一律 not_verified。
+- 本轮两次非产品性环境事件均有取证：ESXi 凭据源混淆（用户以独立 esxi-password 0600 更正）、unattended-upgrades dpkg
+  锁竞争（批准 S4b 卫生后复跑通过）。
+- 验收运行内零公网下载（isolation 全程在位、控制台公网 URL 命中=0）；物料重建发生在本轮验收计时之外（Fedora 侧，按批准 digest 锚定，过程
+  22 份日志）。
+- 运行标识：底座 run=ani-ani-lab-20260925-120811；valkey 新增 run=ani-components-ani-lab-20260925-210259；报告
+  run-record-r2/、r16-smoke/、r16-acceptance/、p4 报告已回拉。

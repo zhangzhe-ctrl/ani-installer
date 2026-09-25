@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ANI kcn-stack Envoy smoke probe (R11/A04).
+#
+# Since R11 this probe covers ONLY the kcn-specific Envoy data plane: it
+# discovers the Envoy Service of the ani-smoke Gateway and requests the
+# installed backend through it. The generic Pod/Service/DNS network
+# verification moved to the stack-independent network-probe.sh (new file,
+# per-run namespace), which verify.sh runs for BOTH stacks. Nothing here may
+# grow a generic network check again — that would re-mix the two contracts.
 set -Eeuo pipefail
 
 readonly NAMESPACE="ani-installer-smoke"
@@ -7,7 +15,6 @@ readonly BACKEND_SERVICE="ani-smoke-backend"
 readonly GATEWAY="ani-smoke"
 readonly LISTENER="http-b"
 readonly LISTENER_PORT="9090"
-readonly NETWORK_SUCCESS="ANI-NETWORK-OK"
 readonly ENVOY_SUCCESS="ANI-ENVOY-OK"
 
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/etc/kubernetes/admin.conf}"
@@ -20,7 +27,8 @@ fi
 
 mkdir -p "$OUTPUT_BASE"
 OUTPUT_DIR="$(mktemp -d "$OUTPUT_BASE/run-XXXXXX")"
-KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_FILE")
+# R12/A12: every kubectl request is bounded.
+KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_FILE" --request-timeout=60s)
 CURRENT_KIND=""
 CURRENT_POD=""
 
@@ -186,22 +194,6 @@ if [[ "$ready_endpoint_count" -lt 1 ]]; then
   exit 1
 fi
 
-old_network_client_uid="$("${KUBECTL[@]}" get pod ani-smoke-network-client -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
-old_client_uid="$("${KUBECTL[@]}" get pod ani-smoke-client -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
-append_summary "backend_pod=$BACKEND_POD"
-append_summary "backend_pod_ip=$backend_ip"
-append_summary "backend_node=$backend_node"
-append_summary "backend_service=$BACKEND_SERVICE"
-append_summary "backend_service_ip=$backend_service_ip"
-append_summary "gateway=$NAMESPACE/$GATEWAY"
-append_summary "listener=$LISTENER:$LISTENER_PORT"
-append_summary "envoy_service=$envoy_service"
-append_summary "envoy_service_ip=$envoy_service_ip"
-append_summary "envoy_port=$LISTENER_PORT"
-append_summary "envoy_endpointslice=$envoy_endpointslice"
-append_summary "old_network_client_uid=${old_network_client_uid:-not_found}"
-append_summary "old_client_uid=${old_client_uid:-not_found}"
-
 other_nodes=()
 for node in "${node_names[@]}"; do
   if [[ "$node" != "$backend_node" ]]; then
@@ -213,68 +205,20 @@ if [[ "${#other_nodes[@]}" -ne 2 ]]; then
   exit 1
 fi
 envoy_client_node="${other_nodes[0]}"
-network_client_node="${other_nodes[1]}"
 
-CURRENT_KIND="network-client"
-CURRENT_POD=""
-network_client_name="$("${KUBECTL[@]}" create -f - -o jsonpath='{.metadata.name}' <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  generateName: ani-smoke-network-client-
-  namespace: $NAMESPACE
-spec:
-  nodeName: $network_client_node
-  restartPolicy: Never
-  containers:
-    - name: network-client
-      image: "$busybox_image"
-      imagePullPolicy: IfNotPresent
-      command: ["/bin/sh", "-ec"]
-      args:
-        - |
-          direct="\$(wget -T 10 -qO- http://$backend_ip:3000/)"
-          test "\$direct" = "ANI-INSTALLER-OK"
-          printf 'NETWORK-POD-IP-OK\n'
-          service="\$(wget -T 10 -qO- http://$backend_service_ip/)"
-          test "\$service" = "ANI-INSTALLER-OK"
-          printf 'NETWORK-SERVICE-IP-OK\n'
-          dns="\$(wget -T 10 -qO- http://ani-smoke-backend.ani-installer-smoke.svc.cluster.local/)"
-          test "\$dns" = "ANI-INSTALLER-OK"
-          printf 'NETWORK-DNS-OK\n'
-          printf 'ANI-NETWORK-OK\n'
-EOF
-)"
-CURRENT_POD="$network_client_name"
-network_client_uid="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')"
-network_client_created="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}')"
-network_client_node_actual="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.nodeName}')"
-network_client_image="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.containers[?(@.name=="network-client")].image}')"
-if [[ -n "$old_network_client_uid" && "$network_client_uid" == "$old_network_client_uid" ]]; then
-  log "network client UID matches the old client UID"
-  exit 1
-fi
-append_summary "network_client_name=$network_client_name"
-append_summary "network_client_uid=$network_client_uid"
-append_summary "network_client_created=$network_client_created"
-append_summary "network_client_node=$network_client_node_actual"
-append_summary "network_client_image=$network_client_image"
-
-wait_for_pod "$network_client_name" 180 "network client"
-network_phase="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.status.phase}')"
-network_exit_code="$("${KUBECTL[@]}" get pod "$network_client_name" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')"
-if [[ "$network_phase" != "Succeeded" || "$network_exit_code" != "0" ]]; then
-  log "network client did not finish successfully (phase=$network_phase exit=$network_exit_code)"
-  exit 1
-fi
-network_log="$("${KUBECTL[@]}" logs "$network_client_name" -n "$NAMESPACE")"
-printf '%s\n' "$network_log" > "$OUTPUT_DIR/network-client.log"
-for marker in NETWORK-POD-IP-OK NETWORK-SERVICE-IP-OK NETWORK-DNS-OK "$NETWORK_SUCCESS"; do
-  if ! printf '%s\n' "$network_log" | grep -Fqx "$marker"; then
-    log "network client log missing marker: $marker"
-    exit 1
-  fi
-done
+append_summary "backend_pod=$BACKEND_POD"
+append_summary "backend_pod_ip=$backend_ip"
+append_summary "backend_node=$backend_node"
+append_summary "backend_service=$BACKEND_SERVICE"
+append_summary "backend_service_ip=$backend_service_ip"
+append_summary "gateway=$NAMESPACE/$GATEWAY"
+append_summary "listener=$LISTENER:$LISTENER_PORT"
+append_summary "envoy_service=$envoy_service"
+append_summary "envoy_service_ip=$envoy_service_ip"
+append_summary "envoy_port=$LISTENER_PORT"
+append_summary "envoy_endpointslice=$envoy_endpointslice"
+old_client_uid="$("${KUBECTL[@]}" get pod ani-smoke-client -n "$NAMESPACE" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+append_summary "old_client_uid=${old_client_uid:-not_found}"
 
 CURRENT_KIND="envoy-client"
 CURRENT_POD=""
@@ -333,9 +277,8 @@ done
 
 "${KUBECTL[@]}" get pods -n "$NAMESPACE" -o wide > "$OUTPUT_DIR/pods-after.txt"
 append_summary "result=pass"
-append_summary "network_result=pass"
 append_summary "envoy_result=pass"
 append_summary "finished_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-log "network and Envoy probes passed"
+log "Envoy probe passed"
 printf 'ANI_SMOKE_OUTPUT_DIR=%s\n' "$OUTPUT_DIR"

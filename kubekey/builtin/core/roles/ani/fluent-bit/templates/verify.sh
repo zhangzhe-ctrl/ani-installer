@@ -58,6 +58,59 @@ note() { printf '%s\n' "$*"; }
 
 KC="kubectl -n $NS"
 
+# K-5 (appendix A of the foundation status doc): the base kcn/OVN layer hands
+# a rebuilt pod a dead sandbox every so often -- valid IP, ARP announced, but
+# the datapath blackholes it and kubelet probe-restarts the container forever
+# without rebuilding the sandbox (observed live on h4loki-a12/a14/a15/a17).
+# The a17 live recovery experiment (2026-09-20, evidence
+# h4loki-a17-k5recovery-exp.log) showed that restarting the kcn-cni-ds and
+# kcn-ovs-ds agents on the pod's node and then deleting the pod once more
+# recovered the slot in ~20s.
+#
+# R02 removed that recovery from the acceptance path. A verification must not
+# repair the cluster it is verifying, so the agent restarts and the repeated
+# rebuilds are gone: a hit K-5 flake now records read-only evidence and fails
+# the run. What remains is the ONE planned rebuild of this script's own pods
+# (backend / collector), which the durability checks already perform by
+# deleting a named pod and letting its workload recreate it; each planned
+# rebuild is recorded in $EVIDENCE/k5-retries.txt. Nothing outside $NS is ever
+# deleted, and moving the planned rebuild to the acceptance level is R13's
+# decision. The R02 task card is the authority for this change.
+k5_collect_failure_evidence() { # k5_collect_failure_evidence <what> — read-only diagnostics, never changes the caller's result
+  local what="$1" rc=0
+  {
+    echo "== k5 failure evidence: $what =="
+    date -u +%Y-%m-%dT%H:%M:%SZ
+  } >> "$EVIDENCE/k5-failure-$what.txt" 2>&1 || rc=1
+  kubectl -n "$NS" get pod -o wide >> "$EVIDENCE/k5-failure-$what.txt" 2>&1 || rc=1
+  kubectl -n "$NS" get events --sort-by=.lastTimestamp >> "$EVIDENCE/k5-failure-$what.txt" 2>&1 || rc=1
+  echo "k5_failure_evidence $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt" 2>&1 || rc=1
+  return "$rc"
+}
+k5_pod_ready() { # k5_pod_ready <selector> <timeout> — bounded wait until one Ready pod matches <selector>
+  # The wait never uses `kubectl rollout status`: on the lab's kubectl v1.35
+  # it can exit 0 on a timeout or on a stale workload status, which on a18
+  # silently passed a prometheus pod that stayed un-Ready for 27 minutes
+  # (evidence: h4loki-a18). The kubelet-written pod Ready condition is the
+  # honest signal, so the K-5 waits poll that instead.
+  local sel="$1" t="$2" deadline rdy
+  deadline=$(( $(date +%s) + ${t%s} ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    rdy="$(kubectl -n "$NS" get pod -l "$sel" \
+      -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{end}' 2>/dev/null)"
+    [ "$rdy" = "True" ] && return 0
+    sleep 10
+  done
+  return 1
+}
+# R02 test seam: ANI_VERIFY_LIB_ONLY=1 defines the helpers above and returns, so
+# the offline behaviour tests can call the real functions with a fake kubectl.
+# Production runs never set it and take exactly the same path as before.
+if [ "${ANI_VERIFY_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+
 case "$BACKEND" in
   loki|opensearch) ;;
   *) fail "unsupported logging backend '$BACKEND'" ;;
@@ -71,7 +124,7 @@ py() {
 }
 
 start_client() {
-  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true >/dev/null
+  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
   $KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
     --command -- python3 -c 'import time; time.sleep(3600)' >/dev/null
   $KC wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
@@ -176,7 +229,7 @@ for i in "${!NODES[@]}"; do
   marker="ANI-MARKER-${RUN_ID}-n${seq_n}-$(hostname)-${node}"
   MARKER_OF["$node"]="$marker"
   note "node $node -> pod $pod"
-  $KC delete pod "$pod" --ignore-not-found --wait=true >/dev/null
+  $KC delete pod "$pod" --ignore-not-found --wait=true --timeout=300s >/dev/null
   cat <<EOF | $KC apply -f -
 apiVersion: v1
 kind: Pod
@@ -429,81 +482,16 @@ note "rebuilding backend pod $old_backend_pod (uid $old_backend_pod_uid)"
 
 # The record is read before and after the rebuild, from the same query, so the
 # comparison is not affected by new data arriving in between.
-# K-5 (appendix A of the foundation status doc): the base kcn/OVN layer hands
-# a rebuilt pod a dead sandbox every so often -- valid IP, ARP announced, but
-# the datapath blackholes it and kubelet probe-restarts the container forever
-# without rebuilding the sandbox (observed live on h4loki-a12/a14/a15/a17).
-# The a17 live recovery experiment (2026-09-20, evidence
-# h4loki-a17-k5recovery-exp.log) refined the recovery: OVS br-int table=79
-# carries anti-spoof drop flows keyed on the dead pod's MAC/IP that survive
-# both pod recreation and agent restarts alone, so a plain second rebuild
-# never recovers the slot; what does (in ~20s) is restarting the kcn-cni-ds
-# and kcn-ovs-ds agents on the pod's node and THEN deleting the pod once
-# more, so its replacement is set up by a fresh CNI add against freshly
-# started agents. The wait below therefore gets: one bounded second rebuild,
-# then the agent restart + fresh rebuild, each step recorded in the evidence;
-# a final failure still fails the run.
-k5_dp_agent_restart() { # k5_dp_agent_restart <node> <what> — restart the kcn data-plane agents (cni, ovs) on <node>
-  local node="$1" what="$2" k apod
-  for k in cni ovs; do
-    apod="$(kubectl -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$k" '$2==n && $1 ~ p {print $1; exit}')"
-    if [ -n "$apod" ]; then
-      note "K5_RETRY $what: restarting the kcn-$k data-plane agent on $node ($apod)"
-      kubectl -n kcn-system delete pod "$apod" --timeout=180s >/dev/null 2>&1 || true
-    fi
-  done
-}
-k5_dp_agent_wait() { # k5_dp_agent_wait <name-pattern> <node> — bounded wait for a Ready kcn agent pod on <node>
-  local pat="$1" node="$2" i np rdy
-  for i in $(seq 1 48); do
-    np="$(kubectl -n kcn-system get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.nodeName}{"\n"}{end}' 2>/dev/null | awk -v n="$node" -v p="$pat" '$2==n && $1 ~ p {print $1; exit}')"
-    rdy="$(kubectl -n kcn-system get pod "$np" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)"
-    [ "$rdy" = "true" ] && return 0
-    sleep 5
-  done
-  return 1
-}
-k5_dp_pod_node() { # k5_dp_pod_node <selector> <what> — restart the kcn data-plane agents on the first matching pod's node
-  local sel="$1" what="$2" pod node
-  pod="$(kubectl -n "$NS" get pod -l "$sel" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
-  node="$(kubectl -n "$NS" get pod "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null || true)"
-  if [ -z "$node" ]; then
-    note "K5_RETRY $what: could not resolve the rebuilt pod's node (continuing without the agent restart)"
-    return 0
-  fi
-  k5_dp_agent_restart "$node" "$what"
-  k5_dp_agent_wait "kcn-cni-ds" "$node" \
-    || note "K5_RETRY $what: the kcn-cni-ds agent on $node is not Ready within 240s (continuing; the final wait is the arbiter)"
-  k5_dp_agent_wait "ovs" "$node" \
-    || note "K5_RETRY $what: the kcn-ovs-ds agent on $node is not Ready within 240s (continuing)"
-}
-k5_pod_ready() { # k5_pod_ready <selector> <timeout> — bounded wait until one Ready pod matches <selector>
-  # The wait never uses `kubectl rollout status`: on the lab's kubectl v1.35
-  # it can exit 0 on a timeout or on a stale workload status, which on a18
-  # silently passed a prometheus pod that stayed un-Ready for 27 minutes
-  # (evidence: h4loki-a18). The kubelet-written pod Ready condition is the
-  # honest signal, so the K-5 waits poll that instead.
-  local sel="$1" t="$2" deadline rdy
-  deadline=$(( $(date +%s) + ${t%s} ))
-  while [ "$(date +%s)" -lt "$deadline" ]; do
-    rdy="$(kubectl -n "$NS" get pod -l "$sel" \
-      -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{end}' 2>/dev/null)"
-    [ "$rdy" = "True" ] && return 0
-    sleep 10
-  done
-  return 1
-}
-kubectl -n "$NS" delete pod "$old_backend_pod" --wait=true >/dev/null
+kubectl -n "$NS" delete pod "$old_backend_pod" --wait=true --timeout=300s >/dev/null
 if ! k5_pod_ready "$BACKEND_SELECTOR" 600s; then
-  note "K5_RETRY backend: the rebuilt pod did not become ready (base-layer netns flake, appendix A); rebuilding it once more"
-  echo "k5_retry backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+  note "K5_REBUILD backend: the rebuilt pod is not Ready; performing the one planned rebuild of the backend pod"
+  echo "k5_rebuild_planned backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
   if ! k5_pod_ready "$BACKEND_SELECTOR" 420s; then
-    echo "k5_retry_dataplane backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-    k5_dp_pod_node "$BACKEND_SELECTOR" backend
-    kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
-    k5_pod_ready "$BACKEND_SELECTOR" 600s \
-      || fail "the rebuilt backend pod did not become Ready after the K-5 dataplane recovery"
+    # R02: no agent restart and no third rebuild. Record read-only evidence and
+    # fail the check; the caller's exit code stays this failure.
+    k5_collect_failure_evidence backend || true
+    fail "the rebuilt backend pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
   fi
 fi
 
@@ -555,7 +543,7 @@ victim_pod="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
 # Read-only, and deleted after each use.
 cursor_ls() { # cursor_ls <node> <outfile>
   local node="$1" out="$2" inspector="ani-fb-cursor-inspector" ph i
-  $KC delete pod "$inspector" --ignore-not-found --wait=true >/dev/null 2>&1 || true
+  $KC delete pod "$inspector" --ignore-not-found --wait=true --timeout=300s >/dev/null 2>&1 || true
   cat <<EOF | $KC apply -f - >/dev/null
 apiVersion: v1
 kind: Pod
@@ -593,7 +581,7 @@ EOF
   done
   [ "$ph" = "Succeeded" ] || fail "the cursor inspector pod on $node did not finish in 120s"
   $KC logs "$inspector" > "$out"
-  $KC delete pod "$inspector" --wait=true >/dev/null
+  $KC delete pod "$inspector" --wait=true --timeout=300s >/dev/null
 }
 
 cursor_ls "$victim_node" "$EVIDENCE/cursor-before.txt"
@@ -602,28 +590,20 @@ grep -q 'tail.db' "$EVIDENCE/cursor-before.txt" \
   || fail "the tail cursor database is not on the persistent directory"
 
 note "rebuilding collector pod $victim_pod on $victim_node"
-kubectl -n "$NS" delete pod "$victim_pod" --wait=true >/dev/null
-# Same K-5 handling as the backend step above: the collector's sandbox can be
-# handed dead by the base layer, and the second-rebuild + agent-restart
-# recovery applies (the victim node is already known here).
+kubectl -n "$NS" delete pod "$victim_pod" --wait=true --timeout=300s >/dev/null
+# Same single-planned-rebuild handling as the backend step above: one bounded
+# re-wait, and on failure read-only evidence plus a failing check. The agent
+# restart and the extra rebuilds are gone (R02).
 if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
   --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
-  note "K5_RETRY collector: the rebuilt pod did not become ready (base-layer netns flake, appendix A); rebuilding it once more"
-  echo "k5_retry collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
+  note "K5_REBUILD collector: the rebuilt pod is not Ready; performing the one planned rebuild of the collector pod"
+  echo "k5_rebuild_planned collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
     --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
   if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
     --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
-    echo "k5_retry_dataplane collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-    k5_dp_agent_restart "$victim_node" collector
-    k5_dp_agent_wait "kcn-cni-ds" "$victim_node" \
-      || note "K5_RETRY collector: the kcn-cni-ds agent on $victim_node is not Ready within 240s (continuing)"
-    k5_dp_agent_wait "ovs" "$victim_node" \
-      || note "K5_RETRY collector: the kcn-ovs-ds agent on $victim_node is not Ready within 240s (continuing)"
-    kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
-      --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
-    $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
-      --field-selector "spec.nodeName=$victim_node" --timeout=300s
+    k5_collect_failure_evidence collector || true
+    fail "the rebuilt collector pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
   fi
 fi
 
@@ -637,7 +617,7 @@ grep -q 'tail.db' "$EVIDENCE/cursor-after.txt" \
 
 # New markers after the rebuild: the tail input must resume, not stop.
 new_run="${RUN_ID}-post"
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true >/dev/null
+$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
 cat <<EOF | $KC apply -f -
 apiVersion: v1
 kind: Pod
@@ -875,12 +855,12 @@ echo "retention-expiry=not_verified (requires the retention period to elapse)" \
   | tee "$EVIDENCE/retention-expiry.txt"
 
 note "== [6] cleanup of this run's own test pods =="
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true >/dev/null
+$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
 for i in "${!NODES[@]}"; do
   seq_n=$((i + 1))
-  $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true >/dev/null
+  $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true --timeout=300s >/dev/null
 done
-$KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true >/dev/null
+$KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
 
 # Only this run's own marker pods are removed. The markers stay in the backend,
 # which is intentional: they are the evidence for the rebuild checks above.

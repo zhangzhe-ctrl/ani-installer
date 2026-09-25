@@ -111,12 +111,19 @@
     - role: ani/kubeovn
       when: '{{ eq .ani.network.stack "kubeovn" }}'
     # profile: base stops here — everything below is skipped and the chain
-    # ends with the base cluster (kubernetes + CNI network stack). profile:
-    # full (the default) continues with storage, ceph and every component.
+    # ends with the base cluster (kubernetes + CNI network stack).
+    #
+    # Storage is NOT implied by profile: full any more (R05/A02): it runs only
+    # when the site config selects it. The Ceph batch additionally requires
+    # provider: ceph; with provider: external no Ceph role runs at all and the
+    # cluster keeps whatever class the site names. The upstream storageclass
+    # role stays behind the same switch so it can never install a second
+    # default class by itself (its LocalPV/NFS dependencies are disabled in the
+    # rendered config).
     - role: storageclass
-      when: '{{ ne .ani.profile "base" }}'
+      when: '{{ and (ne .ani.profile "base") .ani.storage.enabled }}'
     - role: ani/ceph
-      when: '{{ ne .ani.profile "base" }}'
+      when: '{{ and (ne .ani.profile "base") .ani.storage.enabled (eq .ani.storage.provider "ceph") }}'
     # Foundation components follow the storage classes in the documented order:
     # cert-manager -> postgresql -> valkey -> nats. Each role is skipped
     # completely when its switch is off (or when the base profile cut the

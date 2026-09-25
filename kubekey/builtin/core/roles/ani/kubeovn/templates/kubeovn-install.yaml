@@ -26,8 +26,13 @@
 #     kubekey renders from network.serviceCIDR)
 #   - --iface / --default-interface-name -> .ani.network.management_interface
 #     (upstream IFACE: NIC carrying the container network)
+#   - --default-gateway -> .ani.network.kubeovn.default_gateway (R10/A05: the
+#     explicit network.kubeovn.defaultGateway, or the first usable IPv4 of the
+#     pod CIDR when empty — no site-independent literal)
+#   - --node-switch-cidr -> .ani.network.kubeovn.join_cidr (R10/A05:
+#     network.kubeovn.joinCIDR, empty keeps the historical 172.19.0.0/16)
 # Upstream variables without a site counterpart keep their install.sh
-# defaults: POD_GATEWAY=10.16.0.1, JOIN_CIDR=100.64.0.0/16, EXCLUDE_IPS="",
+# defaults: EXCLUDE_IPS="",
 # CHECK_GATEWAY=true, NETWORK_TYPE/TUNNEL_TYPE=geneve, VLAN_ID=100,
 # ENABLE_SSL=false, ENABLE_LB/ENABLE_NP/ENABLE_METRICS=true,
 # PINGER_EXTERNAL_ADDRESS=1.1.1.1, PINGER_EXTERNAL_DOMAIN=kube-ovn.io.,
@@ -7901,20 +7906,27 @@ spec:
           - --leader-elect-renew-deadline=20s
           - --leader-elect-retry-period=6s
           - --default-cidr={{ .ani.network.pod_cidr }}
-          - --default-gateway=10.16.0.1
+          # POD_GATEWAY comes from the site config (.ani.network.kubeovn.default_gateway):
+          # the explicit network.kubeovn.defaultGateway, or — when it is empty — the
+          # first usable IPv4 address of the pod CIDR (R10/A05). A non-default pod
+          # network therefore gets a consistent gateway instead of the historical
+          # 10.16.0.1 literal.
+          - --default-gateway={{ .ani.network.kubeovn.default_gateway }}
           - --default-gateway-check=true
           - --default-logical-gateway=false
           - --default-u2o-interconnection=false
           - --default-exclude-ips=
-          # JOIN_CIDR: upstream default is 100.64.0.0/16, but kube-ovn-cni's
+          # JOIN_CIDR (node switch network) comes from the site config
+          # (.ani.network.kubeovn.join_cidr; empty keeps the historical
+          # 172.19.0.0/16). Upstream default is 100.64.0.0/16, but kube-ovn-cni's
           # init-node-gateway probe pings the join gateway from the node, and
           # the offline isolation (ANI-OFFLINE iptables) only allows lo,
           # 10/8, 172.16/12, 192.168/16, 169.254/16, 198.18/15 — a 100.64/16
-          # gateway ping is dropped and kube-ovn-cni never finishes init.
-          # 172.19.0.0/16 stays inside the 172.16/12 allowlist and does not
-          # overlap the node subnet (172.16.101.0/24), pod CIDR or service
-          # CIDR. If the site CIDR layout changes, revisit this value.
-          - --node-switch-cidr=172.19.0.0/16
+          # gateway ping is dropped and kube-ovn-cni never finishes init. A
+          # join network outside that allowlist needs a matching isolation
+          # change at the site; config validation rejects any join CIDR that
+          # overlaps pod, service or node addresses before anything renders.
+          - --node-switch-cidr={{ .ani.network.kubeovn.join_cidr }}
           - --service-cluster-ip-range={{ .ani.network.service_cidr }}
           - --network-type=geneve
           - --default-interface-name={{ .ani.network.management_interface }}

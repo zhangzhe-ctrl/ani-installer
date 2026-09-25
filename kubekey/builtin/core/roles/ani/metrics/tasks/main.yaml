@@ -21,11 +21,13 @@
 
 - name: ANI Metrics | Create work directory
   command: |
+    set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/metrics
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
 - name: ANI Metrics | Create the observability namespace
   command: |
+    set -euo pipefail
     kubectl create namespace {{ .ani.components.metrics.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
 
 - name: ANI Metrics | Require the packaged Helm binary
@@ -98,12 +100,14 @@
 
 - name: ANI Metrics | Make the verification script root-only and executable
   command: |
+    set -euo pipefail
     chown root:root /etc/kubernetes/ani/metrics/verify.sh
     chmod 0700 /etc/kubernetes/ani/metrics/verify.sh
     test -x /etc/kubernetes/ani/metrics/verify.sh
 
 - name: ANI Metrics | Run component verification
   command: |
+    set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/metrics/verify.sh

@@ -14,8 +14,13 @@
   - `--service-cluster-ip-range`（controller 与 cni-server 两处）-> `.ani.network.service_cidr`
   - `--iface` / `--default-interface-name` -> `.ani.network.management_interface`
   - 全部 image 引用 -> `{{ index .ani.images "<original>" }}`
-  其余变量保持 install.sh v1.16.6 默认值（JOIN_CIDR=100.64.0.0/16、
-  POD_GATEWAY=10.16.0.1、geneve、ENABLE_LB/NP/METRICS=true 等），见模板头部注释。
+  - `--default-gateway` -> `.ani.network.kubeovn.default_gateway`（R10/A05：
+    站点 `network.kubeovn.defaultGateway`，留空取 Pod 网段首个可用 IPv4）
+  - `--node-switch-cidr` -> `.ani.network.kubeovn.join_cidr`（R10/A05：站点
+    `network.kubeovn.joinCIDR`，留空保持历史默认 172.19.0.0/16）
+  其余变量保持 install.sh v1.16.6 默认值（geneve、ENABLE_LB/NP/METRICS=true
+  等），见模板头部注释。`network.kubeovn.loadBalancer`/Multus 属 B01 任务，
+  当前配置层直接拒绝（严格解码未知字段）。
 - `kubekey/ani/images-kubeovn.tsv`：已填行，2 个镜像
   （kubeovn/kube-ovn:v1.16.6、kubeovn/vpc-nat-gateway:v1.16.6），amd64 RepoDigest
   来自供料阶段 skopeo 实测。默认拉取路径直达（docker.io 官方），无 tar 注入。
@@ -37,3 +42,4 @@
 
 - smoke role（envoy 网关冒烟）属自研批次，kubeovn 栈下不安装。
 - `network.kcn.*` 子段在 kubeovn 栈下被忽略（校验也跳过），旧站点文件无需删改即可切换。
+- `network.kubeovn.*` 子段在 kcn 栈下同样被忽略（对称约定，R10/A05）。

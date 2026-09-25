@@ -20,11 +20,13 @@
 
 - name: ANI Fluent Bit | Create work directory
   command: |
+    set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/fluent-bit
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
 
 - name: ANI Fluent Bit | Create the observability namespace
   command: |
+    set -euo pipefail
     kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
 
 - name: ANI Fluent Bit | Require the packaged Helm binary
@@ -70,6 +72,7 @@
 
 - name: ANI Fluent Bit | Make the verification script root-only and executable
   command: |
+    set -euo pipefail
     chown root:root /etc/kubernetes/ani/fluent-bit/verify.sh
     chmod 0700 /etc/kubernetes/ani/fluent-bit/verify.sh
     test -x /etc/kubernetes/ani/fluent-bit/verify.sh
@@ -80,6 +83,7 @@
 # metadata the collector attached. It does not push to the backend directly.
 - name: ANI Fluent Bit | Run component verification
   command: |
+    set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/fluent-bit/verify.sh

@@ -25,11 +25,14 @@
     src: operator.yaml
     dest: /etc/kubernetes/ani/ceph/03-operator.yaml
 
-- name: ANI Ceph | Apply CRDs, common and csi-operator
-  command: |
-    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/00-crds.yaml
-    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/01-common.yaml
-    kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/02-csi-operator.yaml
+- name: ANI Ceph | Apply CRDs
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/00-crds.yaml
+
+- name: ANI Ceph | Apply common manifests
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/01-common.yaml
+
+- name: ANI Ceph | Apply the CSI operator manifests
+  command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/02-csi-operator.yaml
 
 - name: ANI Ceph | Wait for Rook and CSI CRDs to be established
   command: |
@@ -50,6 +53,34 @@
 
 - name: ANI Ceph | Wait for ceph-csi-operator rollout
   command: kubectl -n rook-ceph rollout status deployment/ceph-csi-controller-manager --timeout=600s
+
+- name: ANI Ceph | Ship the device pre-flight script to every node
+  # The check has to run where the disks are, so the script goes to every node
+  # first. It is read-only: see templates/ceph-preflight.sh.
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  template:
+    src: ceph-preflight.sh
+    dest: /etc/kubernetes/ani/ceph/ceph-preflight.sh
+    mode: "0755"
+
+- name: ANI Ceph | Ship the declared device list to every node
+  # One line per node: "<node> <device> [device...]". The pre-flight reads its
+  # own node's line, so no device list is assembled inside a loop expression.
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  template:
+    src: storage-devices.txt
+    dest: /etc/kubernetes/ani/ceph/storage-devices.txt
+    mode: "0600"
+
+- name: ANI Ceph | Pre-flight every declared data device on its own node
+  # Site input only: no scanning, no cleaning. The task fails before Rook is
+  # given any disk if a device is missing, is part of the system chain, is
+  # already mounted or already carries a signature (R05/A02).
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  command: 'bash /etc/kubernetes/ani/ceph/ceph-preflight.sh {{ .item }}'
 
 - name: ANI Ceph | Render CephCluster
   template:
@@ -125,16 +156,32 @@
 - name: ANI Ceph | Apply CephFS StorageClass
   command: kubectl apply --server-side --force-conflicts -f /etc/kubernetes/ani/ceph/31-storageclass-cephfs.yaml
 
-- name: ANI Ceph | Mark ani-block as the default StorageClass
+- name: ANI Ceph | Enforce the default StorageClass policy
+  # R05/A02: this task used to make ani-block the cluster default and clear every
+  # other class's default marker. It now does exactly what the site asked for:
+  # nothing when storage.makeDefaultStorageClass is false, and a hard failure
+  # when it is true but another class is already the default — that marker is
+  # not ours to remove.
   command: |
+    set -euo pipefail
+    if [ '{{ .ani.storage.makeDefaultStorageClass }}' != 'true' ]; then
+      echo "storage.makeDefaultStorageClass=false: leaving every default StorageClass marker untouched"
+      exit 0
+    fi
+    listed="$(kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}{"\n"}{end}')"
+    if [ -z "$listed" ]; then
+      echo "could not list storage classes" >&2
+      exit 1
+    fi
+    conflicts="$(printf '%s\n' "$listed" | awk '$2 == "true" && $1 != "ani-block" {print $1}')"
+    if [ -n "$conflicts" ]; then
+      echo "storage.makeDefaultStorageClass=true but another StorageClass is already the cluster default: $conflicts" >&2
+      echo "refusing to change or remove another component's default marker; pick one default deliberately" >&2
+      exit 1
+    fi
     kubectl patch storageclass ani-block \
       -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-    for sc in $(kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
-      if [ "$sc" != "ani-block" ]; then
-        kubectl patch storageclass "$sc" --type=merge \
-          -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' || true
-      fi
-    done
+    echo "ani-block is the cluster default StorageClass"
 
 - name: ANI Ceph | Render storage verification script
   template:

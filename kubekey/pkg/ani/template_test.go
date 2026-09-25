@@ -105,6 +105,12 @@ func TestKubeOVNManifestTemplateUsesSiteInputs(t *testing.T) {
 				"pod_cidr":             "10.16.0.0/16",
 				"service_cidr":         "10.96.0.0/16",
 				"management_interface": "ens34",
+				// R10/A05: gateway and join network render from the resolved
+				// site values, never from hardcoded literals.
+				"kubeovn": map[string]any{
+					"default_gateway": "10.16.0.1",
+					"join_cidr":       "172.19.0.0/16",
+				},
 			},
 		},
 	}
@@ -124,6 +130,8 @@ func TestKubeOVNManifestTemplateUsesSiteInputs(t *testing.T) {
 		"image: 192.0.2.11:5000/kubeovn/vpc-nat-gateway:v1.16.6",
 		"--image=192.0.2.11:5000/kubeovn/kube-ovn:v1.16.6",
 		"--default-cidr=10.16.0.0/16",
+		"--default-gateway=10.16.0.1",
+		"--node-switch-cidr=172.19.0.0/16",
 		"--service-cluster-ip-range=10.96.0.0/16",
 		"--iface=ens34",
 		"--default-interface-name=ens34",
@@ -138,13 +146,30 @@ func TestKubeOVNManifestTemplateUsesSiteInputs(t *testing.T) {
 	// No rendered image value may still point at the upstream registry (the
 	// template header comment and the lookup keys legitimately mention the
 	// originals), and the official SVC_CIDR default (10.96.0.0/12) must be
-	// gone in favor of the site service_cidr.
+	// gone in favor of the site service_cidr. The gateway/join args must be
+	// templated: a missing context key would render "<no value>" instead of a
+	// silent literal.
 	for _, stale := range []string{
 		"image: docker.io/kubeovn", "--image=docker.io/kubeovn", "10.96.0.0/12", "KubeOVNMaterialsPending",
 		"--iface=\n", "--default-interface-name=\n",
+		"--default-gateway=<no value>", "--node-switch-cidr=<no value>",
 	} {
 		if strings.Contains(out, stale) {
 			t.Fatalf("rendered manifest still contains stale value %q", stale)
+		}
+	}
+	// R10/A05: the hardcoded literals must be gone from the template itself,
+	// not just overridden at render time.
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read kubeovn template source: %v", err)
+	}
+	for _, literal := range []string{
+		"- --default-gateway=10.16.0.1",
+		"- --node-switch-cidr=172.19.0.0/16",
+	} {
+		if strings.Contains(string(source), literal) {
+			t.Fatalf("kubeovn template source still hardcodes %q; it must come from the site config", literal)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(t.TempDir(), "kubeovn-install.yaml"), []byte(out), 0o600); err != nil {

@@ -126,11 +126,16 @@ func SplitReference(ref string) (registry, repository, tag string, err error) {
 //
 // TagOverride replaces the tag taken from the locked reference. It is only for
 // charts that append a suffix themselves; when empty the locked tag is used.
+//
+// Backend marks log-stack entries whose requirement depends on the selected
+// log backend ("loki", "opensearch", "fluent-bit"); an empty Backend means the
+// entry's requirement is decided by the group filter (R08).
 type ImageKey struct {
 	Group       string
 	Name        string
 	Original    string
 	TagOverride string
+	Backend     string
 }
 
 // componentImageKeys lists the images whose references a Chart divides up
@@ -145,6 +150,19 @@ type ImageKey struct {
 // rather than in the role template, so there is one place to read.
 func componentImageKeys() []ImageKey {
 	return []ImageKey{
+		// R08: the two main CNIs and the foundation components now have real,
+		// declared keys (every original exists in images.tsv / images-kubeovn.tsv
+		// exactly as shipped), so a required image that is missing from the
+		// package fails before deployment instead of rendering an empty field.
+		{Group: "kcn", Name: "networking", Original: "docker.changqingyun.cn/kubercloud/kc-networking:dev"},
+		{Group: "kubeovn", Name: "kubeOvn", Original: "docker.io/kubeovn/kube-ovn:v1.16.6"},
+		{Group: "kubeovn", Name: "vpcNatGateway", Original: "docker.io/kubeovn/vpc-nat-gateway:v1.16.6"},
+		{Group: "components", Name: "postgres", Original: "docker.io/library/postgres:17.11-bookworm"},
+		{Group: "components", Name: "valkey", Original: "docker.io/valkey/valkey:8.1.10-alpine"},
+		{Group: "components", Name: "nats", Original: "docker.io/library/nats:2.14.6-alpine"},
+		{Group: "components", Name: "natsConfigReloader", Original: "docker.io/natsio/nats-server-config-reloader:0.23.0"},
+		{Group: "components", Name: "natsBox", Original: "docker.io/natsio/nats-box:0.19.7"},
+		{Group: "verification", Name: "certTLS", Original: "docker.io/alpine/openssl:3.5.4"},
 		{Group: "metrics", Name: "operator", Original: "quay.io/prometheus-operator/prometheus-operator:v0.90.1"},
 		{Group: "metrics", Name: "configReloader", Original: "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1"},
 		{Group: "metrics", Name: "prometheus", Original: "quay.io/prometheus/prometheus:v3.11.3-distroless"},
@@ -162,9 +180,9 @@ func componentImageKeys() []ImageKey {
 		// same way the metrics sub-charts do. The OpenSearch chart puts the
 		// registry in one field for every image it renders, so its chown init
 		// image (the locked busybox) needs its parts as well.
-		{Group: "logs", Name: "loki", Original: "docker.io/grafana/loki:3.7.8"},
-		{Group: "logs", Name: "fluentBit", Original: "cr.fluentbit.io/fluent/fluent-bit:5.1.2"},
-		{Group: "logs", Name: "opensearch", Original: "docker.io/opensearchproject/opensearch:3.8.0"},
+		{Group: "logs", Name: "loki", Original: "docker.io/grafana/loki:3.7.8", Backend: "loki"},
+		{Group: "logs", Name: "fluentBit", Original: "cr.fluentbit.io/fluent/fluent-bit:5.1.2", Backend: "fluent-bit"},
+		{Group: "logs", Name: "opensearch", Original: "docker.io/opensearchproject/opensearch:3.8.0", Backend: "opensearch"},
 		{Group: "lab", Name: "python", Original: "docker.io/library/python:3.13.11-alpine3.23"},
 		{Group: "lab", Name: "busybox", Original: "docker.io/library/busybox:1.37.0"},
 	}

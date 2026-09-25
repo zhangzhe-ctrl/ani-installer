@@ -1,0 +1,44 @@
+---
+# ANI components-only playbook (R15.2/A14).
+#
+# This playbook exists for `kk ani components` runs: on a healthy, identity-
+# known base cluster it executes ONLY the declared component roles for the
+# run's scope. It never imports create_cluster and never runs any base task
+# (cluster bootstrap, network, storage, registry or the kcn batch) — the base
+# those components need is already installed and verified.
+#
+# The scope comes from the run record: the components installer renders
+# .ani.components_run.scope (a map of component id -> true) into the config
+# from the R15.1 plan. A role runs only when BOTH its component switch is
+# enabled in that config AND the scope map contains it. Base installs never
+# set components_run (indexing a missing map yields the zero value), so this
+# playbook cannot widen a components run beyond --only, and the same roles
+# keep their original gating under create_cluster.
+#
+# Ownership and versions were checked at plan time (R15.1): a same-version
+# helm release is already_installed and is never executed again, and a
+# foreign release or workload was rejected before this file is ever invoked.
+
+- hosts:
+    - kube_control_plane[0]
+  gather_facts: true
+  roles:
+    - role: ani/cert-manager
+      when: '{{ and (index .ani.components "cert-manager").enabled (index .ani.components_run.scope "cert-manager") }}'
+    - role: ani/postgresql
+      when: '{{ and (index .ani.components "postgresql").enabled (index .ani.components_run.scope "postgresql") }}'
+    - role: ani/valkey
+      when: '{{ and (index .ani.components "valkey").enabled (index .ani.components_run.scope "valkey") }}'
+    - role: ani/nats
+      when: '{{ and (index .ani.components "nats").enabled (index .ani.components_run.scope "nats") }}'
+    # The observability batch keeps the base gating semantics (one typed log
+    # backend, metrics first because the log roles reuse its namespace) and
+    # adds the same scope condition as every other role.
+    - role: ani/metrics
+      when: '{{ and (index .ani.components "metrics").enabled (index .ani.components_run.scope "metrics") }}'
+    - role: ani/loki
+      when: '{{ and (index .ani.components "loki").enabled (eq .ani.components.logging.backend "loki") (index .ani.components_run.scope "loki") }}'
+    - role: ani/opensearch
+      when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") (index .ani.components_run.scope "opensearch") }}'
+    - role: ani/fluent-bit
+      when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") (index .ani.components_run.scope "fluent-bit") }}'
