@@ -298,13 +298,20 @@ run **36262250848** / job **108460180210** → `status=completed conclusion=succ
 | `f071cb28245f90f3af86dd12f5efdc1ec463a2c3` | 推送与 Draft PR 交接 | 36262440894 | completed / **success** |
 | `2b8373ab93275fd4d90890e338d84c34dd4b69ee` | CI 结果与 pristine-clone 实证入档 | 36262541202 | completed / **success** |
 | `80ff740d9f2837927bd091b018f6c8a3037df518` | C07/C08 证据口径收窄 | 36262602687 | completed / **success** |
-| `ed2b9eb49ad2e26c9892c532fcdad81777da7b7c` | 删除已不可达的 skipped 状态常量、改正 acceptance 步骤注释 | 36262936791 | 交付时 in_progress，结论以远端为准 |
+| `ed2b9eb49ad2e26c9892c532fcdad81777da7b7c` | 删除已不可达的 skipped 状态常量、改正 acceptance 步骤注释 | 36262936791 | completed / **success** |
+| `174001101503b0dc36b643cff3371c0856358544` | 本表入档（纯文档） | 36263026975 | completed / **success** |
+| 本行所在提交（纯文档，只把上一行结论从“待读”改成实读） | — | 交付时 in_progress | 见下条口径 |
 
 口径：包含全部 C01–C10 生产代码的提交（`8b9257e` 及其每一个后续分支头）都已被至少一个
 `completed/success` 的 run 覆盖——`8d9de2c7` 与 `80ff740d` 两个分支头都含同一份代码树
 （`2b8373a` 之后只改文档，`ed2b9eb` 只删一个不可达常量与改注释）。
 本地对最终工作树重跑完整门禁同样 rc=0（`/tmp/gate-final.log`）。未取到自己 run 结论的提交
 不写成 ci_pass。
+
+一条自指导致的永久口径限制（不假装能消除）：本台账的每一行“CI 结论”都是由一次**文档提交**写进
+分支头的，而那次提交自己的 run 只能在下一次提交时才看得到。因此本文件中最后一个提交的对象级
+结论天然是 pending；已绿的提交树内容全部被上表已列 run 覆盖，本文件本身不参与代码门禁判定。
+要一次性闭合只能在代码候选提交上直接带全 CI 结论（需要 push 前知道 push 后结果），不可实现。
 
 一处 cosmetic 缺陷如实记录：`ed2b9eb` 的 commit message 正文里 `` `skipped` `` 的反引号在
 `git commit -m "…"` 的双引号串中被 shell 当成命令替换吃掉，正文现在读作“produced a  result”，
