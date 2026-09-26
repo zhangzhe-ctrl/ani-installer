@@ -32,11 +32,11 @@
 
 - name: ANI cert-manager | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install cert-manager
+    {{ .ani.artifact_root }}/bin/helm install cert-manager
     {{ .ani.artifact_root }}/charts/cert-manager/v1.21.2.tgz
     --namespace cert-manager --create-namespace
     --values /etc/kubernetes/ani/cert-manager/values.yaml
-    --wait --timeout 900s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 900s
 
 - name: ANI cert-manager | Wait for CRDs Established
   command: >-

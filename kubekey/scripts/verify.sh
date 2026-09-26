@@ -83,7 +83,11 @@ ani_verify_components() { # ani_verify_components <site-config> <selection-file>
     # exit code; the `||` guard captures it without toggling the shell's errexit
     # (which would leak into the caller).
     component_exit=0
-    ANI_VERIFY_KUBECONFIG="$kubeconfig_file" ANI_VERIFY_OUTPUT_DIR="$log_dir" \
+    # F01: this legacy wrapper is the post-install/smoke trajectory. Pin the
+    # level explicitly so component checkers run their readiness-only branch;
+    # the full alert-chain/durability path is only reached through
+    # `kk ani verify --level acceptance --allow-pod-recreate`.
+    ANI_VERIFY_LEVEL=smoke ANI_VERIFY_KUBECONFIG="$kubeconfig_file" ANI_VERIFY_OUTPUT_DIR="$log_dir" \
       bash "$component_script" 2>&1 | tee "$log_dir/component-$component_name.log" || component_exit=$?
     if [[ "$component_exit" -ne 0 ]]; then
       echo "component $component_name verification failed; exit=$component_exit; log=$log_dir/component-$component_name.log" >&2

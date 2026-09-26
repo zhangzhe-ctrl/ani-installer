@@ -20,9 +20,29 @@ type Image struct {
 // image references without relying on a global hostname rewrite.
 type ImageTable map[string]Image
 
+// checkRepositoryTag requires every hauler_ref to name exactly one tag: a
+// reference without one resolves to an empty manifest path, and a second colon
+// would make the "tag" swallow part of the repository.
+func checkRepositoryTag(haulerRef string) error {
+	path := haulerRef
+	if slash := strings.Index(haulerRef, "/"); slash >= 0 {
+		path = haulerRef[slash+1:]
+	}
+	lastSegment := path[strings.LastIndex(path, "/")+1:]
+	if strings.Count(lastSegment, ":") != 1 {
+		return fmt.Errorf("hauler_ref %q is not a repository:tag reference", haulerRef)
+	}
+	tag := lastSegment[strings.LastIndex(lastSegment, ":")+1:]
+	if tag == "" {
+		return fmt.Errorf("hauler_ref %q has an empty tag", haulerRef)
+	}
+	return nil
+}
+
 // LoadImageTable parses the four-column TSV shipped with the package.
 func LoadImageTable(rows []string) (ImageTable, error) {
 	table := ImageTable{}
+	haulerRefs := map[string]string{}
 	for line, raw := range rows {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.HasPrefix(raw, "original_ref\t") {
@@ -46,6 +66,16 @@ func LoadImageTable(rows []string) (ImageTable, error) {
 		}
 		if _, exists := table[img.Original]; exists {
 			return nil, fmt.Errorf("images.tsv duplicate original_ref %q", img.Original)
+		}
+		if previous, exists := haulerRefs[img.HaulerRef]; exists {
+			// Two rows sharing one store tag would land one object and leave the
+			// other's approved bytes unreachable.
+			return nil, fmt.Errorf("images.tsv duplicate hauler_ref %q (rows %q and %q); one packaged reference is one image",
+				img.HaulerRef, previous, img.Original)
+		}
+		haulerRefs[img.HaulerRef] = img.Original
+		if err := checkRepositoryTag(img.HaulerRef); err != nil {
+			return nil, fmt.Errorf("images.tsv line %d: %w", line+1, err)
 		}
 		table[img.Original] = img
 	}

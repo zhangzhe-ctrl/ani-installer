@@ -4,17 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/kubesphere/kubekey/v4/version"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,6 +31,12 @@ type InstallInput struct {
 const (
 	serviceUnitName = "ani-image-registry.service"
 )
+
+// SourceTreeFingerprint is the real source-tree identity of the code release,
+// embedded at build time by scripts/build-code.sh via -ldflags -X. It is empty
+// for a plain `go build`, in which case RunInstall records "not-embedded" rather
+// than reusing an unrelated digest (F04: each identity from its own source).
+var SourceTreeFingerprint = ""
 
 // runtimeBaseDir is the canonical per-cluster runtime root. It is a variable
 // only so behaviour tests can point the component-role fragment contract at a
@@ -100,7 +108,7 @@ func createRuntimeRoot(path string) error {
 	return nil
 }
 
-func RunInstall(ctx context.Context, input InstallInput) error {
+func RunInstall(ctx context.Context, input InstallInput) (retErr error) {
 	if os.Geteuid() != 0 {
 		return errors.New("kk ani install must run as root; use install.sh or sudo")
 	}
@@ -134,60 +142,59 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		return err
 	}
 
-	required := []string{
-		paths.ArtifactPath,
-		paths.ArchivePath,
-		paths.HaulerPath,
-		paths.ImageTablePath,
-		paths.RepositoryISO,
-		filepath.Join(paths.ArtifactRoot, "SHA256SUMS"),
-		filepath.Join(paths.ArtifactRoot, "config", "package.yaml"),
-		filepath.Join(paths.ArtifactRoot, "config", "versions.yaml"),
-		filepath.Join(paths.ArtifactRoot, "config", "runtime-checksums.txt"),
-		filepath.Join(paths.ArtifactRoot, "config", "repository-iso-checksums.txt"),
-		filepath.Join(paths.ArtifactRoot, "config", "components.lock.yaml"),
-		kkPath,
-	}
-	// Every installed component must have its fixed Chart material in the
-	// artifact before deployment starts, so a missing chart fails here and not
-	// mid-install. The base profile cuts the chain after the network stack and
-	// the playbook skips every component role, so their charts are not part of
-	// a base artifact and must not be demanded here (failure a2 on 2026-09-22:
-	// the kubeovn-base artifact ships no charts, and the site config keeps the
-	// component switches from its base copy, so the preflight died on
-	// charts/cert-manager/v1.21.2.tgz before the cluster install even began).
-	selection := map[string]bool{}
-	for _, row := range effectiveSelection(cluster) {
-		selection[row.Name] = row.Enabled
-	}
-	for name, relative := range componentChartMaterials {
-		if selection[name] {
-			required = append(required, filepath.Join(paths.ArtifactRoot, filepath.FromSlash(relative)))
-		}
-	}
-	// R09: every read-only check (config, digests, required materials, port,
-	// unit, disk space) runs BEFORE the first write. A failure writes a fresh
-	// preflight report with changesStarted=false and touches nothing else.
+	// R09/F05: every read-only check (config, required materials, chart/ISO/tool
+	// digests, in-package SHA256SUMS, port, unit state, disk space) runs inside
+	// RunPreflight BEFORE the first write, so a corrupt artifact or a foreign
+	// unit fails without ever setting changesStarted. The runner no longer keeps
+	// a second, un-consumed required list.
 	runID := fmt.Sprintf("ani-%s-%s", cluster.Name, time.Now().Format("20060102-150405"))
 	targets := make([]string, 0, len(cluster.Nodes))
 	for _, node := range cluster.Nodes {
 		targets = append(targets, node.Name)
 	}
+	// Real build/code identities, each from its own source (F04). The source
+	// tree fingerprint is embedded at build time (empty for a non-release build,
+	// never a stand-in digest); the binary digest is computed from THIS running
+	// kk; the git commit comes from the version package.
+	binaryDigest := fileSHA256Hex(kkPath)
+	gitCommit := version.Get().GitCommit
+	siteDigest, err := ConfigDigest(cluster)
+	if err != nil {
+		return err
+	}
+	sourceFingerprint := SourceTreeFingerprint
+	if sourceFingerprint == "" {
+		sourceFingerprint = "not-embedded"
+	}
 	report, err := RunPreflight(PreflightInput{
-		RunID:         runID,
-		Cluster:       &cluster,
-		PackageRoot:   input.PackageRoot,
-		ArtifactRoot:  paths.ArtifactRoot,
-		ReportBaseDir: runtimeBaseDir,
-		HelmPath:      filepath.Join(paths.ArtifactRoot, "bin", "helm"),
+		RunID:                 runID,
+		Cluster:               &cluster,
+		PackageRoot:           input.PackageRoot,
+		ArtifactRoot:          paths.ArtifactRoot,
+		ReportBaseDir:         runtimeBaseDir,
+		HelmPath:              filepath.Join(paths.ArtifactRoot, "bin", "helm"),
+		HaulerPath:            paths.HaulerPath,
+		SourceTreeFingerprint: sourceFingerprint,
+		CodeCommit:            gitCommit,
+		CodeBinaryDigest:      binaryDigest,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Single-writer lock: a second installer process returns immediately. The
-	// lock file is never deleted and no process is ever killed.
-	releaseLock, err := AcquireInstallFlock(filepath.Join(runtimeBaseDir, "ani-install.lock"))
+	// F05: verify the artifact's own in-package SHA256SUMS here — after the
+	// read-only preflight and BEFORE the lock, the runtime root and
+	// changesStarted — so a corrupt artifact fails without ever leaving a
+	// "changes started" run to clean up. (The old code ran this only after the
+	// state record had already set changesStarted=true.)
+	if err := VerifyArtifactChecksums(paths.ArtifactRoot); err != nil {
+		return err
+	}
+
+	// Single-writer lock shared with components execute and acceptance: a
+	// second changer returns immediately. The lock file is never deleted and no
+	// process is ever killed.
+	releaseLock, err := AcquireInstallFlock(productLockPath())
 	if err != nil {
 		return err
 	}
@@ -205,14 +212,21 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		RunID:          runID,
 		StartedAt:      time.Now().Format(time.RFC3339),
 		Phase:          PhaseInstalling,
+		Result:         ResultRunning,
 		ChangesStarted: true,
 		RemoteResult:   RemoteResultDeterministic,
 		ClusterName:    cluster.Name,
 		Targets:        targets,
-		SourceTreeFp:   report.ConfigDigest,
-		KKPath:         kkPath,
-		ArtifactLock:   report.ArtifactLock,
-		ConfigDigest:   report.ConfigDigest,
+
+		SourceTreeFingerprint: sourceFingerprint,
+		CodeCommit:            gitCommit,
+		CodeBinaryDigest:      binaryDigest,
+		SiteConfigDigest:      siteDigest,
+		PackageConfigDigest:   report.PackageConfigDigest,
+		KKPath:                kkPath,
+		ArtifactLock:          report.ArtifactLock,
+		// ConfigDigest is the site digest (its correct meaning), not package.yaml.
+		ConfigDigest: siteDigest,
 	}
 	// Atomic state record BEFORE the first write, then keep it accurate after
 	// every completed step (R09: a failure leaves the last completed phase).
@@ -230,8 +244,31 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	if err := WriteRunStateAtomic(statePath, state); err != nil {
 		return err
 	}
+	// Finalizer: the last completed Phase is kept as-is (R09), but the Result
+	// is written accurately on EVERY exit path — running→succeeded/failed/
+	// cancelled — so a run that reached a late phase yet failed can never be
+	// read as a success (F04). A failed persist is surfaced, not swallowed.
+	installSucceeded := false
 	defer func() {
-		_ = WriteRunStateAtomic(statePath, state)
+		if state.Result != ResultSucceeded {
+			switch {
+			case retErr == nil && installSucceeded:
+				state.Result = ResultSucceeded
+			case retErr != nil && (errors.Is(retErr, context.Canceled) || errors.Is(retErr, context.DeadlineExceeded) || ctx.Err() != nil):
+				state.Result = ResultCancelled
+			case retErr != nil:
+				state.Result = ResultFailed
+			}
+			if state.Result == ResultRunning {
+				state.Result = ResultFailed
+			}
+			// R09: keep the LAST COMPLETED phase intact (do not rewrite it to
+			// install_failed); the accurate final outcome lives in Result.
+		}
+		state.FinishedAt = time.Now().Format(time.RFC3339)
+		if werr := WriteRunStateAtomic(statePath, state); werr != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: failed to persist final run-state %s: %v\n", statePath, werr)
+		}
 	}()
 	if err := os.MkdirAll(paths.WorkRoot, 0o700); err != nil {
 		return errors.Wrap(err, "create work directory")
@@ -251,11 +288,8 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	fmt.Fprintf(logger, "ANI install started at %s; artifact=%s kk=%s config=%s runtime=%s run=%s\n",
 		time.Now().Format(time.RFC3339), paths.ArtifactRoot, kkPath, configPath, paths.RuntimeRoot, runID)
 
-	if err := verifyArtifactChecksums(ctx, logger, paths.ArtifactRoot); err != nil {
-		state.Phase = PhaseInstallFailed
-		_ = WriteRunStateAtomic(statePath, state)
-		return err
-	}
+	// The artifact's in-package SHA256SUMS were already verified in preflight,
+	// before changesStarted; record the completed stage.
 	state.Phase = PhaseArtifactVerified
 	_ = WriteRunStateAtomic(statePath, state)
 	imageRows, err := readLines(paths.ImageTablePath)
@@ -315,9 +349,6 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		return err
 	}
 	if err := waitRegistry(ctx, logger, registryAddress); err != nil {
-		state.Phase = PhaseInstallFailed
-		state.RemoteResult = RemoteResultDeterministic
-		_ = WriteRunStateAtomic(statePath, state)
 		return err
 	}
 	state.Phase = PhaseRegistryReady
@@ -326,10 +357,7 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyRegistryImages(ctx, logger, registryAddress, imageTable, lock, &cluster); err != nil {
-		state.Phase = PhaseInstallFailed
-		state.RemoteResult = RemoteResultDeterministic
-		_ = WriteRunStateAtomic(statePath, state)
+	if err := verifyRegistryImages(ctx, logger, registryAddress, imageTable, lock, &cluster, paths.ArtifactRoot); err != nil {
 		return err
 	}
 	state.Phase = PhaseRegistryVerified
@@ -351,10 +379,109 @@ func RunInstall(ctx context.Context, input InstallInput) error {
 		fmt.Fprintf(logger, "KubeKey failed: %v\n", err)
 		return errors.Wrap(err, "KubeKey create cluster")
 	}
+	state.Phase = PhaseClusterBuilt
+	_ = WriteRunStateAtomic(statePath, state)
 	if err := writeConnections(filepath.Join(paths.RuntimeRoot, "connections.md"), paths.WorkRoot, effectiveSelection(cluster)); err != nil {
 		return err
 	}
-	fmt.Fprintf(logger, "ANI install completed at %s\n", time.Now().Format(time.RFC3339))
+
+	// F04: capture the real live cluster identity and emit the trusted
+	// install-success record that `kk ani verify` and `kk ani components`
+	// consume as --base-run. The kubeconfig is pinned to the admin.conf this
+	// install created — never inherited from HOME/KUBECONFIG.
+	identity := ManifestIdentity{
+		SourceTreeFingerprint: sourceFingerprint,
+		CodeCommit:            gitCommit,
+		CodeBinaryDigest:      binaryDigest,
+		SiteConfigDigest:      siteDigest,
+		MaterialsLockDigest:   report.ArtifactLock,
+		PackageConfigDigest:   report.PackageConfigDigest,
+	}
+	if err := captureClusterIdentity(ctx, "/etc/kubernetes/admin.conf", &identity); err != nil {
+		return errors.Wrap(err, "capture the live cluster identity for the success record")
+	}
+	baseManifest, err := BuildRunManifest(cluster)
+	if err != nil {
+		return err
+	}
+	baseManifest.PackageRoot = strings.TrimSpace(input.PackageRoot)
+	state.Phase = PhaseSucceeded
+	state.Result = ResultSucceeded
+	state.FinishedAt = time.Now().Format(time.RFC3339)
+	successManifest, err := BuildInstallSuccessManifest(baseManifest, state, identity)
+	if err != nil {
+		return errors.Wrap(err, "build the install-success record")
+	}
+	if err := WriteInstallSuccessRecord(paths.RuntimeRoot, successManifest); err != nil {
+		return errors.Wrap(err, "write the install-success record")
+	}
+	installSucceeded = true
+	_ = WriteRunStateAtomic(statePath, state)
+	fmt.Fprintf(logger, "ANI install completed at %s; install-success record=%s (run=%s clusterUid=%s nodes=%d)\n",
+		time.Now().Format(time.RFC3339), filepath.Join(paths.RuntimeRoot, RunManifestFileName), runID, identity.ClusterUID, identity.NodeCount)
+	fmt.Fprintf(os.Stderr, "install succeeded: trusted base run.json written to %s\n", filepath.Join(paths.RuntimeRoot, RunManifestFileName))
+	return nil
+}
+
+// fileSHA256Hex returns the 64-hex sha256 of a file's bytes, or "" on any read
+// error so callers can refuse rather than record a fabricated digest.
+func fileSHA256Hex(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// captureClusterIdentity reads the stable live identity (kube-system UID plus
+// the Ready node set) that binds later verification/extension operations to this
+// exact cluster, so "same config" can never be mistaken for "same cluster" (F03).
+func captureClusterIdentity(ctx context.Context, kubeconfig string, identity *ManifestIdentity) error {
+	runner := kubectlRunner{bin: kubectlBin(), kubeconfig: kubeconfig}
+	uid, err := runner.jsonpath(ctx, "namespace", "kube-system", "", "{.metadata.uid}")
+	if err != nil {
+		return errors.Wrapf(err, "read the kube-system namespace uid")
+	}
+	if strings.TrimSpace(uid) == "" {
+		return errors.New("the kube-system namespace uid came back empty; refusing to write an unbound success record")
+	}
+	identity.ClusterUID = strings.TrimSpace(uid)
+	nodesJSON, err := runner.run(ctx, "get", "nodes", "-o", "json")
+	if err != nil {
+		return errors.Wrap(err, "read the live node set")
+	}
+	var nodes struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Status struct {
+				Conditions []struct {
+					Type   string `json:"type"`
+					Status string `json:"status"`
+				} `json:"conditions"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(nodesJSON, &nodes); err != nil {
+		return errors.Wrap(err, "parse the live node set")
+	}
+	if len(nodes.Items) == 0 {
+		return errors.New("the live cluster reports zero nodes; refusing to write a success record")
+	}
+	identity.NodeCount = len(nodes.Items)
+	for _, node := range nodes.Items {
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == "Ready" && cond.Status == "True" {
+				identity.ReadyNodes = append(identity.ReadyNodes, node.Metadata.Name)
+			}
+		}
+	}
+	if len(identity.ReadyNodes) != identity.NodeCount {
+		return fmt.Errorf("only %d/%d nodes are Ready; a success record requires the full declared node set healthy", len(identity.ReadyNodes), identity.NodeCount)
+	}
+	sort.Strings(identity.ReadyNodes)
 	return nil
 }
 
@@ -450,17 +577,6 @@ func writeComponentSelection(path, configSHA string, rows []ComponentRow) error 
 func configSHA256(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-func verifyArtifactChecksums(ctx context.Context, logger io.Writer, artifactRoot string) error {
-	cmd := exec.CommandContext(ctx, "sha256sum", "--check", "--quiet", "SHA256SUMS")
-	cmd.Dir = artifactRoot
-	cmd.Stdout = logger
-	cmd.Stderr = logger
-	if err := cmd.Run(); err != nil {
-		return errors.Wrapf(err, "verify artifact checksums in %s", artifactRoot)
-	}
-	return nil
 }
 
 func writeYAML(path string, value any) error {
@@ -614,21 +730,15 @@ func waitRegistry(ctx context.Context, logger io.Writer, registryAddress string)
 	return errors.New("timed out waiting for Hauler registry /v2/")
 }
 
-// hashRaw is the raw-byte sha256 used for the served manifest digest.
-func hashRaw(body []byte) []byte {
-	sum := sha256.Sum256(body)
-	return sum[:]
-}
-
-// verifyRegistryImages checks the actually served content of every image in the
-// table against the approved materials lock (R07.3): the served digest, the
-// manifest kind (index vs platform manifest), the config/layer digests it
-// references, and the blob existence for each of them. Images without a lock
-// entry (KubeKey-artifact and base images) keep the presence-only check and are
-// logged as not lock-verified — their digests stay unknown instead of being
-// fabricated.
-func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable, lock *MaterialsLock, cluster *ClusterConfig) error {
+// verifyRegistryImages runs the shared content gate (F06) over every image row
+// this run needs: the served manifest is resolved down to the linux/amd64
+// object, every referenced blob must exist, the images.tsv pin must match, and
+// an image the materials lock lists is additionally checked against its
+// approved digests. Rows without a lock entry are verified against the table
+// pin and logged as exactly that — never as lock-verified.
+func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable, lock *MaterialsLock, cluster *ClusterConfig, artifactRoot string) error {
 	client := &http.Client{Timeout: 15 * time.Second}
+	gate := NewRegistryContentChecker(client, registryAddress, lock, EvidenceRoots(artifactRoot), true)
 	verifiedAgainstLock := 0
 	// R15.3: component-scoped images are only verified when their component
 	// is enabled in THIS run. A disabled component's images may legitimately
@@ -650,74 +760,25 @@ func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress
 			fmt.Fprintf(logger, "image %s: skipped (component not enabled in this run)\n", original)
 			continue
 		}
-		manifestPath, err := ManifestURL(image.HaulerRef)
+		// One shared content gate for every row (F06): the approved hauler_ref is
+		// fetched, an index is followed down to this platform's manifest, each
+		// referenced blob must exist, the images.tsv pin must hold, and the
+		// materials lock rules apply wherever a lock entry exists.
+		approval, err := gate.Verify(ctx, image)
 		if err != nil {
-			return errors.Wrap(err, "build manifest URL")
-		}
-		repoPath, err := RepositoryPath(image.HaulerRef)
-		if err != nil {
-			return errors.Wrap(err, "build repository path")
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", registryAddress, manifestPath), nil)
-		if err != nil {
-			return errors.Wrap(err, "build image request")
-		}
-		req.Header.Set("Accept", "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json")
-		resp, err := client.Do(req)
-		if err != nil {
-			return errors.Wrapf(err, "request image %s", original)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			_ = runLogged(context.WithoutCancel(ctx), logger, "journalctl", "-u", serviceUnitName, "--no-pager", "-n", "100")
-			return errors.Errorf("image %s manifest returned HTTP %d", original, resp.StatusCode)
-		}
-		servedDigest := fmt.Sprintf("sha256:%s", hex.EncodeToString(hashRaw(body)))
-
-		served, parseErr := ParseServedImageManifest(body)
-		if parseErr != nil {
-			return errors.Wrapf(parseErr, "image %s", original)
-		}
-
-		// The config blob and every layer blob the manifest references must be
-		// present in the same repository (HEAD, cheap: no blob download).
-		blobs := append([]string{}, served.LayerDigests...)
-		if served.ConfigDigest != "" {
-			blobs = append([]string{served.ConfigDigest}, blobs...)
-		}
-		for _, blob := range blobs {
-			head, headErr := http.NewRequestWithContext(ctx, http.MethodHead, fmt.Sprintf("http://%s%s/blobs/%s", registryAddress, repoPath, url.PathEscape(blob)), nil)
-			if headErr != nil {
-				return errors.Wrapf(headErr, "build blob request for %s", original)
+			// A refused HTTP status usually means the registry or its store is
+			// broken, so the unit's journal is captured for the operator.
+			if registryHTTPStatus(err) != 0 {
+				_ = runLogged(context.WithoutCancel(ctx), logger, "journalctl", "-u", serviceUnitName, "--no-pager", "-n", "100")
 			}
-			blobResp, err := client.Do(head)
-			if err != nil {
-				return errors.Wrapf(err, "request blob %s of image %s", blob, original)
-			}
-			_, _ = io.Copy(io.Discard, blobResp.Body)
-			_ = blobResp.Body.Close()
-			if blobResp.StatusCode != http.StatusOK {
-				return errors.Errorf("image %s: blob %s referenced by the served manifest returned HTTP %d",
-					original, blob, blobResp.StatusCode)
+			return errors.Wrapf(err, "verify image %s against the packaged content", original)
+		}
+		if lock != nil {
+			if _, locked := lock.ImageByOriginal(original); locked {
+				verifiedAgainstLock++
 			}
 		}
-
-		entry, locked := lock.ImageByOriginal(original)
-		if !locked {
-			fmt.Fprintf(logger, "image %s: served digest %s (no lock entry: verified for presence only, digest stays unknown)\n",
-				original, servedDigest)
-			continue
-		}
-		if err := VerifyServedManifest(*entry, servedDigest, served); err != nil {
-			return errors.Wrapf(err, "registry content does not match the approved materials lock")
-		}
-		verifiedAgainstLock++
-		kind := "platform manifest"
-		if served.IsIndex {
-			kind = "multi-arch index"
-		}
-		fmt.Fprintf(logger, "image %s: served %s digest %s matches the approved lock entry\n", original, kind, servedDigest)
+		fmt.Fprintf(logger, "image %s: %s\n", original, approval)
 	}
 	fmt.Fprintf(logger, "%d of %d images verified against the approved materials lock\n", verifiedAgainstLock, len(table))
 	return nil

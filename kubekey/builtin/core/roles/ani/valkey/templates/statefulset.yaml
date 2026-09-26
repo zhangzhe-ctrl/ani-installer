@@ -14,6 +14,7 @@ metadata:
   namespace: ani-platform
   labels:
     app.kubernetes.io/name: ani-valkey
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
 spec:
   type: ClusterIP
   selector:
@@ -30,6 +31,7 @@ metadata:
   namespace: ani-platform
   labels:
     app.kubernetes.io/name: ani-valkey
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
 spec:
   serviceName: valkey
   replicas: 1

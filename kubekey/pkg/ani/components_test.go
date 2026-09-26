@@ -14,6 +14,7 @@ import (
 	"text/template"
 
 	kkTmpl "github.com/kubesphere/kubekey/v4/pkg/converter/tmpl"
+	"gopkg.in/yaml.v3"
 )
 
 const siteConfigTemplate = `name: ani-lab
@@ -1700,12 +1701,20 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 	// without it, and the Job was rendered but never submitted, so the wait on
 	// it could only time out.
 	secretApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml")
-	helmInstall := strings.Index(taskText, "helm upgrade --install ani-opensearch-master")
+	helmInstall := strings.Index(taskText, "helm install ani-opensearch-master")
 	if secretApply < 0 {
 		t.Fatal("opensearch tasks never apply the security configuration Secret")
 	}
 	if helmInstall < 0 || secretApply > helmInstall {
 		t.Fatal("the security configuration Secret is applied after Helm, so a clean install deadlocks on a missing Secret")
+	}
+	// Ownership is established at create time only: a repeated run must fail on
+	// an existing release rather than silently upgrade someone else's.
+	if strings.Contains(taskText, "helm upgrade --install") {
+		t.Fatal("opensearch Helm release must be created with `helm install --labels`, never `helm upgrade --install`")
+	}
+	if !strings.Contains(taskText, "ani.io/managed-by=") {
+		t.Fatal("opensearch Helm release is created without the ani.io/managed-by ownership label")
 	}
 	initApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml")
 	initWait := strings.Index(taskText, "job/ani-opensearch-security-init")
@@ -2418,8 +2427,11 @@ echo "REBUILD_RC=$rc"
 				t.Fatalf("verification touched the network layer (%q):\n%s", forbidden, calls)
 			}
 		}
-		if got := r02Count(calls, "delete pod -l app.kubernetes.io/name=prometheus"); got != 1 {
-			t.Fatalf("expected exactly one planned rebuild of the component's own pod, got %d:\n%s", got, calls)
+		// F01: the readiness waiter is read-only. It must NEVER delete a pod on
+		// timeout — the single planned rebuild, where one is needed, belongs to
+		// the acceptance caller, not to a recovery branch inside the checker.
+		if got := r02Count(calls, "delete pod"); got != 0 {
+			t.Fatalf("k5_rebuild_wait must not delete/rebuild anything (the recovery branch is removed), got %d deletes:\n%s", got, calls)
 		}
 		evidence, err := os.ReadFile(filepath.Join(outDir, "k5-failure-prometheus.txt"))
 		if err != nil {
@@ -2427,6 +2439,42 @@ echo "REBUILD_RC=$rc"
 		}
 		if !strings.Contains(string(evidence), "get events") && !strings.Contains(calls, "get events") {
 			t.Fatalf("failure evidence did not collect events:\n%s\n%s", string(evidence), calls)
+		}
+	})
+
+	t.Run("metrics/durability caller rebuilds exactly once and the waiter adds none", func(t *testing.T) {
+		// Reproduces the F01 sequence: the acceptance caller performs one planned
+		// `delete pod`, then calls k5_rebuild_wait. Across BOTH steps the pod may
+		// be deleted at most once — the waiter must not turn it into two.
+		rendered := r02RenderScript(t, metricsRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+export FAKE_READY=1
+"${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=prometheus --timeout=180s
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 5s 5s
+echo "REBUILD_RC=$?"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":        binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":    rendered,
+			"OUT_DIR":     t.TempDir(),
+			"KUBECTL_LOG": callLog,
+			"FAKE_READY":  "1",
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		logContent, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read kubectl log: %v", err)
+		}
+		if got := r02Count(string(logContent), "delete pod -l app.kubernetes.io/name=prometheus"); got != 1 {
+			t.Fatalf("exactly one planned rebuild across caller+waiter expected, got %d:\n%s", got, logContent)
 		}
 	})
 
@@ -3141,6 +3189,65 @@ func TestExampleSiteConfigsMatchTheSchema(t *testing.T) {
 		}
 		if !c.Storage.Enabled || c.Storage.provider() != "ceph" {
 			t.Fatalf("%s must declare its storage explicitly (R05)", filepath.Base(path))
+		}
+	}
+}
+
+// TestManifestComponentsStampOwnershipOnTheirWorkload is the L-05 regression.
+// The live ownership probe reads `ani.io/managed-by` from the workload object
+// it is about to adopt or leave alone, so a manifest component that stamps the
+// marker only on its Service is invisible to that probe: re-planning it reports
+// "no ownership marker ... adopting foreign workloads is not supported" for the
+// installer's own StatefulSet, and the same-version read-only no-op becomes
+// unreachable. 2026-09-26 proved this on a live cluster after adding valkey.
+func TestManifestComponentsStampOwnershipOnTheirWorkload(t *testing.T) {
+	actions := regexp.MustCompile(`{{[^}]*}}`)
+	for _, component := range []string{"postgresql", "valkey"} {
+		spec := componentInstallSpecs[component]
+		if spec.Release != "" {
+			t.Fatalf("%s is expected to be manifest-owned for this check", component)
+		}
+		path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", component, "templates", "statefulset.yaml")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", component, err)
+		}
+		content := string(raw)
+		if !strings.Contains(content, "ani.io/managed-by: {{ .kubernetes.cluster_name }}") {
+			t.Fatalf("%s template never binds %s to the cluster name", component, aniManagedByLabel)
+		}
+		// Only the object head (kind + metadata) is parsed: the spec bodies carry
+		// template conditionals that are not standalone YAML.
+		found := false
+		for _, document := range strings.Split(content, "\n---\n") {
+			lines := strings.Split(document, "\n")
+			for index, line := range lines {
+				if strings.HasPrefix(line, "spec:") {
+					lines = lines[:index]
+					break
+				}
+			}
+			var doc struct {
+				Kind     string `yaml:"kind"`
+				Metadata struct {
+					Name   string            `yaml:"name"`
+					Labels map[string]string `yaml:"labels"`
+				} `yaml:"metadata"`
+			}
+			if err := yaml.Unmarshal([]byte(actions.ReplaceAllString(strings.Join(lines, "\n"), "RENDERED")), &doc); err != nil {
+				t.Fatalf("%s: decode an object head: %v", component, err)
+			}
+			if doc.Kind != spec.WorkloadKind || doc.Metadata.Name != spec.WorkloadName {
+				continue
+			}
+			found = true
+			if got := doc.Metadata.Labels[aniManagedByLabel]; got != "RENDERED" {
+				t.Fatalf("%s: %s %s carries no %s in its own metadata.labels (the live probe reads the workload, not the Service); labels=%v",
+					component, spec.WorkloadKind, spec.WorkloadName, aniManagedByLabel, doc.Metadata.Labels)
+			}
+		}
+		if !found {
+			t.Fatalf("%s: template does not render a %s named %s", component, spec.WorkloadKind, spec.WorkloadName)
 		}
 	}
 }

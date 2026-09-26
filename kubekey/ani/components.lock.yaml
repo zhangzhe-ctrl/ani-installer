@@ -59,6 +59,28 @@ tools:
     purpose: 渲染并部署本轮官方固定 Chart；不执行 helm repo update / dependency update
     verifiedCommand: "helm version --short -> v3.20.0+gb2e4314（Fedora 实际执行）"
     status: materials_confirmed / installation_not_verified
+  hauler:
+    version: v2.0.3
+    gitVersion: v2.0.3
+    source: https://github.com/hauler-dev/hauler/releases/download/v2.0.3/hauler_2.0.3_linux_amd64.tar.gz
+    sourceTarballSha256: 6685eb1ba86291566f3694d69a8b7e80c928e5a589853691cccf51b26bc61617
+    binarySha256: 4eaf2d370feb3fe26ad58863e79e49c8c7f4579b675dc42a46a798c437e03a61
+    artifactPath: bin/hauler
+    purpose: 在节点上装载并只读服务离线镜像 store（kk ani install 的 registry 阶段）；不做任何在线拉取
+    checksumsFile: https://github.com/hauler-dev/hauler/releases/download/v2.0.3/hauler_2.0.3_checksums.txt
+    checksumsSha256: 8f83e593843ea7db12fe3daeef47e47f944e65af9bc7de14a13e584d3790ba8b
+    releaseAssetId: "505408265"
+    tagCommit: 8d688ccee289e0770a1bf6a022cfd8c3a4625995
+    integrityNote: >-
+      核验强度到此为止：上游发布自己的 checksums 文件（本机 691B，摘要如上，且与发布平台公布的该资产 digest 一致），
+      本机对完整下载包做全文件 sha256 并解出成员与本地/制品内二进制逐字节 cmp 一致，三方独立抓取字节一致；
+      上游未发布任何 .sig/.pem/.asc/in-toto/attestation 资产，故“签名验证”未做也不成立，
+      身份依赖 HTTPS 传输与发布平台资产记录。压缩包摘要、二进制摘要、tag 的 git commit 分列，不互相冒充。
+    verifiedCommand: >-
+      hauler version -> GitVersion v2.0.3, GitCommit 8d688cc, GitTreeState clean,
+      BuildDate 2026-08-07T16:32:44Z, GoVersion go1.26.5-X:boringcrypto（Fedora 用官方解出二进制实际执行）
+    status: materials_confirmed / installation_not_verified
+    evidence: docs/execution 之外：evidence/F-remediation-20260925/live/hauler-source-check-20260926/PROVENANCE.md
 
 # ---------------------------------------------------------------------------
 # 证书验证工具镜像（随离线包供应，不在目标机临时安装 openssl）

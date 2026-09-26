@@ -13,6 +13,7 @@ metadata:
   namespace: ani-platform
   labels:
     app.kubernetes.io/name: ani-postgresql
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
 spec:
   type: ClusterIP
   selector:
@@ -29,6 +30,7 @@ metadata:
   namespace: ani-platform
   labels:
     app.kubernetes.io/name: ani-postgresql
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
 spec:
   serviceName: postgresql
   replicas: 1

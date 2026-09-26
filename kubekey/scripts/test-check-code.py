@@ -26,7 +26,10 @@ REPO = KUBEKEY.parent
 CHECK = KUBEKEY / "scripts" / "check-code.sh"
 BUILD = KUBEKEY / "scripts" / "build-code.sh"
 WORKFLOW = REPO / ".github" / "workflows" / "ani-check.yaml"
-GATE_TIMEOUT = 180
+# The gate now builds, vets and tests BOTH tree shapes (untagged and
+# -tags builtin), so a nested full run needs room; a fault is still caught at
+# the first failing step.
+GATE_TIMEOUT = 420
 
 
 class Result:
@@ -88,12 +91,21 @@ def test_workflow(res: Result) -> None:
     res.check("T-R04-01c", workdir == "kubekey" and (REPO / "kubekey").is_dir(),
               f"working-directory={workdir!r} 且该目录真实存在")
 
+    # T37 / F10: every input the gate reads must be able to trigger it — including
+    # the repository-root experiment scripts and the declared lab topology.
+    needed = ["kubekey/builtin/**", "kubekey/scripts/**", "kubekey/pkg/**", "kubekey/cmd/**",
+              "kubekey/ani/**", "kubekey/hack/**", "kubekey/go.mod", "kubekey/lab/**",
+              "run_on_node.sh", "restore_esxi_snapshots.sh", "config/**",
+              ".github/workflows/ani-check.yaml"]
+    collected = {}
     for event in ("push", "pull_request"):
         paths = triggers.get(event, {}).get("paths", []) if isinstance(triggers, dict) else []
-        needed = ["kubekey/builtin/**", "kubekey/scripts/**", ".github/workflows/ani-check.yaml"]
+        collected[event] = paths
         missing = [p for p in needed if p not in paths]
         res.check(f"T-R04-01d-{event}", not missing,
-                  f"{event} 的 paths 覆盖模板/脚本/门禁自身（缺 {missing}）")
+                  f"{event} 的 paths 覆盖门禁的全部输入（缺 {missing}）")
+    res.check("T-R04-01d-identical", collected.get("push") == collected.get("pull_request"),
+              "push 与 pull_request 使用同一 paths 集合（否则一条路径永远无人守）")
 
     guards = []
     for job in doc.get("jobs", {}).values():
@@ -122,6 +134,22 @@ FAULTS = {
     "unknown-task-key": "unknown task keys",
     "literal-external-url": "literal external URL",
 }
+
+# T37 / F10: a Go fault in each product tree must fail the gate. The third is
+# visible only with -tags builtin, which is exactly the code that ships.
+GO_FAULTS = {
+    "cmd-builtin": ("cmd/kk/app/builtin/ani.go", "the shipped ANI CLI"),
+    "connector": ("pkg/connector/ssh_connector.go", "pkg/connector"),
+    "builtin-tagged": ("pkg/ani/components_project_builtin.go", "the embedded builtin project"),
+}
+
+
+def inject_go_fault(module: Path, relative: str) -> None:
+    """Append a declaration that cannot compile to one real source file."""
+    path = module / relative
+    if not path.is_file():
+        raise AssertionError(f"injection target {path} is not a file")
+    path.write_text(path.read_text(encoding="utf-8") + "\nthis is not go code\n", encoding="utf-8")
 
 
 def inject_into_ceph_tasks(module: Path, name: str) -> None:
@@ -153,6 +181,16 @@ def test_gate_rejects_injected_faults(res: Result, workdir: Path) -> None:
         rc, out, err = run(module / "scripts/check-code.sh", module, in_copy=True)
         res.check(f"T-R04-02a-{name}", rc != 0 and expected in err + out,
                   f"{name}: 门禁非零且指出 {expected!r}（rc={rc}）")
+
+    for name, (relative, label) in GO_FAULTS.items():
+        module = copy_module(workdir / f"go-{name}")
+        inject_go_fault(module, relative)
+        rc, out, err = run(module / "scripts/check-code.sh", module, in_copy=True)
+        combined = out + err
+        # The failing file must be named by the compiler, and the step that
+        # caught it must be a Go build step (not an incidental later failure).
+        res.check(f"T-R04-02g-{name}", rc != 0 and relative in combined and "go build" in combined,
+                  f"{label}: 门禁必须编译到 {relative} 并非零（rc={rc}）")
 
     module = copy_module(workdir / "bad-yaml")
     # An unterminated flow sequence is a genuine YAML error (the previous

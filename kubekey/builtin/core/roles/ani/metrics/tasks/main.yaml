@@ -43,11 +43,11 @@
 
 - name: ANI Metrics | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-metrics
+    {{ .ani.artifact_root }}/bin/helm install ani-metrics
     {{ .ani.artifact_root }}/charts/kube-prometheus-stack/85.4.0.tgz
     --namespace {{ .ani.components.metrics.namespace }} --create-namespace
     --values /etc/kubernetes/ani/metrics/values.yaml
-    --wait --timeout 1200s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 1200s
 
 # The Operator runs first and creates the two custom resources' workloads, so
 # waiting on the operator alone would return before Prometheus exists.
@@ -109,6 +109,7 @@
   command: |
     set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_LEVEL=smoke \
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/metrics/verify.sh
 

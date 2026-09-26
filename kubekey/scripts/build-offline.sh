@@ -13,6 +13,22 @@ REPOSITORY_ISO="${REPOSITORY_ISO:?set REPOSITORY_ISO to ubuntu-24.04-debs-amd64.
 KUBEKEY_ARTIFACT="${KUBEKEY_ARTIFACT:-}"
 HAULER_ARCHIVE="${HAULER_ARCHIVE:-}"
 HAULER_STORE="${HAULER_STORE:-}"
+EVIDENCE_SOURCES="${EVIDENCE_SOURCES:-}"
+# PACKAGED_REGISTRY_ADDRESS=host:port declares that the store to be shipped is
+# ALREADY served there by the caller. The image content gate still runs against
+# that address; the variable only replaces the script's own `hauler serve`, so a
+# pre-served store can be re-verified without a hauler binary. It never skips a
+# check, and it requires the bytes to ship (HAULER_ARCHIVE or HAULER_STORE).
+PACKAGED_REGISTRY_ADDRESS="${PACKAGED_REGISTRY_ADDRESS:-}"
+if [[ -n "$PACKAGED_REGISTRY_ADDRESS" && -z "$HAULER_ARCHIVE$HAULER_STORE" ]]; then
+  echo "PACKAGED_REGISTRY_ADDRESS requires HAULER_ARCHIVE or HAULER_STORE (the bytes that get shipped)" >&2
+  exit 1
+fi
+if [[ -n "$PACKAGED_REGISTRY_ADDRESS" ]] &&
+   ! [[ "$PACKAGED_REGISTRY_ADDRESS" =~ ^[0-9A-Za-z._-]+:[0-9]+$ ]]; then
+  echo "PACKAGED_REGISTRY_ADDRESS must be host:port, got $PACKAGED_REGISTRY_ADDRESS" >&2
+  exit 1
+fi
 # Local image injection: images that only exist as docker/OCI archives (no
 # reachable registry source, e.g. a vendor hand-off tar). EXTRA_IMAGE_TARS is a
 # whitespace-separated list of archives whose RepoTags must already use the
@@ -93,13 +109,112 @@ if [[ -n "$HAULER_STORE" && ! -d "$HAULER_STORE" ]]; then
   echo "HAULER_STORE is not a directory: $HAULER_STORE" >&2
   exit 1
 fi
+# The registry content gate approves a packaged object either because its bytes ARE
+# the pinned object or because packaged evidence proves it is that pin's
+# linux/amd64 object. Without evidence roots no derived row can be approved, so
+# packaging refuses here instead of failing later with "no evidence packaged".
+if [[ -z "$EVIDENCE_SOURCES" ]]; then
+  echo "EVIDENCE_SOURCES is required: a space-separated list of content-addressed roots holding the approved source manifests (a preserved store, or an earlier artifact's images/evidence)" >&2
+  exit 1
+fi
+for root in $EVIDENCE_SOURCES; do
+  if [[ ! -d "$root" ]]; then
+    echo "EVIDENCE_SOURCES entry is not a directory: $root" >&2
+    exit 1
+  fi
+done
 
 CONFIG="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
 IMAGES_TSV="$(cd "$(dirname "$IMAGES_TSV")" && pwd)/$(basename "$IMAGES_TSV")"
 OUTPUT="$(mkdir -p "$(dirname "$OUTPUT")" && cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
 WORK="$(mktemp -d "$ROOT/build/ani-artifact.XXXXXX")"
-cleanup() { rm -rf "$WORK"; }
+REGISTRY_PID=""
+cleanup() {
+  if [[ -n "$REGISTRY_PID" ]]; then
+    kill "$REGISTRY_PID" 2>/dev/null || true
+    wait "$REGISTRY_PID" 2>/dev/null || true
+  fi
+  rm -rf "$WORK"
+}
 trap cleanup EXIT
+
+# F06: every material rule lives in Go (pkg/ani/materials_build.go), not in
+# grep/awk heuristics, so packaging verifies the same things the installer does.
+MATERIALS_KK="${MATERIALS_KK:-${KK_BIN:-}}"
+if [[ -z "$MATERIALS_KK" ]]; then
+  echo "MATERIALS_KK (or KK_BIN) must point at a kk binary built with -tags builtin: the material steps (place-tools, place-charts, verify-registry, inject-repository-iso) are implemented there, and this script will not fall back to shell heuristics" >&2
+  exit 1
+fi
+if [[ ! -x "$MATERIALS_KK" ]]; then
+  echo "MATERIALS_KK is not an executable kk: $MATERIALS_KK" >&2
+  exit 1
+fi
+if ! "$MATERIALS_KK" ani materials --help >/dev/null 2>&1; then
+  echo "MATERIALS_KK ($MATERIALS_KK) has no 'ani materials' subcommand; rebuild kk with -tags builtin" >&2
+  exit 1
+fi
+EVIDENCE_ARGS=()
+EVIDENCE_FROM=()
+for root in $EVIDENCE_SOURCES; do
+  EVIDENCE_ARGS+=(--evidence-dir "$root")
+  EVIDENCE_FROM+=(--from "$root")
+done
+
+MATERIALS_LOG="$OUTPUT/config/materials-verification.txt"
+materials() {
+  # Every material step is recorded, so the artifact carries the evidence of
+  # what was verified when it was built.
+  {
+    printf '\n$ kk ani materials %s\n' "$*"
+    "$MATERIALS_KK" ani materials "$@"
+  } | tee -a "$MATERIALS_LOG"
+}
+
+verify_image_store() {
+  # The image gate is the install's own. Either the caller already serves the
+  # store it wants shipped (ANI_PACKAGED_REGISTRY_ADDRESS, e.g. a re-verification
+  # of an existing archive), or this script starts hauler itself against the
+  # store it just built. Nothing may ship without passing this.
+  local store="$1" port="" waited=0
+  if [[ -n "$PACKAGED_REGISTRY_ADDRESS" ]]; then
+    echo "verifying the packaged store through the registry the caller serves at $PACKAGED_REGISTRY_ADDRESS"
+    if ! materials verify-registry \
+        --registry-address "$PACKAGED_REGISTRY_ADDRESS" --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"         "${EVIDENCE_ARGS[@]}" --evidence-dir "$OUTPUT/images/evidence"; then
+      echo "the packaged image store failed the install's own content gate" >&2
+      exit 1
+    fi
+    return
+  fi
+  port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+  mkdir -p "$WORK/registry"
+  "$HAULER_BIN" store serve registry --port "$port" --directory "$WORK/registry" \
+    --readonly=true --store "$store" >"$WORK/registry.log" 2>&1 &
+  REGISTRY_PID=$!
+  until (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+    exec 3>&- 3<&-
+    if ! kill -0 "$REGISTRY_PID" 2>/dev/null; then
+      echo "the packaged store would not serve locally; refusing to ship an unverified image archive" >&2
+      cat "$WORK/registry.log" >&2
+      exit 1
+    fi
+    waited=$((waited + 1))
+    if [[ "$waited" -ge 60 ]]; then
+      echo "timed out waiting for the packaged store to serve on 127.0.0.1:$port" >&2
+      cat "$WORK/registry.log" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+  exec 3>&- 3<&-
+  if ! materials verify-registry \
+      --registry-address "127.0.0.1:$port" --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"       "${EVIDENCE_ARGS[@]}" --evidence-dir "$OUTPUT/images/evidence"; then
+    echo "the packaged image store failed the install's own content gate" >&2
+    exit 1
+  fi
+  kill "$REGISTRY_PID" 2>/dev/null || true
+  wait "$REGISTRY_PID" 2>/dev/null || true
+  REGISTRY_PID=""
+}
 
 mkdir -p \
   "$OUTPUT/bin" \
@@ -129,118 +244,90 @@ else
 fi
 
 echo "[2/6] placing image archive"
-if [[ -n "$HAULER_ARCHIVE" ]]; then
-  copy_material "$HAULER_ARCHIVE" "$OUTPUT/images/images.haul.tar.zst"
-elif [[ -n "$HAULER_STORE" ]]; then
-  "$HAULER_BIN" store save -s "$HAULER_STORE" -f "$OUTPUT/images/images.haul.tar.zst"
+# F06: every input shape ends in the install's own registry content gate before
+# anything is shipped. A caller-supply served store is verified, then copied: a
+# pre-served address does not make a build an exception to the gate.
+if [[ -n "$PACKAGED_REGISTRY_ADDRESS" ]]; then
+  # A caller-supplied served store is verified, landed and re-saved: shipping a
+  # served archive untouched would bypass the landing that keeps pins true.
+  STAGED="$WORK/staged-store"
+  mkdir -p "$STAGED"
+  if [[ -n "$HAULER_ARCHIVE" ]]; then
+    "$HAULER_BIN" store load -s "$STAGED" -f "$HAULER_ARCHIVE"
+  else
+    "$HAULER_BIN" store copy "$HAULER_STORE" "$STAGED" 2>/dev/null || cp -a "$HAULER_STORE/." "$STAGED/"
+  fi
+  materials record-evidence --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --out "$OUTPUT/images/evidence" "${EVIDENCE_FROM[@]}"
+  LANDED="$WORK/landed-store"
+  materials land-images --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --evidence-dir "$OUTPUT/images/evidence" --source-store "$STAGED" --out-store "$LANDED"
+  verify_image_store "$LANDED"
+  "$HAULER_BIN" store save -s "$LANDED" -f "$OUTPUT/images/images.haul.tar.zst"
 else
   STORE="$WORK/hauler-store"
-  mkdir -p "$STORE"
-  while IFS=$'\t' read -r original hauler_ref actual_digest use_location; do
-    [[ "$original" == "original_ref" ]] && continue
-    [[ -z "$original" ]] && continue
-    if [[ " $EXTRA_IMAGE_ORIGINALS " == *" $original "* ]]; then
-      echo "skip $original: provided via EXTRA_IMAGE_TARS"
-      continue
-    fi
-    rewrite="${hauler_ref#127.0.0.1:5000/}"
-    "$HAULER_BIN" store add image "$original" \
-      --platform linux/amd64 \
-      --rewrite "$rewrite" \
-      --store "$STORE"
-  done < "$IMAGES_TSV"
-  for tar_path in $EXTRA_IMAGE_TARS; do
-    if [[ ! -f "$tar_path" ]]; then
-      echo "EXTRA_IMAGE_TARS entry not found: $tar_path" >&2
-      exit 1
-    fi
-    echo "loading extra image tar: $tar_path"
-    "$HAULER_BIN" store load -s "$STORE" -f "$tar_path"
-  done
-  image_count="$(awk 'NF && NR>1 { count++ } END { print count+0 }' "$IMAGES_TSV")"
-  store_count="$("$HAULER_BIN" store info -s "$STORE" --type image -o json | grep -c '"Type": "image"')"
-  if [[ "$store_count" != "$image_count" ]]; then
-    echo "Hauler store image count mismatch: expected $image_count, got $store_count" >&2
-    exit 1
+  if [[ -n "$HAULER_STORE" ]]; then
+    STORE="$HAULER_STORE"
+  elif [[ -n "$HAULER_ARCHIVE" ]]; then
+    mkdir -p "$STORE"
+    "$HAULER_BIN" store load -s "$STORE" -f "$HAULER_ARCHIVE"
+  else
+    mkdir -p "$STORE"
+    while IFS=$'\t' read -r original hauler_ref actual_digest use_location; do
+      [[ "$original" == "original_ref" ]] && continue
+      [[ -z "$original" ]] && continue
+      if [[ " $EXTRA_IMAGE_ORIGINALS " == *" $original "* ]]; then
+        echo "skip $original: provided via EXTRA_IMAGE_TARS"
+        continue
+      fi
+      rewrite="${hauler_ref#127.0.0.1:5000/}"
+      # Pull the pinned object, not a mutable tag: the tag could have moved and
+      # the store would then carry bytes this release never approved.
+      source_reference="${original%:*}@${actual_digest}"
+      "$HAULER_BIN" store add image "$source_reference" \
+        --platform linux/amd64 \
+        --rewrite "$rewrite" \
+        --store "$STORE"
+    done < "$IMAGES_TSV"
+    for tar_path in $EXTRA_IMAGE_TARS; do
+      if [[ ! -f "$tar_path" ]]; then
+        echo "EXTRA_IMAGE_TARS entry not found: $tar_path" >&2
+        exit 1
+      fi
+      echo "loading extra image tar: $tar_path"
+      "$HAULER_BIN" store load -s "$STORE" -f "$tar_path"
+    done
   fi
-  "$HAULER_BIN" store save -s "$STORE" -f "$OUTPUT/images/images.haul.tar.zst"
+  # Record the approved source manifests into the package, then build the shipped
+  # store from those bytes: hauler re-writes a Docker schema2 manifest it pulls, and
+  # a store assembled from a floating tag carries whatever that tag pointed at, so
+  # "pulled by digest" alone does not guarantee the packaged object IS the pinned one.
+  materials record-evidence --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --out "$OUTPUT/images/evidence" "${EVIDENCE_FROM[@]}"
+  LANDED="$WORK/landed-store"
+  materials land-images --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --evidence-dir "$OUTPUT/images/evidence" --source-store "$STORE" --out-store "$LANDED"
+  verify_image_store "$LANDED"
+  "$HAULER_BIN" store save -s "$LANDED" -f "$OUTPUT/images/images.haul.tar.zst"
 fi
 install -m 0644 "$IMAGES_TSV" "$OUTPUT/images/images.tsv"
 
-echo "[3/6] copying fixed binaries, repository ISO and chart material"
-install -m 0755 "$HAULER_BIN" "$OUTPUT/bin/hauler"
+echo "[3/6] placing fixed binaries, repository ISO and chart material"
+# F06: tools and charts are placed by Go against the individual lock entry that
+# approves them (digest + name/version + artifact path), and every landed file is
+# re-read. Both shipped binaries are lock-approved, so nothing lands in bin/
+# without an approved digest behind it.
+materials place-tools --lock "$COMPONENT_LOCK" --artifact-root "$OUTPUT" \
+  --source "helm=$HELM_BIN" --source "hauler=$HAULER_BIN"
+materials place-charts --lock "$COMPONENT_LOCK" --charts-dir "$CHARTS_DIR" --artifact-root "$OUTPUT"
 
-# R07/A07: every copied material is verified against the approved hash from the
-# component lock (or the source-side ISO record) at copy time — never against an
-# in-package SHA256SUMS, which an attacker can regenerate.
-helm_sha="$(sha256sum "$HELM_BIN" | awk '{print $1}')"
-approved_helm_sha="$(awk '/binarySha256:/ { print $2; exit }' "$COMPONENT_LOCK")"
-if [[ -z "$approved_helm_sha" || "$helm_sha" != "$approved_helm_sha" ]]; then
-  echo "helm binary sha256 $helm_sha does not match the approved $approved_helm_sha (components.lock.yaml)" >&2
-  exit 1
-fi
-install -m 0755 "$HELM_BIN" "$OUTPUT/bin/helm"
-
-iso_sha="$(sha256sum "$REPOSITORY_ISO" | awk '{print $1}')"
-approved_iso_sha="$(awk '$1 == "ubuntu-24.04-debs-amd64.iso" { print $2; exit }' "$ISO_CHECKSUMS")"
-if [[ -z "$approved_iso_sha" || "$iso_sha" != "$approved_iso_sha" ]]; then
-  echo "repository ISO sha256 $iso_sha does not match the recorded $approved_iso_sha ($ISO_CHECKSUMS)" >&2
-  exit 1
-fi
-copy_material "$REPOSITORY_ISO" "$OUTPUT/repository/ubuntu-24.04-debs-amd64.iso"
-
-# Charts are immutable upstream material: they are copied once and never
-# re-rendered here. R07: the copy set is exactly the chart list in the component
-# lock — every copied archive is hash-checked against the lock, a chart that is
-# not approved fails, and a lock entry missing from CHARTS_DIR fails too.
-charts_copied=0
-# R15.3: charts are placed at the LOCK's artifactChartPath — the preflight
-# requires exactly that layout. Source files are matched by content sha256
-# against the lock, so the file name in CHARTS_DIR does not matter.
-declare -A chart_placed
-while IFS= read -r chart_source; do
-  chart_sha="$(sha256sum "$chart_source" | awk '{print $1}')"
-  approved="$(grep -F "$chart_sha" "$COMPONENT_LOCK" | head -1 || true)"
-  if [[ -z "$approved" ]]; then
-    echo "chart $chart_source (sha256 $chart_sha) is not approved in $COMPONENT_LOCK; refusing to package an unknown chart" >&2
-    exit 1
-  fi
-done < <(find "$CHARTS_DIR" -type f -name '*.tgz' | sort)
-while IFS= read -r rel; do
-  [[ -n "$rel" ]] || continue
-  base="$(basename "$rel")"
-  name="$(echo "$rel" | cut -d/ -f2)"
-  chart_source=""
-  while IFS= read -r candidate; do
-    cand_sha="$(sha256sum "$candidate" | awk '{print $1}')"
-    if grep -qF "$cand_sha" "$COMPONENT_LOCK" && grep -qF "$rel" "$COMPONENT_LOCK"; then
-      : # content hash + lock path both match below; use name-based fallback
-    fi
-  done < <(find "$CHARTS_DIR/$name" -type f -name '*.tgz' 2>/dev/null | sort)
-  # source: any chart in CHARTS_DIR/$name whose content hash is approved
-  for candidate in "$CHARTS_DIR/$name"/*.tgz; do
-    [[ -f "$candidate" ]] || continue
-    cand_sha="$(sha256sum "$candidate" | awk '{print $1}')"
-    if grep -qF "$cand_sha" "$COMPONENT_LOCK"; then
-      chart_source="$candidate"
-      break
-    fi
-  done
-  if [[ -z "$chart_source" ]]; then
-    echo "chart set does not match the lock: lock chart $rel has no hash-approved source in $CHARTS_DIR/$name" >&2
-    exit 1
-  fi
-  mkdir -p "$OUTPUT/$(dirname "$rel")"
-  install -m 0644 "$chart_source" "$OUTPUT/$rel"
-  chart_placed["$rel"]=1
-  charts_copied=$((charts_copied + 1))
-done < <(grep -oE 'artifactChartPath: \S+' "$COMPONENT_LOCK" | awk '{print $2}')
-lock_chart_count="$(grep -c 'artifactChartPath:' "$COMPONENT_LOCK")"
-if [[ "$charts_copied" != "$lock_chart_count" ]]; then
-  echo "chart set does not match the lock: $charts_copied placed, $lock_chart_count approved entries" >&2
-  exit 1
-fi
-echo "packaged $charts_copied chart archives at lock artifactChartPath layout, all hash-approved in the lock"
+# The repository ISO is approved by the SOURCE-SIDE record (outside the artifact,
+# so a regenerated in-package SHA256SUMS can never legitimise a wrong ISO), then
+# placed loose and inside the KubeKey artifact tarball, and both copies are
+# re-read by content — not by file name.
+materials inject-repository-iso \
+  --iso "$REPOSITORY_ISO" \
+  --checksums "$ISO_CHECKSUMS" \
+  --artifact-root "$OUTPUT" \
+  --artifact-tar "$OUTPUT/packages/kubekey-artifact.tgz" \
+  --entry-path "repository/$(basename "$REPOSITORY_ISO")" \
+  --loose-copy "repository/$(basename "$REPOSITORY_ISO")"
 
 echo "[4/6] copying fixed artifact metadata"
 # R07: the artifact ships the CONFIG this build actually consumed, not a default
@@ -255,9 +342,11 @@ install -m 0644 "$COMPONENT_LOCK" "$OUTPUT/config/components.lock.yaml"
   echo "config.package.yaml sha256:$(sha256sum "$CONFIG" | awk '{print $1}')"
   echo "config.images.tsv sha256:$(sha256sum "$IMAGES_TSV" | awk '{print $1}')"
   echo "config.components.lock.yaml sha256:$(sha256sum "$COMPONENT_LOCK" | awk '{print $1}')"
-  echo "bin.hauler sha256:$(sha256sum "$HAULER_BIN" | awk '{print $1}')"
-  echo "bin.helm sha256:$helm_sha (verified against components.lock.yaml)"
-  echo "repository.iso sha256:$iso_sha (verified against repository-iso-checksums.txt)"
+  echo "config.materials-verification.txt sha256:$(sha256sum "$MATERIALS_LOG" | awk '{print $1}')"
+  echo "bin.helm sha256:$(sha256sum "$OUTPUT/bin/helm" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
+  echo "bin.hauler sha256:$(sha256sum "$OUTPUT/bin/hauler" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
+  echo "repository.iso sha256:$(sha256sum "$OUTPUT/repository/$(basename "$REPOSITORY_ISO")" | awk '{print $1}') (approved by $ISO_CHECKSUMS, loose and inside packages/kubekey-artifact.tgz)"
+  echo "images.archive sha256:$(sha256sum "$OUTPUT/images/images.haul.tar.zst" | awk '{print $1}') (saved from a store that passed the registry content gate)"
 } > "$OUTPUT/config/materials-source.txt"
 for path in LICENSE NOTICE; do
   if [[ -f "$ROOT/$path" ]]; then
@@ -284,31 +373,10 @@ ani_assert_release_clean "$OUTPUT" || exit 1
 
 echo "[6/6] generating artifact checksums"
 
-# R15.3: the repository ISO must ship INSIDE the artifact tarball so
-# kk create cluster --artifact can distribute it to the nodes for offline
-# apt (the field install failed without it). The tarball may be gzipped (the
-# real kk artifact export) or a plain tar (fixture builds) — detect the form
-# instead of assuming gzip, which broke the R07.2 offline-material suite.
-iso_dest="$OUTPUT/repository/$(basename "$REPOSITORY_ISO")"
-artifact_tar="$OUTPUT/packages/kubekey-artifact.tgz"
-iso_name="$(basename "$REPOSITORY_ISO")"
-if [[ -f "$iso_dest" ]] && ! tar tf "$artifact_tar" 2>/dev/null | grep -q "$iso_name"; then
-  isodir="$(mktemp -d)"
-  mkdir -p "$isodir/repository"
-  cp "$iso_dest" "$isodir/repository/$iso_name"
-  if [[ "$(od -An -tx1 -N2 "$artifact_tar" | tr -d ' \n')" == "1f8b" ]]; then
-    gunzip -c "$artifact_tar" > "$isodir/artifact.tar"
-    tar -C "$isodir" -rf "$isodir/artifact.tar" repository
-    gzip -c "$isodir/artifact.tar" > "$artifact_tar"
-  else
-    cp "$artifact_tar" "$isodir/artifact.tar"
-    tar -C "$isodir" -rf "$isodir/artifact.tar" repository
-    cat "$isodir/artifact.tar" > "$artifact_tar"
-  fi
-  rm -rf "$isodir"
-  echo "repository ISO injected into the artifact tarball"
-  ( cd "$OUTPUT" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS )
-fi
+# The repository ISO was already placed, loose and inside the artifact tarball,
+# by the inject-repository-iso step (F06) — verified by content, not by name. The
+# in-package SHA256SUMS is a self-consistency list only: the approval lives in
+# components.lock.yaml and repository-iso-checksums.txt, both read from outside.
 (
   cd "$OUTPUT"
   find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS

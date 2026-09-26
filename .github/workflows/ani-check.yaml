@@ -12,12 +12,13 @@ name: ANI check
 # guard.
 on:
   push:
-    paths:
+    paths: &gate-paths
       - 'kubekey/pkg/**'
       - 'kubekey/cmd/**'
       - 'kubekey/builtin/**'
       - 'kubekey/ani/**'
       - 'kubekey/scripts/**'
+      - 'kubekey/hack/**'
       - 'kubekey/go.mod'
       - 'kubekey/go.sum'
       - 'kubekey/Makefile'
@@ -25,20 +26,17 @@ on:
       # same roles and must not be able to land unchecked.
       - 'kubekey/lab/**'
       - 'docs/execution/**'
+      # The experiment harness at the repository root drives the same roles and
+      # the same artifact; a change to it or to the declared lab topology must
+      # not be able to land unchecked (F10: these paths used to be missing).
+      - 'run_on_node.sh'
+      - 'restore_esxi_snapshots.sh'
+      - 'config/**'
       - '.github/workflows/ani-check.yaml'
   pull_request:
-    paths:
-      - 'kubekey/pkg/**'
-      - 'kubekey/cmd/**'
-      - 'kubekey/builtin/**'
-      - 'kubekey/ani/**'
-      - 'kubekey/scripts/**'
-      - 'kubekey/go.mod'
-      - 'kubekey/go.sum'
-      - 'kubekey/Makefile'
-      - 'kubekey/lab/**'
-      - 'docs/execution/**'
-      - '.github/workflows/ani-check.yaml'
+    # The same anchor list: a gate that triggers on push but not on a pull
+    # request (or the other way round) leaves one of the two paths unchecked.
+    paths: *gate-paths
   workflow_dispatch:
 
 permissions:

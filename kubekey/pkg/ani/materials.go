@@ -104,6 +104,14 @@ type LockedTool struct {
 	SourceTarballSHA256 string
 	BinarySHA256        string
 	ArtifactPath        string
+	// Provenance records how the digests above were obtained, including how far
+	// that evidence reaches: a publisher checksum file is not a signature, and a
+	// lock entry that says so is honest, one that stays silent is not.
+	ChecksumsFile   string
+	ChecksumsSHA256 string
+	ReleaseAssetID  string
+	TagCommit       string
+	IntegrityNote   string
 }
 
 // LockedExcluded records an image that is deliberately not shipped.
@@ -113,8 +121,9 @@ type LockedExcluded struct {
 }
 
 var (
-	digestPattern   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	fileHashPattern = regexp.MustCompile(`^(?:sha256:)?[0-9a-f]{64}$`)
+	digestPattern    = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	fileHashPattern  = regexp.MustCompile(`^(?:sha256:)?[0-9a-f]{64}$`)
+	gitObjectPattern = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 )
 
 func isSHA256Digest(value string) bool { return digestPattern.MatchString(value) }
@@ -169,6 +178,11 @@ type rawTool struct {
 	ArtifactPath        string `yaml:"artifactPath"`
 	Purpose             string `yaml:"purpose"`
 	Status              string `yaml:"status"`
+	ChecksumsFile       string `yaml:"checksumsFile"`
+	ChecksumsSha256     string `yaml:"checksumsSha256"`
+	ReleaseAssetID      string `yaml:"releaseAssetId"`
+	TagCommit           string `yaml:"tagCommit"`
+	IntegrityNote       string `yaml:"integrityNote"`
 }
 
 // rawExcluded mirrors one deliberately-excluded record.
@@ -310,7 +324,23 @@ func collectMaterials(node *yaml.Node, path string, lock *MaterialsLock) []strin
 			SourceTarballSHA256: raw.SourceTarballSha256,
 			BinarySHA256:        raw.BinarySha256,
 			ArtifactPath:        raw.ArtifactPath,
+			ChecksumsFile:       raw.ChecksumsFile,
+			ChecksumsSHA256:     raw.ChecksumsSha256,
+			ReleaseAssetID:      raw.ReleaseAssetID,
+			TagCommit:           raw.TagCommit,
+			IntegrityNote:       raw.IntegrityNote,
 		})
+		if raw.ChecksumsSha256 != "" && !isSHA256Digest("sha256:"+raw.ChecksumsSha256) {
+			problems = append(problems, fmt.Sprintf("%s: checksumsSha256 %q is not a 64-hex sha256", path, raw.ChecksumsSha256))
+		}
+		if raw.TagCommit != "" && !gitObjectPattern.MatchString(raw.TagCommit) {
+			problems = append(problems, fmt.Sprintf("%s: tagCommit %q is not a hex git object id", path, raw.TagCommit))
+		}
+		// Declaring a checksum source without saying what was verified is exactly
+		// the ambiguity this entry exists to remove.
+		if (raw.ChecksumsFile != "" || raw.ChecksumsSha256 != "") && raw.IntegrityNote == "" {
+			problems = append(problems, fmt.Sprintf("%s: records a checksum source but no integrityNote stating how far that evidence reaches (checksum published != signature verified)", path))
+		}
 	case hasKey(keys, "original") && hasKey(keys, "reason"):
 		var raw rawExcluded
 		decodeInto(node, &raw, path, &problems)
@@ -596,10 +626,12 @@ func (l *MaterialsLock) VerifyImageTableAgainstLock(table ImageTable) error {
 // ServedManifest is the parsed shape of whatever the registry actually served
 // for a locked tag: either a multi-arch index or a single (platform) manifest.
 type ServedManifest struct {
-	IsIndex        bool
-	PlatformDigest string   // an index: the linux/amd64 manifest inside it
-	ConfigDigest   string   // a single manifest: the config blob digest
-	LayerDigests   []string // a single manifest: the layer blob digests
+	IsIndex           bool
+	PlatformDigest    string // an index: the linux/amd64 manifest inside it
+	PlatformSize      int64  // an index: the size that manifest declares
+	PlatformSizeKnown bool
+	ConfigDigest      string   // a single manifest: the config blob digest
+	LayerDigests      []string // a single manifest: the layer blob digests
 }
 
 // ParseServedImageManifest parses a served OCI/Docker manifest body and returns
@@ -608,6 +640,7 @@ func ParseServedImageManifest(body []byte) (ServedManifest, error) {
 	var probe struct {
 		Manifests *[]struct {
 			Digest   string `json:"digest"`
+			Size     *int64 `json:"size"`
 			Platform *struct {
 				OS           string `json:"os"`
 				Architecture string `json:"architecture"`
@@ -624,15 +657,35 @@ func ParseServedImageManifest(body []byte) (ServedManifest, error) {
 		return ServedManifest{}, fmt.Errorf("served manifest is not valid JSON: %w", err)
 	}
 	if probe.Manifests != nil {
+		// The first match is not enough: an index may list several linux/amd64
+		// builds (plain plus a variant), and picking one by order would ship
+		// content nobody chose. Exactly one, or refuse.
+		matches := []struct {
+			digest string
+			size   int64
+		}{}
 		for _, entry := range *probe.Manifests {
 			if entry.Platform != nil && entry.Platform.OS == "linux" && entry.Platform.Architecture == "amd64" {
 				if !isSHA256Digest(entry.Digest) {
 					return ServedManifest{}, fmt.Errorf("served index amd64 entry digest %q is malformed", entry.Digest)
 				}
-				return ServedManifest{IsIndex: true, PlatformDigest: entry.Digest}, nil
+				if entry.Size == nil {
+					return ServedManifest{}, fmt.Errorf("served index amd64 entry %s declares no size", entry.Digest)
+				}
+				matches = append(matches, struct {
+					digest string
+					size   int64
+				}{entry.Digest, *entry.Size})
 			}
 		}
-		return ServedManifest{}, fmt.Errorf("served index has no linux/amd64 entry")
+		if len(matches) == 0 {
+			return ServedManifest{}, fmt.Errorf("served index has no linux/amd64 entry")
+		}
+		if len(matches) > 1 {
+			return ServedManifest{}, fmt.Errorf("served index has %d linux/amd64 entries; this installer ships one amd64 object and will not pick between them", len(matches))
+		}
+		return ServedManifest{IsIndex: true, PlatformDigest: matches[0].digest,
+			PlatformSize: matches[0].size, PlatformSizeKnown: true}, nil
 	}
 	if probe.Config == nil || !isSHA256Digest(probe.Config.Digest) {
 		return ServedManifest{}, fmt.Errorf("served manifest has no valid config digest")

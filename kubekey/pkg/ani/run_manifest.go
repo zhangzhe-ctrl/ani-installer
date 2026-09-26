@@ -35,6 +35,30 @@ import (
 // RunManifestSchemaVersion is bumped whenever the manifest layout changes.
 const RunManifestSchemaVersion = 1
 
+// RecordKind distinguishes what a run.json actually attests (F04). A
+// config-validation record proves nothing was installed; only an install-success
+// record may be consumed by verification and component additions.
+const (
+	RecordKindConfigValidation = "config-validation"
+	RecordKindInstallSuccess   = "install-success"
+)
+
+// ManifestIdentity is the real, per-source identity chain recorded only by a
+// successful install. Every field comes from its own authoritative source; the
+// artifact package.yaml digest is deliberately NOT used as a stand-in for the
+// site or source identity (the old bug).
+type ManifestIdentity struct {
+	SourceTreeFingerprint string   `json:"sourceTreeFingerprint,omitempty"`
+	CodeCommit            string   `json:"codeCommit,omitempty"`
+	CodeBinaryDigest      string   `json:"codeBinaryDigest,omitempty"`
+	SiteConfigDigest      string   `json:"siteConfigDigest,omitempty"`
+	MaterialsLockDigest   string   `json:"materialsLockDigest,omitempty"`
+	PackageConfigDigest   string   `json:"packageConfigDigest,omitempty"`
+	ClusterUID            string   `json:"clusterUid,omitempty"`
+	NodeCount             int      `json:"nodeCount"`
+	ReadyNodes            []string `json:"readyNodes,omitempty"`
+}
+
 // Files written by `kk ani validate --output <dir>`.
 const (
 	RunManifestFileName = "run.json"
@@ -57,6 +81,16 @@ type RunManifest struct {
 	Profile       string `json:"profile"`
 	NetworkStack  string `json:"networkStack"`
 
+	// RecordKind + RunID + Result + Identity are the F04 identity contract.
+	// A config-validation record leaves Result empty and Identity zeroed;
+	// only a completed first install produces RecordKind=install-success with
+	// Result=succeeded and a populated Identity, and only that may be consumed
+	// by `kk ani verify` acceptance or `kk ani components` additions.
+	RecordKind string           `json:"recordKind,omitempty"`
+	RunID      string           `json:"runId,omitempty"`
+	Result     string           `json:"result,omitempty"`
+	Identity   ManifestIdentity `json:"identity,omitempty"`
+
 	Installer        ManifestInstaller `json:"installer"`
 	Nodes            []ManifestNode    `json:"nodes"`
 	Components       []string          `json:"components"`
@@ -68,6 +102,11 @@ type RunManifest struct {
 	// build only validates the configuration: materials are R07's job.
 	PackageRoot        string `json:"packageRoot,omitempty"`
 	MaterialsValidated bool   `json:"materialsValidated"`
+
+	// ComponentsExecution is present only on a components-execution record:
+	// the subject that one `ani components execute` pass really did against a
+	// named base install. It never re-attributes the install itself.
+	ComponentsExecution *ComponentsExecution `json:"componentsExecution,omitempty"`
 }
 
 // ManifestInstaller is the installer node and the registry it serves.
@@ -140,6 +179,7 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 
 	manifest := RunManifest{
 		SchemaVersion: RunManifestSchemaVersion,
+		RecordKind:    RecordKindConfigValidation,
 		ConfigDigest:  digest,
 		ClusterName:   c.Name,
 		Profile:       installProfile(c.Profile),
@@ -282,6 +322,10 @@ type ValidateInput struct {
 	ConfigFile  string
 	PackageRoot string
 	Output      string
+	// HelmBin pins the Helm used for chart expansion. Empty means the fixed
+	// <package-root>/bin/helm the artifact ships; the render never guesses a Helm
+	// from PATH (F12), because a different Helm would validate different output.
+	HelmBin string
 }
 
 // RunValidate validates the site configuration and, when Output is set, writes
@@ -331,6 +375,121 @@ func RunValidate(_ context.Context, input ValidateInput, stdout io.Writer) error
 	if strings.TrimSpace(input.Output) != "" {
 		fmt.Fprintf(out, "wrote %s and %s in %s\n", RunManifestFileName, VerifyFactsFileName, input.Output)
 	}
-	fmt.Fprintln(out, "NOTE: this command validates the configuration only (materialsValidated=false); wiring the approved materials lock into the artifact checks is a follow-up card")
+	fmt.Fprintln(out, "NOTE: this command validates the site configuration only and writes a config-validation record (materialsValidated=false); artifact materials are verified by `kk ani install`'s preflight, never by this record")
+	return nil
+}
+
+// isHex64 is a strict 64-lowercase-hex validator so a short or malformed digest
+// returns an error instead of panicking a later [:N] slice (F04).
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// BuildInstallSuccessManifest turns a completed, verified first install into the
+// authoritative install-success record. It starts from the validated config
+// manifest and overlays the run identity, the accurate final result and the real
+// per-source identity chain. MaterialsValidated is only ever true here — a
+// validate artifact never claims materials were checked (F04).
+func BuildInstallSuccessManifest(base RunManifest, state InstallState, identity ManifestIdentity) (RunManifest, error) {
+	if state.RunID == "" {
+		return RunManifest{}, errors.New("an install-success record needs a run id")
+	}
+	if identity.SiteConfigDigest == "" || !isHex64(identity.SiteConfigDigest) {
+		return RunManifest{}, fmt.Errorf("install-success identity has no well-formed site digest")
+	}
+	if identity.ClusterUID == "" {
+		return RunManifest{}, errors.New("install-success identity has no live cluster uid")
+	}
+	m := base
+	m.SchemaVersion = RunManifestSchemaVersion
+	m.RecordKind = RecordKindInstallSuccess
+	m.RunID = state.RunID
+	m.Result = state.Result
+	m.Identity = identity
+	m.MaterialsValidated = true
+	return m, nil
+}
+
+// WriteInstallSuccessRecord writes the install-success run.json (and the shell
+// facts) into dir. It is the sole record that later verification and component
+// additions are allowed to consume.
+func WriteInstallSuccessRecord(dir string, m RunManifest) error {
+	if m.RecordKind != RecordKindInstallSuccess {
+		return errors.New("refusing to write a non install-success record as the trusted base run")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return errors.Wrapf(err, "create install record directory %s", dir)
+	}
+	encoded, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "encode the install-success manifest")
+	}
+	encoded = append(encoded, '\n')
+	if err := os.WriteFile(filepath.Join(dir, RunManifestFileName), encoded, 0o644); err != nil {
+		return errors.Wrapf(err, "write %s", RunManifestFileName)
+	}
+	if err := os.WriteFile(filepath.Join(dir, VerifyFactsFileName), []byte(VerifyFactsEnv(m)), 0o644); err != nil {
+		return errors.Wrapf(err, "write %s", VerifyFactsFileName)
+	}
+	return nil
+}
+
+// ValidateSuccessRecord enforces the F04 contract: the run.json must attest a
+// COMPLETED, SUCCESSFUL install whose identity chain is well-formed and whose
+// site digest matches the (optional) install state. It refuses config-validation
+// records, non-success results, malformed/short digests and mismatched
+// cluster/digest/identity, always with an error and never a panic. A nil state is
+// permitted only when the record is internally complete (identity present).
+func ValidateSuccessRecord(m RunManifest, state *InstallState) error {
+	if m.ConfigDigest == "" || m.ClusterName == "" {
+		return fmt.Errorf("run record is not a run.json (missing configDigest/clusterName)")
+	}
+	if !isHex64(m.ConfigDigest) {
+		return fmt.Errorf("run record configDigest %q is not a 64-hex digest", m.ConfigDigest)
+	}
+	if m.RecordKind != RecordKindInstallSuccess {
+		return fmt.Errorf("run record is %q; verification and component additions require an install-success record produced by a completed first install", m.RecordKind)
+	}
+	// An execution record re-labelled "install-success" would otherwise be
+	// accepted here and skip every base-bytes, evidence and live-cluster check —
+	// on the consume path and as the --base-run anchor of a later addition. The
+	// block's presence is the structural fact; the declared string is not.
+	if m.ComponentsExecution != nil {
+		return fmt.Errorf("run record carries a componentsExecution block, so it attests one components execution and not a first install; refusing to use it as an %q record", RecordKindInstallSuccess)
+	}
+	if m.Result != ResultSucceeded {
+		return fmt.Errorf("run record result is %q; verification requires a successful install (result %q)", m.Result, ResultSucceeded)
+	}
+	if !isHex64(m.Identity.SiteConfigDigest) || m.Identity.SiteConfigDigest != m.ConfigDigest {
+		return fmt.Errorf("install-success identity site digest %q does not match the record configDigest %q", m.Identity.SiteConfigDigest, m.ConfigDigest)
+	}
+	if m.Identity.ClusterUID == "" {
+		return errors.New("install-success record has no live cluster identity to bind later operations to")
+	}
+	if !isHex64(m.Identity.MaterialsLockDigest) {
+		return fmt.Errorf("install-success record materials lock digest %q is not well-formed", m.Identity.MaterialsLockDigest)
+	}
+	if state != nil {
+		if state.RunID != m.RunID {
+			return fmt.Errorf("install state run %q does not match the record run %q", state.RunID, m.RunID)
+		}
+		if state.ClusterName != m.ClusterName {
+			return fmt.Errorf("install state belongs to cluster %q, the record to %q", state.ClusterName, m.ClusterName)
+		}
+		if state.Result != ResultSucceeded || state.Phase != PhaseSucceeded {
+			return fmt.Errorf("install state is result=%q phase=%q; verification requires a succeeded install", state.Result, state.Phase)
+		}
+		if state.ConfigDigest != "" && state.ConfigDigest != m.ConfigDigest {
+			return fmt.Errorf("install state site digest %q does not match the record %q", state.ConfigDigest, m.ConfigDigest)
+		}
+	}
 	return nil
 }

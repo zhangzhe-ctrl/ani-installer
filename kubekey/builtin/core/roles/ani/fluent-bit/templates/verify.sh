@@ -116,6 +116,18 @@ case "$BACKEND" in
   *) fail "unsupported logging backend '$BACKEND'" ;;
 esac
 
+# F01 real layer split. `smoke` (default; install role + `kk ani verify --level
+# smoke`) does only config sanity ([1]) and the read-only per-attempt marker
+# collection probe ([2]) — it never rebuilds the backend/collector pods, never
+# mutates retention, and never clears other attempts' objects. `acceptance`
+# runs the two planned Pod-recreation durability checks ([3],[4]) and the
+# retention policy check ([5]) plus the run's own cleanup ([6]).
+LEVEL="${ANI_VERIFY_LEVEL:-smoke}"
+case "$LEVEL" in
+  smoke|acceptance) : ;;
+  *) fail "ANI_VERIFY_LEVEL must be 'smoke' or 'acceptance', got '$LEVEL'" ;;
+esac
+
 # Run a python program inside the cluster from a file, so no multi-line program
 # has to survive a shell boundary.
 py() {
@@ -449,6 +461,20 @@ py "$EVIDENCE/check_metadata.py" /tmp/markers-found.json \
 
 note "all $want_nodes markers found in $BACKEND with correct namespace/pod/container/node"
 
+# F01: smoke ends after the read-only collection probe. It created only this
+# attempt's marker/client pods; it cleans those by name and exits BEFORE the
+# backend/collector Pod rebuilds, so no existing service is restarted and no
+# global retention/routing is touched during install or smoke.
+if [ "$LEVEL" = smoke ]; then
+  for i in "${!NODES[@]}"; do
+    seq_n=$((i + 1))
+    $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
+  done
+  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
+  note "fluent-bit SMOKE verification passed: config sane, $want_nodes markers collected into $BACKEND (read-only; no pod rebuild, no retention change)"
+  exit 0
+fi
+
 note "== [3] rebuilding the backend pod keeps the records =="
 # The backend's PVC and UID are recorded before and after, so "the same volume"
 # is a fact rather than an assumption. Only the backend pod is deleted; nothing
@@ -484,14 +510,14 @@ note "rebuilding backend pod $old_backend_pod (uid $old_backend_pod_uid)"
 # comparison is not affected by new data arriving in between.
 kubectl -n "$NS" delete pod "$old_backend_pod" --wait=true --timeout=300s >/dev/null
 if ! k5_pod_ready "$BACKEND_SELECTOR" 600s; then
-  note "K5_REBUILD backend: the rebuilt pod is not Ready; performing the one planned rebuild of the backend pod"
-  echo "k5_rebuild_planned backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-  kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
+  # F01: the single planned rebuild is the exact-pod delete above. The waiter is
+  # read-only — it never issues a second (selector-wide) delete. Wait out a
+  # bounded window, then record read-only evidence and fail without repairing.
+  note "K5_WAIT backend: rebuilt pod not Ready within 600s; waiting without a second rebuild"
+  echo "k5_wait_extend backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   if ! k5_pod_ready "$BACKEND_SELECTOR" 420s; then
-    # R02: no agent restart and no third rebuild. Record read-only evidence and
-    # fail the check; the caller's exit code stays this failure.
     k5_collect_failure_evidence backend || true
-    fail "the rebuilt backend pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
+    fail "the rebuilt backend pod did not become Ready and the one planned rebuild is already spent (no second rebuild, no agent restart is attempted)"
   fi
 fi
 
@@ -591,19 +617,18 @@ grep -q 'tail.db' "$EVIDENCE/cursor-before.txt" \
 
 note "rebuilding collector pod $victim_pod on $victim_node"
 kubectl -n "$NS" delete pod "$victim_pod" --wait=true --timeout=300s >/dev/null
-# Same single-planned-rebuild handling as the backend step above: one bounded
-# re-wait, and on failure read-only evidence plus a failing check. The agent
-# restart and the extra rebuilds are gone (R02).
+# F01: the single planned rebuild is the exact-pod delete above. The waiter is
+# read-only — it never issues a second (selector/field-scoped) delete. Keep
+# waiting out a bounded window, then record read-only evidence and fail without
+# repairing.
 if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
   --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
-  note "K5_REBUILD collector: the rebuilt pod is not Ready; performing the one planned rebuild of the collector pod"
-  echo "k5_rebuild_planned collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-  kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
-    --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
+  note "K5_WAIT collector: rebuilt pod not Ready within 300s; waiting without a second rebuild"
+  echo "k5_wait_extend collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
     --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
     k5_collect_failure_evidence collector || true
-    fail "the rebuilt collector pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
+    fail "the rebuilt collector pod did not become Ready and the one planned rebuild is already spent (no second rebuild, no agent restart is attempted)"
   fi
 fi
 

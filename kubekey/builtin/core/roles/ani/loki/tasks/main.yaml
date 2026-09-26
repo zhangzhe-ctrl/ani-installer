@@ -40,11 +40,11 @@
 
 - name: ANI Loki | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-loki
+    {{ .ani.artifact_root }}/bin/helm install ani-loki
     {{ .ani.artifact_root }}/charts/loki/18.13.3.tgz
     --namespace {{ .ani.components.logging.namespace }} --create-namespace
     --values /etc/kubernetes/ani/loki/values.yaml
-    --wait --timeout 900s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 900s
 
 # The monolith is a StatefulSet, so this waits for the same object the chart
 # renders rather than for a Deployment that does not exist.

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -42,9 +43,23 @@ const (
 	PhaseArtifactVerified     = "artifact_verified"
 	PhaseRegistryReady        = "registry_ready"
 	PhaseRegistryVerified     = "registry_content_verified"
+	PhaseClusterBuilt         = "cluster_built"
+	PhaseSucceeded            = "succeeded"
 	PhaseInstallFailed        = "install_failed"
 	RemoteResultUnknown       = "remote_result_unknown"
 	RemoteResultDeterministic = "remote_result_deterministic"
+)
+
+// Install results are the FINAL outcome of a run, kept separate from Phase
+// (the last completed stage). A run can reach a late phase and still fail or
+// be cancelled; verification and component additions key on Result, never on
+// a mid-flight phase alone (F04).
+const (
+	ResultRunning       = "running"
+	ResultSucceeded     = "succeeded"
+	ResultFailed        = "failed"
+	ResultCancelled     = "cancelled"
+	ResultRemoteUnknown = "remote_result_unknown"
 )
 
 // InstallState is the on-disk run record. It is written atomically before the
@@ -53,15 +68,28 @@ type InstallState struct {
 	SchemaVersion  int      `json:"schemaVersion"`
 	RunID          string   `json:"runId"`
 	StartedAt      string   `json:"startedAt"`
+	FinishedAt     string   `json:"finishedAt,omitempty"`
 	Phase          string   `json:"phase"`
+	Result         string   `json:"result"`
 	ChangesStarted bool     `json:"changesStarted"`
 	RemoteResult   string   `json:"remoteResult"`
 	ClusterName    string   `json:"clusterName"`
 	Targets        []string `json:"targets"`
-	SourceTreeFp   string   `json:"sourceTreeFingerprint"`
-	KKPath         string   `json:"kkPath"`
-	ArtifactLock   string   `json:"artifactLockDigest"`
-	ConfigDigest   string   `json:"configDigest"`
+
+	// Identity fields each carry a distinct, real source (F04). The old code
+	// stuffed the artifact package.yaml digest into both SourceTreeFp and
+	// ConfigDigest, breaking the source → kk → site → live chain.
+	SourceTreeFingerprint string `json:"sourceTreeFingerprint,omitempty"`
+	CodeCommit            string `json:"codeCommit,omitempty"`
+	CodeBinaryDigest      string `json:"codeBinaryDigest,omitempty"`
+	SiteConfigDigest      string `json:"siteConfigDigest,omitempty"`
+	PackageConfigDigest   string `json:"packageConfigDigest,omitempty"`
+	KKPath                string `json:"kkPath"`
+	ArtifactLock          string `json:"artifactLockDigest"`
+
+	// ConfigDigest is kept as the site configuration digest so existing readers
+	// of run-state.json keep working; it is no longer the package.yaml digest.
+	ConfigDigest string `json:"configDigest"`
 }
 
 const InstallStateSchemaVersion = 1
@@ -121,6 +149,18 @@ func CheckStartAllowed(state *InstallState, ackRunID string) error {
 		state.RunID, state.Phase, state.RemoteResult, state.RunID)
 }
 
+// productLockPath is the ONE product-level mutex every change-bearing operation
+// shares: the first install, `components execute`, and Pod-recreation
+// acceptance. It lives in the canonical runtime root (never an --output dir),
+// so a second changer returns immediately instead of interleaving writes.
+// ANI_INSTALL_LOCK overrides the base for behaviour tests only.
+func productLockPath() string {
+	if v := strings.TrimSpace(os.Getenv("ANI_INSTALL_LOCK")); v != "" {
+		return v
+	}
+	return filepath.Join(runtimeBaseDir, "ani-install.lock")
+}
+
 // AcquireInstallFlock takes a non-blocking exclusive flock on lockPath, so a
 // second installer process returns immediately instead of corrupting the run.
 // The lock file is never deleted and no process is ever killed: releasing the
@@ -170,31 +210,102 @@ func CheckPortFree(port int) error {
 	return listener.Close()
 }
 
-// CheckUnitInactive verifies that a systemd unit is not active on this host,
-// via the systemctl binary (test fakes replace it through PATH).
+// defaultSystemctlRunner executes systemctl through the shell; tests replace it
+// via PATH or by injecting a runner.
+func defaultSystemctlRunner(name string, args ...string) error {
+	return exec.Command(name, args...).Run()
+}
+
+// CheckUnitInactive verifies that a systemd unit is NOT active on this host.
+// The runner must actually execute `systemctl is-active`: exit 0 (active) is a
+// refusal, a non-zero exit means the unit is not running and is safe. The old
+// implementation inverted this (treated exit 0 as safe) and substituted a no-op
+// when the runner was nil, so production never queried systemd at all (F05).
+//
+// For full not-found / external-existing / query-error discrimination the
+// install path uses checkRegistryUnitAbsent; this narrow predicate is the
+// active/inactive gate used by tests and callers that pass a runner.
 func CheckUnitInactive(unit string, runner func(string, ...string) error) error {
-	if runner == nil {
-		runner = func(name string, args ...string) error { return nil }
+	if strings.TrimSpace(unit) == "" {
+		return errors.New("CheckUnitInactive needs a unit name")
 	}
-	if err := runner("systemctl", "is-active", "--quiet", unit); err != nil {
+	if runner == nil {
+		runner = defaultSystemctlRunner
+	}
+	if err := runner("systemctl", "is-active", "--quiet", unit); err == nil {
+		// exit 0 → the unit IS active; it must be stopped deliberately first.
 		return fmt.Errorf("unit %s is active; stop and disable it deliberately before installing", unit)
 	}
 	return nil
+}
+
+// checkRegistryUnitAbsent classifies the registry unit's real state before the
+// install may import images or write its own unit. It uses `systemctl show` to
+// read LoadState and ActiveState and refuses anything other than a unit that
+// simply does not exist yet:
+//   - not-found / masked-off absent → nil (a fresh install may proceed);
+//   - active → refuse;
+//   - loaded but inactive (a foreign unit of the same name) → refuse, never
+//     adopt an existing unit even before import (F05);
+//   - query failure or unparseable output → refuse (absence is unproven).
+func checkRegistryUnitAbsent(unit, systemctlBin string) error {
+	if strings.TrimSpace(unit) == "" {
+		return errors.New("checkRegistryUnitAbsent needs a unit name")
+	}
+	if strings.TrimSpace(systemctlBin) == "" {
+		systemctlBin = "systemctl"
+	}
+	out, err := exec.Command(systemctlBin, "show", unit, "-p", "LoadState", "-p", "ActiveState", "--value").Output()
+	if err != nil {
+		// `systemctl show` on a not-found unit still exits 0 and prints
+		// LoadState=not-found; a non-zero exit is a genuine query failure.
+		return fmt.Errorf("query systemd state for %s: %w", unit, err)
+	}
+	// `--value` prints one bare value per requested property, in query order:
+	// LoadState on the first line, ActiveState on the second.
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(lines) < 1 {
+		return fmt.Errorf("systemctl returned no systemd state for %s; refusing to proceed on an unproven unit state", unit)
+	}
+	loadState := strings.TrimSpace(lines[0])
+	activeState := ""
+	if len(lines) >= 2 {
+		activeState = strings.TrimSpace(lines[1])
+	}
+	switch loadState {
+	case "not-found", "masked":
+		// The unit genuinely does not exist: a fresh install may proceed.
+		return nil
+	case "loaded", "static", "alias", "linked", "bad":
+		if activeState == "active" || activeState == "activating" || activeState == "reloading" {
+			return fmt.Errorf("unit %s is active (ActiveState=%s); a same-named foreign unit must be stopped and removed deliberately first", unit, activeState)
+		}
+		return fmt.Errorf("unit %s already exists (LoadState=%s); this install will not adopt a foreign unit of the same name, remove it deliberately first", unit, loadState)
+	case "":
+		return fmt.Errorf("systemctl returned an empty LoadState for %s; refusing to proceed on an unproven unit state", unit)
+	default:
+		return fmt.Errorf("unit %s has unexpected systemd LoadState %q; refusing to proceed", unit, loadState)
+	}
 }
 
 // PreflightReport is the machine-readable record of a failed preflight run.
 // It is written to a fresh per-run directory (never the runtime root), so a
 // corrected input allows a new run without snapshot rituals.
 type PreflightReport struct {
-	SchemaVersion   int      `json:"schemaVersion"`
-	RunID           string   `json:"runId"`
-	StartedAt       string   `json:"startedAt"`
-	ChangesStarted  bool     `json:"changesStarted"`
-	ConfigDigest    string   `json:"configDigest"`
-	ArtifactLock    string   `json:"artifactLockDigest"`
-	FailedCheck     string   `json:"failedCheck"`
-	Error           string   `json:"error"`
-	RequiredMissing []string `json:"requiredMissing,omitempty"`
+	SchemaVersion  int    `json:"schemaVersion"`
+	RunID          string `json:"runId"`
+	StartedAt      string `json:"startedAt"`
+	ChangesStarted bool   `json:"changesStarted"`
+	// ConfigDigest is the normalized SITE config digest (its original meaning;
+	// it was previously wrongly the package.yaml digest).
+	ConfigDigest string `json:"configDigest"`
+	// PackageConfigDigest is the artifact config/package.yaml digest, kept
+	// distinct so it can never masquerade as the site or source identity.
+	PackageConfigDigest string   `json:"packageConfigDigest,omitempty"`
+	ArtifactLock        string   `json:"artifactLockDigest"`
+	FailedCheck         string   `json:"failedCheck"`
+	Error               string   `json:"error"`
+	RequiredMissing     []string `json:"requiredMissing,omitempty"`
 }
 
 // WritePreflightReport writes the preflight report into a fresh directory.
@@ -242,6 +353,14 @@ type PreflightInput struct {
 	ArtifactRoot  string
 	ReportBaseDir string
 	HelmPath      string
+	HaulerPath    string
+	SystemctlBin  string
+	// SourceTreeFingerprint and CodeCommit are the real build-time identities
+	// of the running kk, passed in so preflight/records never reuse an
+	// unrelated digest as a stand-in.
+	SourceTreeFingerprint string
+	CodeCommit            string
+	CodeBinaryDigest      string
 }
 
 // RunPreflight performs every read-only check that must pass before the first
@@ -270,7 +389,9 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 	}
 	artifactLockDigest := sha256FileHex(filepath.Join(input.ArtifactRoot, "config", "components.lock.yaml"))
 
-	// Required artifact files, including the per-component chart materials.
+	// Required artifact files. Beyond metadata, the binaries the install will
+	// actually run must be present: hauler (import+serve), the archive, the
+	// artifact and the ISO. A missing one fails here, before any change (F05).
 	required := []string{
 		filepath.Join(input.ArtifactRoot, "SHA256SUMS"),
 		filepath.Join(input.ArtifactRoot, "config", "package.yaml"),
@@ -278,14 +399,46 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		filepath.Join(input.ArtifactRoot, "config", "runtime-checksums.txt"),
 		filepath.Join(input.ArtifactRoot, "config", "repository-iso-checksums.txt"),
 		filepath.Join(input.ArtifactRoot, "config", "components.lock.yaml"),
+		filepath.Join(input.ArtifactRoot, "packages", "kubekey-artifact.tgz"),
+		filepath.Join(input.ArtifactRoot, "images", "images.haul.tar.zst"),
+		filepath.Join(input.ArtifactRoot, "images", "images.tsv"),
+		filepath.Join(input.ArtifactRoot, "repository", "ubuntu-24.04-debs-amd64.iso"),
+	}
+	if strings.TrimSpace(input.HaulerPath) != "" {
+		required = append(required, input.HaulerPath)
+	}
+	if strings.TrimSpace(input.HelmPath) != "" {
+		required = append(required, input.HelmPath)
 	}
 	missing := []string{}
+	// Selected component charts are bound by their lock entry: existence AND
+	// the exact approved hash for that component's artifactPath. A chart that
+	// merely exists at the right path but carries a different (cross-valid)
+	// hash fails here, not in build-offline's whole-YAML grep (F05/F06).
 	for _, row := range effectiveSelection(*input.Cluster) {
 		if !row.Enabled {
 			continue
 		}
-		if relative, ok := componentChartMaterials[row.Name]; ok {
-			required = append(required, filepath.Join(input.ArtifactRoot, filepath.FromSlash(relative)))
+		relative, ok := componentChartMaterials[row.Name]
+		if !ok {
+			continue
+		}
+		path := filepath.Join(input.ArtifactRoot, filepath.FromSlash(relative))
+		required = append(required, path)
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		chart, found := lock.ChartByArtifactPath(filepath.ToSlash(relative))
+		if !found {
+			return report, fail("chart lock binding", fmt.Errorf(
+				"component %q chart %q has no lock entry binding name/version/artifactPath/hash; refusing an unapproved chart", row.Name, relative))
+		}
+		if chart.ChartVersion == "" {
+			return report, fail("chart lock binding", fmt.Errorf(
+				"component %q chart lock entry for %q carries no chartVersion", row.Name, relative))
+		}
+		if err := VerifyFileMaterialDigest(path, chart.SHA256); err != nil {
+			return report, fail("chart content digest", err)
 		}
 	}
 	for _, path := range required {
@@ -307,16 +460,22 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		}
 	}
 
-	// Repository ISO digest against the source-side record.
+	// Repository ISO digest against the source-side record. A malformed record
+	// (not exactly "hash path") or an unreadable one is a hard failure, never
+	// a silent skip (F05).
 	isoPath := filepath.Join(input.ArtifactRoot, "repository", "ubuntu-24.04-debs-amd64.iso")
 	isoRecord := filepath.Join(input.ArtifactRoot, "config", "repository-iso-checksums.txt")
-	if data, err := os.ReadFile(isoRecord); err == nil {
-		fields := strings.Fields(string(data))
-		if len(fields) == 2 {
-			if err := VerifyFileMaterialDigest(isoPath, fields[1]); err != nil {
-				return report, fail("repository ISO digest", err)
-			}
-		}
+	isoData, err := os.ReadFile(isoRecord)
+	if err != nil {
+		return report, fail("repository ISO record", errors.Wrapf(err, "read %s", isoRecord))
+	}
+	isoFields := strings.Fields(string(isoData))
+	if len(isoFields) != 2 {
+		return report, fail("repository ISO record", fmt.Errorf(
+			"%s must contain exactly one '<name> <hash>' pair, got %d field(s); a malformed ISO record is a failure, not a skip", isoRecord, len(isoFields)))
+	}
+	if err := VerifyFileMaterialDigest(isoPath, isoFields[1]); err != nil {
+		return report, fail("repository ISO digest", err)
 	}
 
 	// images.tsv ↔ lock cross-check.
@@ -351,27 +510,42 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		return report, fail("disk space", err)
 	}
 
-	// Registry port and unit state on this host.
+	// Registry port and unit state on this host. The unit check is real:
+	// checkRegistryUnitAbsent refuses active or foreign-existing units and
+	// only allows a genuinely absent one, so a same-named external service is
+	// never silently adopted or overwritten after the images are imported (F05).
 	if err := CheckPortFree(input.Cluster.RegistryConfig.Port); err != nil {
 		return report, fail("registry port", err)
 	}
-	if err := CheckUnitInactive(serviceUnitName, nil); err != nil {
+	if err := checkRegistryUnitAbsent(serviceUnitName, input.SystemctlBin); err != nil {
 		return report, fail("unit state", err)
 	}
 
-	report.FailedCheck = ""
-	digest := ""
-	if configData, err := os.ReadFile(filepath.Join(input.ArtifactRoot, "config", "package.yaml")); err == nil {
-		sum := sha256.Sum256(configData)
-		digest = hex.EncodeToString(sum[:])
+	// Success: report the real identities. ConfigDigest is the normalized SITE
+	// digest (never package.yaml); the package.yaml digest is kept separately so
+	// it can never be reused as the site or source identity (F04).
+	siteDigest, err := ConfigDigest(*input.Cluster)
+	if err != nil {
+		return report, fail("site config digest", err)
 	}
-	return &PreflightReport{
-		RunID:          report.RunID,
-		StartedAt:      report.StartedAt,
-		ChangesStarted: false,
-		ConfigDigest:   digest,
-		ArtifactLock:   artifactLockDigest,
-	}, nil
+	report.FailedCheck = ""
+	report.Error = ""
+	report.ConfigDigest = siteDigest
+	report.PackageConfigDigest = sha256FileHex(filepath.Join(input.ArtifactRoot, "config", "package.yaml"))
+	report.ArtifactLock = artifactLockDigest
+	return report, nil
+}
+
+// VerifyArtifactChecksums runs the artifact's own `sha256sum --check
+// --quiet SHA256SUMS` from its root. Read-only; used by preflight so a corrupt
+// artifact fails before any system change.
+func VerifyArtifactChecksums(artifactRoot string) error {
+	cmd := exec.Command("sha256sum", "--check", "--quiet", "SHA256SUMS")
+	cmd.Dir = artifactRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.Wrapf(err, "verify artifact checksums in %s: %s", artifactRoot, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // sha256FileHex is the file digest helper the preflight record uses.

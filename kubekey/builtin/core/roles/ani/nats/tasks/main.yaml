@@ -65,11 +65,11 @@
 
 - name: ANI NATS | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install nats
+    {{ .ani.artifact_root }}/bin/helm install nats
     {{ .ani.artifact_root }}/charts/nats/2.14.6.tgz
     --namespace ani-platform --create-namespace
     --values /etc/kubernetes/ani/nats/values.yaml
-    --wait --timeout 900s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 900s
 
 - name: ANI NATS | Wait for StatefulSet rollout
   command: |

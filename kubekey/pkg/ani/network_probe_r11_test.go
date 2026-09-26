@@ -57,13 +57,14 @@ NET-SVCIP-OK
 // r11FakeKubectl writes a fake kubectl for network-probe.sh. It records every
 // argv (and every created manifest) in KUBECTL_LOG and answers the checker's
 // queries from plain env-configured state:
-//   FAKE_STATE        state directory (call counters)
-//   FAKE_SERVER_NODE  node the server pod reports     (default node1)
-//   FAKE_CLIENT_NODES client nodes, space separated   (default "node2 node3")
-//   FAKE_CLIENT_EXIT  client exit code                (default 0)
-//   FAKE_CLIENT_LOG   file whose content is the client pod log
-//   FAKE_PHASE        override phase answer ("Failed" simulates a failed pod)
-//   FAKE_NO_IP        when set, podIP/clusterIP answers are empty
+//
+//	FAKE_STATE        state directory (call counters)
+//	FAKE_SERVER_NODE  node the server pod reports     (default node1)
+//	FAKE_CLIENT_NODES client nodes, space separated   (default "node2 node3")
+//	FAKE_CLIENT_EXIT  client exit code                (default 0)
+//	FAKE_CLIENT_LOG   file whose content is the client pod log
+//	FAKE_PHASE        override phase answer ("Failed" simulates a failed pod)
+//	FAKE_NO_IP        when set, podIP/clusterIP answers are empty
 func r11FakeKubectl(t *testing.T) (binDir, logPath, stateDir string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -156,10 +157,10 @@ rc=$?
 echo "NETCHECK_RC=$rc"
 `
 	stdout, stderr, code := r02RunBash(t, script, map[string]string{
-		"PATH":    env["BIN"] + ":" + os.Getenv("PATH"),
-		"BASE":    env["BASE"],
-		"OUT":     outBase,
-		"KLOG":    env["KLOG"],
+		"PATH":     env["BIN"] + ":" + os.Getenv("PATH"),
+		"BASE":     env["BASE"],
+		"OUT":      outBase,
+		"KLOG":     env["KLOG"],
 		"NETPROBE": netProbe,
 		// checker inputs
 		"ANI_NETSMOKE_IMAGE": env["ANI_NETSMOKE_IMAGE"],
@@ -456,15 +457,15 @@ echo "NET=${ANI_NETWORK_RESULT:-unset}"
 echo "ENVOY=${ANI_ENVOY_RESULT:-unset}"
 `
 		stdout, stderr, code := r02RunBash(t, script, map[string]string{
-			"PATH":    binDir + ":" + os.Getenv("PATH"),
-			"KLOG":    filepath.Join(t.TempDir(), "klog"),
-			"STUBLOG": filepath.Join(t.TempDir(), "stublog"),
-			"VERIFY":  verifyAbs,
-			"OUT":     logDir,
-			"STACK":   stack,
+			"PATH":       binDir + ":" + os.Getenv("PATH"),
+			"KLOG":       filepath.Join(t.TempDir(), "klog"),
+			"STUBLOG":    filepath.Join(t.TempDir(), "stublog"),
+			"VERIFY":     verifyAbs,
+			"OUT":        logDir,
+			"STACK":      stack,
 			"FAKE_STATE": stateDir,
-			"ENVOY":   envoyStub,
-			"NET":     netStub,
+			"ENVOY":      envoyStub,
+			"NET":        netStub,
 		})
 		// The branch rc is echoed by the harness; trust that, not the wrapper.
 		if idx := strings.Index(stdout, "BRANCH_RC="); idx >= 0 {
@@ -502,13 +503,13 @@ echo "NET=${ANI_NETWORK_RESULT:-unset}"
 echo "ENVOY=${ANI_ENVOY_RESULT:-unset}"
 `
 		stdout, stderr, code := r02RunBash(t, script, map[string]string{
-			"PATH":  binDir + ":" + os.Getenv("PATH"),
-			"KLOG":  klog,
-			"STUBLOG": stublog,
-			"VERIFY": verifyAbs,
-			"OUT":   outDir,
-			"ENVOY": envoyStub,
-			"NET":   netStub,
+			"PATH":       binDir + ":" + os.Getenv("PATH"),
+			"KLOG":       klog,
+			"STUBLOG":    stublog,
+			"VERIFY":     verifyAbs,
+			"OUT":        outDir,
+			"ENVOY":      envoyStub,
+			"NET":        netStub,
 			"FAKE_STATE": stateDir,
 		})
 		if code != 0 {
@@ -569,13 +570,13 @@ ani_run_network_checks kcn "$ENVOY" "$NETFAIL" "$OUT" || rc=$?
 echo "BRANCH_RC=$rc NET=${ANI_NETWORK_RESULT:-unset} ENVOY=${ANI_ENVOY_RESULT:-unset}"
 `
 		stdout, _, _ := r02RunBash(t, script, map[string]string{
-			"PATH":    binDir + ":" + os.Getenv("PATH"),
-			"KLOG":    klog,
-			"STUBLOG": stublog,
-			"VERIFY":  verifyAbs,
-			"OUT":     outDir,
-			"ENVOY":   envoyStub,
-			"NETFAIL": netFail,
+			"PATH":       binDir + ":" + os.Getenv("PATH"),
+			"KLOG":       klog,
+			"STUBLOG":    stublog,
+			"VERIFY":     verifyAbs,
+			"OUT":        outDir,
+			"ENVOY":      envoyStub,
+			"NETFAIL":    netFail,
 			"FAKE_STATE": stateDir,
 		})
 		code := 0
@@ -613,13 +614,13 @@ ani_run_network_checks kcn "$ENVOY" "$NET" "$OUT" || rc=$?
 echo "BRANCH_RC=$rc NET=${ANI_NETWORK_RESULT:-unset} ENVOY=${ANI_ENVOY_RESULT:-unset}"
 `
 		stdout, _, code = r02RunBash(t, script, map[string]string{
-			"PATH":    binDir + ":" + os.Getenv("PATH"),
-			"KLOG":    filepath.Join(outDir2, "klog"),
-			"STUBLOG": stublog2,
-			"VERIFY":  verifyAbs,
-			"OUT":     outDir2,
-			"ENVOY":   envoyStub,
-			"NET":     netStub,
+			"PATH":       binDir + ":" + os.Getenv("PATH"),
+			"KLOG":       filepath.Join(outDir2, "klog"),
+			"STUBLOG":    stublog2,
+			"VERIFY":     verifyAbs,
+			"OUT":        outDir2,
+			"ENVOY":      envoyStub,
+			"NET":        netStub,
 			"FAKE_STATE": stateDir,
 		})
 		if code != 0 {

@@ -18,10 +18,12 @@ package ani
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -39,7 +41,9 @@ log="${FAKE_SYSTEMCTL_LOG:?}"
 printf '%s\n' "$*" >> "$log"
 args="$*"
 case "$args" in
-  "is-enabled "*) echo "${FAKE_IS_ENABLED:-enabled}"; exit 0 ;;
+  "is-enabled "*)
+    if [ -n "${FAKE_IS_ENABLED_EXIT:-}" ]; then echo "${FAKE_IS_ENABLED:-enabled}"; exit "${FAKE_IS_ENABLED_EXIT}"; fi
+    echo "${FAKE_IS_ENABLED:-enabled}"; exit 0 ;;
   "is-active "*) echo "${FAKE_IS_ACTIVE:-active}"; exit 0 ;;
   *"show"*"--value"*)
     printf '%s\n' "${FAKE_EXEC_START:-/var/lib/ani-installer/ani-lab/bin/hauler store serve registry}"
@@ -69,6 +73,23 @@ func r14LifecycleSetup(t *testing.T) (binDir, logPath string) {
 	t.Setenv("FAKE_SYSTEMCTL_LOG", logPath)
 	r14FakeSystemctl(t, binDir)
 	return binDir, logPath
+}
+
+// r14UseEvidenceFile points the cold-start evidence path at a fixture file for
+// one test and restores it afterwards.
+func r14UseEvidenceFile(t *testing.T, path string) string {
+	t.Helper()
+	old := RegistryRebootEvidenceFile
+	RegistryRebootEvidenceFile = path
+	t.Cleanup(func() { RegistryRebootEvidenceFile = old })
+	return path
+}
+
+// r14Inspect inspects the bootstrap unit with the fake systemctl on PATH.
+func r14Inspect(ctx context.Context, binDir string) (RegistryLifecycleReport, error) {
+	return InspectRegistryLifecycle(ctx, RegistryLifecycleInput{
+		SystemctlBin: filepath.Join(binDir, "systemctl"), Unit: serviceUnitName,
+	})
 }
 
 func r14ReadLog(t *testing.T, logPath string) string {
@@ -192,7 +213,7 @@ func TestRegistryLifecycleOwnership(t *testing.T) {
 	// bootstrap service — the inspector is read-only by construction.
 	t.Run("lifecycle inspection never mutates the service", func(t *testing.T) {
 		binDir, logPath := r14LifecycleSetup(t)
-		report, err := InspectRegistryLifecycle(context.Background(), filepath.Join(binDir, "systemctl"), serviceUnitName)
+		report, err := r14Inspect(context.Background(), binDir)
 		if err != nil {
 			t.Fatalf("inspect failed: %v", err)
 		}
@@ -217,16 +238,19 @@ func TestRegistryLifecycleOwnership(t *testing.T) {
 func TestRegistryColdStartReporting(t *testing.T) {
 	t.Run("enabled and active still report cold start as not_verified", func(t *testing.T) {
 		binDir, _ := r14LifecycleSetup(t)
-		t.Setenv("RegistryRebootEvidenceFile", "")
+		r14UseEvidenceFile(t, filepath.Join(t.TempDir(), "absent-evidence.json"))
 		t.Setenv("FAKE_IS_ENABLED", "enabled")
 		t.Setenv("FAKE_IS_ACTIVE", "active")
-		report, err := InspectRegistryLifecycle(context.Background(), filepath.Join(binDir, "systemctl"), serviceUnitName)
+		report, err := r14Inspect(context.Background(), binDir)
 		if err != nil {
 			t.Fatalf("inspect failed: %v", err)
 		}
 		if report.ColdStart != RegistryColdStartNotVerified {
 			t.Fatalf("without real reboot evidence the cold start must be %q, got %q",
 				RegistryColdStartNotVerified, report.ColdStart)
+		}
+		if !strings.Contains(report.ColdStartDetail, "no reboot evidence recorded") {
+			t.Fatalf("the report must say why the cold start is unverified: %q", report.ColdStartDetail)
 		}
 		if !report.PathsPermanent {
 			t.Fatalf("permanent unit paths must be recognised: %+v", report)
@@ -236,40 +260,194 @@ func TestRegistryColdStartReporting(t *testing.T) {
 		}
 	})
 
-	t.Run("evidence file is the only path to verified", func(t *testing.T) {
+	// T38 / F11: the evidence file is only the beginning. Its CONTENT must bind
+	// the inspected unit, this host, this boot and a real cold pull, and every
+	// other outcome stays not_verified with a stated reason.
+	t.Run("cold start evidence must match unit, host, boot and a real cold pull", func(t *testing.T) {
 		binDir, _ := r14LifecycleSetup(t)
 		t.Setenv("FAKE_IS_ENABLED", "enabled")
 		t.Setenv("FAKE_IS_ACTIVE", "active")
-		evidenceFile := filepath.Join(t.TempDir(), "registry-reboot-evidence.json")
-		oldEvidence := RegistryRebootEvidenceFile
-		RegistryRebootEvidenceFile = evidenceFile
-		t.Cleanup(func() { RegistryRebootEvidenceFile = oldEvidence })
-		// No evidence file: not_verified.
-		report, err := InspectRegistryLifecycle(context.Background(), filepath.Join(binDir, "systemctl"), serviceUnitName)
+		t.Setenv("FAKE_EXEC_START", "/var/lib/ani-installer/ani-lab/bin/hauler store serve registry"+
+			" --port 5000 --directory /var/lib/ani-installer/ani-lab/work/registry-data --readonly=true"+
+			" --store /var/lib/ani-installer/ani-lab/work/hauler-store")
+		evidence := r14UseEvidenceFile(t, filepath.Join(t.TempDir(), "registry-reboot-evidence.json"))
+
+		host, err := os.Hostname()
 		if err != nil {
-			t.Fatalf("inspect failed: %v", err)
+			t.Fatalf("hostname: %v", err)
 		}
-		if report.ColdStart != RegistryColdStartNotVerified {
-			t.Fatalf("cold start must start as not_verified, got %q", report.ColdStart)
+		const currentBoot = "11111111-1111-1111-1111-111111111111"
+		const previousBoot = "22222222-2222-2222-2222-222222222222"
+		oldReadBootID := readBootID
+		t.Cleanup(func() { readBootID = oldReadBootID })
+		readBootID = func() (string, error) { return currentBoot, nil }
+
+		base := func() RegistryRebootEvidence {
+			return RegistryRebootEvidence{
+				SchemaVersion:   RegistryColdStartSchemaVersion,
+				Unit:            serviceUnitName,
+				Host:            host,
+				BootIDBefore:    previousBoot,
+				BootIDAfter:     currentBoot,
+				RegistryAddress: host + ":5000",
+				ClusterName:     "ani-lab",
+				ColdPull: RegistryColdPullResult{
+					Image:       "registry.k8s.io/kube-apiserver:v1.35.8",
+					Digest:      "sha256:" + strings.Repeat("a", 64),
+					BytesPulled: 76543210,
+					Result:      "ok",
+					LogPath:     "/var/lib/ani-installer/ani-lab/logs/cold-pull.log",
+				},
+				RecordedAt: time.Now().UTC().Add(-time.Hour).Format(time.RFC3339),
+			}
 		}
-		// The manual experiment writes its evidence file; only then verified.
-		if err := os.WriteFile(evidenceFile, []byte(`{"unit":"ani-image-registry.service","rebootedAt":"2026-09-24T00:00:00Z","coldPullBytes":1048576}`), 0o600); err != nil {
-			t.Fatalf("write evidence: %v", err)
+		write := func(t *testing.T, value any) {
+			t.Helper()
+			data, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(evidence, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
-		report, err = InspectRegistryLifecycle(context.Background(), filepath.Join(binDir, "systemctl"), serviceUnitName)
-		if err != nil {
-			t.Fatalf("inspect failed: %v", err)
+		inspect := func(t *testing.T) RegistryLifecycleReport {
+			t.Helper()
+			report, err := r14Inspect(context.Background(), binDir)
+			if err != nil {
+				t.Fatalf("inspect failed: %v", err)
+			}
+			return report
 		}
-		if report.ColdStart != RegistryColdStartVerified {
-			t.Fatalf("with reboot evidence the cold start must be verified, got %q", report.ColdStart)
+		inspectWithIdentity := func(t *testing.T) RegistryLifecycleReport {
+			t.Helper()
+			report, err := InspectRegistryLifecycle(context.Background(), RegistryLifecycleInput{
+				SystemctlBin: filepath.Join(binDir, "systemctl"), Unit: serviceUnitName,
+				ClusterName: "ani-lab", ConfigDigest: strings.Repeat("b", 64),
+				MaterialsLockDigest: "sha256:" + strings.Repeat("c", 64),
+			})
+			if err != nil {
+				t.Fatalf("inspect failed: %v", err)
+			}
+			return report
 		}
+
+		t.Run("positive control", func(t *testing.T) {
+			write(t, base())
+			report := inspect(t)
+			if report.ColdStart != RegistryColdStartVerified {
+				t.Fatalf("matching evidence must verify the cold start: %+v", report)
+			}
+			for _, want := range []string{host, currentBoot, "76543210", strings.Repeat("a", 12)} {
+				if !strings.Contains(report.ColdStartDetail, want) {
+					t.Fatalf("the detail must name what was accepted (missing %q): %q", want, report.ColdStartDetail)
+				}
+			}
+		})
+
+		cases := []struct {
+			name     string
+			body     func(t *testing.T)
+			mutate   func(*RegistryRebootEvidence)
+			want     string
+			identity bool
+		}{
+			{name: "empty file", body: func(t *testing.T) {
+				if err := os.WriteFile(evidence, []byte(""), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}, want: "empty"},
+			{name: "not json", body: func(t *testing.T) {
+				if err := os.WriteFile(evidence, []byte("unit=ani-image-registry.service\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}, want: "does not parse"},
+			{name: "unknown fields", mutate: func(e *RegistryRebootEvidence) {},
+				body: func(t *testing.T) {
+					write(t, map[string]any{"schemaVersion": 1, "unit": serviceUnitName, "surprise": true})
+				}, want: "does not parse"},
+			{name: "older schema", mutate: func(e *RegistryRebootEvidence) { e.SchemaVersion = 0 },
+				want: "schemaVersion"},
+			{name: "another unit", mutate: func(e *RegistryRebootEvidence) { e.Unit = "docker.service" },
+				want: "not the inspected unit"},
+			{name: "another host", mutate: func(e *RegistryRebootEvidence) { e.Host = "some-other-node" },
+				want: "not on this host"},
+			{name: "no restart recorded", mutate: func(e *RegistryRebootEvidence) { e.BootIDBefore = currentBoot },
+				want: "no restart happened"},
+			{name: "evidence from an older boot", mutate: func(e *RegistryRebootEvidence) {
+				e.BootIDBefore = "33333333-3333-3333-3333-333333333333"
+				e.BootIDAfter = "44444444-4444-4444-4444-444444444444"
+			}, want: "older boot"},
+			{name: "no boot ids", mutate: func(e *RegistryRebootEvidence) { e.BootIDBefore = "" },
+				want: "records no boot id"},
+			{name: "registry port mismatch", mutate: func(e *RegistryRebootEvidence) { e.RegistryAddress = "node1:6000" },
+				want: "serves --port 5000"},
+			{name: "address without port", mutate: func(e *RegistryRebootEvidence) { e.RegistryAddress = "node1" },
+				want: "not host:port"},
+			{name: "future timestamp", mutate: func(e *RegistryRebootEvidence) {
+				e.RecordedAt = time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
+			}, want: "in the future"},
+			{name: "broken timestamp", mutate: func(e *RegistryRebootEvidence) { e.RecordedAt = "yesterday" },
+				want: "not an RFC3339 timestamp"},
+			{name: "cold pull not ok", mutate: func(e *RegistryRebootEvidence) { e.ColdPull.Result = "skipped" },
+				want: `result is "skipped"`},
+			{name: "cold pull without digest", mutate: func(e *RegistryRebootEvidence) { e.ColdPull.Digest = "latest" },
+				want: "no sha256 manifest digest"},
+			{name: "cold pull moved no bytes", mutate: func(e *RegistryRebootEvidence) { e.ColdPull.BytesPulled = 0 },
+				want: "nothing proves a real fetch"},
+			{name: "different cluster", mutate: func(e *RegistryRebootEvidence) { e.ClusterName = "other-cluster" },
+				want: "belongs to cluster", identity: true},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if tc.body != nil {
+					tc.body(t)
+				} else {
+					value := base()
+					tc.mutate(&value)
+					write(t, value)
+				}
+				report := inspect(t)
+				if tc.identity {
+					report = inspectWithIdentity(t)
+				}
+				if report.ColdStart != RegistryColdStartNotVerified {
+					t.Fatalf("invalid evidence must stay %q: %+v", RegistryColdStartNotVerified, report)
+				}
+				if !strings.Contains(report.ColdStartDetail, tc.want) {
+					t.Fatalf("the detail must explain the refusal (missing %q): %q", tc.want, report.ColdStartDetail)
+				}
+			})
+		}
+
+		t.Run("an unlocatable unit ExecStart cannot bind evidence", func(t *testing.T) {
+			t.Setenv("FAKE_EXEC_START", "/var/lib/ani-installer/ani-lab/bin/hauler store serve registry")
+			write(t, base())
+			report := inspect(t)
+			if report.ColdStart == RegistryColdStartVerified ||
+				!strings.Contains(report.ColdStartDetail, "names no --port") {
+				t.Fatalf("without a port in the unit there is nothing to bind the pull to: %+v", report)
+			}
+		})
+
+		t.Run("missing systemctl unit state still reports", func(t *testing.T) {
+			t.Setenv("FAKE_IS_ENABLED", "")
+			t.Setenv("FAKE_IS_ENABLED_EXIT", "1")
+			report, err := r14Inspect(context.Background(), binDir)
+			if err != nil {
+				t.Fatalf("an exit-status-with-answer case must not fail the inspection: %v", err)
+			}
+			if report.Enabled != "enabled" {
+				t.Fatalf("the reported unit state must survive is-enabled's exit status: %+v", report)
+			}
+		})
 	})
 
 	t.Run("a unit pointing into temporary storage is flagged", func(t *testing.T) {
 		binDir, _ := r14LifecycleSetup(t)
 		t.Setenv("FAKE_EXEC_START", "/tmp/ani/bin/hauler store serve registry")
 		t.Setenv("FAKE_WORKDIR", "/tmp/ani/work")
-		report, err := InspectRegistryLifecycle(context.Background(), filepath.Join(binDir, "systemctl"), serviceUnitName)
+		report, err := r14Inspect(context.Background(), binDir)
 		if err != nil {
 			t.Fatalf("inspect failed: %v", err)
 		}

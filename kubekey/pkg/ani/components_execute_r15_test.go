@@ -42,12 +42,19 @@ func r15FakeKK(t *testing.T, binDir string) string {
 	script := `#!/usr/bin/env bash
 log="${FAKE_KK_LOG:?}"
 printf '%s\n' "$*" >> "$log"
+# The executor must hand the pinned kubeconfig to the child through the
+# environment (roles read $KUBECONFIG, not the operator's own shell default).
+printf 'KUBECONFIG=%s\n' "${KUBECONFIG-}" >> "${FAKE_KK_ENV_LOG:?}"
 args="$*"
 case "$args" in
   *"create cluster"*)
     echo "fake kk: create cluster must never run for components" >&2
     exit 3 ;;
   run\ builtin/core/playbooks/ani_components.yaml*)
+    if [ -n "${FAKE_KK_FAIL:-}" ]; then
+      echo "fake kk: simulated playbook failure" >&2
+      exit 5
+    fi
     # Real component roles render their connection fragments into the
     # canonical per-cluster runtime root
     # (/var/lib/ani-installer/<cluster>/work/connections.d) — the fake must
@@ -62,9 +69,35 @@ case "$args" in
       prev="$a"
     done
     cluster="$(awk '/cluster_name:/{print $2; exit}' "$cfg" 2>/dev/null || true)"
-    if [ -n "${FAKE_RUNTIME_BASE:-}" ] && [ -n "$cluster" ]; then
+    # One fragment per component in THIS run's scope, exactly like the roles:
+    # the executor must read back what the playbook actually wrote and refuse
+    # a component whose facts are missing.
+    scope="$(awk '
+      /^ *scope:/ { indent = match($0, /[^ ]/) - 1; inside = 1; next }
+      inside {
+        line = $0
+        sub(/[ \t]+$/, "", line)
+        if (line == "") next
+        if (match(line, /[^ ]/) - 1 <= indent) { inside = 0; next }
+        if (line ~ /: true$/) { key = line; sub(/:.*/, "", key); gsub(/[ \t]/, "", key); print key }
+      }' "$cfg" 2>/dev/null || true)"
+    if [ -n "${FAKE_RUNTIME_BASE:-}" ] && [ -n "$cluster" ] && [ -z "${FAKE_KK_NO_FRAGMENTS:-}" ]; then
       mkdir -p "$FAKE_RUNTIME_BASE/$cluster/work/connections.d"
-      printf 'NATS connection facts\n' > "$FAKE_RUNTIME_BASE/$cluster/work/connections.d/nats.md"
+      for comp in $scope; do
+        # A real role applies a workload for every component in scope, so the
+        # fake must leave that resource existing afterwards: the execution
+        # record binds ownership to a live uid, not to a name it hoped for.
+        if [ -n "${FAKE_CREATED_FILE:-}" ]; then printf '%s\n' "$comp" >> "$FAKE_CREATED_FILE"; fi
+        if [ -n "${FAKE_RUNTIME_BASE:-}" ]; then printf '%s\n' "$comp" >> "$FAKE_RUNTIME_BASE/.applied"; fi
+        # FAKE_KK_MISSING_FRAGMENT names one component whose fragment the
+        # simulated role forgets to write (the aggregation failure path).
+        if [ "$comp" = "${FAKE_KK_MISSING_FRAGMENT:-}" ]; then continue; fi
+        if [ "$comp" = nats ]; then
+          printf 'NATS connection facts\n' > "$FAKE_RUNTIME_BASE/$cluster/work/connections.d/nats.md"
+        else
+          printf '%s connection facts\n' "$comp" > "$FAKE_RUNTIME_BASE/$cluster/work/connections.d/$comp.md"
+        fi
+      done
     fi
     exit 0 ;;
   run*)
@@ -86,22 +119,52 @@ exit 2
 func r15PlanAndExecute(t *testing.T, componentsBlock string, natsRelease string) (string, ComponentsExecuteInput, string, string) {
 	t.Helper()
 	input, outDir := r15PlanFixture(t, componentsBlock, "nats", false, natsRelease)
+	// The plan binds the playbook-runner identity, so the fixture kk must
+	// exist BEFORE planning: create it and pin the plan digest to it.
+	baseDirPre := filepath.Dir(input.ConfigFile)
+	binDirPre := filepath.Join(baseDirPre, "kkbin")
+	if err := os.MkdirAll(binDirPre, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	r15FakeKK(t, binDirPre)
+	input.KKBin = filepath.Join(binDirPre, "kk")
+	input.PlanKKDigestOverride = fileSHA256Hex(input.KKBin)
 	if err := RunComponentsInstallPlan(context.Background(), input, os.Stdout); err != nil {
 		t.Fatalf("plan failed: %v", err)
 	}
-	entries, err := os.ReadDir(outDir)
+	planFile := r15OnlyPlanFile(t, outDir)
+	execute, kkLog := r15ExecuteInput(t, input, outDir, planFile)
+	return planFile, execute, kkLog, outDir
+}
+
+// r15OnlyPlanFile returns the single plan file in dir, failing when the
+// directory holds none or more than one.
+func r15OnlyPlanFile(t *testing.T, dir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read out dir: %v", err)
 	}
 	planFile := ""
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), "components-plan-") {
-			planFile = filepath.Join(outDir, entry.Name())
+			if planFile != "" {
+				t.Fatalf("more than one plan file in %s: %v", dir, entries)
+			}
+			planFile = filepath.Join(dir, entry.Name())
 		}
 	}
 	if planFile == "" {
 		t.Fatalf("no plan written: %v", entries)
 	}
+	return planFile
+}
+
+// r15ExecuteInput builds the execution environment for one plan produced by the
+// same fixture: the fake kk, the isolated canonical runtime root, the embedded
+// project hook and the run-scoped output dir.
+func r15ExecuteInput(t *testing.T, input ComponentsInstallInput, outDir, planFile string) (ComponentsExecuteInput, string) {
+	t.Helper()
 	baseDir := filepath.Dir(input.ConfigFile)
 	binDir := filepath.Join(baseDir, "kkbin")
 	if err := os.MkdirAll(binDir, 0o700); err != nil {
@@ -132,6 +195,7 @@ func r15PlanAndExecute(t *testing.T, componentsBlock string, natsRelease string)
 	t.Cleanup(func() { componentsProjectMaterialize = restore })
 	kkLog := filepath.Join(baseDir, "kk-calls.log")
 	t.Setenv("FAKE_KK_LOG", kkLog)
+	t.Setenv("FAKE_KK_ENV_LOG", filepath.Join(baseDir, "kk-env.log"))
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 	execute := ComponentsExecuteInput{
 		PlanFile:    planFile,
@@ -139,8 +203,9 @@ func r15PlanAndExecute(t *testing.T, componentsBlock string, natsRelease string)
 		PackageRoot: input.PackageRoot,
 		Kubeconfig:  filepath.Join(baseDir, "kubeconfig"),
 		Output:      filepath.Join(outDir, "runtime"),
+		KKBin:       filepath.Join(binDir, "kk"),
 	}
-	return planFile, execute, kkLog, outDir
+	return execute, kkLog
 }
 
 // The happy path: the mock executes NATS through the standalone playbook,
@@ -236,12 +301,37 @@ func TestComponentsExecuteAlreadyInstalledReadOnly(t *testing.T) {
 	_, execute, kkLog, _ := r15PlanAndExecute(t, "  nats: {enabled: true}", "ours")
 	os.Remove(kkLog)
 
-	err := RunComponentsExecute(context.Background(), execute, os.Stdout)
-	if err == nil || !strings.Contains(err.Error(), "nothing to execute") {
-		t.Fatalf("an all-already_installed plan must refuse execution, got %v", err)
+	if err := RunComponentsExecute(context.Background(), execute, os.Stdout); err != nil {
+		t.Fatalf("an all-already_installed plan must succeed as a read-only no-op, got %v", err)
 	}
 	if _, err := os.Stat(kkLog); !os.IsNotExist(err) {
 		t.Fatalf("the playbook must never run for an already_installed scope:\n%s", kkLog)
+	}
+	entries, err := os.ReadDir(execute.Output)
+	if err != nil {
+		t.Fatalf("read report dir: %v", err)
+	}
+	var reportFile string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "components-execute-") {
+			reportFile = filepath.Join(execute.Output, e.Name())
+		}
+	}
+	if reportFile == "" {
+		t.Fatalf("the no-op must still write its report: %v", entries)
+	}
+	data, err := os.ReadFile(reportFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report ComponentsExecuteReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Overall != VerifyStatusPass || len(report.Results) != 1 ||
+		report.Results[0].Status != "already_installed" ||
+		!strings.Contains(report.Results[0].Detail, "no-op") {
+		t.Fatalf("the report must record the read-only no-op outcome: %+v", report)
 	}
 }
 

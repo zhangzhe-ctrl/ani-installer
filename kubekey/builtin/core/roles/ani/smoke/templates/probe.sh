@@ -221,8 +221,30 @@ old_client_uid="$("${KUBECTL[@]}" get pod ani-smoke-client -n "$NAMESPACE" -o js
 append_summary "old_client_uid=${old_client_uid:-not_found}"
 
 CURRENT_KIND="envoy-client"
-CURRENT_POD=""
-envoy_client_name="$("${KUBECTL[@]}" create -f - -o jsonpath='{.metadata.name}' <<EOF
+# A Gateway reports Programmed, and its EndpointSlice reports ready endpoints,
+# from cluster-side facts. A client on another node can still be refused for a
+# moment, because that node's own kube-proxy has not installed the service yet.
+# So the client is retried: every attempt is a NEW Pod that really sends the
+# request and must produce both markers in its OWN stdout, and the window is
+# bounded twice over — by attempts and by wall-clock — so a data plane that
+# never serves is still a failure, never a slow success.
+readonly ENVOY_CLIENT_ATTEMPTS="${ANI_SMOKE_ENVOY_ATTEMPTS:-6}"
+readonly ENVOY_CLIENT_RETRY_SECONDS="${ANI_SMOKE_ENVOY_RETRY_SECONDS:-5}"
+readonly ENVOY_CLIENT_TOTAL_SECONDS="${ANI_SMOKE_ENVOY_TOTAL_SECONDS:-240}"
+envoy_attempt=0
+envoy_passed=""
+envoy_window_start=$SECONDS
+while (( envoy_attempt < ENVOY_CLIENT_ATTEMPTS )); do
+  if (( SECONDS - envoy_window_start >= ENVOY_CLIENT_TOTAL_SECONDS )); then
+    # The window is spent. A broken path stays broken; recording it as a slow
+    # pass would be the actual defect.
+    envoy_passed="deadline"
+    break
+  fi
+  envoy_attempt=$(( envoy_attempt + 1 ))
+  envoy_attempt_start=$SECONDS
+  CURRENT_POD=""
+  envoy_client_name="$("${KUBECTL[@]}" create -f - -o jsonpath='{.metadata.name}' <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -244,36 +266,72 @@ spec:
           printf 'ANI-ENVOY-OK\n'
 EOF
 )"
-CURRENT_POD="$envoy_client_name"
-envoy_client_uid="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')"
-envoy_client_created="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}')"
-envoy_client_node_actual="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.nodeName}')"
-envoy_client_image="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.containers[?(@.name=="client")].image}')"
-if [[ -n "$old_client_uid" && "$envoy_client_uid" == "$old_client_uid" ]]; then
-  log "Envoy client UID matches the old client UID"
-  exit 1
-fi
-append_summary "envoy_client_name=$envoy_client_name"
-append_summary "envoy_client_uid=$envoy_client_uid"
-append_summary "envoy_client_created=$envoy_client_created"
-append_summary "envoy_client_node=$envoy_client_node_actual"
-append_summary "envoy_client_image=$envoy_client_image"
-
-wait_for_pod "$envoy_client_name" 180 "Envoy client"
-envoy_phase="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.status.phase}')"
-envoy_exit_code="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')"
-if [[ "$envoy_phase" != "Succeeded" || "$envoy_exit_code" != "0" ]]; then
-  log "Envoy client did not finish successfully (phase=$envoy_phase exit=$envoy_exit_code)"
-  exit 1
-fi
-envoy_log="$("${KUBECTL[@]}" logs "$envoy_client_name" -n "$NAMESPACE")"
-printf '%s\n' "$envoy_log" > "$OUTPUT_DIR/envoy-client.log"
-for marker in ANI-INSTALLER-OK "$ENVOY_SUCCESS"; do
-  if ! printf '%s\n' "$envoy_log" | grep -Fqx "$marker"; then
-    log "Envoy client log missing marker: $marker"
+  CURRENT_POD="$envoy_client_name"
+  envoy_client_uid="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')"
+  envoy_client_created="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}')"
+  envoy_client_node_actual="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.nodeName}')"
+  envoy_client_image="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.spec.containers[?(@.name=="client")].image}')"
+  if [[ -n "$old_client_uid" && "$envoy_client_uid" == "$old_client_uid" ]]; then
+    log "Envoy client UID matches the old client UID"
     exit 1
   fi
+  append_summary "envoy_attempt_${envoy_attempt}_pod=$envoy_client_name"
+  append_summary "envoy_attempt_${envoy_attempt}_uid=$envoy_client_uid"
+  append_summary "envoy_attempt_${envoy_attempt}_node=$envoy_client_node_actual"
+  append_summary "envoy_client_name=$envoy_client_name"
+  append_summary "envoy_client_uid=$envoy_client_uid"
+  append_summary "envoy_client_created=$envoy_client_created"
+  append_summary "envoy_client_node=$envoy_client_node_actual"
+  append_summary "envoy_client_image=$envoy_client_image"
+
+  envoy_completed=true
+  if ! wait_for_pod "$envoy_client_name" 180 "Envoy client attempt $envoy_attempt/$ENVOY_CLIENT_ATTEMPTS"; then
+    envoy_completed=false
+  fi
+  envoy_phase="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+  envoy_exit_code="$("${KUBECTL[@]}" get pod "$envoy_client_name" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>/dev/null || true)"
+  # stdout only: a message on stderr must never satisfy a marker.
+  envoy_stdout="$("${KUBECTL[@]}" logs "$envoy_client_name" -n "$NAMESPACE" 2>/dev/null || true)"
+  envoy_stderr="$("${KUBECTL[@]}" logs "$envoy_client_name" -n "$NAMESPACE" --timestamps=false 2>&1 >/dev/null || true)"
+  {
+    printf 'phase=%s exit=%s elapsed=%ss\n' "${envoy_phase:-unknown}" "${envoy_exit_code:-unknown}" "$((SECONDS - envoy_attempt_start))"
+    printf -- '--- stdout ---\n%s\n--- stderr ---\n%s\n' "$envoy_stdout" "$envoy_stderr"
+  } > "$OUTPUT_DIR/envoy-client-attempt-${envoy_attempt}.log"
+  append_summary "envoy_attempt_${envoy_attempt}_phase=${envoy_phase:-unknown}"
+  append_summary "envoy_attempt_${envoy_attempt}_exit=${envoy_exit_code:-unknown}"
+  append_summary "envoy_attempt_${envoy_attempt}_seconds=$((SECONDS - envoy_attempt_start))"
+  # Evidence is flushed as it happens: a later deadline or interrupt must not
+  # cost the record of what already failed.
+  sync 2>/dev/null || true
+  envoy_markers=true
+  for marker in ANI-INSTALLER-OK "$ENVOY_SUCCESS"; do
+    if ! printf '%s\n' "$envoy_stdout" | grep -Fqx "$marker"; then
+      envoy_markers=false
+    fi
+  done
+  if [[ "$envoy_completed" == true && "$envoy_phase" == "Succeeded" && "$envoy_exit_code" == "0" && "$envoy_markers" == true ]]; then
+    envoy_passed="pass"
+    break
+  fi
+  log "Envoy client attempt $envoy_attempt/$ENVOY_CLIENT_ATTEMPTS did not pass (phase=${envoy_phase:-unknown} exit=${envoy_exit_code:-unknown})"
+  if (( envoy_attempt < ENVOY_CLIENT_ATTEMPTS )); then
+    sleep "$ENVOY_CLIENT_RETRY_SECONDS"
+  fi
 done
+append_summary "envoy_attempts=$envoy_attempt"
+append_summary "envoy_window_seconds=$((SECONDS - envoy_window_start))"
+if [[ "$envoy_passed" != "pass" ]]; then
+  # Nothing here proves why a broken path is broken, only that this request
+  # shape did not succeed within the window; the per-attempt logs stay as the
+  # evidence, and no service, Pod, CNI or switch state is touched to "fix" it.
+  if [[ "$envoy_passed" == "deadline" ]]; then
+    log "Envoy client did not finish successfully: the ${ENVOY_CLIENT_TOTAL_SECONDS}s window closed after $envoy_attempt attempt(s) of up to $ENVOY_CLIENT_ATTEMPTS"
+  else
+    log "Envoy client did not finish successfully in $ENVOY_CLIENT_ATTEMPTS attempts (window $((SECONDS - envoy_window_start))s)"
+  fi
+  exit 1
+fi
+printf '%s\n' "$envoy_stdout" > "$OUTPUT_DIR/envoy-client.log"
 
 "${KUBECTL[@]}" get pods -n "$NAMESPACE" -o wide > "$OUTPUT_DIR/pods-after.txt"
 append_summary "result=pass"

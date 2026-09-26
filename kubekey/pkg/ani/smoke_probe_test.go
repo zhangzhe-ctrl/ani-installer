@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -67,9 +69,32 @@ func fakeWgetMain() int {
 		fmt.Fprintf(os.Stderr, "fake wget failure for %s\n", target)
 		return 1
 	}
+	// FAKE_WGET_FLAKY=n makes the first n Envoy data-plane requests fail, the
+	// way a node whose kube-proxy has not yet programmed the freshly ready
+	// Envoy endpoints rejects the connection, before the cluster settles.
+	if flaky := os.Getenv("FAKE_WGET_FLAKY"); flaky != "" && target == "envoy" {
+		limit, err := strconv.Atoi(flaky)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fake wget: bad FAKE_WGET_FLAKY %q\n", flaky)
+			return 2
+		}
+		if envoyRequestCount(stateDir, url) <= limit {
+			fmt.Fprintf(os.Stderr, "fake wget: envoy route not programmed yet\n")
+			return 1
+		}
+	}
 	if wrongTarget == target {
 		fmt.Println("ANI-INSTALLER-WRONG")
 		return 0
+	}
+	// FAKE_WGET_STDERR=target answers on stderr instead of stdout: the probe
+	// asserts on the response body it received, so a look-alike message that
+	// never reached stdout must not satisfy a marker.
+	if os.Getenv("FAKE_WGET_STDERR") == target {
+		fmt.Fprintln(os.Stderr, "ANI-INSTALLER-OK")
+		fmt.Fprintln(os.Stderr, "ANI-ENVOY-OK")
+		fmt.Println("ANI-INSTALLER-WRONG")
+		return 1
 	}
 	// The generic network checker (R11) asserts the exact per-run token body;
 	// the fake kubectl exported it when it executed the client pod script.
@@ -92,6 +117,22 @@ func appendRequestedURL(stateDir, url string) {
 	}
 	defer file.Close()
 	_, _ = fmt.Fprintln(file, url)
+}
+
+// envoyRequestCount reads back the request journal and returns how many
+// Envoy data-plane requests have been made, including the caller's own.
+func envoyRequestCount(stateDir, url string) int {
+	content, err := os.ReadFile(filepath.Join(stateDir, "requested.log"))
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, line := range strings.Split(string(content), "\n") {
+		if line == url {
+			count++
+		}
+	}
+	return count
 }
 func fakeKubectlMain() int {
 	rawArgs := os.Args[1:]
@@ -117,9 +158,32 @@ func fakeKubectlMain() int {
 	if rawArgs[0] == "logs" && len(rawArgs) > 1 {
 		name := rawArgs[1]
 		stateDir := os.Getenv("FAKE_STATE_DIR")
-		log, err := os.ReadFile(filepath.Join(stateDir, name+".log"))
-		if err == nil {
-			fmt.Print(string(log))
+		// Fidelity: a real `kubectl logs` sends the container's stdout to its
+		// own stdout and the container's stderr to its own stderr. Merging them
+		// here would let the probe's own capture hide a response that never
+		// arrived on stdout, which is exactly what the marker gate forbids.
+		out, errOut := os.ReadFile(filepath.Join(stateDir, name+".log"))
+		errStream, errErr := os.ReadFile(filepath.Join(stateDir, name+".err"))
+		// FAKE_LOGS_MOVE_TO_STDERR=<marker>: the container printed that line to
+		// its own stderr, not to stdout. A probe that merges the two streams
+		// would read the marker as a response it never received.
+		if moved := os.Getenv("FAKE_LOGS_MOVE_TO_STDERR"); moved != "" && errOut == nil {
+			stdout := string(out)
+			if strings.Contains(stdout, moved) {
+				stdout = strings.ReplaceAll(stdout, moved+"\n", "")
+				fmt.Print(stdout)
+				fmt.Fprintln(os.Stderr, moved)
+				if errErr == nil && len(errStream) > 0 {
+					fmt.Fprint(os.Stderr, string(errStream))
+				}
+				return 0
+			}
+		}
+		if errOut == nil {
+			fmt.Print(string(out))
+			if errErr == nil && len(errStream) > 0 {
+				fmt.Fprint(os.Stderr, string(errStream))
+			}
 			return 0
 		}
 		switch name {
@@ -428,10 +492,13 @@ func fakeKubectlCreate() int {
 	created := "2026-09-15T00:00:00Z"
 
 	cmd := exec.Command("/bin/sh", "-ec", shellArg)
-	output, err := cmd.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
 	phase := "Succeeded"
 	exitCode := "0"
-	if err != nil {
+	if runErr != nil {
 		phase = "Failed"
 		exitCode = "1"
 	}
@@ -443,7 +510,8 @@ func fakeKubectlCreate() int {
 		name + ".image":    image,
 		name + ".phase":    phase,
 		name + ".exit":     exitCode,
-		name + ".log":      string(output),
+		name + ".log":      stdout.String(),
+		name + ".err":      stderr.String(),
 		name + ".manifest": manifest,
 	}
 	for filename, value := range files {
@@ -487,9 +555,14 @@ func fakeRecordCreatedPod(manifest, stateDir, generateName, node string, serve b
 		}
 		cmd := exec.Command("/bin/sh", "-ec", shellArg)
 		cmd.Env = append(os.Environ(), "FAKE_NET_TOKEN="+token)
-		out, err := cmd.CombinedOutput()
-		output = string(out)
-		if err != nil {
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		// The net client's stderr is kept out of its stdout record for the same
+		// reason as the Envoy client's.
+		cmd.Stderr = io.Discard
+		runErr := cmd.Run()
+		output = out.String()
+		if runErr != nil {
 			phase = "Failed"
 			exitCode = "1"
 		}
@@ -570,8 +643,8 @@ type smokeProbeResult struct {
 	runDir   string
 }
 
-func runSmokeProbe(t *testing.T, scenario, failTarget, wrongTarget string) smokeProbeResult {
-	return runSmokeProbeScript(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "probe.sh"), "run-", scenario, failTarget, wrongTarget)
+func runSmokeProbe(t *testing.T, scenario, failTarget, wrongTarget string, extraEnv ...string) smokeProbeResult {
+	return runSmokeProbeScript(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "probe.sh"), "run-", scenario, failTarget, wrongTarget, extraEnv...)
 }
 
 // runNetProbeHTTP drives the R11 generic network checker through the same
@@ -581,7 +654,7 @@ func runNetProbeHTTP(t *testing.T, failTarget, wrongTarget string) smokeProbeRes
 	return runSmokeProbeScript(t, filepath.Join("..", "..", "builtin", "core", "roles", "ani", "smoke", "templates", "network-probe.sh"), "net-run-", "success", failTarget, wrongTarget)
 }
 
-func runSmokeProbeScript(t *testing.T, scriptRel, outPrefix, scenario, failTarget, wrongTarget string) smokeProbeResult {
+func runSmokeProbeScript(t *testing.T, scriptRel, outPrefix, scenario, failTarget, wrongTarget string, extraEnv ...string) smokeProbeResult {
 	t.Helper()
 	if runtime.GOOS != "linux" {
 		t.Skip("probe integration test executes Linux shell commands")
@@ -624,7 +697,11 @@ func runSmokeProbeScript(t *testing.T, scriptRel, outPrefix, scenario, failTarge
 		"FAKE_CLUSTER="+scenario,
 		"FAKE_WGET_FAIL="+failTarget,
 		"FAKE_WGET_WRONG="+wrongTarget,
+		// The retry window is a production timing choice; the harness asserts
+		// behaviour, not wall-clock.
+		"ANI_SMOKE_ENVOY_RETRY_SECONDS=0",
 	)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	output, err := cmd.CombinedOutput()
 	result := smokeProbeResult{
 		output:   string(output),
@@ -767,6 +844,109 @@ func TestSmokeProbeDoesNotTrustOldSucceededClient(t *testing.T) {
 	newUID := smokeSummaryValue(t, summary, "envoy_client_uid")
 	if oldUID != "uid-old-ani-smoke-client" || newUID == "" || newUID == oldUID {
 		t.Fatalf("probe did not distinguish old and new clients; summary:\n%s", summary)
+	}
+}
+
+func TestSmokeProbeRetriesAProgrammedLaterEnvoyPath(t *testing.T) {
+	// Live 2026-09-26: the cluster was healthy and the Gateway Programmed, but
+	// the single Envoy request raced the per-node service programming and the
+	// whole install aborted. A probe may wait for the path, but every attempt
+	// must be a real fresh client and the wait must stay bounded.
+	result := runSmokeProbe(t, "success", "", "", "FAKE_WGET_FLAKY=2", "ANI_SMOKE_ENVOY_RETRY_SECONDS=0")
+	if result.exitCode != 0 {
+		t.Fatalf("probe exit=%d\n%s", result.exitCode, result.output)
+	}
+	summary := readSmokeFile(t, filepath.Join(result.runDir, "summary.txt"))
+	if got := smokeSummaryValue(t, summary, "envoy_attempts"); got != "3" {
+		t.Fatalf("probe recorded envoy_attempts=%q, want 3; summary:\n%s", got, summary)
+	}
+	requests := readSmokeFile(t, filepath.Join(result.stateDir, "requested.log"))
+	if got := strings.Count(requests, "http://"+fakeEnvoySvcIP+":9090/\n"); got != 3 {
+		t.Fatalf("probe made %d Envoy requests, want 3; requests:\n%s", got, requests)
+	}
+	// Each attempt is its own client Pod, and its own log is kept as evidence.
+	uids := map[string]bool{}
+	for _, attempt := range []string{"1", "2", "3"} {
+		value := smokeSummaryValue(t, summary, "envoy_attempt_"+attempt+"_uid")
+		if value == "" || uids[value] {
+			t.Fatalf("attempt %s reused or lost its client UID (uid=%q); summary:\n%s", attempt, value, summary)
+		}
+		uids[value] = true
+		if _, err := os.Stat(filepath.Join(result.runDir, "envoy-client-attempt-"+attempt+".log")); err != nil {
+			t.Fatalf("attempt %s kept no log: %v", attempt, err)
+		}
+	}
+	if body := readSmokeFile(t, filepath.Join(result.runDir, "envoy-client.log")); !strings.Contains(body, "ANI-ENVOY-OK") {
+		t.Fatalf("final client log lost the markers:\n%s", body)
+	}
+}
+
+func TestSmokeProbeEnvoyRetriesAreBounded(t *testing.T) {
+	// The retry window may not become an open-ended pass: a data plane that
+	// never serves the marker must still fail the probe, after exactly the
+	// declared number of attempts.
+	result := runSmokeProbe(t, "success", "", "", "FAKE_WGET_FLAKY=99", "ANI_SMOKE_ENVOY_RETRY_SECONDS=0")
+	if result.exitCode == 0 {
+		t.Fatal("probe passed a data plane that never answered")
+	}
+	requests := readSmokeFile(t, filepath.Join(result.stateDir, "requested.log"))
+	if got := strings.Count(requests, "http://"+fakeEnvoySvcIP+":9090/\n"); got != 6 {
+		t.Fatalf("probe made %d Envoy requests, want the 6-attempt bound; requests:\n%s", got, requests)
+	}
+	for _, want := range []string{"attempt 6/6", "did not finish successfully in 6"} {
+		if !strings.Contains(result.output, want) {
+			t.Fatalf("probe failure missing %q; output:\n%s", want, result.output)
+		}
+	}
+}
+
+// The retry window must be bounded by wall-clock too: an attempt count high
+// enough to outlast the install step may not turn a broken path into a slow
+// success.
+func TestSmokeProbeEnvoyRetryWindowIsBoundedByTime(t *testing.T) {
+	result := runSmokeProbe(t, "success", "", "", "FAKE_WGET_FLAKY=9999",
+		"ANI_SMOKE_ENVOY_ATTEMPTS=1000", "ANI_SMOKE_ENVOY_RETRY_SECONDS=0", "ANI_SMOKE_ENVOY_TOTAL_SECONDS=1")
+	if result.exitCode == 0 {
+		t.Fatal("an unbounded attempt count with a dead data plane must not pass")
+	}
+	requests := readSmokeFile(t, filepath.Join(result.stateDir, "requested.log"))
+	count := strings.Count(requests, "http://"+fakeEnvoySvcIP+":9090/\n")
+	if count == 0 || count >= 1000 {
+		t.Fatalf("the deadline never bit: %d Envoy requests under a 1s window", count)
+	}
+	summary := readSmokeFile(t, filepath.Join(result.runDir, "summary.txt"))
+	if !strings.Contains(summary, "envoy_window_seconds=") {
+		t.Fatalf("the summary does not record the window it used; summary:\n%s", summary)
+	}
+	if !strings.Contains(result.output, "window closed") {
+		t.Fatalf("the failure must name the deadline; output:\n%s", result.output)
+	}
+}
+
+// A marker that only appears on stderr is not a response body.
+func TestSmokeProbeEnvoyMarkersRequireStdout(t *testing.T) {
+	// The client Pod is Succeeded with exit 0, and its log stream carries both
+	// marker strings — on stderr, with nothing on stdout. Only a probe that
+	// asserts on the response it actually received may refuse this.
+	result := runSmokeProbe(t, "success", "", "",
+		"FAKE_LOGS_MOVE_TO_STDERR=ANI-ENVOY-OK", "ANI_SMOKE_ENVOY_ATTEMPTS=2")
+	if result.exitCode == 0 {
+		t.Fatal("stderr chatter that mimics the markers satisfied the probe")
+	}
+	if !strings.Contains(result.output, "attempt 2/2") {
+		t.Fatalf("every attempt must be refused; output:\n%s", result.output)
+	}
+	for _, attempt := range []string{"1", "2"} {
+		body := readSmokeFile(t, filepath.Join(result.runDir, "envoy-client-attempt-"+attempt+".log"))
+		if !strings.Contains(body, "--- stdout ---") || !strings.Contains(body, "--- stderr ---") {
+			t.Fatalf("attempt %s log does not keep stdout and stderr apart:\n%s", attempt, body)
+		}
+		if !strings.Contains(body, "ANI-ENVOY-OK") {
+			t.Fatalf("attempt %s log lost the stderr line that must not count:\n%s", attempt, body)
+		}
+		if strings.Contains(strings.SplitAfter(body, "--- stderr ---")[0], "ANI-ENVOY-OK") {
+			t.Fatalf("attempt %s shows the marker on stdout, so the case does not test what it claims:\n%s", attempt, body)
+		}
 	}
 }
 

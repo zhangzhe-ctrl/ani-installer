@@ -2,6 +2,9 @@ package ani
 
 import (
 	"bytes"
+	"context"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -683,6 +686,46 @@ func parseIPv4Prefix(field, cidr string) (netip.Prefix, error) {
 	return masked, nil
 }
 
+// parseIPv4RoutingPrefix validates a kcn encap/intranet entry: the same IPv4 and
+// canonical-form contract as every other network, minus the /30 floor, because
+// these are routing prefixes and a point-to-point /31 is legal (F06 §4: the
+// shared IPv4 contract must not over-restrict a valid kcn site).
+func parseIPv4RoutingPrefix(field, cidr string) (netip.Prefix, error) {
+	addrStr, bitsStr, ok := strings.Cut(cidr, "/")
+	if !ok {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: a CIDR needs an address and a prefix length like 10.16.0.0/16", field, cidr)
+	}
+	addr, err := netip.ParseAddr(addrStr)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: %w", field, cidr, err)
+	}
+	bits, err := strconv.Atoi(bitsStr)
+	if err != nil || bits < 0 || bits > addr.BitLen() {
+		return netip.Prefix{}, fmt.Errorf("%s %q is invalid: bad prefix length %q", field, cidr, bitsStr)
+	}
+	if !addr.Is4() {
+		return netip.Prefix{}, fmt.Errorf("%s %q is not an IPv4 network; this release supports IPv4 only", field, cidr)
+	}
+	prefix := netip.PrefixFrom(addr, bits)
+	masked := prefix.Masked()
+	if prefix != masked {
+		return netip.Prefix{}, fmt.Errorf("%s %q is not the canonical network address; write %s", field, cidr, masked)
+	}
+	return masked, nil
+}
+
+// prefixLastAddress returns the final address of an IPv4 prefix, which is its
+// broadcast address. It is computed from the network bits, because a prefix this
+// narrow (at most /30) always has a host range.
+func prefixLastAddress(prefix netip.Prefix) netip.Addr {
+	value := binary.BigEndian.Uint32(prefix.Addr().AsSlice())
+	hosts := uint32(1) << uint(32-prefix.Bits())
+	last := value + hosts - 1
+	var array [4]byte
+	binary.BigEndian.PutUint32(array[:], last)
+	return netip.AddrFrom4(array)
+}
+
 // resolveKubeOVNNetwork resolves the effective Kube-OVN network values and, on
 // the kubeovn stack, enforces the R10/A05 contract (blueprint §6.3):
 //   - pod, service and join networks are canonical IPv4 prefixes, at most /30,
@@ -772,6 +815,9 @@ func resolveKubeOVNNetwork(c ClusterConfig) (kubeovnNetwork, error) {
 	}
 	if gw == pod.Addr() {
 		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %s is the network address of %s and cannot serve as the gateway", gw, pod)
+	}
+	if last := prefixLastAddress(pod); gw == last {
+		return kubeovnNetwork{}, fmt.Errorf("network.kubeovn.defaultGateway %s is the broadcast address of %s and cannot serve as the gateway", gw, pod)
 	}
 	return kubeovnNetwork{DefaultGateway: gw.String(), JoinCIDR: join.String()}, nil
 }
@@ -973,11 +1019,20 @@ func Validate(c ClusterConfig) error {
 	if strings.TrimSpace(c.Network.ManagementInterface) == "" {
 		return fmt.Errorf("network.managementInterface is required")
 	}
-	if _, _, err := net.ParseCIDR(c.Network.PodCIDR); err != nil {
-		return fmt.Errorf("network.podCIDR %q is invalid: %w", c.Network.PodCIDR, err)
+	// The shared IPv4 contract is checked here, before any CNI-specific logic
+	// (F06 small regression T39): net.ParseCIDR accepted IPv6 pod/service
+	// networks, and an IPv6 pod network against an IPv4 service network was only
+	// noticed by whichever CNI ran first.
+	podNetwork, err := parseIPv4Prefix("network.podCIDR", c.Network.PodCIDR)
+	if err != nil {
+		return err
 	}
-	if _, _, err := net.ParseCIDR(c.Network.ServiceCIDR); err != nil {
-		return fmt.Errorf("network.serviceCIDR %q is invalid: %w", c.Network.ServiceCIDR, err)
+	serviceNetwork, err := parseIPv4Prefix("network.serviceCIDR", c.Network.ServiceCIDR)
+	if err != nil {
+		return err
+	}
+	if podNetwork.Overlaps(serviceNetwork) {
+		return fmt.Errorf("network.podCIDR %s and network.serviceCIDR %s overlaps; no supported CNI can route both", podNetwork, serviceNetwork)
 	}
 	stack := c.Network.Stack
 	if stack == "" {
@@ -1017,9 +1072,12 @@ func Validate(c ClusterConfig) error {
 		if len(c.Network.KCN.IntranetNetworks) == 0 {
 			return fmt.Errorf("network.kcn.intranetNetworks is required")
 		}
+		// Only the format and the IPv4 family are demanded here. An intranet
+		// list that CONTAINS the encap or pod networks is the normal kcn layout,
+		// so no overlap rule belongs at this level.
 		for _, cidr := range append(c.Network.KCN.EncapNetworks, c.Network.KCN.IntranetNetworks...) {
-			if _, _, err := net.ParseCIDR(cidr); err != nil {
-				return fmt.Errorf("kcn network %q is invalid: %w", cidr, err)
+			if _, err := parseIPv4RoutingPrefix("kcn network", cidr); err != nil {
+				return err
 			}
 		}
 	}
@@ -1027,21 +1085,33 @@ func Validate(c ClusterConfig) error {
 		return err
 	}
 
-	// Encap-network routing consistency is a kcn-stack concern only.
+	// Encap-network routing consistency is a kcn-stack concern only, and it is a
+	// containment contract: an intranet list that names a supernetwork of an encap
+	// network routes it correctly, so requiring the two strings to be equal used to
+	// refuse a legal site (§4 small regression).
 	if stack == "kcn" {
-		intranetNetworks := make(map[string]struct{}, len(c.Network.KCN.IntranetNetworks))
+		intranetNetworks := make([]netip.Prefix, 0, len(c.Network.KCN.IntranetNetworks))
 		for _, network := range c.Network.KCN.IntranetNetworks {
-			if _, ipnet, err := net.ParseCIDR(network); err == nil {
-				intranetNetworks[ipnet.String()] = struct{}{}
+			prefix, err := parseIPv4RoutingPrefix("network.kcn.intranetNetworks", network)
+			if err != nil {
+				return err
 			}
+			intranetNetworks = append(intranetNetworks, prefix)
 		}
 		for _, network := range c.Network.KCN.EncapNetworks {
-			_, ipnet, err := net.ParseCIDR(network)
+			encap, err := parseIPv4RoutingPrefix("network.kcn.encapNetworks", network)
 			if err != nil {
-				return fmt.Errorf("kcn network %q is invalid: %w", network, err)
+				return err
 			}
-			if _, ok := intranetNetworks[ipnet.String()]; !ok {
-				return fmt.Errorf("network.kcn.intranetNetworks must include each encap network so KCN can route host traffic: %s", ipnet.String())
+			covered := false
+			for _, intranet := range intranetNetworks {
+				if intranet.Bits() <= encap.Bits() && intranet.Contains(encap.Addr()) {
+					covered = true
+					break
+				}
+			}
+			if !covered {
+				return fmt.Errorf("no network.kcn.intranetNetworks entry covers the encap network %s, so KCN could not route host traffic on it", encap)
 			}
 		}
 	}
@@ -1421,10 +1491,17 @@ func LocalImageReferences(table ImageTable, registry string) (map[string]string,
 // aniRoleEnabled reports whether an ANI role's files are part of the selected
 // install chain, so the render command skips disabled components instead of
 // failing on their deliberately absent materials.
+// aniRoleEnabled mirrors create_cluster.yaml's own role gates. The playbook is
+// the authority and RenderSite cross-checks this table against the playbook's
+// evaluated `when` conditions (assertPlaybookRoleSelection), so the render can
+// never drift from what a real install runs.
 func aniRoleEnabled(role string, c ClusterConfig) bool {
 	switch role {
 	case "kcn", "envoy", "smoke":
-		return networkStack(c.Network.Stack) == "kcn" && installProfile(c.Profile) != "base"
+		// The playbook gates these three on the network stack ONLY: a base
+		// profile still installs the kcn CNI, its dedicated Envoy and the smoke
+		// test, because the cluster has no working data path without them.
+		return networkStack(c.Network.Stack) == "kcn"
 	case "kubeovn":
 		return networkStack(c.Network.Stack) == "kubeovn"
 	case "ceph":
@@ -1455,8 +1532,9 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 // same image table the installer uses. The result is a plain map of relative
 // path -> rendered bytes, with no cluster access and no apply.
 type r08Heredoc struct {
-	delimiter string
-	body      string
+	delimiter  string
+	openerLine string
+	body       string
 }
 
 // heredocBodies extracts the bodies of unquoted shell here-documents so their
@@ -1474,7 +1552,7 @@ func heredocBodies(content string) []r08Heredoc {
 		var body []string
 		for _, inner := range lines[index+1:] {
 			if strings.TrimSpace(inner) == delimiter {
-				blocks = append(blocks, r08Heredoc{delimiter: delimiter, body: strings.Join(body, "\n")})
+				blocks = append(blocks, r08Heredoc{delimiter: delimiter, openerLine: line, body: strings.Join(body, "\n")})
 				break
 			}
 			body = append(body, inner)
@@ -1483,12 +1561,25 @@ func heredocBodies(content string) []r08Heredoc {
 	return blocks
 }
 
-// RenderedFile pairs a rendered role file with its template source, so the
-// semantic checks can tell legitimate runtime-bound values apart from defects.
+// RenderedFile pairs a rendered role file with its template source and its place
+// inside the role, so the semantic checks can tell deployed material apart from
+// playbook text, and legitimate runtime-bound values apart from defects.
 type RenderedFile struct {
-	Name     string
+	Name string
+	Role string
+	// Rel is the file's path inside its role directory (tasks/main.yaml,
+	// templates/values.yaml, ...).
+	Rel      string
 	Source   []byte
 	Rendered []byte
+}
+
+// DeployedMaterial reports whether this file is written to a node by a role
+// (everything under templates/ and scripts/), as opposed to the playbook text
+// under tasks/ that the executor interprets itself. Only deployed material has
+// to be valid YAML on its own.
+func (f RenderedFile) DeployedMaterial() bool {
+	return strings.HasPrefix(f.Rel, "templates/") || strings.HasPrefix(f.Rel, "scripts/")
 }
 
 func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table ImageTable) ([]RenderedFile, error) {
@@ -1507,6 +1598,12 @@ func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table Ima
 		if _, exists := spec[key]; !exists {
 			spec[key] = value
 		}
+	}
+	// What the render shows must be what a real install runs (F07): the
+	// playbooks' own gates, evaluated with the executor's condition engine, are
+	// compared against the selection table role by role before anything renders.
+	if err := assertPlaybookRoleSelection(rolesDir, spec, c); err != nil {
+		return nil, err
 	}
 	files := []RenderedFile{}
 	walkErr := filepath.WalkDir(rolesDir, func(path string, entry os.DirEntry, walkErr error) error {
@@ -1547,7 +1644,10 @@ func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table Ima
 		if err := tmpl.Execute(rendered, spec); err != nil {
 			return fmt.Errorf("render %s: %w", path, err)
 		}
-		files = append(files, RenderedFile{Name: name, Source: source, Rendered: rendered.Bytes()})
+		files = append(files, RenderedFile{
+			Name: name, Role: role, Rel: filepath.ToSlash(roleRel),
+			Source: source, Rendered: rendered.Bytes(),
+		})
 		return nil
 	})
 	if walkErr != nil {
@@ -1569,48 +1669,234 @@ func renderSource(files []RenderedFile, name string) string {
 	return ""
 }
 
-// vendorMaterialFile names the upstream documents the roles ship verbatim (with
-// only the image references rewritten): their schema placeholders are vendor
-// text, not defects.
-var vendorMaterialFiles = []string{"crds.yaml", "csi-operator.yaml", "install.yaml"}
+// vendorMaterial is upstream documentation a role ships verbatim (only image
+// references are rewritten in it). Its schema placeholders are vendor text, not
+// this installer's defects, so the shape checks that could trip on them are
+// narrowed here — the file syntax, resource identity and placeholder checks all
+// still run. The list is exact per role and file: a broad suffix match swept in
+// this installer's own Kube-OVN site template and stopped checking it (F07).
+var vendorMaterial = map[string][]string{
+	"ceph":    {"templates/crds.yaml", "templates/csi-operator.yaml"},
+	"envoy":   {"templates/install.yaml"},
+	"kcn":     {"templates/install.yaml"},
+	"kubeovn": {},
+}
 
-// ValidateRenderedArtifacts runs the semantic checks over rendered output that
-// a plain `bash -n` cannot provide (R08):
-//   - no unrendered or missing template values (`{{`, `<no value>`), except the
-//     two legitimate runtime-bound shapes (loop variables and command outputs
-//     registered by earlier tasks), which are detected from the template source;
-//   - no leftover placeholder or empty image references;
-//   - every shell heredoc body that claims to be YAML parses as YAML;
-//   - no duplicate apiVersion/kind/name resource in the rendered manifests.
-//
-// Upstream vendor documents (CRDs, the csi-operator manifest, the official
-// envoy install manifest) ship schema placeholders and their own structure, so
-// the shape checks skip them while the digest/identity checks do not.
+func isVendorMaterial(file RenderedFile) bool {
+	for _, path := range vendorMaterial[file.Role] {
+		if path == file.Rel {
+			return true
+		}
+	}
+	return false
+}
+
+// heredocKind is what a shell here-document actually contains. Classifying it is
+// the difference between validating a body and "validating" python as if it were
+// YAML — which parses as a scalar and reports nothing at all (F07).
+type heredocKind int
+
+const (
+	heredocYAML heredocKind = iota
+	heredocJSON
+	heredocPython
+	heredocOther
+)
+
+// pythonHeredocDelimiters are the names this repo uses for embedded python and
+// other non-YAML payloads. Anything else is expected to be YAML.
+var nonYAMLHeredocs = map[string]heredocKind{
+	"PY": heredocPython, "PY_EOF": heredocPython, "PYEOF": heredocPython,
+	"PYTHON": heredocPython, "PYTHON_EOF": heredocPython,
+	"JSON": heredocJSON, "JSON_EOF": heredocJSON,
+	"EOSQL": heredocOther, "SQL": heredocOther,
+}
+
+// heredocTargetExtensionPattern finds the file a here-document is written to, so
+// the payload can be classified by what actually consumes it.
+var heredocTargetExtensionPattern = regexp.MustCompile(`(?i)([A-Za-z0-9_./$-]+)\.(ya?ml|json|py|txt|conf|sh|sql)["']?\s*<<-?`)
+
+// classifyHeredoc decides what a here-document holds. The delimiter name is the
+// first signal (PY, PY_EOF, JSON, EOSQL and friends), then the file the opener
+// redirects into, because `cat > evidence/volume-ids.txt <<EOF` is a text dump
+// and not a YAML document that failed to be one.
+func classifyHeredoc(openerLine, delimiter string) heredocKind {
+	if kind, ok := nonYAMLHeredocs[strings.ToUpper(strings.TrimPrefix(delimiter, "-"))]; ok {
+		return kind
+	}
+	if match := heredocTargetExtensionPattern.FindStringSubmatch(openerLine); match != nil {
+		switch strings.ToLower(match[2]) {
+		case "yaml", "yml":
+			return heredocYAML
+		case "json":
+			return heredocJSON
+		case "py":
+			return heredocPython
+		default:
+			return heredocOther
+		}
+	}
+	return heredocYAML
+}
+
+// runtimeValueAction reports whether one template source line binds a value the
+// executor only knows at run time: a loop item or a registered command's stdout.
+// This is the precise version of the old whole-file exemption, which let any
+// undefined value through as soon as the file mentioned .item anywhere (F07).
+func runtimeValueAction(sourceLine string) bool {
+	start := strings.Index(sourceLine, "{{")
+	if start < 0 {
+		return false
+	}
+	end := strings.Index(sourceLine[start+2:], "}}")
+	if end < 0 {
+		return false
+	}
+	action := sourceLine[start+2 : start+2+end]
+	return strings.Contains(action, ".item") || strings.HasSuffix(strings.TrimSpace(action), ".stdout") ||
+		strings.Contains(action, ".stdout ")
+}
+
+// manifestHeaderPattern recognizes a document that presents itself as a
+// Kubernetes resource, and so must actually parse as one.
+var manifestHeaderPattern = regexp.MustCompile(`(?m)^apiVersion:\s*\S+\n(?:[^
+]*\n)*?kind:\s*\S+`)
+
+// shellAssignmentPattern matches a shell assignment such as NS=ani-platform or
+// JOB="ani-nats-job", at the left margin or inside an indented block scalar.
+var shellAssignmentPattern = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
+
+// shellReferencePattern matches one $VAR or ${VAR} expansion.
+var shellReferencePattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+// shellLiteralVariables collects the names a shell script assigns a literal
+// value. A manifest written by a here-document names its objects through shell
+// variables, so the text "$JOB_OK" says nothing about the object the cluster
+// receives: two scripts reusing one variable name are not declaring the same
+// resource, and two different names carrying the same value are. Anything a
+// script computes at run time (command substitution, a value assigned twice)
+// stays out of the map, because its value is genuinely unknown here.
+func shellLiteralVariables(content string) map[string]string {
+	const maxPasses = 4
+	values := map[string]string{}
+	poisoned := map[string]bool{}
+	poison := func(name string) {
+		poisoned[name] = true
+		delete(values, name)
+	}
+	for _, line := range strings.Split(content, "\n") {
+		match := shellAssignmentPattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		name, raw := match[1], strings.TrimSpace(match[2])
+		if raw == "" || strings.HasPrefix(raw, "(") {
+			poison(name)
+			continue
+		}
+		quote := raw[:1]
+		literal := false
+		switch {
+		case (quote == `"` || quote == "'") && len(raw) >= 2 && strings.HasSuffix(raw, quote):
+			raw = raw[1 : len(raw)-1]
+			// A single-quoted value is finished text: expanding a $ inside it
+			// would invent a value the script never assigns.
+			literal = quote == "'"
+		case quote == `"` || quote == "'":
+			poison(name)
+			continue
+		case len(strings.Fields(raw)) != 1:
+			poison(name)
+			continue
+		default:
+			raw = strings.Fields(raw)[0]
+		}
+		if strings.ContainsAny(raw, "`(") || strings.Contains(raw, "$(") ||
+			(strings.Contains(raw, "${") && !strings.Contains(raw, "}")) {
+			poison(name)
+			continue
+		}
+		if literal && strings.Contains(raw, "$") {
+			poison(name)
+			continue
+		}
+		if _, again := values[name]; again || poisoned[name] {
+			poison(name)
+			continue
+		}
+		values[name] = raw
+	}
+	for pass := 0; pass < maxPasses; pass++ {
+		changed := false
+		for name, value := range values {
+			if expanded := expandShellReferences(value, values); expanded != value {
+				values[name] = expanded
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return values
+}
+
+// expandShellReferences substitutes every variable the script states
+// literally and leaves the rest untouched, so an unresolved name still reads as
+// unknown rather than pretending to be a finished value.
+func expandShellReferences(text string, variables map[string]string) string {
+	return shellReferencePattern.ReplaceAllStringFunc(text, func(reference string) string {
+		match := shellReferencePattern.FindStringSubmatch(reference)
+		if value, ok := variables[match[1]+match[2]]; ok && value != reference {
+			return value
+		}
+		return reference
+	})
+}
+
+// ValidateRenderedArtifacts runs the semantic checks over rendered output that a
+// plain `bash -n` cannot provide (R08, tightened by F07):
+//   - every <no value> must sit on a line whose template action is a runtime-bound
+//     loop item or registered stdout — and the file must still line up with its
+//     source, so the pairing is real rather than assumed;
+//   - no unrendered template delimiters, leftover REPLACE_ placeholders or empty
+//     image references;
+//   - deployed material (templates/, scripts/) must parse as YAML;
+//   - every here-document is classified: YAML bodies must parse into a document
+//     (not a scalar), JSON bodies must parse, python bodies are never mistaken
+//     for YAML;
+//   - no duplicate apiVersion/kind/name, within one file or across files, where
+//     a name written as a shell expansion is resolved through the assigning
+//     script first and a cross-file collision is only claimed once both names
+//     are fully known; and a document that claims to be a Kubernetes resource
+//     but does not parse is a failure instead of a skip.
 func ValidateRenderedArtifacts(files []RenderedFile) error {
 	var problems []string
-	sorted := make([]RenderedFile, 0, len(files))
-	for _, file := range files {
-		sorted = append(sorted, file)
-	}
+	sorted := append([]RenderedFile(nil), files...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 
 	resourceNames := map[string]string{}
 	for _, file := range sorted {
 		content := string(file.Rendered)
-		source := string(file.Source)
-		vendor := false
-		for _, suffix := range vendorMaterialFiles {
-			if strings.HasSuffix(file.Name, "-"+suffix) {
-				vendor = true
-				break
-			}
-		}
+		sourceLines := strings.Split(string(file.Source), "\n")
+		vendor := isVendorMaterial(file)
 
 		if strings.Contains(content, "<no value>") {
-			loopBound := strings.Contains(source, ".item") || strings.Contains(source, "(item")
-			runtimeRegistered := strings.Contains(source, ".stdout")
-			if !loopBound && !runtimeRegistered {
-				problems = append(problems, fmt.Sprintf("%s: contains <no value> (an undefined template value rendered through)", file.Name))
+			renderedLines := strings.Split(content, "\n")
+			if len(renderedLines) != len(sourceLines) {
+				problems = append(problems, fmt.Sprintf(
+					"%s: renders %d lines from %d source lines, so a <no value> cannot be traced back to its template action",
+					file.Name, len(renderedLines), len(sourceLines)))
+			} else {
+				for index, line := range renderedLines {
+					if !strings.Contains(line, "<no value>") {
+						continue
+					}
+					if !runtimeValueAction(sourceLines[index]) {
+						problems = append(problems, fmt.Sprintf("%s line %d: <no value> is not a runtime-bound field: %s",
+							file.Name, index+1, strings.TrimSpace(sourceLines[index])))
+					}
+				}
 			}
 		}
 		if !vendor && strings.Contains(content, "{{") {
@@ -1619,57 +1905,152 @@ func ValidateRenderedArtifacts(files []RenderedFile) error {
 		if strings.Contains(content, "REPLACE_") {
 			problems = append(problems, fmt.Sprintf("%s: contains a leftover REPLACE_ placeholder", file.Name))
 		}
-		// The image keys render repository/tag fields (SplitImageReferences);
-		// an empty one means a key resolved to nothing. A bare `image:` key with
-		// a nested map is legitimate YAML and is not flagged.
+		// The image keys render repository/tag fields (SplitImageReferences); an
+		// empty one means a key resolved to nothing. A bare `image:` key with a
+		// nested map is legitimate YAML and is not flagged.
 		if !vendor && (regexp.MustCompile(`repository:\s*(""|$)`).MatchString(content) ||
 			regexp.MustCompile(`tag:\s*(""|$)`).MatchString(content)) {
 			problems = append(problems, fmt.Sprintf("%s: contains an empty image reference", file.Name))
 		}
-		if !vendor {
-			// Every shell heredoc body that claims to be YAML must actually
-			// parse. Heredocs with the PY delimiter are embedded python (the
-			// repo convention) and are executed from fixtures instead.
-			for _, block := range heredocBodies(content) {
-				if block.delimiter == "PY" {
+
+		// The manifest documents this file actually produces: a deployed YAML
+		// material file split on document markers, plus every YAML here-document
+		// a script writes to disk. Shell text is never treated as one big
+		// document, and an embedded manifest is not exempt from the checks just
+		// because it lives inside a script (F07).
+		documents := []string{}
+		if file.DeployedMaterial() && strings.HasSuffix(file.Name, ".yaml") {
+			documents = append(documents, strings.Split(content, "\n---\n")...)
+		}
+		for _, block := range heredocBodies(content) {
+			if strings.TrimSpace(block.body) == "" {
+				problems = append(problems, fmt.Sprintf("%s: here-document %s is empty", file.Name, block.delimiter))
+				continue
+			}
+			switch classifyHeredoc(block.openerLine, block.delimiter) {
+			case heredocPython:
+				// Python is never validated as YAML: a script body parses as a
+				// plain scalar and would silently satisfy the check.
+				continue
+			case heredocJSON:
+				var probe any
+				if err := json.Unmarshal([]byte(block.body), &probe); err != nil {
+					problems = append(problems, fmt.Sprintf("%s: here-document %s does not parse as JSON: %v",
+						file.Name, block.delimiter, err))
+				}
+			case heredocOther:
+			default:
+				var probe any
+				if err := yaml.Unmarshal([]byte(block.body), &probe); err != nil {
+					problems = append(problems, fmt.Sprintf("%s: heredoc %s does not parse as YAML: %v",
+						file.Name, block.delimiter, err))
+					continue
+				}
+				switch probe.(type) {
+				case map[string]any, []any, nil:
+				default:
+					problems = append(problems, fmt.Sprintf(
+						"%s: heredoc %s parses only as the scalar %T, not as a YAML document",
+						file.Name, block.delimiter, probe))
+					continue
+				}
+				documents = append(documents, strings.Split(block.body, "\n---\n")...)
+			}
+		}
+
+		if file.DeployedMaterial() && strings.HasSuffix(file.Name, ".yaml") {
+			for index, doc := range documents {
+				if strings.TrimSpace(doc) == "" {
 					continue
 				}
 				var probe any
-				if err := yaml.Unmarshal([]byte(block.body), &probe); err != nil {
-					problems = append(problems, fmt.Sprintf("%s: heredoc %s does not parse as YAML: %v", file.Name, block.delimiter, err))
+				if err := yaml.Unmarshal([]byte(doc), &probe); err != nil {
+					problems = append(problems, fmt.Sprintf("%s document %d: deployed material does not parse as YAML: %v",
+						file.Name, index+1, err))
 				}
-			}
-			// Rendered k8s resources must not repeat apiVersion/kind/name.
-			for _, doc := range strings.Split(content, "\n---\n") {
-				var resource struct {
-					APIVersion string `yaml:"apiVersion"`
-					Kind       string `yaml:"kind"`
-					Metadata   struct {
-						Name      string `yaml:"name"`
-						Namespace string `yaml:"namespace"`
-					} `yaml:"metadata"`
-				}
-				if yaml.Unmarshal([]byte(doc), &resource) != nil {
-					continue
-				}
-				if resource.APIVersion == "" || resource.Kind == "" || resource.Metadata.Name == "" {
-					continue
-				}
-				if !strings.Contains(resource.APIVersion, "/") && resource.APIVersion != "v1" {
-					continue
-				}
-				key := resource.APIVersion + "/" + resource.Kind + "/" + resource.Metadata.Namespace + "/" + resource.Metadata.Name
-				if previous, ok := resourceNames[key]; ok && previous != file.Name {
-					problems = append(problems, fmt.Sprintf("%s and %s both render %s", previous, file.Name, key))
-				}
-				resourceNames[key] = file.Name
 			}
 		}
+
+		variables := shellLiteralVariables(content)
+		for _, doc := range documents {
+			var resource struct {
+				APIVersion string `yaml:"apiVersion"`
+				Kind       string `yaml:"kind"`
+				Metadata   struct {
+					Name      string `yaml:"name"`
+					Namespace string `yaml:"namespace"`
+				} `yaml:"metadata"`
+			}
+			claims := manifestHeaderPattern.MatchString(doc)
+			if err := yaml.Unmarshal([]byte(doc), &resource); err != nil {
+				if claims {
+					problems = append(problems, fmt.Sprintf("%s: a document with apiVersion and kind does not parse: %v",
+						file.Name, err))
+				}
+				continue
+			}
+			if resource.APIVersion == "" || resource.Kind == "" || resource.Metadata.Name == "" {
+				continue
+			}
+			if !strings.Contains(resource.APIVersion, "/") && resource.APIVersion != "v1" {
+				continue
+			}
+			namespace := expandShellReferences(resource.Metadata.Namespace, variables)
+			name := expandShellReferences(resource.Metadata.Name, variables)
+			key := resource.APIVersion + "/" + resource.Kind + "/" + namespace + "/" + name
+			// A name still carrying an expansion is only decided when the script
+			// runs, and each script picks its own value, so a second file cannot
+			// be proven to collide with it; the same file declaring it twice can.
+			known := !strings.ContainsAny(namespace+name, "$")
+			if previous, ok := resourceNames[key]; ok && (known || previous == file.Name) {
+				problems = append(problems, fmt.Sprintf("%s and %s both render %s", previous, file.Name, key))
+			}
+			resourceNames[key] = file.Name
+		}
 	}
+
 	if len(problems) == 0 {
 		return nil
 	}
 	return fmt.Errorf("rendered artifacts have %d problem(s):\n%s", len(problems), strings.Join(problems, "\n"))
+}
+
+// resolveRolesDir decides which ANI role tree the render reads (F12). An
+// explicit --roles-dir is honoured exactly, as a recorded development override.
+// Otherwise the render uses the material this release actually carries: the
+// builtin tree under --package-root when this checkout has one, and otherwise
+// this binary's own embedded builtin tree — the same source a real install runs.
+// A code release without any builtin/ directory used to be unable to render at
+// all without hand-supplied sources; now it renders the roles it ships with.
+func resolveRolesDir(explicit, packageRoot string) (string, func(), error) {
+	if value := strings.TrimSpace(explicit); value != "" {
+		info, err := os.Stat(value)
+		if err != nil || !info.IsDir() {
+			if err != nil {
+				return "", nil, errors.Wrapf(err, "--roles-dir %s is not usable", value)
+			}
+			return "", nil, fmt.Errorf("--roles-dir %s is not a directory", value)
+		}
+		return value, func() {}, nil
+	}
+	if root := strings.TrimSpace(packageRoot); root != "" {
+		candidate := filepath.Join(root, "builtin", "core", "roles", "ani")
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate, func() {}, nil
+		}
+	}
+	if componentsProjectMaterialize == nil {
+		return "", nil, fmt.Errorf("no ANI role tree to render: --package-root %q carries no builtin/core/roles/ani and this binary was built without -tags builtin, so it embeds no roles either; pass --roles-dir from a development checkout", packageRoot)
+	}
+	dir, err := os.MkdirTemp("", "ani-render-project-")
+	if err != nil {
+		return "", nil, errors.Wrap(err, "create the render project directory")
+	}
+	if err := componentsProjectMaterialize(dir); err != nil {
+		os.RemoveAll(dir)
+		return "", nil, errors.Wrap(err, "materialize this binary's embedded builtin role tree for the render")
+	}
+	return filepath.Join(dir, "builtin", "core", "roles", "ani"), func() { os.RemoveAll(dir) }, nil
 }
 
 // RunRender is the implementation of `kk ani render`: validate the config,
@@ -1677,6 +2058,12 @@ func ValidateRenderedArtifacts(files []RenderedFile) error {
 // checks, and write the result into the output directory. It never touches a
 // live cluster and never applies anything.
 func RunRender(input ValidateInput, rolesDir string, stdout io.Writer) error {
+	resolvedRoles, cleanupRoles, err := resolveRolesDir(rolesDir, input.PackageRoot)
+	if err != nil {
+		return err
+	}
+	defer cleanupRoles()
+	rolesDir = resolvedRoles
 	cluster, err := LoadClusterConfig(input.ConfigFile)
 	if err != nil {
 		return err
@@ -1703,6 +2090,31 @@ func RunRender(input ValidateInput, rolesDir string, stdout io.Writer) error {
 		return err
 	}
 	if err := ValidateRenderedArtifacts(files); err != nil {
+		return err
+	}
+	// Values syntax alone does not prove a deployment (F07/T34): expand the same
+	// approved offline charts with the artifact's own Helm and inspect what the
+	// cluster would actually receive.
+	chartOut := stdout
+	if chartOut == nil {
+		chartOut = os.Stdout
+	}
+	root := strings.TrimSpace(input.PackageRoot)
+	helmBin := strings.TrimSpace(input.HelmBin)
+	if helmBin == "" {
+		helmBin = filepath.Join(root, "bin", "helm")
+	}
+	lockPath := filepath.Join(root, "config", "components.lock.yaml")
+	if _, err := os.Stat(lockPath); err != nil {
+		alternative := filepath.Join(root, "ani", "components.lock.yaml")
+		if _, altErr := os.Stat(alternative); altErr != nil {
+			return errors.Wrapf(err, "read the approved materials lock for chart expansion (looked for %s and %s)", lockPath, alternative)
+		}
+		lockPath = alternative
+	}
+	if err := RunChartExpansion(context.Background(), ChartExpansionInput{
+		HelmBin: helmBin, ChartsRoot: root, LockPath: lockPath,
+	}, cluster, files, chartOut); err != nil {
 		return err
 	}
 	if strings.TrimSpace(input.Output) != "" {

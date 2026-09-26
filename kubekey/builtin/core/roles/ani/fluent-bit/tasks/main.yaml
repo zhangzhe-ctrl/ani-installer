@@ -42,11 +42,11 @@
 
 - name: ANI Fluent Bit | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-fluent-bit
+    {{ .ani.artifact_root }}/bin/helm install ani-fluent-bit
     {{ .ani.artifact_root }}/charts/fluent-bit/0.58.2.tgz
     --namespace {{ .ani.components.logging.namespace }} --create-namespace
     --values /etc/kubernetes/ani/fluent-bit/values.yaml
-    --wait --timeout 600s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 600s
 
 # A DaemonSet rollout status only returns once every scheduled pod is ready,
 # but the chart does not pin the desired count, so the ready count is compared
@@ -85,6 +85,7 @@
   command: |
     set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
+    ANI_VERIFY_LEVEL=smoke \
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
       bash /etc/kubernetes/ani/fluent-bit/verify.sh
 

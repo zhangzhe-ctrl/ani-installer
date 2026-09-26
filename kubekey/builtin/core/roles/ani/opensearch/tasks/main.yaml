@@ -154,11 +154,11 @@
 
 - name: ANI OpenSearch | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-opensearch-master
+    {{ .ani.artifact_root }}/bin/helm install ani-opensearch-master
     {{ .ani.artifact_root }}/charts/opensearch/3.8.0.tgz
     --namespace {{ .ani.components.logging.namespace }} --create-namespace
     --values /etc/kubernetes/ani/opensearch/values.yaml
-    --wait --timeout 1200s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 1200s
 
 # The cluster is a StatefulSet in this Chart, so this waits for the same object
 # the Chart renders rather than for a Deployment that does not exist.

@@ -102,22 +102,26 @@ k5_workload_ready() { # k5_workload_ready <kind/name> <timeout> — bounded wait
   return 1
 }
 k5_rebuild_wait() { # k5_rebuild_wait <selector> <what> <first-timeout> <second-timeout>
-  # Bounded by design (R02): wait, then at most ONE planned rebuild of this
-  # component's own pod inside $NS, then wait again. No data-plane agent
-  # restart, no repeated delete, no post-Ready re-entry. A pod that is still
-  # not Ready after the planned rebuild records read-only evidence and returns
-  # non-zero, so the caller fails instead of repairing the cluster.
+  # F01: this is a READ-ONLY bounded waiter. It never deletes and never rebuilds.
+  # The single planned Pod recreation, when a durability check needs one, is
+  # performed by the CALLER (the acceptance path, gated by --allow-pod-recreate
+  # and a run+target one-shot ledger) — not as a timeout "recovery" here.
+  # Removing the delete-on-timeout is exactly what stops the caller's one
+  # planned rebuild from silently becoming a second rebuild. A pod that is still
+  # not Ready records read-only evidence and returns non-zero; the caller fails
+  # instead of repairing the cluster it is verifying.
   local sel="$1" what="$2" t1="$3" t2="$4"
   if k5_pod_ready "$sel" "$t1"; then
     return 0
   fi
-  echo "  K5_REBUILD $what: not Ready within $t1; performing the one planned rebuild of this component's pod"
-  echo "k5_rebuild_planned $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
-  "${KUBECTL[@]}" -n "$NS" delete pod -l "$sel" --timeout=180s >/dev/null 2>&1 || true
+  # Not ready within the first window: wait out the second window WITHOUT any
+  # mutation, then give up with read-only evidence.
+  echo "  K5_WAIT $what: not Ready within $t1; waiting $t2 more without rebuilding" >&2
+  echo "k5_wait_extend $what $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$OUT_DIR/k5-retries.txt"
   if k5_pod_ready "$sel" "$t2"; then
     return 0
   fi
-  echo "  K5_REBUILD $what: still not Ready within $t2; no further rebuild and no agent restart is attempted" >&2
+  echo "  K5_WAIT $what: still not Ready within $t2; no rebuild, no agent restart, no further change is attempted" >&2
   k5_collect_failure_evidence "$sel" "$what" || true
   return 1
 }
@@ -157,6 +161,20 @@ AMCFG_NAME="ani-metrics-amcfg-${RUN_ID}"
 CLIENT_POD="ani-metrics-client-${RUN_ID}"
 RECV_DEPLOY="ani-metrics-recv-${RUN_ID}"
 RUN_LABEL="{{ .ani.components.metrics.run_id }}"
+
+# F01 real layer split. `smoke` (the default, and what the install role and
+# `kk ani verify --level smoke` run) performs only necessary workload readiness
+# ([1/8]) plus read-only functional probes scoped to THIS attempt ([2/8]) — it
+# never mutates global alert routing, creates silences/rules/receivers, deletes
+# any pod, or clears other attempts' objects. `acceptance` runs the full
+# firing/resolved notification chain and the two planned Pod-recreation
+# durability checks ([3/8]..[8/8]); it is reached only through the acceptance
+# path with an explicit --allow-pod-recreate and a run+target one-shot ledger.
+LEVEL="${ANI_VERIFY_LEVEL:-smoke}"
+case "$LEVEL" in
+  smoke|acceptance) : ;;
+  *) echo "FAIL: ANI_VERIFY_LEVEL must be 'smoke' or 'acceptance', got '$LEVEL'" >&2; exit 1 ;;
+esac
 
 # ---------------------------------------------------------------------------
 # python helpers, written before anything uses them
@@ -369,12 +387,14 @@ for name in sorted(os.listdir(d)) if os.path.isdir(d) else []:
 print(json.dumps(out))
 PY_EOF
 
-# A26: failed runs skip their cleanup, and every object here carries the
-# deterministic run_id — leftover vector(1) rules keep the lifecycle alert
-# permanently firing and poison every later run. Expire stale silences and
-# delete previous runs' objects before anything else.
-"${KUBECTL[@]}" -n "$NS" delete prometheusrule,alertmanagerconfig -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
-"${KUBECTL[@]}" -n "$NS" delete deploy,svc,cm,pod -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
+# A26 + F01: the deterministic run_id is install-scoped, so deleting by
+# run_id="$RUN_LABEL" would clear OTHER attempts' objects — that is a mutation
+# and belongs only to the acceptance durability run, never to smoke. Smoke uses
+# attempt-unique object names and cleans up only its own probe.
+if [ "$LEVEL" = acceptance ]; then
+  "${KUBECTL[@]}" -n "$NS" delete prometheusrule,alertmanagerconfig -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
+  "${KUBECTL[@]}" -n "$NS" delete deploy,svc,cm,pod -l run_id="$RUN_LABEL" --ignore-not-found >/dev/null
+fi
 
 # ---------------------------------------------------------------------------
 # [1/8] workloads
@@ -494,8 +514,18 @@ done
 [ -n "$cadvisor_ok" ] || fail "no cAdvisor container series appeared within the 5m wait (last: ${cadvisor:-no answer})"
 echo "  container_memory_working_set_bytes series=$cadvisor"
 
+# F01: smoke ends here. It performed only readiness ([1/8]) and read-only
+# functional series queries ([2/8]) through this attempt's uniquely-named client
+# pod. It must not touch alert routing or recreate pods, so it cleans up its own
+# probe and exits before the acceptance chain below.
+if [ "$LEVEL" = smoke ]; then
+  "${KUBECTL[@]}" -n "$NS" delete pod "$CLIENT_POD" --ignore-not-found >/dev/null 2>&1 || true
+  echo "metrics SMOKE verification passed: ns=$NS nodes=$nodes_total up=all cAdvisor=$cadvisor (read-only; no alert mutation, no pod rebuild)"
+  exit 0
+fi
+
 # ---------------------------------------------------------------------------
-# [3/8] the temporary receiver
+# [3/8] the temporary receiver   (acceptance only)
 # ---------------------------------------------------------------------------
 echo "[3/8] temporary webhook receiver"
 # The receiver stores every request body in an emptyDir, one file per request,
