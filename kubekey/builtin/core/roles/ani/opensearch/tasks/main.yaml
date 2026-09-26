@@ -305,6 +305,7 @@
     set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+    ANI_VERIFY_KUBECONFIG="/etc/kubernetes/admin.conf" \
       bash /etc/kubernetes/ani/opensearch/verify.sh
 
 - name: ANI OpenSearch | Render connection facts fragment

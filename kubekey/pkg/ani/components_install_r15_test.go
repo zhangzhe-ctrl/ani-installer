@@ -490,6 +490,16 @@ func r15ReadPlan(t *testing.T, outDir string) ComponentsPlan {
 // fake registry for one plan invocation.
 func r15PlanFixture(t *testing.T, componentsBlock, only string, refuseRegistry bool, natsRelease string) (ComponentsInstallInput, string) {
 	t.Helper()
+	// The base install only ever selected cert-manager, so every component this
+	// plan adds genuinely changes the effective config. C06 needs the opposite
+	// shape — a component the FIRST INSTALL itself put in place — which is
+	// r15PlanFixtureOverBase with a base block that already enables it.
+	return r15PlanFixtureOverBase(t, "  certManager: {enabled: true}", componentsBlock, only, refuseRegistry, natsRelease)
+}
+
+// r15PlanFixtureOverBase is the same fixture with the base install's own
+// component block chosen by the caller.
+func r15PlanFixtureOverBase(t *testing.T, baseBlock, componentsBlock, only string, refuseRegistry bool, natsRelease string) (ComponentsInstallInput, string) {
 	baseDir := t.TempDir()
 	stateDir := filepath.Join(baseDir, "state")
 	binDir := filepath.Join(baseDir, "bin")
@@ -509,7 +519,7 @@ func r15PlanFixture(t *testing.T, componentsBlock, only string, refuseRegistry b
 		t.Fatalf("write site: %v", err)
 	}
 
-	baseSite := r15SiteWithComponents(port, "  certManager: {enabled: true}")
+	baseSite := r15SiteWithComponents(port, baseBlock)
 	baseConfig, err := ParseClusterConfig([]byte(baseSite))
 	if err != nil {
 		t.Fatalf("parse base site: %v", err)

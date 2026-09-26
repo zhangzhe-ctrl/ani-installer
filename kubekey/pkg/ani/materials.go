@@ -152,11 +152,24 @@ type rawInjection struct {
 
 // rawChart mirrors one chart entry. Components name their hash chartSha256
 // while batch sections use sha256; both are accepted.
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 type rawChart struct {
-	Name           string `yaml:"name"`
-	ChartVersion   string `yaml:"chartVersion"`
-	AppVersion     string `yaml:"appVersion"`
-	Source         string `yaml:"source"`
+	Name         string `yaml:"name"`
+	ChartVersion string `yaml:"chartVersion"`
+	AppVersion   string `yaml:"appVersion"`
+	Source       string `yaml:"source"`
+	// Components spell their origin chartSource while batch sections spell it
+	// source, exactly as they spell chartSha256 and sha256. Reading only one of
+	// the two silently loses the provenance of half the lock.
+	ChartSource    string `yaml:"chartSource"`
 	SHA256         string `yaml:"sha256"`
 	ChartSHA256    string `yaml:"chartSha256"`
 	ArtifactPath   string `yaml:"artifactChartPath"`
@@ -307,7 +320,7 @@ func collectMaterials(node *yaml.Node, path string, lock *MaterialsLock) []strin
 			Name:         name,
 			ChartVersion: raw.ChartVersion,
 			AppVersion:   raw.AppVersion,
-			Source:       raw.Source,
+			Source:       firstNonEmpty(raw.Source, raw.ChartSource),
 			SHA256:       approvedHash,
 			ArtifactPath: raw.ArtifactPath,
 			Release:      raw.Release,

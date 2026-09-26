@@ -250,24 +250,25 @@ func RunInstall(ctx context.Context, input InstallInput) (retErr error) {
 	// read as a success (F04). A failed persist is surfaced, not swallowed.
 	installSucceeded := false
 	defer func() {
-		if state.Result != ResultSucceeded {
-			switch {
-			case retErr == nil && installSucceeded:
-				state.Result = ResultSucceeded
-			case retErr != nil && (errors.Is(retErr, context.Canceled) || errors.Is(retErr, context.DeadlineExceeded) || ctx.Err() != nil):
-				state.Result = ResultCancelled
-			case retErr != nil:
-				state.Result = ResultFailed
-			}
-			if state.Result == ResultRunning {
-				state.Result = ResultFailed
-			}
-			// R09: keep the LAST COMPLETED phase intact (do not rewrite it to
-			// install_failed); the accurate final outcome lives in Result.
-		}
+		// C09: the outcome that gets persisted is settled from what this function
+		// actually returned — never from a value assigned earlier in the body. The
+		// previous guard (`if state.Result != ResultSucceeded`) let a run that had
+		// already stamped itself succeeded keep that stamp even when the success
+		// record then failed to land and the command exited non-zero, so the disk
+		// said "succeeded" while the process said "error".
+		//
+		// R09 still holds: the last COMPLETED phase is left intact rather than
+		// rewritten to install_failed; the accurate outcome lives in Result.
+		settleTerminalResult(&state, retErr, ctx.Err(), installSucceeded)
 		state.FinishedAt = time.Now().Format(time.RFC3339)
 		if werr := WriteRunStateAtomic(statePath, state); werr != nil {
+			// A terminal state that cannot be persisted is not a completed run.
+			// This is reported, and a run that was about to be called successful
+			// is not left to be read that way from a stale file.
 			fmt.Fprintf(os.Stderr, "WARNING: failed to persist final run-state %s: %v\n", statePath, werr)
+			if retErr == nil {
+				retErr = errors.Wrapf(werr, "the install finished but its terminal run-state could not be persisted to %s; read that file before drawing any conclusion from this exit code", statePath)
+			}
 		}
 	}()
 	if err := os.MkdirAll(paths.WorkRoot, 0o700); err != nil {
@@ -405,22 +406,67 @@ func RunInstall(ctx context.Context, input InstallInput) (retErr error) {
 		return err
 	}
 	baseManifest.PackageRoot = strings.TrimSpace(input.PackageRoot)
-	state.Phase = PhaseSucceeded
-	state.Result = ResultSucceeded
-	state.FinishedAt = time.Now().Format(time.RFC3339)
-	successManifest, err := BuildInstallSuccessManifest(baseManifest, state, identity)
+	// C09: success is published only after it is durable — record first, then
+	// the terminal run-state, and only then may this command say "succeeded".
+	recordPath, err := publishInstallSuccess(&state, statePath, paths.RuntimeRoot, baseManifest, identity)
 	if err != nil {
-		return errors.Wrap(err, "build the install-success record")
-	}
-	if err := WriteInstallSuccessRecord(paths.RuntimeRoot, successManifest); err != nil {
-		return errors.Wrap(err, "write the install-success record")
+		return err
 	}
 	installSucceeded = true
-	_ = WriteRunStateAtomic(statePath, state)
 	fmt.Fprintf(logger, "ANI install completed at %s; install-success record=%s (run=%s clusterUid=%s nodes=%d)\n",
-		time.Now().Format(time.RFC3339), filepath.Join(paths.RuntimeRoot, RunManifestFileName), runID, identity.ClusterUID, identity.NodeCount)
-	fmt.Fprintf(os.Stderr, "install succeeded: trusted base run.json written to %s\n", filepath.Join(paths.RuntimeRoot, RunManifestFileName))
+		time.Now().Format(time.RFC3339), recordPath, runID, identity.ClusterUID, identity.NodeCount)
+	fmt.Fprintf(os.Stderr, "install succeeded: trusted base run.json written to %s\n", recordPath)
 	return nil
+}
+
+// settleTerminalResult decides the outcome a finished run persists. It is a
+// function rather than an inline switch so the C09 rule — the persisted result
+// follows what the command actually returned, and a run that returned an error is
+// never recorded as succeeded — is testable on the exact code the finalizer runs.
+//
+// R09 is preserved: only Result is settled here; Phase keeps the last stage that
+// genuinely completed, so a late failure does not rewrite history.
+func settleTerminalResult(state *InstallState, retErr, ctxErr error, installSucceeded bool) {
+	switch {
+	case retErr != nil && (errors.Is(retErr, context.Canceled) || errors.Is(retErr, context.DeadlineExceeded) || ctxErr != nil):
+		state.Result = ResultCancelled
+	case retErr != nil:
+		state.Result = ResultFailed
+	case installSucceeded:
+		state.Result = ResultSucceeded
+	case state.Result == ResultRunning:
+		state.Result = ResultFailed
+	}
+}
+
+// publishInstallSuccess is the whole C09 tail: the success record is written
+// first, the terminal run-state second, and the caller's live state is moved to
+// succeeded only after both landed. Anything that fails on the way returns an
+// error describing what did happen, so the command can never exit non-zero while
+// the disk claims an install nobody was told about.
+//
+// It is a function of its own because RunInstall needs root and a live cluster:
+// this way the write-failure injections below run against the production
+// sequence instead of a re-derivation of it.
+func publishInstallSuccess(state *InstallState, statePath, recordDir string, baseManifest RunManifest, identity ManifestIdentity) (string, error) {
+	pending := *state
+	pending.Phase = PhaseSucceeded
+	pending.Result = ResultSucceeded
+	pending.FinishedAt = time.Now().Format(time.RFC3339)
+	successManifest, err := BuildInstallSuccessManifest(baseManifest, pending, identity)
+	if err != nil {
+		return "", errors.Wrap(err, "build the install-success record")
+	}
+	if err := WriteInstallSuccessRecord(recordDir, successManifest); err != nil {
+		return "", errors.Wrap(err, "write the install-success record")
+	}
+	if err := WriteRunStateAtomic(statePath, pending); err != nil {
+		return filepath.Join(recordDir, RunManifestFileName), errors.Wrapf(err,
+			"the install succeeded and its record is at %s, but the terminal run-state could not be written; re-read the state file before deciding what this run did",
+			filepath.Join(recordDir, RunManifestFileName))
+	}
+	*state = pending
+	return filepath.Join(recordDir, RunManifestFileName), nil
 }
 
 // fileSHA256Hex returns the 64-hex sha256 of a file's bytes, or "" on any read

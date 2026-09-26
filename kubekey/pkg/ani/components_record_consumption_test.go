@@ -37,8 +37,18 @@ type r15ExecutionCase struct {
 
 func runR15Execution(t *testing.T, natsRelease string) r15ExecutionCase {
 	t.Helper()
-	planFile, execute, kkLog, outDir := r15PlanAndExecute(t,
+	return runR15ExecutionOverBase(t, "  certManager: {enabled: true}",
 		"  certManager: {enabled: true}\n  nats: {enabled: true}", natsRelease)
+}
+
+// runR15ExecutionOverBase is runR15Execution with both sides of the comparison
+// chosen by the caller: what the base install selected, and what the requested
+// site selects. Passing the same block twice is the C06 shape — a component the
+// first install itself put in place, whose re-request genuinely cannot move the
+// effective config digest.
+func runR15ExecutionOverBase(t *testing.T, baseBlock, requestedBlock, natsRelease string) r15ExecutionCase {
+	t.Helper()
+	planFile, execute, kkLog, outDir := r15PlanAndExecuteOverBase(t, baseBlock, requestedBlock, natsRelease)
 	var plan ComponentsPlan
 	raw, err := os.ReadFile(planFile)
 	if err != nil {
@@ -604,6 +614,11 @@ func TestComponentsExecutionAcceptanceSpendsBaseLedgerOnce(t *testing.T) {
 	}
 	r13FakeKubectl(t, binDir, fakeState)
 	t.Setenv("FAKE_STATE_DIR", fakeState)
+	// This subject is nats, so the fixture pod must mount nats' volume: the
+	// acceptance refuses a target whose PVC the pod does not actually use (C03).
+	if err := os.WriteFile(filepath.Join(fakeState, "pod-claims"), []byte("nats-js-nats-0"), 0o600); err != nil {
+		t.Fatalf("seed nats claim: %v", err)
+	}
 	// The two records above were written against the R15 fake's cluster, and the
 	// consumer re-reads that identity live; the acceptance fake must answer with
 	// the same cluster the records bind to.

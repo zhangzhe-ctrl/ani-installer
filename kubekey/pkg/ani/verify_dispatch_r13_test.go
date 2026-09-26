@@ -69,6 +69,15 @@ func r13RunRecord(t *testing.T, dir string, withState bool, phase string, compon
 		Components:         components,
 		StorageClass:       "ani-block",
 		MaterialsValidated: true,
+		// C01 pins an acceptance to the host the record names, because that is
+		// where the product lock lives. These tests run "on" the installer, so the
+		// fixture owns a loopback address; TestC01 covers the host that does not.
+		Installer: ManifestInstaller{
+			Name:         "node1",
+			Address:      "127.0.0.1",
+			RegistryHost: "127.0.0.1",
+			RegistryPort: 5000,
+		},
 		Identity: ManifestIdentity{
 			SiteConfigDigest:    digest,
 			MaterialsLockDigest: strings.Repeat("b", 64),
@@ -124,6 +133,18 @@ func r13RunRecord(t *testing.T, dir string, withState bool, phase string, compon
 //	FAKE_DATA_LOST=1       the committed SQL read-back returns empty (the row
 //	                       did not survive the recreation)
 //	FAKE_PG_MISMATCH=x     the read-back returns x instead of the token
+//	FAKE_CONTROLLER_UID=x  the live StatefulSet has a different uid than the
+//	                       pod's owner reference (C03 owner-generation check)
+//	FAKE_OWNER_NOT_CONTROLLER=1  the owner reference is not the controller
+//	FAKE_POD_CLAIMS=x      the pod mounts these PVC claims (default the target's)
+//	FAKE_PV_CLAIM_UID=x    the PV is bound back to this claim uid
+//	FAKE_REPLACE_AFTER_LAST_GET=1  the object is swapped for a same-name
+//	                       replacement after the client's final GET, which only a
+//	                       uid carried IN the delete request can survive (C03)
+//
+// The fake also records every uid the delete requests were restricted to in
+// $state/delete-uid-preconditions, so a test can assert the precondition
+// travelled with the request rather than inferring it from an outcome.
 func r13FakeKubectl(t *testing.T, binDir, stateDir string) string {
 	t.Helper()
 	script := `#!/usr/bin/env bash
@@ -138,10 +159,24 @@ case "$args" in
   *"get nodes"*"-o json"*)
     printf '%s\n' '{"items":[{"metadata":{"name":"node1"},"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"metadata":{"name":"node2"},"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"metadata":{"name":"node3"},"status":{"conditions":[{"type":"Ready","status":"True"}]}}]}'
     exit 0 ;;
-  *"get pod"*"ownerReferences"*)
+  *"get pod"*"ownerReferences"*"name"*)
     # derive the owning controller from the pod name (postgresql-0 -> postgresql)
     name="$(printf '%s' "$args" | sed -n 's/.*get pod \([a-z0-9-]*\).*/\1/p')"
     printf '%s\n' "${name%-0}"; exit 0 ;;
+  *"get pod"*"ownerReferences"*"controller"*)
+    if [ -n "${FAKE_OWNER_NOT_CONTROLLER:-}" ]; then echo "false"; else echo "true"; fi; exit 0 ;;
+  *"get pod"*"ownerReferences"*"uid"*)
+    printf '%s\n' "${FAKE_OWNER_UID:-uid-controller-postgresql}"; exit 0 ;;
+  *"get statefulset"*"metadata.uid"*)
+    printf '%s\n' "${FAKE_CONTROLLER_UID:-uid-controller-postgresql}"; exit 0 ;;
+  *"get pod"*"persistentVolumeClaim.claimName"*)
+    # The claims a pod mounts are part of the fixture, not a guess: the state file
+    # says which volume this pod really uses, so a target whose PVC the pod does
+    # not mount is refused (C03) instead of passing on unrelated storage.
+    if [ -n "${FAKE_POD_CLAIMS:-}" ]; then printf '%s\n' "$FAKE_POD_CLAIMS"; else cat "$state/pod-claims" 2>/dev/null; fi
+    exit 0 ;;
+  *"get persistentvolume"*"claimRef.uid"*)
+    printf '%s\n' "${FAKE_PV_CLAIM_UID:-$(cat "$state/pvc-uid" 2>/dev/null)}"; exit 0 ;;
   *"get pod"*"metadata.uid"*)
     n=0; [ -f "$state/uid-reads" ] && n="$(cat "$state/uid-reads")"
     n=$((n+1)); printf '%s\n' "$n" > "$state/uid-reads"
@@ -156,6 +191,23 @@ case "$args" in
   *"get pvc"*"volumeName"*)
     echo "pv-acceptance-0"; exit 0 ;;
   *"delete pod"*)
+    # C03: model the server, not the client. The swap happens when the request is
+    # served — after the client's final GET — and only then is the selector
+    # evaluated, so the replacement is what the server actually sees.
+    if [ -n "${FAKE_REPLACE_AFTER_LAST_GET:-}" ]; then
+      printf 'uid-INTRUDER-replaced\n' > "$state/pod-uid"
+    fi
+    want="$(printf '%s' "$args" | sed -n 's/.*metadata.uid=\([^ ]*\).*/\1/p')"
+    if [ -n "$want" ]; then
+      printf '%s\n' "$want" >> "$state/delete-uid-preconditions"
+      current="$(cat "$state/pod-uid" 2>/dev/null)"
+      if [ "$want" != "$current" ]; then
+        # --ignore-not-found=false turns "nothing matched" into an error, and the
+        # object that stands here now is left exactly where it is.
+        echo "error: no matching resources found" >&2
+        exit 1
+      fi
+    fi
     if [ -z "${FAKE_STICKY_POD_UID:-}" ]; then
       printf 'uid-new-%s\n' "$(date +%s%N)" > "$state/pod-uid"
     fi
@@ -164,6 +216,24 @@ case "$args" in
     fi
     printf 'delete\n' >> "$state/deleted"
     exit 0 ;;
+  *"apply"*"--server-side"*)
+    # C04: a fake apply that accepts any bytes cannot tell a working Job from one
+    # whose pod template was mis-nested at the top level. This keeps the manifest
+    # that actually left the installer and refuses it the way the API server does:
+    # a batch/v1 Job needs spec.template.spec.containers.
+    mf="$(printf '%s' "$args" | sed -n 's/.*-f \([^ ]*\).*/\1/p')"
+    cp "$mf" "$state/applied-job.yaml" 2>/dev/null
+    if ! grep -q 'kind: Job' "$mf"; then echo "fake kubectl: applied object is not a Job" >&2; exit 1; fi
+    if ! grep -q '^spec:' "$mf"; then echo "fake kubectl: Job has no spec" >&2; exit 1; fi
+    if ! grep -q '^  template:' "$mf"; then echo "fake kubectl: error: error validating data: ValidationError(Job.spec): unknown field \"template\" is not in list (no spec.template)" >&2; exit 1; fi
+    if ! grep -q '^      containers:' "$mf"; then echo "fake kubectl: Job spec.template has no containers" >&2; exit 1; fi
+    echo "job.batch/ani-acceptance created"; exit 0 ;;
+  *"wait"*"--for=condition=complete"*)
+    printf 'job waited\n' >> "$state/job-waits"; exit 0 ;;
+  *"logs job/"*)
+    if [ -f "$state/job-logs" ]; then cat "$state/job-logs"; fi; exit 0 ;;
+  *"delete job/"*)
+    printf 'job-deleted ' >> "$state/deleted"; exit 0 ;;
   *"psql"*"SELECT"*"ani_acceptance"*)
     tok="$(printf '%s' "$args" | sed -n "s/.*WHERE k='\([a-z0-9-]*\)'.*/\1/p")"
     if [ -n "${FAKE_DATA_LOST:-}" ]; then echo ""; exit 0; fi
@@ -184,6 +254,9 @@ exit 2
 	}
 	if err := os.WriteFile(filepath.Join(stateDir, "pvc-uid"), []byte("uid-pvc-data-postgresql-0"), 0o600); err != nil {
 		t.Fatalf("seed pvc uid: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "pod-claims"), []byte("data-postgresql-0"), 0o600); err != nil {
+		t.Fatalf("seed pod claims: %v", err)
 	}
 	return path
 }
@@ -276,13 +349,26 @@ func TestVerifyDispatcherLevels(t *testing.T) {
 		if report.Overall != VerifyStatusPass || len(report.Results) != 2 {
 			t.Fatalf("unexpected smoke report: %+v", report)
 		}
-		// The smoke trajectory must not issue a single kubectl call, let
-		// alone a pod deletion.
+		// The smoke trajectory must not mutate anything. It is no longer true that
+		// it issues no kubectl call at all: C01 binds every verification to the
+		// cluster its kubeconfig actually reaches, which is two reads. So the
+		// guarantee is stated as what smoke may and may not ask for, and any new
+		// call has to be justified here.
 		if _, err := os.Stat(filepath.Join(stateDir, "deleted")); !os.IsNotExist(err) {
 			t.Fatal("smoke deleted something")
 		}
-		if _, err := os.Stat(filepath.Join(stateDir, "kubectl-calls.log")); !os.IsNotExist(err) {
-			t.Fatal("smoke called kubectl at all")
+		calls, err := os.ReadFile(filepath.Join(stateDir, "kubectl-calls.log"))
+		if err != nil {
+			t.Fatalf("smoke must have read the live cluster identity it is attesting (C01): %v", err)
+		}
+		for _, mutating := range []string{" delete ", " apply ", " exec ", " patch ", " replace ", " create ",
+			" drain ", " cordon ", " taint ", " label ", " annotate ", " rollout ", " scale ", " run "} {
+			if strings.Contains(string(calls), mutating) {
+				t.Fatalf("smoke issued a mutating kubectl verb %q:\n%s", mutating, calls)
+			}
+		}
+		if !strings.Contains(string(calls), "get namespace kube-system") {
+			t.Fatalf("smoke did not bind the live cluster identity (C01):\n%s", calls)
 		}
 		// Smoke evidence is scoped to the subject it verified, so a base run and
 		// a components execution can never overwrite each other's evidence.

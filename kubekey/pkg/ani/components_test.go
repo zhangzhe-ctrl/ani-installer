@@ -2139,9 +2139,18 @@ func TestFluentBitVerifyProvesCollectionPath(t *testing.T) {
 			t.Fatalf("fluent-bit verify.sh does not use the locked offline image %s", want)
 		}
 	}
-	// This run's own test pods have to be removed.
-	if !strings.Contains(script, "delete pod ani-log-marker-post") {
-		t.Fatal("fluent-bit verify.sh does not clean up its post-rebuild marker pod")
+	// C08: this run's own test pods are still removed, but by ownership rather
+	// than by a fixed name — the name is scoped to the attempt precisely so two
+	// runs cannot delete each other's probes.
+	if !strings.Contains(script, `post_pod="${MARKER_PREFIX}-post"`) ||
+		!strings.Contains(script, `own_pod "$post_pod"`) {
+		t.Fatal("fluent-bit verify.sh no longer claims its post-rebuild marker pod as this attempt's own")
+	}
+	if !strings.Contains(script, "release_all_owned") {
+		t.Fatal("fluent-bit verify.sh does not release the pods this attempt owns")
+	}
+	if strings.Contains(script, "delete pod ani-log-marker-post") {
+		t.Fatal("fluent-bit verify.sh deleted a fixed-name pod again (C08 regression)")
 	}
 	// The script must fail loudly rather than continue past a broken step.
 	if !strings.Contains(script, "set -euo pipefail") {
@@ -2398,6 +2407,8 @@ func TestVerifyNeverRepairsNetwork(t *testing.T) {
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2451,6 +2462,8 @@ echo "REBUILD_RC=$rc"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2484,6 +2497,8 @@ echo "REBUILD_RC=$?"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2520,6 +2535,8 @@ echo "REBUILD_RC=$?"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2604,6 +2621,8 @@ echo "REBUILD_RC=$?"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e

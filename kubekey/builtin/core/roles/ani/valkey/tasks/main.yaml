@@ -110,6 +110,7 @@
     set -euo pipefail
     install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
     ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+    ANI_VERIFY_KUBECONFIG="/etc/kubernetes/admin.conf" \
       bash /etc/kubernetes/ani/valkey/verify.sh
 
 # Connection facts are rendered by the role that owns the resources, so the

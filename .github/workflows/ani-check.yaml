@@ -4,7 +4,10 @@ name: ANI check
 #
 # It runs exactly the script that a local developer and scripts/build-code.sh
 # run (kubekey/scripts/check-code.sh), so there is one gate implementation and
-# CI cannot drift from a local run.
+# CI cannot drift from a local run. The gate's one network step — preparing the
+# locked chart material a clean checkout does not carry — is inside that script,
+# so CI prepares it with the same code path as a local run and no test fetches
+# anything.
 #
 # Deliberately NOT restricted to the upstream repository: every workflow under
 # kubekey/.github/workflows is guarded by a repository-equality condition, which
@@ -57,6 +60,19 @@ jobs:
           # The R02 control test materialises the pre-R02 script from a pinned
           # historical commit; a shallow clone would not carry it.
           fetch-depth: 0
+
+      - name: Restore the locked chart cache
+        # C10: the gate reads real chart archives that are gitignored, so a clean
+        # checkout has none. The cache is keyed on the approved lock itself — a
+        # lock change means new digests and a forced re-fetch — and the
+        # preparation step inside the gate re-verifies every cached file's sha256
+        # before it adopts it, so a cache hit is never trusted on its own.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ani-installer-charts
+          key: ani-charts-${{ hashFiles('kubekey/ani/components.lock.yaml') }}
+          restore-keys: |
+            ani-charts-
 
       - name: Install the Go toolchain required by go.mod
         uses: actions/setup-go@v5

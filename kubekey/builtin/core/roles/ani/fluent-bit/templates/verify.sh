@@ -32,6 +32,23 @@
 # deletion of a named pod. It never resets, wipes, or clears a cluster
 # resource, and it never deletes a PVC.
 set -euo pipefail
+# C07: one kubeconfig decides the target of this whole checker, and it is
+# required rather than defaulted. Falling back to /etc/kubernetes/admin.conf here
+# meant the layer that rendered this script could pin one cluster while kubectl
+# silently used another (or whatever $HOME/.kube/config holds).
+KUBECONFIG_FILE="${ANI_VERIFY_KUBECONFIG:?name the kubeconfig this verification runs against; ANI_VERIFY_KUBECONFIG has no default}"
+if [ ! -f "$KUBECONFIG_FILE" ]; then
+  echo "kubeconfig $KUBECONFIG_FILE does not exist; refusing to guess another target" >&2
+  exit 1
+fi
+if [ -n "${KUBECONFIG:-}" ] && [ "$KUBECONFIG" != "$KUBECONFIG_FILE" ]; then
+  echo "ambiguous target: ANI_VERIFY_KUBECONFIG=$KUBECONFIG_FILE but the environment carries KUBECONFIG=$KUBECONFIG" >&2
+  exit 1
+fi
+# Exporting it is what binds every bare `kubectl` below to the same context, so
+# no call can drift to a per-layer default.
+export KUBECONFIG="$KUBECONFIG_FILE"
+KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_FILE")
 
 NS="{{ .ani.components.logging.namespace }}"
 BACKEND="{{ .ani.components.logging.backend }}"
@@ -45,13 +62,57 @@ TOOL_IMAGE="{{ index .ani.images "docker.io/library/python:3.13.11-alpine3.23" }
 # product-level scan would reject the nil spelling itself -- which is also
 # why this comment must never contain that literal.
 BUSYBOX_IMAGE="{{ index .ani.images "docker.io/library/busybox:1.37.0" }}"
-CLIENT_POD="ani-fluent-bit-verify-client"
 
 OUT_DIR="${ANI_VERIFY_OUTPUT_DIR:-/var/lib/ani-installer/logs}"
 install -d -m 0700 "$OUT_DIR"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+
+# C08: every object this script creates is named for THIS attempt and recorded
+# with the uid it was created with. The names used to be fixed
+# (ani-fluent-bit-verify-client, ani-log-marker-1/2/3), so two smoke passes — or
+# one pass and a leftover from the last incident — deleted each other's probes,
+# and each script began by deleting a pod it had not created. A marker is only
+# evidence while the attempt that wrote it still owns it.
+#
+# Lowercase, DNS-label safe, and short enough that prefix + "-post" still fits a
+# pod name: date + pid + 8 hex, and pid plus the uuid make two attempts on the
+# same host in the same second impossible to collide.
+ATTEMPT_TOKEN="$(tr -d '-' < /proc/sys/kernel/random/uuid | cut -c1-8)"
+[ -n "$ATTEMPT_TOKEN" ] || { echo "cannot make an attempt token" >&2; exit 1; }
+RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$-${ATTEMPT_TOKEN}"
 EVIDENCE="$OUT_DIR/fluent-bit-verify-$RUN_ID"
 install -d -m 0700 "$EVIDENCE"
+
+CLIENT_POD="ani-fb-client-${RUN_ID}"
+MARKER_PREFIX="ani-log-marker-${RUN_ID}"
+INSPECTOR_PREFIX="ani-fb-insp-${RUN_ID}"
+
+# OWNED is the ownership ledger: pod name -> uid as created by THIS attempt.
+# Nothing outside it is ever deleted by this run.
+declare -A OWNED=()
+own_pod() { # own_pod <name> — record that this attempt created and owns it
+  local uid
+  uid="$($KC get pod "$1" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+  [ -n "$uid" ] || fail "created pod $1 but cannot read its uid; refusing to manage an unowned object"
+  OWNED["$1"]="$uid"
+  printf '%s %s\n' "$1" "$uid" >> "$EVIDENCE/owned-pods.txt"
+}
+release_pod() { # release_pod <name> — delete ONLY what this attempt owns
+  local name="$1" want have
+  want="${OWNED[$name]:-}"
+  [ -n "$want" ] || { note "leaving $name alone: this attempt did not create it"; return 0; }
+  have="$($KC get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+  if [ -n "$have" ] && [ "$have" != "$want" ]; then
+    note "leaving $name alone: it now carries uid $have, not the $want this attempt created"
+    unset 'OWNED[$name]'
+    return 0
+  fi
+  $KC delete pod "$name" --wait=true --timeout=120s >/dev/null 2>&1 || true
+  unset 'OWNED[$name]'
+}
+release_all_owned() {
+  local name
+  for name in "${!OWNED[@]}"; do release_pod "$name"; done
+}
 
 fail() { echo "fluent-bit verify: $*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
@@ -136,9 +197,14 @@ py() {
 }
 
 start_client() {
-  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
+  # C08: a name that is already taken is a collision to report, not an object to
+  # clear away. Deleting it would destroy another attempt's live probe.
+  if [ -n "$($KC get pod "$CLIENT_POD" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
+  fi
   $KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
     --command -- python3 -c 'import time; time.sleep(3600)' >/dev/null
+  own_pod "$CLIENT_POD"
   $KC wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
 }
 
@@ -234,14 +300,18 @@ mapfile -t NODES < <(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.
 [ "${#NODES[@]}" -ge 1 ] || fail "no nodes found"
 
 declare -A MARKER_OF
+declare -A MARKER_POD_OF
 for i in "${!NODES[@]}"; do
   node="${NODES[$i]}"
   seq_n=$((i + 1))
-  pod="ani-log-marker-${seq_n}"
+  pod="${MARKER_PREFIX}-${seq_n}"
   marker="ANI-MARKER-${RUN_ID}-n${seq_n}-$(hostname)-${node}"
   MARKER_OF["$node"]="$marker"
+  MARKER_POD_OF["$node"]="$pod"
   note "node $node -> pod $pod"
-  $KC delete pod "$pod" --ignore-not-found --wait=true --timeout=300s >/dev/null
+  if [ -n "$($KC get pod "$pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "marker pod $pod already exists; refusing to delete a probe this attempt did not create"
+  fi
   cat <<EOF | $KC apply -f -
 apiVersion: v1
 kind: Pod
@@ -266,7 +336,8 @@ done
 
 for i in "${!NODES[@]}"; do
   seq_n=$((i + 1))
-  $KC wait --for=condition=Ready "pod/ani-log-marker-${seq_n}" --timeout=180s
+  $KC wait --for=condition=Ready "pod/${MARKER_PREFIX}-${seq_n}" --timeout=180s
+  own_pod "${MARKER_PREFIX}-${seq_n}"
 done
 
 # Markers are read from the marker pods' own logs first, so the expected value
@@ -274,7 +345,7 @@ done
 {
   for i in "${!NODES[@]}"; do
     seq_n=$((i + 1))
-    $KC logs "ani-log-marker-${seq_n}"
+    $KC logs "${MARKER_PREFIX}-${seq_n}"
   done
 } | tee "$EVIDENCE/markers-written.txt"
 
@@ -419,8 +490,11 @@ cat > "$EVIDENCE/check_metadata.py" <<'PY'
 import json, re, sys
 
 found = json.load(open(sys.argv[1]))
-nodes = sys.argv[2:-1]
-expected_ns = sys.argv[-1]
+nodes = sys.argv[2:-2]
+expected_ns = sys.argv[-2]
+# C08: the probe pod is named for the attempt, so the expected pod name comes
+# from the run rather than from a constant another run could also claim.
+marker_prefix = sys.argv[-1]
 
 REQUIRED = ("namespace", "pod", "container", "node")
 
@@ -430,7 +504,7 @@ for marker, entry in sorted(found.items()):
         raise SystemExit(f"{marker}: cannot parse the marker sequence number")
     idx = int(seq.group(1))
     want_node = nodes[idx - 1]
-    want_pod = f"ani-log-marker-{idx}"
+    want_pod = f"{marker_prefix}-{idx}"
 
     if "stream" in entry:  # Loki: metadata is in the stream labels
         labels = entry["stream"]
@@ -457,7 +531,7 @@ PY
 $KC exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/markers-found.json' \
   < "$EVIDENCE/markers-found.txt"
 py "$EVIDENCE/check_metadata.py" /tmp/markers-found.json \
-  "${NODES[@]}" "$NS" | tee "$EVIDENCE/metadata.txt"
+  "${NODES[@]}" "$NS" "$MARKER_PREFIX" | tee "$EVIDENCE/metadata.txt"
 
 note "all $want_nodes markers found in $BACKEND with correct namespace/pod/container/node"
 
@@ -466,11 +540,7 @@ note "all $want_nodes markers found in $BACKEND with correct namespace/pod/conta
 # backend/collector Pod rebuilds, so no existing service is restarted and no
 # global retention/routing is touched during install or smoke.
 if [ "$LEVEL" = smoke ]; then
-  for i in "${!NODES[@]}"; do
-    seq_n=$((i + 1))
-    $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
-  done
-  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=120s >/dev/null 2>&1 || true
+  release_all_owned
   note "fluent-bit SMOKE verification passed: config sane, $want_nodes markers collected into $BACKEND (read-only; no pod rebuild, no retention change)"
   exit 0
 fi
@@ -567,9 +637,16 @@ victim_pod="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
 # the collector mounts at /var/lib/fluent-bit (values: fluent-bit-state ->
 # /var/lib/ani-installer/fluent-bit), so it sees the collector's own files.
 # Read-only, and deleted after each use.
+INSPECTOR_N=0
 cursor_ls() { # cursor_ls <node> <outfile>
-  local node="$1" out="$2" inspector="ani-fb-cursor-inspector" ph i
-  $KC delete pod "$inspector" --ignore-not-found --wait=true --timeout=300s >/dev/null 2>&1 || true
+  local node="$1" out="$2" ph i
+  # C08: one uniquely named inspector per call, owned by this attempt. Reusing a
+  # fixed name and deleting it first is how concurrent runs destroyed each other.
+  INSPECTOR_N=$((INSPECTOR_N + 1))
+  local inspector="${INSPECTOR_PREFIX}-${INSPECTOR_N}"
+  if [ -n "$($KC get pod "$inspector" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "inspector $inspector already exists; refusing to delete a probe this attempt did not create"
+  fi
   cat <<EOF | $KC apply -f - >/dev/null
 apiVersion: v1
 kind: Pod
@@ -607,7 +684,8 @@ EOF
   done
   [ "$ph" = "Succeeded" ] || fail "the cursor inspector pod on $node did not finish in 120s"
   $KC logs "$inspector" > "$out"
-  $KC delete pod "$inspector" --wait=true --timeout=300s >/dev/null
+  own_pod "$inspector"
+  release_pod "$inspector"
 }
 
 cursor_ls "$victim_node" "$EVIDENCE/cursor-before.txt"
@@ -642,12 +720,15 @@ grep -q 'tail.db' "$EVIDENCE/cursor-after.txt" \
 
 # New markers after the rebuild: the tail input must resume, not stop.
 new_run="${RUN_ID}-post"
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
+post_pod="${MARKER_PREFIX}-post"
+if [ -n "$($KC get pod "$post_pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+  fail "marker pod $post_pod already exists; refusing to delete a probe this attempt did not create"
+fi
 cat <<EOF | $KC apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ani-log-marker-post
+  name: $post_pod
 spec:
   restartPolicy: Never
   nodeName: $victim_node
@@ -661,7 +742,8 @@ spec:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
 EOF
-$KC wait --for=condition=Ready pod/ani-log-marker-post --timeout=180s
+$KC wait --for=condition=Ready "pod/$post_pod" --timeout=180s
+own_pod "$post_pod"
 
 cat > "$EVIDENCE/await_one.py" <<'PY'
 import base64, json, ssl, sys, time, urllib.parse, urllib.request
@@ -880,17 +962,15 @@ echo "retention-expiry=not_verified (requires the retention period to elapse)" \
   | tee "$EVIDENCE/retention-expiry.txt"
 
 note "== [6] cleanup of this run's own test pods =="
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
-for i in "${!NODES[@]}"; do
-  seq_n=$((i + 1))
-  $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true --timeout=300s >/dev/null
-done
-$KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
+# C08: this is the only cleanup, and it sits on the success path. A run that
+# failed earlier exits before reaching it, so its probes and its evidence stay
+# exactly where the failure left them for whoever investigates next.
+release_all_owned
 
-# Only this run's own marker pods are removed. The markers stay in the backend,
-# which is intentional: they are the evidence for the rebuild checks above.
-leftover="$($KC get pod -o name 2>/dev/null | grep -cE 'ani-log-marker|'"$CLIENT_POD" || true)"
-[ "$leftover" = "0" ] || fail "test pods were left behind in $NS"
+# Only this attempt's own prefixes are considered — a leftover from an earlier
+# incident is evidence, not this run's litter.
+leftover="$($KC get pod -o name 2>/dev/null | grep -cE "(${MARKER_PREFIX}|${CLIENT_POD}|${INSPECTOR_PREFIX})" || true)"
+[ "$leftover" = "0" ] || fail "this attempt left its own test pods behind in $NS"
 
 note "fluent-bit verify passed"
 note "evidence: $EVIDENCE"

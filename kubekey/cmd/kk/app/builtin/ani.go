@@ -202,6 +202,7 @@ func newANIMaterialsCommand() *cobra.Command {
 		Short: "Verify and place artifact materials against the approved lock (packaging steps)",
 	}
 	cmd.AddCommand(newANIMaterialsPlaceChartsCommand())
+	cmd.AddCommand(newANIMaterialsPrepareChartsCommand())
 	cmd.AddCommand(newANIMaterialsPlaceToolsCommand())
 	cmd.AddCommand(newANIMaterialsInjectISOCommand())
 	cmd.AddCommand(newANIMaterialsVerifyRegistryCommand())
@@ -243,6 +244,26 @@ func newANIMaterialsRecordEvidenceCommand() *cobra.Command {
 	cmd.Flags().StringVar(&input.Out, "out", "", "evidence directory to write, usually <artifact>/images/evidence (required)")
 	cmd.Flags().StringVar(&input.LockPath, "lock", "", "approved materials lock to cross-check every recorded pair against")
 	_ = cmd.MarkFlagRequired("out")
+	return cmd
+}
+
+// newANIMaterialsPrepareChartsCommand is the gate's input step (C10). The chart
+// archives the source-tree material test opens are gitignored, so a clean
+// checkout has none; this prepares exactly those bytes from the sources the
+// approved lock names, and the gate stays offline afterwards.
+func newANIMaterialsPrepareChartsCommand() *cobra.Command {
+	input := ani.MaterialsPrepareChartsInput{}
+	cmd := &cobra.Command{
+		Use:   "prepare-charts",
+		Short: "Fetch and verify the charts the approved lock names into the source tree the gate reads",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return ani.RunMaterialsPrepareCharts(input, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&input.LockPath, "lock", "ani/components.lock.yaml", "path to the approved materials lock")
+	cmd.Flags().StringVar(&input.Root, "root", "ani", "source-tree ani directory to place charts into")
+	cmd.Flags().StringVar(&input.CacheDir, "cache", "", "content-addressed chart cache directory (recommended; empty downloads into --root only)")
+	cmd.Flags().BoolVar(&input.Offline, "offline", false, "verify and adopt only bytes already present, and name what is missing instead of fetching")
 	return cmd
 }
 

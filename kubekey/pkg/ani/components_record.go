@@ -202,13 +202,15 @@ func NewComponentsExecutionManifest(base RunManifest, plan ComponentsPlan, liveI
 	if lockDigest == "" {
 		return RunManifest{}, errors.New("the execution saw no materials lock to record")
 	}
-	// The writer must not land a record its own consumer will always refuse.
-	// An addition changes the effective config; if the digest still equals the
-	// base install's, this pass proves nothing about a change and verify would
-	// reject the record for the same reason — so say it here, at the moment the
-	// operator can still act on it, instead of printing a doomed record as a pass.
-	if plan.NewConfigDigest == base.ConfigDigest {
-		return RunManifest{}, fmt.Errorf("the effective config digest equals the base install's (%s); this pass adds nothing, and ani verify refuses an execution record whose config did not change", base.ConfigDigest)
+	// C06: the rule is about the operation, not about the digest moving.
+	// An ADDITION changes the effective config, so a digest still equal to the
+	// base's means nothing was added and the record would be empty of meaning.
+	// A NO-OP on a component the base install itself installed has, by
+	// definition, the same effective config — refusing that made the one honest
+	// observation of an already-present component unrecordable, and pushed
+	// operators to edit an unrelated field just to move the digest.
+	if plan.NewConfigDigest == base.ConfigDigest && op == ComponentsOperationAdd {
+		return RunManifest{}, fmt.Errorf("the effective config digest equals the base install's (%s) but this pass installed something; an addition changes it — re-plan", base.ConfigDigest)
 	}
 	// The record's own config digest is the EFFECTIVE config of this execution
 	// (a new component changes it); the base's digest stays recorded separately.
@@ -405,8 +407,9 @@ func ValidateComponentsExecutionShape(m RunManifest) error {
 		return fmt.Errorf("components execution record base linkage is incomplete (run %q, cluster uid %q, config digest %q)",
 			e.BaseRunID, e.BaseClusterUID, e.BaseConfigDigest)
 	}
-	if e.BaseConfigDigest == m.ConfigDigest {
-		return fmt.Errorf("components execution record's effective config digest equals the base's (%s); an addition changes it", m.ConfigDigest)
+	// C06: only a record that installed something must show a changed config.
+	if e.DidInstall && e.BaseConfigDigest == m.ConfigDigest {
+		return fmt.Errorf("components execution record installed something yet its effective config digest equals the base's (%s); an addition changes it", m.ConfigDigest)
 	}
 	if len(e.Targets) == 0 {
 		return errors.New("components execution record names no targets")

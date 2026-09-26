@@ -118,7 +118,16 @@ exit 2
 // inputs, the fake kk call log path and the output dir.
 func r15PlanAndExecute(t *testing.T, componentsBlock string, natsRelease string) (string, ComponentsExecuteInput, string, string) {
 	t.Helper()
-	input, outDir := r15PlanFixture(t, componentsBlock, "nats", false, natsRelease)
+	return r15PlanAndExecuteOverBase(t, "  certManager: {enabled: true}", componentsBlock, natsRelease)
+}
+
+// r15PlanAndExecuteOverBase lets a test choose what the BASE install itself
+// selected. C06 needs a base that already contains the component being
+// re-requested, because that is the only state whose effective config genuinely
+// does not move.
+func r15PlanAndExecuteOverBase(t *testing.T, baseBlock, componentsBlock string, natsRelease string) (string, ComponentsExecuteInput, string, string) {
+	t.Helper()
+	input, outDir := r15PlanFixtureOverBase(t, baseBlock, componentsBlock, "nats", false, natsRelease)
 	// The plan binds the playbook-runner identity, so the fixture kk must
 	// exist BEFORE planning: create it and pin the plan digest to it.
 	baseDirPre := filepath.Dir(input.ConfigFile)

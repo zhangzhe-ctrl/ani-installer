@@ -33,6 +33,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 )
 
 // ---------------------------------------------------------------------------
@@ -121,7 +125,11 @@ type VerifyReport struct {
 	StartedAt        string                  `json:"startedAt"`
 	FinishedAt       string                  `json:"finishedAt"`
 	Results          []VerifyComponentResult `json:"results"`
-	Overall          string                  `json:"overall"`
+	// NotDeclared names the components in scope that this level has no declared
+	// check for. They are reported, never counted as a pass: an acceptance that
+	// ran nothing must not look like an acceptance that passed.
+	NotDeclared []string `json:"notDeclared,omitempty"`
+	Overall     string   `json:"overall"`
 }
 
 // acceptanceTarget is a pre-declared persistence check for one component:
@@ -197,6 +205,7 @@ type acceptanceLedger struct {
 	Target     string `json:"target"`
 	OldPodUID  string `json:"oldPodUID"`
 	OldPVCUID  string `json:"oldPVCUID"`
+	NewPodUID  string `json:"newPodUID,omitempty"`
 	Controller string `json:"controller"`
 	Token      string `json:"token"`
 	StartedAt  string `json:"startedAt"`
@@ -350,6 +359,46 @@ func loadVerifyRunRecord(ctx context.Context, input VerifyInput) (loadedVerifyRu
 	return loadedVerifyRun{manifest: manifest, runID: manifest.RunID, baseRunID: manifest.RunID}, nil
 }
 
+// bindVerifyTarget makes every verification answer for the cluster and the host
+// that are standing here NOW, not for whatever a JSON file once described.
+//
+// C01: the components-execution path already re-read the live cluster (through
+// ValidateComponentsExecutionBase) but the install-success path did not, so
+// cluster A's genuine record handed to `--kubeconfig` for cluster B sailed past
+// every check and could run SQL and a named Pod delete against B, because B
+// happened to use the same namespace and object names. A copied record plus a
+// copied kubeconfig also brings a different local flock, so the host the record
+// names is checked too.
+func bindVerifyTarget(ctx context.Context, input VerifyInput, loaded loadedVerifyRun) error {
+	manifest := loaded.manifest
+	want := manifest.Identity.ClusterUID
+	if loaded.isExecution {
+		// The base install owns the invariants and the quota; the execution's own
+		// observation must agree with it, and both must be the cluster live here.
+		want = manifest.ComponentsExecution.BaseClusterUID
+	}
+	if strings.TrimSpace(want) == "" {
+		return errors.New("the record binds no cluster identity to verify against; refusing to verify an unbound record")
+	}
+	runner := kubectlRunner{bin: kubectlBin(), kubeconfig: input.Kubeconfig}
+	liveID, _, err := captureLiveCluster(ctx, runner)
+	if err != nil {
+		return errors.Wrap(err, "read the live cluster identity this record must belong to")
+	}
+	if liveID.ClusterUID != want {
+		return fmt.Errorf("the record belongs to cluster uid %s but the kubeconfig in use points at %s; refusing to verify (and never to mutate) a different cluster than the record attests",
+			want, liveID.ClusterUID)
+	}
+	// Only the level that changes anything is pinned to the original installer
+	// host: that is where the shared product lock lives, and a copied record plus
+	// a copied kubeconfig on another machine brings a different flock. A read-only
+	// smoke of the right cluster is still read-only wherever it is run from.
+	if input.Level == VerifyLevelAcceptance {
+		return verifyExecutionHostAddress("installer node", manifest.Installer.Name, manifest.Installer.Address)
+	}
+	return nil
+}
+
 // loadComponentsExecutionRun consumes the record of one components execution
 // (L-06). It re-runs the same identity machinery an install record passes — on
 // the BASE it names — and then re-observes the live cluster, so a record cannot
@@ -447,8 +496,28 @@ func (r kubectlRunner) run(ctx context.Context, args ...string) ([]byte, error) 
 }
 
 func (r kubectlRunner) jsonpath(ctx context.Context, resource, name, namespace, path string) (string, error) {
-	out, err := r.run(ctx, "get", resource, name, "-n", namespace, "-o", "jsonpath="+path)
+	args := []string{"get", resource}
+	// A cluster-scoped resource has no namespace, and `-n ""` is an argument
+	// kubectl refuses outright, so the flag is only present when there is one.
+	if namespace != "" {
+		args = append(args, name, "-n", namespace)
+	} else {
+		args = append(args, name)
+	}
+	args = append(args, "-o", "jsonpath="+path)
+	out, err := r.run(ctx, args...)
 	return strings.TrimSpace(string(out)), err
+}
+
+// jsonpathListContains compares whole entries, so a claim called
+// "data-postgresql-0-extra" never satisfies a target called "data-postgresql-0".
+func jsonpathListContains(spaceSeparated, want string) bool {
+	for _, got := range strings.Fields(spaceSeparated) {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 // RunVerify dispatches one verification level over the run record and writes
@@ -462,6 +531,13 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 		return err
 	}
 	manifest, runID := loaded.manifest, loaded.runID
+	// C01: before this command can attest, report or change anything, the cluster
+	// its --kubeconfig actually reaches has to be the cluster the record belongs
+	// to. Both record kinds pass through here, so the install-success path can no
+	// longer be replayed against a lookalike cluster.
+	if err := bindVerifyTarget(ctx, input, loaded); err != nil {
+		return err
+	}
 	scope, err := verifyScope(manifest, loaded.scope, input.Only)
 	if err != nil {
 		return err
@@ -472,12 +548,44 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 	if input.Level == VerifyLevelAcceptance && !input.AllowPodRecreate {
 		return errors.New("acceptance performs a declared Pod recreation and needs --allow-pod-recreate; refusing to run without it")
 	}
+	// C04: naming a component whose acceptance is not implemented is refused up
+	// front, before the shared lock or any one-shot quota is touched. Silently
+	// recording it as `skipped` and then reporting the level as passed is the
+	// opposite of a verification: it would let `--only metrics` "pass" without
+	// ever checking metrics.
+	var acceptanceNotDeclared []string
+	if input.Level == VerifyLevelAcceptance {
+		implemented := make([]string, 0, len(acceptanceTargets))
+		for name := range acceptanceTargets {
+			implemented = append(implemented, name)
+		}
+		sort.Strings(implemented)
+		declared, skipped := splitDeclaredTargets(scope)
+		// C04, explicitly requested: naming a component whose acceptance does not
+		// exist is refused BEFORE the lock and before any one-shot quota is
+		// consumed. Recording it `skipped` and passing the level would let
+		// `--only metrics` certify metrics without ever looking at metrics.
+		if len(input.Only) > 0 && len(skipped) > 0 {
+			return fmt.Errorf("acceptance is not implemented for %s; this build declares it only for %s. Refusing to run the rest and report the level as passed — do not substitute a hand-run script that bypasses the ledger",
+				strings.Join(skipped, ","), strings.Join(implemented, ","))
+		}
+		// C04, not explicitly requested: the level narrows to what it can really
+		// check, and says plainly what it left out. A level that would run nothing
+		// at all is refused instead of passing on an empty result set.
+		if len(declared) == 0 {
+			return fmt.Errorf("acceptance has no declared check for anything in this scope (%s); it declares %s. Refusing to report a level that verified nothing as a pass",
+				strings.Join(scope, ","), strings.Join(implemented, ","))
+		}
+		acceptanceNotDeclared = skipped
+		scope = declared
+	}
 
 	var install *bool
 	if e := manifest.ComponentsExecution; e != nil {
 		install = &e.DidInstall
 	}
 	report := VerifyReport{
+		NotDeclared:      acceptanceNotDeclared,
 		SchemaVersion:    VerifyReportSchemaVersion,
 		RunID:            runID,
 		RecordKind:       manifest.RecordKind,
@@ -528,9 +636,16 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 		}
 	}
 
+	// C04: a level passes only when every result in it passed. The previous rollup
+	// flipped on an explicit `fail` alone, so `skipped`, `not_run` or an unset
+	// status fell through to `overall: pass` with exit 0 — "nothing was checked"
+	// and "everything was checked" were indistinguishable.
 	report.Overall = VerifyStatusPass
+	if len(report.Results) == 0 {
+		report.Overall = VerifyStatusFailed
+	}
 	for _, result := range report.Results {
-		if result.Status == VerifyStatusFailed {
+		if result.Status != VerifyStatusPass {
 			report.Overall = VerifyStatusFailed
 			break
 		}
@@ -547,6 +662,9 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 	}
 	for _, result := range report.Results {
 		fmt.Fprintf(out, "verify %s %s: %s\n", input.Level, result.Component, result.Status)
+	}
+	if len(report.NotDeclared) > 0 {
+		fmt.Fprintf(out, "verify %s did NOT check (no declared check in this build): %s\n", input.Level, strings.Join(report.NotDeclared, ","))
 	}
 	fmt.Fprintf(out, "verify %s overall: %s (run=%s report=%s)\n", input.Level, report.Overall, runID, reportPath)
 	// State plainly what kind of subject was verified, so a read-only
@@ -635,17 +753,16 @@ func runSmokeScope(ctx context.Context, input VerifyInput, subjectRunID string, 
 		// execution run) can never overwrite the first one's evidence.
 		outputDir := filepath.Join(input.Output, "smoke-"+sanitizePathToken(subjectRunID)+"-"+safeComponent)
 		cmd := exec.CommandContext(ctx, "bash", script)
-		// F09: the script is a shell that spawns children (kubectl, sleeps).
-		// Killing only bash would let descendants keep running and keep the
-		// output pipe open, so the context kill must take the whole process
-		// group of THIS task's script — never a broad pattern kill of shared
-		// processes.
+		// F09/C02: the script is a shell that spawns children (kubectl, sleeps).
+		// CommandContext already installed a Cancel that kills only bash, and
+		// Setpgid on its own does not change what that Cancel does, so the
+		// replacement must be assigned unconditionally: cancelling has to take
+		// the whole process group of THIS task's script — never a broad pattern
+		// kill of shared processes.
 		cmd.SysProcAttr = smokeSysProcAttr()
-		if cmd.Cancel == nil {
-			cmd.Cancel = func() error { return smokeKillFunc(cmd) }
-		}
+		cmd.Cancel = func() error { return smokeKillFunc(cmd) }
 		if cmd.WaitDelay == 0 {
-			cmd.WaitDelay = 5 * time.Second
+			cmd.WaitDelay = smokeWaitDelay
 		}
 		cmd.Env = append(os.Environ(),
 			"ANI_VERIFY_KUBECONFIG="+input.Kubeconfig,
@@ -680,6 +797,19 @@ func runSmokeScope(ctx context.Context, input VerifyInput, subjectRunID string, 
 	return results
 }
 
+// splitDeclaredTargets separates what this acceptance level can actually check
+// from what it cannot, preserving scope order.
+func splitDeclaredTargets(scope []string) (declared, notDeclared []string) {
+	for _, component := range scope {
+		if _, ok := acceptanceTargets[component]; ok {
+			declared = append(declared, component)
+			continue
+		}
+		notDeclared = append(notDeclared, component)
+	}
+	return declared, notDeclared
+}
+
 // acceptanceScopeKey makes the acceptance report path stable per (run, scope)
 // so a later, different target in the same run is not mis-blocked by an earlier
 // target's report (T07). It is only the report filename; the delete quota lives
@@ -698,9 +828,16 @@ func acceptanceScopeKey(runID string, scope []string) string {
 // BEFORE any change, under the already-held installer lock. O_EXCL makes a
 // concurrent or repeated attempt see the existing record instead of re-acquiring
 // a delete quota. Returns (existingRecord, created, error).
+//
+// C03: the intent is only an authorization if it is durable before the change.
+// Both the file contents and its directory entry are flushed, and a flush failure
+// stops the mutation instead of issuing an unlogged delete.
 func claimAcceptanceLedger(stateDir, runID string, target acceptanceTarget, rec acceptanceLedger) (acceptanceLedger, bool, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return acceptanceLedger{}, false, errors.Wrapf(err, "create acceptance ledger dir %s", stateDir)
+	}
+	if err := syncDir(stateDir); err != nil {
+		return acceptanceLedger{}, false, err
 	}
 	path := target.ledgerFile(stateDir, runID)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
@@ -726,13 +863,29 @@ func claimAcceptanceLedger(stateDir, runID string, target acceptanceTarget, rec 
 		return acceptanceLedger{}, false, errors.Wrap(err, "encode ledger intent")
 	}
 	if _, err := f.Write(append(enc, '\n')); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
 		return acceptanceLedger{}, false, errors.Wrapf(err, "write ledger %s", path)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return acceptanceLedger{}, false, errors.Wrapf(err, "flush ledger intent %s before any change", path)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return acceptanceLedger{}, false, errors.Wrapf(err, "close ledger intent %s", path)
+	}
+	if err := syncDir(stateDir); err != nil {
+		_ = os.Remove(path)
+		return acceptanceLedger{}, false, errors.Wrap(err, "the recreation intent is not durable; refusing to change anything")
 	}
 	return rec, true, nil
 }
 
 // finalizeAcceptanceLedger rewrites the ledger with its terminal state (done or
-// unknown) after the change outcome is known.
+// unknown) after the change outcome is known. The rename and its directory entry
+// are both flushed, so a recorded `done` cannot be lost and re-armed by a crash.
 func finalizeAcceptanceLedger(stateDir, runID string, target acceptanceTarget, rec acceptanceLedger) error {
 	path := target.ledgerFile(stateDir, runID)
 	enc, err := json.Marshal(rec)
@@ -740,10 +893,55 @@ func finalizeAcceptanceLedger(stateDir, runID string, target acceptanceTarget, r
 		return errors.Wrap(err, "encode final ledger")
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(enc, '\n'), 0o600); err != nil {
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
 		return errors.Wrapf(err, "write final ledger %s", tmp)
 	}
-	return errors.Wrapf(os.Rename(tmp, path), "rename final ledger over %s", path)
+	if _, err := f.Write(append(enc, '\n')); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return errors.Wrapf(err, "write final ledger %s", tmp)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return errors.Wrapf(err, "flush final ledger %s", tmp)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return errors.Wrapf(err, "close final ledger %s", tmp)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return errors.Wrapf(err, "rename final ledger over %s", path)
+	}
+	return syncDir(stateDir)
+}
+
+// terminalLedger closes the intent record out without dropping any identity it
+// carried: the old pod/PVC uids and the controller stay in the terminal entry, so
+// a later reader can tell exactly which object the spent quota referred to.
+func terminalLedger(rec acceptanceLedger, state, outcome string) acceptanceLedger {
+	return terminalLedgerWithNewPod(rec, state, outcome, "")
+}
+
+func terminalLedgerWithNewPod(rec acceptanceLedger, state, outcome, newPodUID string) acceptanceLedger {
+	out := rec
+	out.State = state
+	out.Outcome = outcome
+	out.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	out.NewPodUID = newPodUID
+	return out
+}
+
+// ledgerWarning turns a failed terminal ledger write into text the operator sees.
+// The change has already happened by then, so the run must still report its real
+// outcome while saying plainly that the durable record did not close.
+func ledgerWarning(err error) string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("the durable recreation ledger could not be closed (%v); this quota may read as still-attempted, which is reported rather than retried: ", err)
 }
 
 // acceptanceToken is a per-run unique business value, never a fixed string, so
@@ -766,12 +964,22 @@ func smokeSysProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{Setpgid: true}
 }
 
+// smokeWaitDelay bounds how long a cancelled smoke pass may keep waiting on the
+// script's output pipes. It is a wait bound only: the pipes being closed is not
+// what stops the descendants, smokeKillFunc is.
+const smokeWaitDelay = 5 * time.Second
+
 // smokeKillFunc signals the whole process group on context cancellation.
+// cmd.Cancel runs with cmd.Process already started, and a group that has already
+// exited reports ESRCH — which os/exec treats as "already gone", not a failure.
 func smokeKillFunc(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil
 	}
-	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
 }
 
 // runAcceptanceScope executes the declared one-shot persistence checks. The
@@ -787,19 +995,16 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 	failed := false
 	for _, component := range scope {
 		target, declared := acceptanceTargets[component]
+		if !declared {
+			// runAcceptanceScope only receives declared targets (C04 narrows the
+			// scope first), so this is a programming error, not an outcome.
+			return nil, fmt.Errorf("acceptance scope reached %s with no declaration; refusing to invent one", component)
+		}
 		if failed {
 			results = append(results, VerifyComponentResult{
 				Component: component,
 				Status:    VerifyStatusNotRun,
 				Detail:    "an earlier acceptance failed; no further mutation is attempted",
-			})
-			continue
-		}
-		if !declared {
-			results = append(results, VerifyComponentResult{
-				Component: component,
-				Status:    VerifyStatusSkipped,
-				Detail:    "no acceptance declaration is implemented for this component; it is never silently passed",
 			})
 			continue
 		}
@@ -843,10 +1048,37 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 		result.Evidence = evidence
 		return result
 	}
-	owner, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].name}")
-	if err != nil || owner != target.ControllerName {
+	// C03: the owner is authorised by the controller's OWN live uid and its
+	// controller flag, not by the owner name alone. An adopted Pod that merely
+	// carries the right name — or one whose controller was replaced — is not the
+	// object this target declares, and deleting it would mutate something else.
+	ownerName, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].name}")
+	if err != nil || ownerName != target.ControllerName {
 		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("pod %s is not owned by the declared controller %s (owner=%q): refusing to mutate an unexpected object", target.PodName, target.ControllerName, owner)
+		result.Detail = fmt.Sprintf("pod %s is not owned by the declared controller %s (owner=%q): refusing to mutate an unexpected object", target.PodName, target.ControllerName, ownerName)
+		result.Evidence = evidence
+		return result
+	}
+	if isController, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].controller}"); err != nil || isController != "true" {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("pod %s owner reference %q is not marked controller=true (got %q): refusing to recreate a Pod whose managing controller is unconfirmed", target.PodName, target.ControllerName, isController)
+		result.Evidence = evidence
+		return result
+	}
+	controllerKind := strings.ToLower(target.ControllerKind)
+	controllerUID, err := runner.jsonpath(ctx, controllerKind, target.ControllerName, target.Namespace, "{.metadata.uid}")
+	if err != nil || controllerUID == "" {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("declared controller %s/%s cannot be read in %s; refusing to recreate a Pod whose controller identity is unconfirmed: %v",
+			target.ControllerKind, target.ControllerName, target.Namespace, err)
+		result.Evidence = evidence
+		return result
+	}
+	ownerUID, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].uid}")
+	if err != nil || ownerUID != controllerUID {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("pod %s is owned by %q uid %q but the live %s/%s has uid %q: the Pod belongs to a different controller generation",
+			target.PodName, target.ControllerName, ownerUID, target.ControllerKind, target.ControllerName, controllerUID)
 		result.Evidence = evidence
 		return result
 	}
@@ -857,12 +1089,44 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 		result.Evidence = evidence
 		return result
 	}
+	// C03: the declared PVC must be the volume THIS Pod actually mounts, and the
+	// PV must be bound back to THIS PVC object. Otherwise the check could recreate
+	// a Pod backed by other storage and still read its token from an untouched
+	// volume — a pass that proves nothing about persistence.
+	claimNames, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace,
+		"{.spec.volumes[*].persistentVolumeClaim.claimName}")
+	if err != nil {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("the volumes of pod %s cannot be read: %v", target.PodName, err)
+		result.Evidence = evidence
+		return result
+	}
+	if !jsonpathListContains(claimNames, target.PVCName) {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("pod %s does not mount the declared PVC %s (its claims are %q): refusing to certify persistence of a volume it does not use",
+			target.PodName, target.PVCName, claimNames)
+		result.Evidence = evidence
+		return result
+	}
 	pvName, _ := runner.jsonpath(ctx, "pvc", target.PVCName, target.Namespace, "{.spec.volumeName}")
+	if pvName == "" {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("PVC %s/%s is not bound to a persistent volume, so a recreation cannot certify durable storage", target.Namespace, target.PVCName)
+		result.Evidence = evidence
+		return result
+	}
+	claimRefUID, err := runner.jsonpath(ctx, "persistentvolume", pvName, "", "{.spec.claimRef.uid}")
+	if err != nil || claimRefUID != oldPVCUID {
+		result.Status = VerifyStatusFailed
+		result.Detail = fmt.Sprintf("PV %s is claimed by uid %q but PVC %s has uid %q: the binding is not this pair, so persistence is not attestable",
+			pvName, claimRefUID, target.PVCName, oldPVCUID)
+		result.Evidence = evidence
+		return result
+	}
 	evidence["oldPodUID"] = oldPodUID
 	evidence["oldPVCUID"] = oldPVCUID
-	if pvName != "" {
-		evidence["pv"] = pvName
-	}
+	evidence["controllerUid"] = controllerUID
+	evidence["pv"] = pvName
 
 	token := "ani-accept-" + acceptanceToken()
 	rec := acceptanceLedger{
@@ -891,9 +1155,8 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 	// Write the business token through the real protocol (aux marker is extra
 	// evidence only, never the pass test).
 	if detail, ok := protocolWrite(ctx, runner, target, registry, token); !ok {
-		_ = finalizeAcceptanceLedger(stateDir, runID, target, acceptanceLedger{State: ledgerStateUnknown, RunID: runID, Target: component, Token: token, StartedAt: rec.StartedAt, FinishedAt: time.Now().UTC().Format(time.RFC3339), Outcome: "write-failed"})
+		result.Detail = detail + ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "write-failed")))
 		result.Status = VerifyStatusFailed
-		result.Detail = detail
 		result.Evidence = evidence
 		return result
 	}
@@ -914,19 +1177,28 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 		return result
 	}
 
-	// The single planned recreation, with the old UID as a precondition so a
-	// same-name replacement object is never deleted by this run.
+	// C03: the last client-side recheck is not the authorization — the server is.
+	// Between that read and the DELETE the pod can be replaced under the same
+	// name, and the client would then delete the newcomer. So the old UID travels
+	// IN the delete request as a server-side precondition, and the delete is
+	// refused outright if the server cannot honour that condition:
+	//   - --field-selector makes the API server select the object BY UID, so a
+	//     same-name replacement no longer matches the request;
+	//   - --ignore-not-found=false turns "nothing matched" into an error instead
+	//     of a silent success;
+	//   - an API server that cannot validate the selector fails here, before any
+	//     object is removed — never a UID-unconditional delete.
 	delArgs := []string{"delete", "pod", target.PodName, "-n", target.Namespace,
+		"--field-selector", "metadata.uid=" + oldPodUID,
+		"--ignore-not-found=false",
 		"--wait=true", "--timeout=300s"}
 	if _, err := runner.run(ctx, delArgs...); err != nil {
 		// The delete was issued; its effect is uncertain. Record unknown and stop.
-		_ = finalizeAcceptanceLedger(stateDir, runID, target, acceptanceLedger{State: ledgerStateUnknown, RunID: runID, Target: component, OldPodUID: oldPodUID, OldPVCUID: oldPVCUID, Token: token, StartedAt: rec.StartedAt, FinishedAt: time.Now().UTC().Format(time.RFC3339), Outcome: "delete-failed"})
 		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the planned pod recreation failed (remote result is unknown, not replayed): %v", err)
+		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "delete-failed"))) + fmt.Sprintf("the UID-preconditioned pod delete (%s) failed; the change is not retried without the precondition and its remote result is unknown: %v", "metadata.uid="+oldPodUID, err)
 		result.Evidence = evidence
 		return result
 	}
-
 	// Wait for a DIFFERENT UID that is Ready (condition, not phase) with a
 	// single bounded budget; no second delete, no agent restart.
 	recreateTimeout := 5 * time.Minute
@@ -939,9 +1211,8 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 	newPodUID := ""
 	for {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			_ = finalizeAcceptanceLedger(stateDir, runID, target, acceptanceLedger{State: ledgerStateUnknown, RunID: runID, Target: component, OldPodUID: oldPodUID, OldPVCUID: oldPVCUID, Token: token, StartedAt: rec.StartedAt, FinishedAt: time.Now().UTC().Format(time.RFC3339), Outcome: "cancelled"})
 			result.Status = VerifyStatusFailed
-			result.Detail = fmt.Sprintf("waiting for the recreated pod was cancelled; remote result is unknown: %v", ctxErr)
+			result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateUnknown, "cancelled", newPodUID))) + fmt.Sprintf("waiting for the recreated pod was cancelled; remote result is unknown: %v", ctxErr)
 			result.Evidence = evidence
 			return result
 		}
@@ -955,9 +1226,8 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 			}
 		}
 		if time.Now().After(deadline) {
-			_ = finalizeAcceptanceLedger(stateDir, runID, target, acceptanceLedger{State: ledgerStateUnknown, RunID: runID, Target: component, OldPodUID: oldPodUID, OldPVCUID: oldPVCUID, Token: token, StartedAt: rec.StartedAt, FinishedAt: time.Now().UTC().Format(time.RFC3339), Outcome: "not-ready"})
 			result.Status = VerifyStatusFailed
-			result.Detail = fmt.Sprintf("the pod did not come back Ready with a new UID within %s (last uid=%q); Running-but-not-Ready is never a pass", recreateTimeout, uid)
+			result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateUnknown, "not-ready", newPodUID))) + fmt.Sprintf("the pod did not come back Ready with a new UID within %s (last uid=%q); Running-but-not-Ready is never a pass", recreateTimeout, uid)
 			result.Evidence = evidence
 			return result
 		}
@@ -991,7 +1261,7 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 		return result
 	}
 
-	if err := finalizeAcceptanceLedger(stateDir, runID, target, acceptanceLedger{State: ledgerStateDone, RunID: runID, Target: component, OldPodUID: oldPodUID, OldPVCUID: oldPVCUID, Controller: rec.Controller, Token: token, StartedAt: rec.StartedAt, FinishedAt: time.Now().UTC().Format(time.RFC3339), Outcome: VerifyStatusPass}); err != nil {
+	if err := finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateDone, VerifyStatusPass, newPodUID)); err != nil {
 		result.Status = VerifyStatusFailed
 		result.Detail = fmt.Sprintf("the recreation passed but its ledger could not be finalized (result is not silently retried): %v", err)
 		result.Evidence = evidence
@@ -1019,48 +1289,128 @@ type secretEnv struct {
 	name, secret, key string
 }
 
+// buildCheckJob assembles the one-shot acceptance client as a typed batchv1.Job.
+//
+// C04: this used to be a hand-written YAML string, and its `template:` block sat
+// at the document's top level instead of under `spec:`. A Job with no pod
+// template is not a Job that can run — it was rejected (or, worse, accepted as an
+// empty job) by the server while every offline test that only faked `apply`
+// reported success. Building the object from the same types the API uses, and
+// then checking the serialised bytes before anything is applied, makes that
+// shape error impossible to ship instead of possible to miss.
+func buildCheckJob(namespace, name, image string, env map[string]string, sEnv []secretEnv, program string) (*batchv1.Job, error) {
+	anyContainer := corev1.Container{
+		Name:            "client",
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		// The program runs inside the container shell; it is passed via command
+		// args, and the token is a generated hex string, never user input.
+		Command: []string{"/bin/sh", "-c", program},
+	}
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		anyContainer.Env = append(anyContainer.Env, corev1.EnvVar{Name: k, Value: env[k]})
+	}
+	for _, s := range sEnv {
+		anyContainer.Env = append(anyContainer.Env, corev1.EnvVar{
+			Name: s.name,
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: s.secret},
+				Key:                  s.key,
+			}},
+		})
+	}
+	labels := map[string]string{"app.kubernetes.io/name": "ani-acceptance"}
+	backoff := int32(0)
+	return &batchv1.Job{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoff,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers:    []corev1.Container{anyContainer},
+				},
+			},
+		},
+	}, nil
+}
+
+// validateCheckJob is the local structural gate C04 asks for: everything the
+// server would reject is checked here, BEFORE the one-shot delete quota is
+// consumed, so a manifest that cannot run never spends an attempt.
+func validateCheckJob(job *batchv1.Job) error {
+	if job.APIVersion != "batch/v1" || job.Kind != "Job" {
+		return fmt.Errorf("acceptance job must be a batch/v1 Job, got %s/%s", job.APIVersion, job.Kind)
+	}
+	if job.Name == "" || job.Namespace == "" {
+		return errors.New("acceptance job must be named and namespaced")
+	}
+	containers := job.Spec.Template.Spec.Containers
+	if len(containers) != 1 {
+		return fmt.Errorf("acceptance job declares %d pod template containers; exactly one client is expected "+
+			"(a template that lost its containers is what a mis-nested manifest produces)", len(containers))
+	}
+	if job.Spec.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
+		return fmt.Errorf("acceptance job must restartPolicy Never, got %q", job.Spec.Template.Spec.RestartPolicy)
+	}
+	c := containers[0]
+	if strings.TrimSpace(c.Image) == "" {
+		return errors.New("acceptance job container has no image")
+	}
+	if len(c.Command) < 3 || c.Command[0] != "/bin/sh" || c.Command[1] != "-c" || strings.TrimSpace(c.Command[2]) == "" {
+		return errors.New("acceptance job container has no shell program to run")
+	}
+	return nil
+}
+
+// acceptanceJobManifest renders the typed job for `kubectl apply -f`. It is
+// exported through the seam below so a test asserts on the bytes that actually
+// leave this process, not on a re-derived copy.
+func acceptanceJobManifest(job *batchv1.Job) ([]byte, error) {
+	data, err := yaml.Marshal(job)
+	if err != nil {
+		return nil, errors.Wrap(err, "encode acceptance job manifest")
+	}
+	return data, nil
+}
+
 // runCheckJob runs a bounded one-shot Job in the namespace the same way the
 // component's own verification scripts do: server-side apply, wait for the
 // condition, read logs, and delete the job. Credentials reach the container
 // only through Secret references — never argv, never a literal. The job name
 // embeds the check token so the evidence is attributable to one attempt.
 func (r kubectlRunner) runCheckJob(ctx context.Context, namespace, name, image string, env map[string]string, sEnv []secretEnv, program string) (string, error) {
-	var b strings.Builder
-	b.WriteString("apiVersion: batch/v1\nkind: Job\nmetadata:\n")
-	fmt.Fprintf(&b, "  name: %s\n  namespace: %s\n", name, namespace)
-	b.WriteString("  labels:\n    app.kubernetes.io/name: ani-acceptance\nspec:\n  backoffLimit: 0\ntemplate:\n")
-	b.WriteString("  metadata:\n    labels:\n      app.kubernetes.io/name: ani-acceptance\n")
-	b.WriteString("  spec:\n    restartPolicy: Never\n    containers:\n")
-	fmt.Fprintf(&b, "      - name: client\n        image: %s\n        imagePullPolicy: IfNotPresent\n", image)
-	if len(env) > 0 || len(sEnv) > 0 {
-		b.WriteString("        env:\n")
-		keys := make([]string, 0, len(env))
-		for k := range env {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Fprintf(&b, "          - name: %s\n            value: %q\n", k, env[k])
-		}
-		for _, s := range sEnv {
-			fmt.Fprintf(&b, "          - name: %s\n            valueFrom:\n              secretKeyRef:\n                name: %s\n                key: %s\n", s.name, s.secret, s.key)
-		}
+	job, err := buildCheckJob(namespace, name, image, env, sEnv, program)
+	if err != nil {
+		return "", err
 	}
-	// The program runs inside the container shell; it is passed via command
-	// args, and the token is a generated hex string, never user input.
-	b.WriteString("        command:\n          - /bin/sh\n          - -c\n")
-	fmt.Fprintf(&b, "          - |\n%s\n", indentBlock(program, "            "))
+	if err := validateCheckJob(job); err != nil {
+		return "", errors.Wrap(err, "refusing to apply an acceptance job the cluster could not run")
+	}
+	manifest, err := acceptanceJobManifest(job)
+	if err != nil {
+		return "", err
+	}
 	f, err := os.CreateTemp("", "ani-acceptance-job-*.yaml")
 	if err != nil {
 		return "", errors.Wrap(err, "create acceptance job manifest")
 	}
 	manifestPath := f.Name()
 	defer func() { _ = os.Remove(manifestPath) }()
-	if _, err := f.WriteString(b.String()); err != nil {
+	if _, err := f.Write(manifest); err != nil {
 		_ = f.Close()
 		return "", errors.Wrap(err, "write acceptance job manifest")
 	}
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		return "", errors.Wrap(err, "close acceptance job manifest")
+	}
 
 	if out, err := r.run(ctx, "apply", "--server-side", "-f", manifestPath); err != nil {
 		return string(out), errors.Wrapf(err, "apply acceptance job %s", name)
@@ -1076,20 +1426,6 @@ func (r kubectlRunner) runCheckJob(ctx context.Context, namespace, name, image s
 	}
 	out, err := r.run(ctx, "logs", "job/"+name, "-n", namespace)
 	return string(out), errors.Wrapf(err, "read acceptance job %s logs", name)
-}
-
-// indentBlock prefixes every non-empty line of program with pad (YAML literal
-// block scalar).
-func indentBlock(program, pad string) string {
-	var b strings.Builder
-	for _, line := range strings.Split(strings.TrimRight(program, "\n"), "\n") {
-		if strings.TrimSpace(line) == "" {
-			b.WriteString("\n")
-			continue
-		}
-		b.WriteString(pad + line + "\n")
-	}
-	return b.String()
 }
 
 // protocolWrite persists the token through the component's real business

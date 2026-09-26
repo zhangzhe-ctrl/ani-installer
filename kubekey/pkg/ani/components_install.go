@@ -327,6 +327,60 @@ func loadComponentsInstallConfig(input ComponentsInstallInput) (*ClusterConfig, 
 	return &cluster, &manifest, nil
 }
 
+// validatePlanClosure re-resolves the dependency closure of everything the plan
+// wrote down and checks it against the plan itself.
+//
+// C05: the closure and the write set are different things. Adding OpenSearch on a
+// cluster that already runs Fluent Bit plans [opensearch] to write while its
+// closure is [fluent-bit, opensearch]; comparing those two for equality rejected
+// that state permanently, and re-planning could not change the fact. The plan's
+// OWN rows are its resolved closure — every component it means to write plus
+// every dependency it found already satisfied — so the closure recomputed from
+// those rows must come back as exactly those rows: no new component may appear,
+// and none may vanish. Which subset is then executed stays the planned rows.
+//
+// It is a function of its own so both directions of the rule are testable without
+// standing up a cluster.
+func validatePlanClosure(plan ComponentsPlan, cluster ClusterConfig, plannedNames []string) ([]string, error) {
+	requested := make([]string, 0, len(plan.Components))
+	known := map[string]bool{}
+	for _, c := range plan.Components {
+		if c.Status != "planned" && c.Status != "already_installed" {
+			return nil, fmt.Errorf("plan component %q carries status %q that execute cannot map; re-plan", c.Component, c.Status)
+		}
+		requested = append(requested, c.Component)
+		known[c.Component] = true
+	}
+	fullScope, err := componentsScope(cluster, requested)
+	if err != nil {
+		return nil, errors.Wrap(err, "plan scope no longer resolves against the site config")
+	}
+	var unexpected []string
+	for _, name := range fullScope {
+		if !known[name] {
+			unexpected = append(unexpected, name)
+		}
+	}
+	if len(unexpected) > 0 {
+		sort.Strings(unexpected)
+		return nil, fmt.Errorf("the recomputed --only/dependency closure brings in %v, which the plan does not name at all (it resolved %v); the scene changed after planning — re-plan",
+			unexpected, requested)
+	}
+	inClosure := map[string]bool{}
+	for _, name := range fullScope {
+		inClosure[name] = true
+	}
+	if len(fullScope) != len(requested) {
+		return nil, fmt.Errorf("the recomputed dependency closure %v differs from the component set the plan resolved %v; re-plan", fullScope, requested)
+	}
+	for _, name := range plannedNames {
+		if !inClosure[name] {
+			return nil, fmt.Errorf("planned component %q is no longer inside its own dependency closure %v; re-plan", name, fullScope)
+		}
+	}
+	return fullScope, nil
+}
+
 // componentsScope resolves --only: required, known, implemented, enabled in
 // the config, storage-feasible, and closed over static internal dependencies.
 func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
@@ -1130,16 +1184,32 @@ func verifyInstallerExecutionHost(cluster ClusterConfig) error {
 	if err != nil {
 		return err
 	}
-	wanted := net.ParseIP(strings.TrimSpace(installer.Address))
+	return verifyExecutionHostAddress("installer node", installer.Name, installer.Address)
+}
+
+// verifyExecutionHostAddress is the same ownership test expressed against the
+// facts a RECORD carries rather than a site config, so `ani verify` can ask it of
+// a run record the way `ani components execute` asks it of the config that
+// produced that record. A record copied to another machine describes the same
+// cluster but its local flock protects nothing there (C01).
+func verifyExecutionHostAddress(kind, name, address string) error {
+	wanted := strings.TrimSpace(address)
+	if wanted == "" {
+		return fmt.Errorf("the %s %s records no address, so this host cannot prove it owns it", kind, name)
+	}
+	ip := net.ParseIP(wanted)
 	candidates := []net.IP{}
-	if wanted == nil {
-		if ips, err := net.LookupIP(strings.TrimSpace(installer.Address)); err == nil {
-			candidates = ips
-		} else {
-			return fmt.Errorf("cannot resolve installer node address %q: %w", installer.Address, err)
+	if ip == nil {
+		ips, err := net.LookupIP(wanted)
+		if err != nil {
+			return fmt.Errorf("cannot resolve %s address %q: %w", kind, wanted, err)
 		}
+		candidates = ips
 	} else {
-		candidates = []net.IP{wanted}
+		candidates = []net.IP{ip}
+	}
+	if len(candidates) == 0 {
+		return fmt.Errorf("%s address %q resolves to no address", kind, wanted)
 	}
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -1159,7 +1229,7 @@ func verifyInstallerExecutionHost(cluster ClusterConfig) error {
 			}
 		}
 	}
-	return fmt.Errorf("this host does not own the installer node address %s; components execute must run ON the installer node where the product lock lives", installer.Address)
+	return fmt.Errorf("this host does not own the %s address %s; these operations must run ON the %s where the product lock lives", kind, wanted, kind)
 }
 
 func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, stdout io.Writer) error {
@@ -1241,41 +1311,48 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	if err != nil {
 		return err
 	}
-	if len(plannedNames) > 0 {
-		recomputedScope, err := componentsScope(*cluster, plannedNames)
-		if err != nil {
-			return errors.Wrap(err, "plan scope no longer resolves against the site config")
+	// C05: the dependency closure and the write set are two different things, and
+	// conflating them made a legitimate addition impossible. Adding OpenSearch on
+	// a cluster that already runs Fluent Bit plans [opensearch] while its closure
+	// is [fluent-bit, opensearch]; demanding the two be equal rejected that state
+	// forever, and re-planning could not change the fact.
+	//
+	// So the closure is checked against everything the plan KNOWS about
+	// (planned + already_installed): it may not grow a component the plan never
+	// named, and it must still cover everything the plan means to write. The set
+	// actually executed stays exactly the planned rows.
+	fullScope, err := validatePlanClosure(plan, *cluster, plannedNames)
+	if err != nil {
+		return err
+	}
+	// C05: the live re-verification runs for the whole closure, including a plan
+	// with nothing left to write. A no-op used to skip every freshness check, so
+	// a release that changed owner, version or health after planning could still
+	// be recorded as "already_installed" from the stale plan — the record writer
+	// only ever re-read the uid and stuffed it into the old assertion.
+	if _, err := preflightLiveCluster(ctx, runner, *cluster, *manifest, fullScope); err != nil {
+		return errors.Wrap(err, "the live preflight changed after planning; re-plan")
+	}
+	if err := preflightComponentImages(ctx, *cluster, input.PackageRoot, artifactLock, fullScope, nil); err != nil {
+		return errors.Wrap(err, "the packaged image content changed after planning; re-plan")
+	}
+	freshOwnership, err := preflightComponentOwnership(ctx, runner, *cluster, fullScope)
+	if err != nil {
+		return errors.Wrap(err, "ownership changed after planning; re-plan")
+	}
+	freshStatus := map[string]string{}
+	for _, c := range freshOwnership {
+		freshStatus[c.Component] = c.Status
+	}
+	for _, c := range plan.Components {
+		if c.Status == "planned" && freshStatus[c.Component] != "planned" {
+			return fmt.Errorf("planned component %q is now %q on the live cluster; the scene changed after planning — re-plan", c.Component, freshStatus[c.Component])
 		}
-		// The closure is recomputed from the site config and must still be
-		// exactly the set the plan intends to WRITE. already_installed rows are
-		// not in it (they are never executed), so the comparison is planned-vs-
-		// planned: a dependency that appeared or vanished after planning means
-		// the plan no longer describes this cluster.
-		plannedSorted := append([]string(nil), plannedNames...)
-		sort.Strings(plannedSorted)
-		recomputedSorted := append([]string(nil), recomputedScope...)
-		sort.Strings(recomputedSorted)
-		if strings.Join(recomputedSorted, ",") != strings.Join(plannedSorted, ",") {
-			return fmt.Errorf("the recomputed --only/dependency closure %v no longer matches the planned component scope %v; re-plan", recomputedScope, plannedNames)
-		}
-		if _, err := preflightLiveCluster(ctx, runner, *cluster, *manifest, recomputedScope); err != nil {
-			return errors.Wrap(err, "the live preflight changed after planning; re-plan")
-		}
-		if err := preflightComponentImages(ctx, *cluster, input.PackageRoot, artifactLock, recomputedScope, nil); err != nil {
-			return errors.Wrap(err, "the packaged image content changed after planning; re-plan")
-		}
-		freshOwnership, err := preflightComponentOwnership(ctx, runner, *cluster, recomputedScope)
-		if err != nil {
-			return errors.Wrap(err, "ownership changed after planning; re-plan")
-		}
-		freshStatus := map[string]string{}
-		for _, c := range freshOwnership {
-			freshStatus[c.Component] = c.Status
-		}
-		for _, c := range plan.Components {
-			if c.Status == "planned" && freshStatus[c.Component] != "planned" {
-				return fmt.Errorf("planned component %q is now %q on the live cluster; the scene changed after planning — re-plan", c.Component, freshStatus[c.Component])
-			}
+		// A row the plan called already_installed must still be ANI-owned at the
+		// same version, or the no-op is attesting something no longer true.
+		if c.Status == "already_installed" && freshStatus[c.Component] != "already_installed" {
+			return fmt.Errorf("component %q the plan recorded as already_installed is now %q on the live cluster (release, ownership or health changed after planning); re-plan instead of recording a stale observation",
+				c.Component, freshStatus[c.Component])
 		}
 	}
 	// Material identity: the artifact's approved lock must still be the one the
@@ -1518,14 +1595,19 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 			"read-only: the same-version release was not executed again"))
 	}
 
-	// The new run writes its own connection facts next to its runtime root;
-	// the base install's connections document is never touched.
+	// This run's aggregated connections document is its own, written next to its
+	// runtime root, so the base install's connections.md is never replaced.
 	//
-	// R15.3 defect 6: the component roles render their fragments into the
-	// canonical per-cluster runtime root (the base installer's contract,
+	// R15.3 defect 6: the component roles render their per-component fragments
+	// into the canonical per-cluster runtime root (the base installer's contract,
 	// hardcoded in every role as /var/lib/ani-installer/<cluster>/work/
-	// connections.d), not into this run's --workdir. Read from that contract
-	// location; connections.md itself still belongs to this run alone.
+	// connections.d), not into this run's --workdir, so they are read from there.
+	// That is an accepted limit rather than a claim of innocence: this run DOES
+	// leave files in the base's connections.d, and nothing here may be read as
+	// "the base's working files are untouched". Routing those fragments through
+	// the run's own directory needs all eight roles to take the path from the run
+	// context instead of hardcoding it, and is recorded as an open item.
+	// (docs/execution/progress.yaml, F-live/c01c10ConnectionsDirStillBaseScoped)
 	if plan.ClusterName == "" || plan.ClusterName == "." || plan.ClusterName == ".." ||
 		strings.ContainsAny(plan.ClusterName, `/\`) {
 		return fmt.Errorf("cluster name %q cannot form a safe runtime path", plan.ClusterName)

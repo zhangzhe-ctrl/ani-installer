@@ -148,28 +148,52 @@ func TestComponentsExecutionWriterRefusesARecordVerifyWouldReject(t *testing.T) 
 		Namespace: "ani-platform", Kind: "StatefulSet", Name: "valkey", UID: "uid-sts-valkey",
 	}}
 
-	_, err := NewComponentsExecutionManifest(base, plan, ManifestIdentity{ClusterUID: "uid-kube-cluster-a"},
-		strings.Repeat("b", 64), ComponentsOperationNoop, ResultSucceeded, targets, evidence)
-	if err == nil {
-		t.Fatal("the writer landed a record its own consumer always refuses")
-	}
-	if !strings.Contains(err.Error(), "equals the base install") {
-		t.Fatalf("the refusal must say why nothing can be attested, got %v", err)
-	}
-
-	// With a real change the same call still succeeds, so the guard is about the
-	// unchanged config and not about the noop shape.
-	plan.NewConfigDigest = strings.Repeat("d", 64)
+	// C06 corrects what this test used to assert. A component the FIRST INSTALL
+	// itself put in place leaves the effective config exactly as the base recorded
+	// it, so a read-only no-op over it legitimately carries the same digest.
+	// Refusing that made the honest observation unrecordable and pushed an
+	// operator to edit an unrelated field only to move the digest — which is a
+	// fabricated difference, not evidence of a change.
 	landed, err := NewComponentsExecutionManifest(base, plan, ManifestIdentity{ClusterUID: "uid-kube-cluster-a"},
 		strings.Repeat("b", 64), ComponentsOperationNoop, ResultSucceeded, targets, evidence)
 	if err != nil {
-		t.Fatalf("a noop that observed a component added since the base must still be recordable: %v", err)
+		t.Fatalf("a same-config no-op must be recordable: %v", err)
 	}
 	if landed.ComponentsExecution.Operation != ComponentsOperationNoop || landed.ComponentsExecution.DidInstall {
 		t.Fatalf("the observation record lost its read-only meaning: %+v", landed.ComponentsExecution)
 	}
+	if landed.ComponentsExecution.BaseConfigDigest != landed.ConfigDigest {
+		t.Fatalf("the record no longer says the config did not move: %s vs %s",
+			landed.ComponentsExecution.BaseConfigDigest, landed.ConfigDigest)
+	}
 	if err := ValidateComponentsExecutionShape(landed); err != nil {
 		t.Fatalf("the record the writer accepts must be shaped for the consumer: %v", err)
+	}
+	// A same-config no-op still installs nothing: it grants observation scope,
+	// never change authority, and it does not re-arm anything.
+	if _, allowsMutation, err := componentsExecutionScope(landed); err != nil || allowsMutation {
+		t.Fatalf("a same-config no-op must not allow mutation (err %v, allowsMutation %v)", err, allowsMutation)
+	}
+
+	// The digest rule still binds an ADDITION: claiming a component was installed
+	// while the effective config is unchanged is a contradiction, and that is the
+	// case the guard exists for.
+	addTargets := []ComponentsExecutionTarget{{
+		Component: "valkey", Status: ComponentsTargetExecuted,
+		Namespace: "ani-platform", Kind: "StatefulSet", Name: "valkey", UID: "uid-sts-valkey",
+	}}
+	if _, err := NewComponentsExecutionManifest(base, plan, ManifestIdentity{ClusterUID: "uid-kube-cluster-a"},
+		strings.Repeat("b", 64), ComponentsOperationAdd, ResultSucceeded, addTargets, evidence); err == nil ||
+		!strings.Contains(err.Error(), "equals the base install") {
+		t.Fatalf("an add with an unchanged effective config must still be refused, got %v", err)
+	}
+	// And with a real change the same add succeeds, so the refusal is about the
+	// digest and not about the shape.
+	changed := plan
+	changed.NewConfigDigest = strings.Repeat("d", 64)
+	if _, err := NewComponentsExecutionManifest(base, changed, ManifestIdentity{ClusterUID: "uid-kube-cluster-a"},
+		strings.Repeat("b", 64), ComponentsOperationAdd, ResultSucceeded, addTargets, evidence); err != nil {
+		t.Fatalf("an add that really changed the config must be recordable: %v", err)
 	}
 }
 

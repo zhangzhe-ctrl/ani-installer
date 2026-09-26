@@ -119,6 +119,12 @@ func TestG6RealSmokeScriptsMutateNothing(t *testing.T) {
 			t.Setenv("KUBECONFIG", filepath.Join(baseDir, "kubeconfig"))
 			t.Setenv("ANI_VERIFY_LEVEL", "smoke")
 			t.Setenv("ANI_VERIFY_OUTPUT_DIR", filepath.Join(baseDir, "out"))
+			// C07: the checkers require their target instead of defaulting one.
+			kc := filepath.Join(baseDir, "kubeconfig")
+			if err := os.WriteFile(kc, []byte("apiVersion: v1\nkind: Config\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("ANI_VERIFY_KUBECONFIG", kc)
 
 			rc, combined := g6RunBash(t, script)
 			if rc == 0 {
