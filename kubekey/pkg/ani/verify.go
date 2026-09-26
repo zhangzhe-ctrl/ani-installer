@@ -62,10 +62,14 @@ const (
 	VerifyLevelSmoke      = "smoke"
 	VerifyLevelAcceptance = "acceptance"
 
-	VerifyStatusPass    = "pass"
-	VerifyStatusFailed  = "fail"
-	VerifyStatusSkipped = "skipped"
-	VerifyStatusNotRun  = "not_run"
+	VerifyStatusPass   = "pass"
+	VerifyStatusFailed = "fail"
+	// VerifyStatusNotRun is the one non-pass that is not itself a component
+	// failure: it names what a first failure stopped this level from attempting.
+	// There is deliberately no "skipped" status any more — C04 removed the branch
+	// that produced it, because a level that skipped its targets and reported pass
+	// was indistinguishable from one that checked them.
+	VerifyStatusNotRun = "not_run"
 
 	VerifyReportSchemaVersion = 1
 )
@@ -1020,12 +1024,16 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 // runAcceptanceTarget performs the single planned recreation for one target,
 // proving persistence with the component's REAL business protocol, under a
 // durable at-most-once ledger:
-//  1. capture the old Pod UID, controller identity, and PVC/PV binding;
-//  2. atomically record the intent BEFORE any change (delete quota consumed);
+//  1. authorise the target from live facts, not names: the pod uid, its owner
+//     reference's controller flag and uid matched against the controller's own
+//     live uid, the PVC the pod really mounts, and the PV bound back to that PVC;
+//  2. durably record the intent BEFORE any change (delete quota consumed);
 //  3. write the token through the data protocol (PostgreSQL committed SQL row /
 //     NATS JetStream PubAck) — never a bare marker file;
-//  4. delete the Pod exactly once, re-checking the UID as an authorization
-//     precondition so a same-name replacement is never deleted by accident;
+//  4. delete the Pod exactly once, with the authorised uid carried IN the request
+//     so a same-name replacement that appears after the last client read is not
+//     deleted — and the delete is refused outright if the server will not honour
+//     that condition, never retried without it;
 //  5. wait for the controller to recreate the Pod with a DIFFERENT UID and a
 //     Ready condition (not merely Running);
 //  6. read the SAME token back through the protocol and confirm the PVC object
