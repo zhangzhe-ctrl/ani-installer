@@ -5,19 +5,15 @@
 #
 # The clone has no kubekey/ani/charts/*.tgz (gitignored, and the lock records them as
 # chartSource downloads), so the gate stops at the chart-bytes test. Every other step that
-# ran before it passed. GitHub's runner will hit the same thing: ubuntu-24.04, fresh checkout.
+# ran before it passed.
+# GitHub's runner is expected to hit the same step (same script, ubuntu-24.04, fresh checkout, no
+# charts in the repository) — that is a prediction from this reproduction, not an observed run result.
 
 --- FAIL: TestChartSpecsMatchTheApprovedLockAndTheChartBytes (0.00s)
     f_live_materials_test.go:70: component "nats": read the chart's own identity from ../../ani/charts/nats/2.14.6.tgz: open chart archive ../../ani/charts/nats/2.14.6.tgz: open ../../ani/charts/nats/2.14.6.tgz: no such file or directory
-verify acceptance postgresql: fail
-verify acceptance overall: fail (run=ani-ani-lab-20260924-130000 report=/tmp/TestFRemediation_SameNameReplacementIsNeverDeleted3058982395/001/verify-out/verify-acceptance-ani-ani-lab-20260924-130000-a478b4566be5cb00.json)
-NOTE: subject is the first install's own success record (run ani-ani-lab-20260924-130000).
-verify acceptance postgresql: fail
-verify acceptance overall: fail (run=ani-ani-lab-20260924-130000 report=/tmp/TestFRemediation_CancelledDuringAcceptanceWaitRecordsUnknown1295116707/001/verify-out/verify-acceptance-ani-ani-lab-20260924-130000-a478b4566be5cb00.json)
-NOTE: subject is the first install's own success record (run ani-ani-lab-20260924-130000).
-verify acceptance postgresql: fail
-verify acceptance overall: fail (run=ani-ani-lab-20260924-130000 report=/tmp/TestFRemediation_CancelledDuringAcceptanceWaitRecordsUnknown1295116707/001/verify-out/verify-acceptance-ani-ani-lab-20260924-130000-a478b4566be5cb00.json)
-NOTE: subject is the first install's own success record (run ani-ani-lab-20260924-130000).
-components image docker.io/library/nats:2.14.6-alpine: approved materials lock and images.tsv pin: served platform manifest 6c3ca094b3b0 matches, platform sha256:6c3ca094b3b016931630b7ecf6b0f835ff3fc8bfa5d637b0c8ee8eb682920d61 with 2 blob(s) present
-components plan nats: planned
-components plan written: run=ani-components-ani-lab-20260926-232312 plan=/tmp/TestFRemediationG2_UnhealthyCNIRejected1775232581/002/out/components-plan-ani-components-ani-lab-20260926-232312.json runRecord=/tmp/TestFRemediationG2_UnhealthyCNIRejected1775232581/002/out/runs/ani-components-ani-lab-20260926-232312/run.json
+
+## gate termination (same run, tail of the same log)
+FAIL	github.com/kubesphere/kubekey/v4/pkg/ani	29.626s
+
+# Only the chart-bytes test fails; every other suite that ran before it passed. The
+# lines above are the gate's own verdict, not a cluster result.
