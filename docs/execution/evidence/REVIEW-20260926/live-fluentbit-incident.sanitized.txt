@@ -1,0 +1,25 @@
+# fluent-bit smoke incident — sanitized excerpt (the disclosed flake in REVIEW note §5)
+#
+# Sources: off-repo l06-live/fluentbit-forensics.out, fluentbit-error-detail.out, fluentbit-detail.out.
+# All rc values here are "$?"-grade from redirected commands.
+
+host=node1 date=2026-09-26T21:43:14+08:00
+rc_fluentbit_smoke_rerun=0
+verify smoke fluent-bit: pass
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l11/v-fb-1/verify-smoke-ani-ani-lab-20260926-090732.json)
+rc_base_smoke_second=0
+verify smoke cert-manager: pass
+verify smoke postgresql: pass
+verify smoke nats: pass
+verify smoke metrics: pass
+verify smoke loki: pass
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l11/v-base-after2/verify-smoke-ani-ani-lab-20260926-090732.json)
+## the failing report's own window and status, and the checker traceback it carried
+overall = fail started = 2026-09-26T13:39:55Z finished = 2026-09-26T13:42:16Z   (21:39:55-21:42:16 local)
+fluent-bit result detail, status: fail
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+command terminated with exit code 1
+## evidence file sizes from the failing attempt (metadata.txt is the 0-byte one)
+  0 2026-09-26 21:42:16.2947049600 /home/ubuntu/f-live/l11/v-base-after/smoke-ani-ani-lab-20260926-090732-fluent-bit/fluent-bit-verify-20260926T134125Z/metadata.txt
+  >>> /home/ubuntu/f-live/l11/v-base-after/smoke-ani-ani-lab-20260926-090732-fluent-bit/fluent-bit-verify-20260926T134125Z/metadata.txt

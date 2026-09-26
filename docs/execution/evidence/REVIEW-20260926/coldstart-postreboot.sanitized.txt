@@ -1,0 +1,21 @@
+# post-reboot cold-pull and isolation measurements — sanitized excerpt (REVIEW note §4 row 2)
+#
+# Sources: off-repo coldstart2/coldpull-postreboot.txt, node3-pins.out, LEDGER.md
+#
+# Scope: blob verification was measured on node1 and node3 only; node2 was NOT measured.
+# The corrected boot slot was deployed but no boot demonstrated it -> not_verified.
+
+[coldpull-postreboot.txt] host=node1 date=2026-09-26T19:23:20+08:00 boot_id=073ea98a-782d-4a7d-b410-5e7452312db2
+[coldpull-postreboot.txt] TOTAL blobs byte-verified from an empty private view: 21, mismatches: 0
+[coldpull-postreboot.txt] host=node3 date=2026-09-26T19:23:38+08:00 boot_id=5de8b8d6-8b8b-4a8b-8551-1c8a995d0de7
+[node3-pins.out] manifest self-hash==landed: True  blobs byte-verified=7 ok=True
+[node3-pins.out] manifest self-hash==landed: True  blobs byte-verified=14 ok=True
+[node3-pins.out] TOTAL blobs byte-verified on node3 from an empty private view: 21, mismatches: 0
+[LEDGER.md] | 16:53–16:54 | back: new `boot_id`, uptime 0 minutes, registry active again, `/v2/` 200 | `live-coldstart/post-reboot.txt` |
+[LEDGER.md] | 17:57–17:59 | with isolation restored, private-namespace cold pulls on node1: 16 blobs byte-verified, digests equal to the pins | `closeout/coldpull-isolated.txt`, `closeout/blobverify2.txt`, `closeout/linkage.txt` |
+[LEDGER.md] | 19:20:54 | back: new `boot_id 073ea98a…`, **rules absent**, public HTTPS 200, DNS resolving; registry active and `/v2/` 200; boot audit artifact MISSING | `coldstart2/post-reboot2.txt` |
+[LEDGER.md] `Before=network-pre.target` + `WantedBy=network-pre.target`, but on these hosts `network-pre.target` is
+[LEDGER.md] **never reached** (`ActiveState=inactive`, no `StateChangeTimestamp`), the unit stayed `inactive (dead)`,
+[LEDGER.md] `Before=systemd-networkd.service`, `WantedBy=sysinit.target`) is now installed on all three nodes and is
+[LEDGER.md] artifacts, and the two files `network-pre.target` claims as ordering partners (ufw, networkd) are exactly the
+[LEDGER.md] - `offline cold pull that survives a reboot with no human in the loop`: **not_verified**. Reason as measured
