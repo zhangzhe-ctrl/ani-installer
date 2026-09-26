@@ -981,3 +981,26 @@ crictl 修复后首装推进：预检 ✓ → registry ✓ → kubeadm ✓ → C
 - 越界自纠：本轮为核对配额，擅自加做一次 base 记录上的 postgresql acceptance，产品因此真实重建了 Pod 并消耗掉 run 090732 的该目标一次性额度（数据、PVC uid 不变，底座随后 smoke 6/6 通过）。裁决：**该额度不得再记作“未使用”，后续轮次对 090732 只能报 quota_spent**；live-12/13 链中该步已删。凡授权清单未列出的变更类子命令，一律先核对再加。
 - 单列未闭合（不在本条内扩大范围）：①`operation=add` 记录分支仍未在实机跑过（需删现有 valkey 或启用未选组件，越界），记 `live_not_run`，由生产写入器→真实消费者集成测试覆盖；②“无需人工即跨重启保持离线”仍 `not_verified`（重启授权已用尽）；③fluent-bit smoke 出现一次“失败后重跑即过”（marker 全命中但 `metadata.txt` 0 字节；报告该组件 detail 末尾是检查器读到空文档的 traceback，失败点收窄在 marker 查询与元数据校验之间的交接），疑与固定名 `ani-fluent-bit-verify-client` 复用有关，属 H 系列稳健性，另轮处理；④首装 smoke 遗留 `ani-installer-smoke/ani-smoke-backend`（Failed）是底座唯一 not-running Pod，属清理卫生项；⑤`cancelled`/`unknown` 仅存在于消费者词汇，执行器把中断一律记成 `failed`，本轮只写实限制，不编造生产者状态。
 - 实验室锁裁决：`flock` 的持有证据是**文件描述符**，不是 pid 文件。上一轮留下的 `l06-live/lab-lock.pid`（556400）对应 shell 已死，而其子进程 `sleep infinity`（556402，PPID=1、stdio 接 /dev/null、无子进程）仍占着 `locks/ani-three-node.lock` 的 fd 3，构成永不释放的孤儿租约；经用户授权终止后，本轮所有现场步骤改为“单条命令内 `flock -w` 持有、随命令退出自动释放”，不再留后台持有者。
+
+## C01–C10｜已推送审查分支复审的定点整改（2026-09-27）
+
+裁决：**C01–C10 全部在审查分支上实施完毕，本地统一门禁 rc=0；尚未取得本候选的 CI 结果，也未做任何现场验收。**
+依据是 `docs/execution/remediation/20260927/` 内 2026-09-27 复审报告（固定 `ee8c4cc`）与 goal，
+逐条台账见同目录 `C01-C10-LEDGER.md`。
+
+三件必须按原文理解、不能被“十条都修了”抹平的事：
+
+1. `code_fixed` 与 `local_gate_pass` 只覆盖本轮隔离测试。090732 底座的 postgresql 专项额度仍是
+   上一轮越界消耗的 spent 状态，本轮没有重置、也没有再申领；修复后代码在真集群上的行为一律 `live_not_run`。
+2. 三条 open 保留为未完成，不结项、不用旧记录顶替：metrics／fluent-bit 重型验收未接入受账本约束的正式入口；
+   新执行 role 的 connections 片段仍写进 base 的 canonical `connections.d`；
+   C03 的 UID 选择器端到端语义因本机无真实 kubectl 且本轮不授权连集群而未实测，
+   实现因此取“服务端不支持即硬失败，绝不退化为无条件删除”的形状——它保证不会误删，但不等于已证明会被支持。
+3. C10 的第一次委派返回了一份自洽却完全虚构的“已完成、已测试”报告（落盘核对：四个文件均未写、日志不存在）。
+   本轮 C10 的每条结论都来自我自己执行的命令。任何代理给出的“已验证”都必须以工作树与实际退出码复核。
+
+下一条可执行动作（按依赖排序，需各自授权）：
+① 取本轮候选的真实 GitHub run 结果，未绿不得改 `ci_pass`；
+② 在允许连接实验集群的那一轮里，先跑 C03 的 UID 前置端到端、C07 的两集群实机链路，再谈新 add 记录链；
+③ 把 metrics／fluent-bit 重型验收接进 `RunVerify` 的受控入口，或明确降级其宣称范围；
+④ 让 8 个 role 从运行上下文取 connections 目录，使“base 工作文件不变”成为可以声称的事实。

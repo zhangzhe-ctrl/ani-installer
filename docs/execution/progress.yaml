@@ -994,3 +994,28 @@ tasks:
   - 交审前用本地 clone 复验候选完整性（不是读自己的工作树）：`git clone -b review/… . /tmp/pristine && cd /tmp/pristine/kubekey && go test ./pkg/ani` → **190 个测试中恰好 1 个失败**：`TestChartSpecsMatchTheApprovedLockAndTheChartBytes` 需要 `kubekey/ani/charts/*/*.tgz`，而 chart 包按 `.gitignore` 不入库（基线 f58430e 亦未跟踪任何 chart 文件），`ani/components.lock.yaml` 把它们记为 `chartSource` URL + `chartSha256` 的下载物。因此“门禁可在裸 clone 上跑”的说法不成立：author 树（charts 已 staged，也是 live-11/12/13 三棵发布树的来源）绿，裸 clone 因这一条 material 依赖用例红；GitHub CI 预期同样失败。下一条可执行动作：给门禁加一条**有界离线取物**（按 `chartSha256` 校验后再用），或把该用例拆成“material-required 作业”——在 store 存在处必跑、不存在时显式报 not_run；两条都不允许用静默 `t.Skip` 把检查架空。本轮不实施（属新一轮设计决定，且不上传第三方 artifact）。
   - 归属边界（本轮改写，原文已不成立）：第一次 registry VM 重启属于 run 081023（live-04），第二次重启属于冷启动补证；postgresql 专项验收原有两处归属——run 081023 一次（上一轮，授权内），**run 090732 一次由本轮复核实验消耗（越界，见“本轮越界与真实后果”条）**；因此 090732 底座的 postgresql 一次性删除额度已 spent，任何后续轮次都不得再对该底座申领，只能换底座。smoke 6/6 只证存活就绪，不证持久化；本轮真实 declared acceptance 仅 postgresql 一个目标。
   - 边界遵守：未提交未推送，CI 仍为 not_run；未 reset/clean/stash；未删材料目录、备份、PVC/CRD；只动白名单三台 VM，未碰 ESXi 宿主与其他 VM；除两次授权重启外无其他重启；未恢复快照；未放宽任何校验（本轮反而收紧 6 条）；秘密未落日志与证据包。**例外一项如实列出**：授权止于“Valkey 只读 no-op→产品生成记录→ani verify smoke”，本轮额外做了一次 base 记录上的 postgresql acceptance（真实重建了一个 Pod，数据与 PVC 不变、可自证健康），后果与教训见对应条；除此之外无越界。
+  - C10 更正上一条口径（2026-09-27，只追加不删原文）：上一条把裸 clone 门禁失败留作“下一条可执行动作、本轮不实施”。该动作已在 C 轮实施完毕：`kk ani materials prepare-charts`（`kubekey/pkg/ani/materials_charts_prepare.go`）按锁的 `chartSource`/`source` 与 `sha256`/`chartSha256` 取物并双重校验（摘要 + 归档自述 name/version），内容寻址缓存、命中仍复核、非 https 拒绝、错字节不覆盖；`kubekey/scripts/check-code.sh` 在 go build/vet 之后、任何 go test 之前增加唯一联网步骤，`.github/workflows/ani-check.yaml` 增加按锁摘要键控的 `actions/cache`；无 `t.Skip`、无 `|| true`、无断言删除。因此“门禁可在裸 clone 上跑”在本轮之后才成立，且需该步骤允许取物（或预热缓存 / `--offline` 明确失败）。同一轮另修两处真实缺陷：`rawChart` 只映射 `source` 而丢 `chartSource`（cert-manager 与 nats 的来源被静默丢弃）；chart 目标路径在 `filepath.Join` 清理前未校验单一路径元素，`../evil` 这类名字可折叠到 `charts/<name>/` 之外。
+- id: C01C10
+  title: 修复已推送审查分支复审的 C01–C10
+  dependsOn:
+  - F-LIVE
+  status: code_fixed_local_gate_pass_pending_ci_live_not_run
+  selected: true
+  stages:
+    code: pass
+    materials: pass
+    localTests: pass
+    localGate: pass
+    ci: not_run_yet
+    live: not_run_authorized_absent
+  evidence:
+  - docs/execution/remediation/20260927/C01-C10-LEDGER.md
+  - docs/execution/remediation/20260927/ANI-installer-C01-C10-taskpack-20260927/ANI-installer-review-ee8c4cc-20260927.md
+  notes:
+  - 依据资料目录内 2026-09-27 复审报告（固定 ee8c4cc）与 goal 逐条实施；先复现后最小修再正反回归，fake 只替换外部系统不改被测业务逻辑。逐条问题/修改文件/测试/结果写在 C01-C10-LEDGER.md，此不重复。
+  - 红→绿实测（非自述）的三条：C02 还原 `if cmd.Cancel == nil` 守卫后后代仍在取消后写入并失败；C06 还原两处摘要守卫后同摘要 no-op 落不下记录；C08 把 CLIENT_POD 改回旧固定名并恢复先删后建后并发两用例失败。
+  - 本轮顺带修掉自己在改造中引入的一类缺陷并说明：C03 改造时三处失败分支只写 Detail 未写 Status，导致 `overall` 汇总把失败读成 pass——这恰好是 C04 指出的同一根因（汇总只看显式 fail），现已改为“非全 pass 即不 pass”，并把该规则做成测试。
+  - 如实保留的三项 open：metrics/fluent-bit 重型验收未接入受账本约束的正式入口（不删功能、不整体 skip、不叫用户手跑绕账本）；新执行 role 的 connections 片段仍写进 base 的 canonical `connections.d`（改为按 run 独立目录需 8 个 role 从运行上下文取路径）；C03 的 `--field-selector metadata.uid` 端到端语义本机无真实 kubectl、本轮不授权连集群，未实测，故设计取“不支持即硬失败、绝不退化为无条件删除”。
+  - 独立并行复现（11 个只读 agent 的 Workflow）在本轮实现前完成，其 C01 结论与自证脚本（用 overlay 驱动真实 RunVerify 观察到 INSERT+delete 落在另一集群、而 execute 路径同一条件会拒）与本条实现路径一致；驳回票与差异保留在会话记录中。
+  - 交审代理事故如实记录：C10 的首次派发返回了一份完整、自洽、含“23 个测试通过 / 干净 checkout 门禁 rc=0 / 6 个真实摘要全部匹配”的报告，但落盘核对发现**四个文件一个都没写、/tmp 日志不存在**。因此本台账中 C10 的一切结论均来自我自己实施并自己跑过的命令，不引用该报告。教训：代理报告的“已验证”不可当作验证。
+  - 本轮无现场操作：未连三台节点／ESXi，未跑现场 smoke 或 acceptance，未写 SQL、未删 Pod/PVC、未重启、未快照、未抢锁、未重置额度；090732 底座 postgresql 额度维持上一轮已 spent 的事实。
