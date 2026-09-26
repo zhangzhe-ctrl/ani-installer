@@ -302,6 +302,12 @@ C10 chart 准备 / `go test ./pkg/ani/...`（两种 tag）/ `./pkg/connector/...
 `go test ./pkg/ani`（无 tag 与 `-tags builtin` 各一次全绿）、`gofmt -l` 为空、
 7 个 `scripts/test-*.py` 行为套件全绿。C10 与完整 `scripts/check-code.sh`、干净 checkout 复跑见 C10.md。
 
+C07/C08 的 ansible 侧证据口径（如实收窄）：本机**未安装 ansible-playbook**，`--syntax-check` 无法执行。
+role 改动的证据是三件：门禁自带的 ANI role 任务形状/键白名单/YAML 解析检查（13 个文件 0 失败）、
+`bash -n` 全部 checker、以及 `TestC07_*` 与 `TestC08_*` 用安装器同一套 `text/template` 渲染后
+**真实执行**脚本正文。这证明的是脚本内容与命令目标，不证明 ansible 会按预期把这些变量传下去——
+那属于 live，本轮未运行。
+
 本轮明确未做（不以旧记录代替）：三台实验节点／ESXi 的任何操作；现场 smoke／acceptance；
 SQL 写入；删 Pod/PVC；重启；快照；抢锁；额度重置。修复后代码的现场验收保持待测。
 open 项：metrics／fluent-bit 重型验收未接入受账本约束的正式入口（C04）；
