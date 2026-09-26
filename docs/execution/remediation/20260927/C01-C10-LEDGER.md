@@ -3,7 +3,9 @@
 审查依据：`ANI-installer-review-ee8c4cc-20260927.md`（固定提交 `ee8c4cc`，分支末次观察 `8f5a1cb`）。
 本轮起点：`8f5a1cbd9fbd130929c28f016e706221be6e489`，工作树除本资料目录外干净。
 状态口径：`code_fixed` 仅表示生产路径已改并有同条件测试；`local_gate_pass` 表示本地门禁通过；
-`ci_pass` 只写远端实际结果；`live_not_run` 表示本轮授权禁止现场操作，未运行。
+`ci_pass` 只写远端实际结果且必须落到具体 run/job 与提交 SHA；`live_not_run` 表示本轮授权禁止现场操作，未运行。
+本轮汇总：C01–C10 全部 code_fixed；本地统一门禁 rc=0；**代码候选所在提交 8d9de2c7 的 CI 实际为
+completed/success（run 36262250848 / job 108460180210）**；现场验收全部 live_not_run。
 历史日志与既有实机记录（含已消耗的 090732 专项额度）一律不改写、不重置。
 
 ## 工具链（本仓实测，不沿用其他仓库要求）
@@ -268,9 +270,28 @@ CI 真实失败（run 36254508211 / job 108438616076）报的就是这个缺失�
 （`cert-manager-v1.21.2.tgz`、`nats-2.14.6.tgz`、`kube-prometheus-stack-85.4.0.tgz`、
 `loki-18.13.3.tgz`、`opensearch-3.8.0.tgz`、`fluent-bit-0.58.2.tgz`）。
 
-状态：code_fixed / local_gate_pass（完整 `scripts/check-code.sh` rc=0）/ 待干净 checkout 与 CI 复核。
+状态：code_fixed / local_gate_pass（完整 `scripts/check-code.sh` rc=0）/ **ci_pass**。
+
+干净 checkout 实证（不是推断）：`git clone` 本候选到 `/tmp/pristine-c10`，checkout 后
+`find . -name '*.tgz'` 计数为 **0**（即审查人描述的裸树条件），在 `ANI_CHART_CACHE` 指向**空目录**下
+跑完整 `scripts/check-code.sh` → **rc=0**；准备步骤打印 6 条 `downloaded and verified` 与
+`charts prepared: 6/6`，7 个行为套件合计 205 case、0 失败。
+反向退出码同样实测：删掉缓存与落地文件后 `--offline` → rc=1 并点名 `nats 2.14.6`；
+把缓存条目改成另一份合法归档（与自身文件名摘要不符）→ rc=1 报 `cache entry … hashes to something
+other than the digest it is stored under`；随后允许联网再跑 → rc=0 重新取回并校验。
+目标位置被人为改坏时 → 拒绝且要求 `remove it deliberately`，不覆盖。
+
+GitHub 真实结果（对应提交 `8d9de2c7a39cc3f8fd55ac83a3627978daa364ad`，非本地推断）：
+run **36262250848** / job **108460180210** → `status=completed conclusion=success`，
+九个步骤全为 success，其中 `Restore the locked chart cache` 与 `Run the code gate` 即本轮新增/改动部分。
+上一轮记录的 CI 失败（run 36254508211 / job 108438616076，失败步骤 `Run the code gate`，
+报 `../../ani/charts/nats/2.14.6.tgz` 缺失）在同一入口下已不复现。
 
 ## 门禁与残留
+
+推送与 CI：分支 `review/installer-f-remediation-20260926` 已用现有 git 凭据推送成功（非 force），
+远端 SHA 回读一致。`gh` 的 GitHub token 无效（写操作 401），Draft PR 未创建，正文与精确命令见
+`PUSH-AND-PR-HANDOFF.md`；公开仓库只读 API 可用，因此 CI 结果为实际读取而非猜测。
 
 完整 `kubekey/scripts/check-code.sh` 实测 rc=0：tools / python modules / go.mod 工具链 /
 role 任务形状与 shell 语法与无网络抓取 / go build（untagged 与 builtin）/ go vet 两种 /

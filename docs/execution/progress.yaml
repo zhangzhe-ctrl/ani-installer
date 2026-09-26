@@ -999,7 +999,7 @@ tasks:
   title: 修复已推送审查分支复审的 C01–C10
   dependsOn:
   - F-LIVE
-  status: code_fixed_local_gate_pass_pending_ci_live_not_run
+  status: code_fixed_local_gate_pass_ci_green_live_not_run
   selected: true
   stages:
     code: pass
@@ -1017,5 +1017,6 @@ tasks:
   - 本轮顺带修掉自己在改造中引入的一类缺陷并说明：C03 改造时三处失败分支只写 Detail 未写 Status，导致 `overall` 汇总把失败读成 pass——这恰好是 C04 指出的同一根因（汇总只看显式 fail），现已改为“非全 pass 即不 pass”，并把该规则做成测试。
   - 如实保留的三项 open：metrics/fluent-bit 重型验收未接入受账本约束的正式入口（不删功能、不整体 skip、不叫用户手跑绕账本）；新执行 role 的 connections 片段仍写进 base 的 canonical `connections.d`（改为按 run 独立目录需 8 个 role 从运行上下文取路径）；C03 的 `--field-selector metadata.uid` 端到端语义本机无真实 kubectl、本轮不授权连集群，未实测，故设计取“不支持即硬失败、绝不退化为无条件删除”。
   - 独立并行复现（11 个只读 agent 的 Workflow）在本轮实现前完成，其 C01 结论与自证脚本（用 overlay 驱动真实 RunVerify 观察到 INSERT+delete 落在另一集群、而 execute 路径同一条件会拒）与本条实现路径一致；驳回票与差异保留在会话记录中。
+  - CI 实读结果（不改口径、只补事实）：代码候选所在分支头 `8d9de2c7a39cc3f8fd55ac83a3627978daa364ad` 的 run **36262250848** / job **108460180210** 为 `completed/success`，九个步骤全 success，含新增的 `Restore the locked chart cache` 与被上一轮真实失败的 `Run the code gate`；上一轮那条“CI 预期失败”因此从预测变成已修复的实测。本地另在**零 .tgz 的 pristine clone + 空 chart 缓存**下跑完整门禁 rc=0（6/6 downloaded and verified、205 case 0 失败），并实测反向退出码：离线缺物 rc=1、缓存条目与自身摘要不符 rc=1、目标被改坏拒绝覆盖、随后联网重取 rc=0。
   - 交审代理事故如实记录：C10 的首次派发返回了一份完整、自洽、含“23 个测试通过 / 干净 checkout 门禁 rc=0 / 6 个真实摘要全部匹配”的报告，但落盘核对发现**四个文件一个都没写、/tmp 日志不存在**。因此本台账中 C10 的一切结论均来自我自己实施并自己跑过的命令，不引用该报告。教训：代理报告的“已验证”不可当作验证。
   - 本轮无现场操作：未连三台节点／ESXi，未跑现场 smoke 或 acceptance，未写 SQL、未删 Pod/PVC、未重启、未快照、未抢锁、未重置额度；090732 底座 postgresql 额度维持上一轮已 spent 的事实。
