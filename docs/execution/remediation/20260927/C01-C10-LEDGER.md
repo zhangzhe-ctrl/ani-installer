@@ -287,6 +287,32 @@ run **36262250848** / job **108460180210** → `status=completed conclusion=succ
 上一轮记录的 CI 失败（run 36254508211 / job 108438616076，失败步骤 `Run the code gate`，
 报 `../../ani/charts/nats/2.14.6.tgz` 缺失）在同一入口下已不复现。
 
+## 提交、推送与 CI 实读（分支 review/installer-f-remediation-20260926）
+
+全部经现有 git 凭据正常推送（无 force、无 --no-verify），每次推送后 `git ls-remote` 回读远端 SHA 与本地 HEAD 一致：
+
+| 提交 | 内容 | CI run | 结论（实读） |
+|---|---|---|---|
+| `8b9257e664eca26e375899aa17747b0bbe73608b` | C01–C10 代码+测试+门禁+workflow（36 文件） | 无独立 run | 被同分支后续提交覆盖，GitHub 只在分支头触发 |
+| `8d9de2c7a39cc3f8fd55ac83a3627978daa364ad` | 逐条台账与资料包 | 36262250848 / job 108460180210 | completed / **success**（9 步全 success） |
+| `f071cb28245f90f3af86dd12f5efdc1ec463a2c3` | 推送与 Draft PR 交接 | 36262440894 | completed / **success** |
+| `2b8373ab93275fd4d90890e338d84c34dd4b69ee` | CI 结果与 pristine-clone 实证入档 | 36262541202 | completed / **success** |
+| `80ff740d9f2837927bd091b018f6c8a3037df518` | C07/C08 证据口径收窄 | 36262602687 | completed / **success** |
+| `ed2b9eb49ad2e26c9892c532fcdad81777da7b7c` | 删除已不可达的 skipped 状态常量、改正 acceptance 步骤注释 | 36262936791 | 交付时 in_progress，结论以远端为准 |
+
+口径：包含全部 C01–C10 生产代码的提交（`8b9257e` 及其每一个后续分支头）都已被至少一个
+`completed/success` 的 run 覆盖——`8d9de2c7` 与 `80ff740d` 两个分支头都含同一份代码树
+（`2b8373a` 之后只改文档，`ed2b9eb` 只删一个不可达常量与改注释）。
+本地对最终工作树重跑完整门禁同样 rc=0（`/tmp/gate-final.log`）。未取到自己 run 结论的提交
+不写成 ci_pass。
+
+一处 cosmetic 缺陷如实记录：`ed2b9eb` 的 commit message 正文里 `` `skipped` `` 的反引号在
+`git commit -m "…"` 的双引号串中被 shell 当成命令替换吃掉，正文现在读作“produced a  result”，
+缺一个词。提交内容本身正确、subject 完整；分支已推送，修正需要 force push（本轮禁止），
+因此保留原样并在此说明，不改写历史。
+
+Draft PR 仍未创建（`gh` token 无效，写操作 401），正文与命令见 `PUSH-AND-PR-HANDOFF.md`。
+
 ## 门禁与残留
 
 推送与 CI：分支 `review/installer-f-remediation-20260926` 已用现有 git 凭据推送成功（非 force），
