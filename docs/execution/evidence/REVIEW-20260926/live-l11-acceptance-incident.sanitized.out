@@ -1,0 +1,64 @@
+host=node1 date=2026-09-26T21:39:53+08:00
+
+=== A) what the product itself recorded about that acceptance ===
+-rw-r--r-- 1 root root 1346 Sep 26 21:38 /home/ubuntu/f-live/l11/v-base-acc/verify-acceptance-ani-ani-lab-20260926-090732-a478b4566be5cb00.json
+runId    = ani-ani-lab-20260926-090732  level = acceptance  overall = pass
+started  = 2026-09-26T13:37:44Z  finished = 2026-09-26T13:38:10Z
+allowPodRecreate = True
+
+=== B) durable acceptance ledger on disk (the one-shot claim) ===
+/var/lib/ani-installer/ani-lab/acceptance
+/var/lib/ani-installer/ani-lab/acceptance/ledger-ani-ani-lab-20260926-090732-postgresql.json
+--- /var/lib/ani-installer/ani-lab/acceptance/ledger-ani-ani-lab-20260926-090732-postgresql.json (mode 600, mtime 2026-09-26 21:38:10)
+{"state":"done","runId":"ani-ani-lab-20260926-090732","target":"postgresql","oldPodUID":"e49193ed-e8ac-4dee-b9a4-64dd4ca1020c","oldPVCUID":"1a338992-6587-4d5d-9b36-a07da21afae2","controller":"StatefulSet/postgresql","token":"ani-accept-da37fee09cd82920","startedAt":"2026-09-26T13:37:44Z","finishedAt":"2026-09-26T13:38:10Z","outcome":"pass"}
+
+
+=== C) postgresql workload state now (did the pod really rotate?) ===
+sts 17802744-7344-4308-97cc-890f75e21a8f gen=1 rv=73216 created=2026-09-26T09:19:08Z
+pod 8ef12297-dbc7-467c-afd4-64f226a90a14 created=2026-09-26T13:37:46Z started=2026-09-26T13:37:46Z restarts=0 node=node3 ready=true
+pvc 1a338992-6587-4d5d-9b36-a07da21afae2 vol=pvc-1a338992-6587-4d5d-9b36-a07da21afae2 phase=Bound
+recent postgresql events:
+2m7s        Normal   Scheduled          pod/postgresql-0                               Successfully assigned ani-platform/postgresql-0 to node3
+2m9s        Normal   Killing            pod/postgresql-0                               Stopping container postgresql
+2m8s        Normal   SuccessfulCreate   statefulset/postgresql                         Create Pod postgresql-0 in StatefulSet postgresql successful
+117s        Normal   Pulled             pod/postgresql-0                               Container image "<LAB-MGMT-IP>:5000/library/postgres:17.11-bookworm" already present on machine and can be accessed by the pod
+117s        Normal   Created            pod/postgresql-0                               Container created
+116s        Normal   Started            pod/postgresql-0                               Container started
+
+=== D) cluster health and base record integrity after the pass ===
+node1 Ready v1.35.8
+node2 Ready v1.35.8
+node3 Ready v1.35.8
+not-running pods: 1
+ani-installer-smoke    ani-smoke-backend                                           0/1   Unknown     0               4h26m
+base run.json digest: 9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2 (expect 9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2)
+connections.md digest: 7025a791e93f6cae19ce0c0e29cc4bc84808cb840844d5e91b6129637e96d0a8 (expect 7025a791e93f6cae19ce0c0e29cc4bc84808cb840844d5e91b6129637e96d0a8)
+valkey identity now:
+6a6552d5-b3e0-4361-b88a-77f315e992a7 gen=1 rv=10929 created=2026-09-26T09:30:20Z
+
+=== E) read-only smoke reverify of the whole base after the rotation ===
+rc_base_smoke_after=1
+verify smoke postgresql: pass
+verify smoke nats: pass
+verify smoke metrics: pass
+verify smoke loki: pass
+verify smoke fluent-bit: fail
+verify smoke overall: fail (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l11/v-base-after/verify-smoke-ani-ani-lab-20260926-090732.json)
+NOTE: subject is the first install's own success record (run ani-ani-lab-20260926-090732).
+Error: verify level smoke failed for run ani-ani-lab-20260926-090732
+verify level smoke failed for run ani-ani-lab-20260926-090732
+=== F) the spent quota must refuse a second claim WITHOUT touching anything ===
+rc_acceptance_repeat=1
+verify acceptance overall: fail (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l11/v-acc-repeat/verify-acceptance-ani-ani-lab-20260926-090732-a478b4566be5cb00.json)
+NOTE: subject is the first install's own success record (run ani-ani-lab-20260926-090732).
+Error: verify level acceptance failed for run ani-ani-lab-20260926-090732
+verify level acceptance failed for run ani-ani-lab-20260926-090732pod uid after repeat attempt (must equal the value in section C):
+8ef12297-dbc7-467c-afd4-64f226a90a14 started=2026-09-26T13:37:46Z
+
+=== G) observation record must not open the base quota either ===
+record digest: 4f2e89ef837cd049f68842ccdc48629344051b11a361769d2b371a3867df15bd (expect 4f2e89ef837cd049f68842ccdc48629344051b11a361769d2b371a3867df15bd)
+rc_acceptance_via_observation=1
+Error: a read-only observation record (didInstall=false) grants verification scope only; acceptance performs a declared recreation and is refused for run ani-components-ani-lab-20260926-213342
+a read-only observation record (didInstall=false) grants verification scope only; acceptance performs a declared recreation and is refused for run ani-components-ani-lab-20260926-213342pod uid after (must still equal section C):
+8ef12297-dbc7-467c-afd4-64f226a90a14
+[rcapture] flock+forensics exit=0 @ 2026-09-26T21:42:17+08:00

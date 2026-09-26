@@ -137,3 +137,50 @@ o matching network interface found for encap networks: [192.168.101.0/24]. This 
 - 2026-09-20 10:0x-10:3x UTC a25 结果 + A21 修复（一函数三雷）+ 真实数据离线复验 + a26 发射：h4loki-a25（包 ani-code-a24fix-20260919，restore 3/3，01:59 UTC 失败，运行约 22 分钟）——**采集链路本体首次真实通过**：A20 修复生效，三个 marker pod（node1/2/3）全部 Ready，`await_markers.py` 在 client pod 内查 Loki **三枚 marker 全部查到**（namespace/pod/container/node 标签齐全，tee 写盘 markers-found.txt 3090B 成功）——容器 stdout → 运行时日志 → collector tail → Loki 可查这条 C3 核心链路真实走通。死于 [2] 元数据校验：`FileNotFoundError: /var/lib/ani-installer/ani-lab/logs/fluent-bit-verify-20260920T015654Z/markers-found.txt`（`command terminated with exit code 1` 实锤 kubectl exec 执行位置）。**缺陷 A21：check_metadata.py 三雷同发，全部属"从未执行分支"**——① 宿主路径传入 pod（py() 经 kubectl exec 在 client pod 内执行脚本，第一参数却是 node1 宿主机路径）；② 参数切片错位（`nodes = sys.argv[2:]` 吞入尾部 NS，`expected_ns = sys.argv[2+len(nodes)]` 越界）；③ 序号解析错误（`rsplit("-n",1)` 切在 `-node3` 的 `-n` 上 → `int("ode3")` ValueError）。修复：① 查询结果先 `kubectl exec cat >` 上传进 pod、checker 读 pod 内路径（node 侧 tee 文件保留为证据）；② 切片改 `sys.argv[2:-1]`/`sys.argv[-1]`；③ 序号 `re.search(r"-n(\d+)-", marker)` 锚定。顺手补仓库同步缺口：渲染门禁 verify 扩展此前只改了仓库 c4 副本，c2/c3 仓库副本补齐三副本一致。**真实数据离线复验**：从 node1 sudo 拉回 a25 真实 markers-found.txt 跑修复后 checker → RC=0，三枚 marker 四项元数据断言全过（a25 若带修复 [2] 即通过）。门禁 8/8 verify PASS。新包 ani-code-a25fix-20260919（kk c5e184e5fab9627c，SUMS 全过）+ LIVE_SYNC_OK。restore + a25fix 包发射 **h4loki-a26**：[2] 自 check_metadata 起为新执行面，[3][4][5] 仍未真实执行，全过即 **H4 收官**。
 
 - 2026-09-20 10:3x-11:0x UTC a26 结果 + K-5 post-Ready 变体定性 + A22 修复（断言级恢复重入）+ a27 发射：h4loki-a26（包 ani-code-a25fix-20260919，restore 3/3，02:37 UTC 失败，运行约 21 分钟）——**A21 修复真实执行通过：fluent-bit [2] 全过（上传进 pod + 三雷全排）、[3] backend pod 重建恢复也过**（PVC/UID 不变 + 旧 marker 复读通过）→ 推进到 **metrics [7/8]** 死于 `FAIL: the pre-rebuild sample is not readable after the rebuild`（urllib TCP connect 超时）。**K-5 新变体实锤（post-Ready netns 死亡）**：重建的 prometheus-0（node3 10.16.0.77）短暂 Ready → k5_rebuild_wait 通过（无 K5_RETRY）→ ~30 秒后 netns 死亡：容器自身日志 `dial tcp 10.96.0.1:443: connect: no route to host`（出向）+ node1→pod IP 入向黑洞 + kubelet 探测全超时 + **ani-metrics-prometheus Service Endpoints 清空** → range 查询打到空后端 ClusterIP 必超时。Ready 翻 False@02:37:05、FAIL@02:37:23；容器 restart=1（liveness 杀、优雅 exit=0）、无 OOM（未设 limits）。**k5_rebuild_wait 盲窗 = pod 级 Ready 通过后、断言执行前的窗口内 netns 死亡**（与 a12/a17"从未 Ready"形态互补）。**缺陷 A22 修复**：metrics verify 新增 `k5_read_again`（读断言失败 → 记 k5_retry_sample_read → 删 pod 重走 k5_rebuild_wait 三阶段 → 重读；样本在 PVC 二次重建无损），[7/8] range 查询与 [8/8] silence 读回（抽出 am_silence_poll）同型包装。**测试夹具滞后修正**：TestFluentBitVerifyProvesCollectionPath 仍断言 A20 修复前 `busybox:1.37` 旧键 → 改 `busybox:1.37.0`（教训：修 verify 键必须同步 grep 测试夹具键字面量；build-code.sh 不跑测试）。门禁：8/8 verify PASS + bash -n + go test ./pkg/ani/ ok。新包 ani-code-a26fix-20260919（kk dff7cfe8f834643f，SUMS 全过）+ LIVE_SYNC_OK。restore + a26fix 包发射 **h4loki-a27**（残留：fluent-bit [3]/[4] 有同型 post-Ready 盲窗，本轮不动，被击中再包装）；全过即 **H4 收官**。
+
+- 2026-09-25 23:00 → 2026-09-26 (Asia/Shanghai): **R 整改轮 F01–F12（代码阶段，无实机）**。基线 HEAD f58430e，任务包 docs/execution/remediation/20260925/（含隔离复现证据 zip，SHA256SUMS 5/5）。六组连续推进 G3→G1→G2→G4→G5→G6，每组跑统一门禁并记树指纹：422aa916 / c6c76138 / e03c610b / 5e810a83→5b16c585 / 6015fe32 / c3310821 / bb326651（全部 rc=0）。要点：smoke 与 acceptance 真实分层（ANI_VERIFY_LEVEL 被脚本读取，重型链路只在 acceptance，超时二次重建补救全删）；至多一次意图账本 + 共享产品锁 + Ready 条件 + PG/NATS 真实数据读回 + 取消杀进程组（30s→5.2s）；组件计划/执行共享写前检查（成功底座记录、集群 UID+节点集、CNI 健康、闭包重算、所有权漂移、材料锁、子 kk 摘要、执行主机），Helm 改 create-only + ani.io/managed-by 归属；身份合同拆成六字段并构建期注入树指纹；真实预检（制品摘要先于锁与目录、chart 按条目绑定、ISO 记录严格化、systemd 单元语义纠正）；材料链迁入 Go（place-tools/place-charts/verify-registry/inject-repository-iso + 首装/新增共用 registry 内容门，index 递归平台 manifest 与 blob）；render 与 playbook 选择奇偶校验、heredoc 三分类、逐行 <no value>、同文件重复资源、真实 helm 展开入口与内嵌角色树默认源；门禁补 -tags builtin 构建/vet/test、connector/cmd 测试、python 模块预检与 CI 触发路径，并以三处 Go 故障注入证明新覆盖真的在跑；冷启动改为按内容校验的 reboot 证据（单元/主机/前后 bootID/端口/真实冷拉字节）。测试：pkg/ani 265+ 例全绿，新增 f_remediation_g1/g2/g3/g4/g5/g6 与 r15/r13/r14/registry_verify/template 适配（含把“期望 1 次 delete”改强为“0 次”等），test-build-offline-materials 重写为端到端制包回归（含 beta-in-alpha 复现、同名不同内容 ISO、store 内容门），test-ceph-storage-safety 扩至 36 例。同源代码 release 由 scripts/build-code.sh 在与门禁同一棵树上构建校验；未提交、未推送，故不写 ci_pass；选定组合实机复验与真 helm/真 hauler 路径待授权（详见 ../ani-installer-work/evidence/F-remediation-20260925/WORKLOG.md）。
+
+# F-live closeout — 2026-09-26 (MODE=live, nothing committed)
+
+- Two live defects were found by real installs and fixed with regressions written red first: L-04 (the Envoy
+  smoke client raced per-node kube-proxy programming; the probe now retries a bounded number of attempts
+  inside a bounded wall-clock window, each attempt a fresh Pod that must produce both markers on its own
+  stdout) and L-05 (manifest-owned components stamped `ani.io/managed-by` only on their Service, so the
+  installer could not recognise its own StatefulSet and the same-version read-only no-op was unreachable).
+- L-06 is closed in code and verified against the running base: `kk ani components execute` now lands a
+  `components-execution` record bound to its base install record and to the live cluster; `kk ani verify`
+  consumes that record type for smoke and refuses a plan, a failed pass, a torn or tampered file, a foreign
+  cluster, a changed base, an incomplete identity, or an `--only` outside what the record attests. An
+  observation (`noop`) record grants verification scope only, never a declared recreation, and the change
+  budget stays keyed to the base install run. The first install's own record and verify path are unchanged.
+- Re-auditing that closeout against its own claims, rather than reading the ledger back, found six rules
+  that were announced but not enforced, and each is now enforced where an operator would meet it:
+  a record's kind is decided by the `componentsExecution` block, not by its `recordKind` string, so a
+  re-labelled execution record is refused both by `ani verify` and as the `--base-run` of a later addition
+  (it would otherwise skip every base/evidence/identity check and re-key the one-shot delete budget to its
+  own sub-run); a pass that already changed the cluster but cannot aggregate its connection facts lands a
+  failed record instead of nothing; the scope a record grants must equal its own targets, and every name
+  that becomes a path must be a single safe element; an empty attested scope is refused rather than
+  reported as a pass over zero checks; the writer will not land a record its own consumer must reject; and
+  the read-only pass honours the plan's binary binding like the add pass does.
+- `metrics` was bound to StatefulSet `ani-metrics-prometheus` while its role rolls out
+  `prometheus-ani-metrics-prometheus` (read back from the live cluster). A uid read of a workload that
+  never exists yields no identity, the target degrades to `unknown`, and the pass would exit non-zero after
+  installing, or land a record its consumer refuses. Every component spec is now checked against the
+  workloads its own role names, which is red on the old metrics value and green on the corrected one.
+- Remaining limit on the record vocabulary, stated plainly: `cancelled` and `unknown` are refused by the
+  consumer and representable in the record, but the executor never produces them — an interrupted
+  components run is recorded as `failed`, and a partially executed playbook cannot say which component ran,
+  because the playbook is one unit. The `operation=add` branch has not been executed on live (it would need
+  the existing valkey removed or an unselected component enabled); it is covered by the production writer
+  feeding the real consumer in test, and is recorded as not run on live, not as a pass.
+- Offline cold start: one further registry VM reboot was taken with a lab-only boot isolation unit installed.
+  It did not survive the boot (`network-pre.target` is never reached on these nodes, so the unit never ran);
+  cross-reboot automatic egress isolation stays unverified and node1 had a public-egress window after the
+  boot until isolation was re-applied by hand. After that restore, empty-cache pulls of one byte-exact and
+  one platform-selected row succeeded on the isolated registry host and on an isolated client, every blob
+  hashed to its declared digest and equal to the packaged evidence, with no shared cache deleted.
+- Release identity is deliberately not stated here: this file lives inside `kubekey/`, so any number quoted
+  about the build that ships it would invalidate itself. The full-length source tree fingerprint, binary
+  digest and per-stage exit codes are recorded in `../docs/execution/progress.yaml` (task `F-LIVE`) and in
+  the out-of-tree ledgers under `/home/chabking/ani-installer-runs/f-live-20260926/`.

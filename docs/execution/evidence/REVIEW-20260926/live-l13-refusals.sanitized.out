@@ -1,0 +1,45 @@
+host=node1 date=2026-09-26T22:35:56+08:00  kk=d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4
+landed record before: 20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40
+base record before:   9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2
+
+=== 1) re-labelled execution record must not be consumed as an install record ===
+  forged relabel: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_relabel=1  ::  run record /home/ubuntu/f-live/l13t/relabel.json carries a componentsExecution block, so it records one components execution and is consumed through the execution checks only; declaring it "
+
+=== 2) ...nor serve as the --base-run of a later addition (write path) ===
+rc_forged_base_run=1  ::  base run /home/ubuntu/f-live/l13t/relabel.json: run record carries a componentsExecution block, so it attests one components execution and not a first install; refusing to use it as an "inst
+
+=== 3) evidence deleted from the record (nothing left to re-hash) ===
+  forged noevi: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_noevi=1  ::  a succeeded execution record carries no plan evidence; it would re-hash nothing and still grant verification scope
+
+=== 4) scope claims a component no target reports ===
+  forged badscope: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_badscope=1  ::  the record grants scope to postgresql as observedExisting, but no target of that name reports already_installed
+
+=== 5) an executed target removed from the granted scope ===
+  forged hidetarget: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_hidetarget=1  ::  target valkey reports already_installed but the record leaves it out of observedExisting
+
+=== 6) record-supplied names that are not single path elements ===
+  forged badrunid: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_badrunid=1  ::  components execution record run id "../../escape" is not a single safe path element
+  forged badcomp: ['recordKind', 'evidence', 'executed', 'observedExisting', 'runId']
+rc_badcomp=1  ::  target component "../escape" is not a single safe path element
+
+=== 7) the unmodified landed record must still verify (nothing over-tightened) ===
+rc_intact=0  ::  NOTE: subject is a components observation record for run ani-components-ani-lab-20260926-223027 (operation=noop, didInstall=false, base run ani-ani-lab-20260926-090732): it verifies what it
+
+=== 8) nothing above may have touched the landed record or the base ===
+landed record after:  20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40
+base record after:    9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2
+any run dirs created under the runtime root by this script:
+  ani-components-ani-lab-20260926-185409
+  ani-components-ani-lab-20260926-191310
+  ani-components-ani-lab-20260926-192953
+  ani-components-ani-lab-20260926-195008
+  ani-components-ani-lab-20260926-195644
+  ani-components-ani-lab-20260926-213342
+  ani-components-ani-lab-20260926-223027
+valkey identity after: 6a6552d5-b3e0-4361-b88a-77f315e992a7 gen=1 rv=10929 created=2026-09-26T09:30:20Z
+[rcapture] exit=0 @ 2026-09-26T22:36:08+08:00
