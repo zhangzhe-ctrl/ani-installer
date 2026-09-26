@@ -1,5 +1,6 @@
 9e3ad6b4c7d27fc9a7953c5bdd50e2ca40b9e27116f97f9c9977d2fbd978d1db  gate-live-11.sanitized.log
 cacfad7797acca19e37e6980da88cae03cb161a46ca44735aa4493b9c2106931  gate-live-13.sanitized.log
+d6cad1bf23b1b3411e47736e0c7ce72207ac6853577285dd5be254e3154eaff3  live-first-install-and-base-smoke.sanitized.txt
 628f270e90d891358393f62c4acedaf811fbb0ce3b08bb96ceb0906141039730  live-l11-acceptance-incident.sanitized.out
 496199a3bd5315bcd6007c3e3297851a5df1a91d9064e8c6813d0916161048ed  live-l13-refusals.sanitized.out
 4ce2a3768ccabb4e502d4324ed1ee01e82773de51f360727a6652e2d701281c9  live-l13-verify.sanitized.out
