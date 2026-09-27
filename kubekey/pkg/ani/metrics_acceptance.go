@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,8 @@ type metricsAttemptState struct {
 	markerQuery                                                 string
 	markerConfirmed                                             bool
 	silenceID                                                   string
-	silenceJSON                                                 []byte
+	silenceJSON                                                 []byte // original POST request; never replaced by a GET
+	silenceServerJSON                                           []byte // first validated server GET; immutable rebuild baseline
 	silenceConfirmed                                            bool
 	secretUID                                                   string
 }
@@ -1019,59 +1021,154 @@ func metrics08(a *acceptanceAttempt, r *VerifyStepResult) error {
 	return nil
 }
 
+type metricsSilenceMatcher struct {
+	Name, Value string
+	IsRegex     bool  `json:"isRegex"`
+	IsEqual     *bool `json:"isEqual"` // absent means the API's default equality matcher
+}
+
 type metricsSilence struct {
-	Matchers []struct {
-		Name, Value string
-		IsRegex     bool `json:"isRegex"`
-	} `json:"matchers"`
+	Matchers               []metricsSilenceMatcher `json:"matchers"`
 	CreatedBy, Comment, ID string
 	StartsAt, EndsAt       string
+	UpdatedAt              string
+	Annotations            map[string]string
 	Status                 struct{ State string }
 }
 
-func metricsSilenceMatches(raw []byte, m *metricsAttemptState) error {
-	var got metricsSilence
+type metricsSilenceMatcherValue struct {
+	Value            string
+	IsRegex, IsEqual bool
+}
+
+func metricsSilenceMatcherSet(s metricsSilence) (map[string]metricsSilenceMatcherValue, error) {
+	set := make(map[string]metricsSilenceMatcherValue, len(s.Matchers))
+	for _, matcher := range s.Matchers {
+		if matcher.Name == "" {
+			return nil, errors.New("silence has a matcher with no name")
+		}
+		if _, exists := set[matcher.Name]; exists {
+			return nil, fmt.Errorf("silence has duplicate matcher %s", matcher.Name)
+		}
+		isEqual := matcher.IsEqual == nil || *matcher.IsEqual
+		set[matcher.Name] = metricsSilenceMatcherValue{matcher.Value, matcher.IsRegex, isEqual}
+	}
+	return set, nil
+}
+
+func metricsSilenceTime(field, raw string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("silence %s invalid: %w", field, err)
+	}
+	return parsed, nil
+}
+
+// A newly-created silence may have StartsAt advanced to the server's now in
+// Alertmanager v0.32.1. In that branch Silences.Set sets UpdatedAt to the same
+// now. Only this first GET can establish that normalized server time.
+func metricsSilenceMatchesRequest(raw []byte, m *metricsAttemptState) (metricsSilence, error) {
+	var got, requested metricsSilence
+	if err := json.Unmarshal(raw, &got); err != nil {
+		return got, err
+	}
+	if err := json.Unmarshal(m.silenceJSON, &requested); err != nil {
+		return got, err
+	}
+	if got.ID != m.silenceID || got.CreatedBy != requested.CreatedBy || got.Comment != requested.Comment {
+		return got, fmt.Errorf("silence ID/owner/comment differs from request: id=%q owner=%q", got.ID, got.CreatedBy)
+	}
+	if len(got.Annotations) != 0 {
+		return got, errors.New("silence acquired unexpected annotations")
+	}
+	want := map[string]metricsSilenceMatcherValue{
+		"alertname":   {Value: metricsAlert, IsEqual: true},
+		"run_id":      {Value: m.attempt, IsEqual: true},
+		"ani_attempt": {Value: m.attempt, IsEqual: true},
+	}
+	matchers, err := metricsSilenceMatcherSet(got)
+	if err != nil {
+		return got, err
+	}
+	if !maps.Equal(matchers, want) {
+		return got, fmt.Errorf("silence matchers differ from this attempt's exact equality conditions: %v", matchers)
+	}
+	requestedStart, err := metricsSilenceTime("requested startsAt", requested.StartsAt)
+	if err != nil {
+		return got, err
+	}
+	requestedEnd, err := metricsSilenceTime("requested endsAt", requested.EndsAt)
+	if err != nil {
+		return got, err
+	}
+	serverStart, err := metricsSilenceTime("server startsAt", got.StartsAt)
+	if err != nil {
+		return got, err
+	}
+	serverEnd, err := metricsSilenceTime("server endsAt", got.EndsAt)
+	if err != nil {
+		return got, err
+	}
+	updated, err := metricsSilenceTime("server updatedAt", got.UpdatedAt)
+	if err != nil {
+		return got, err
+	}
+	if !serverEnd.Equal(requestedEnd) || !serverStart.Before(serverEnd) {
+		return got, errors.New("silence end or time window differs from request")
+	}
+	if serverStart.Equal(requestedStart) {
+		if updated.After(serverStart) {
+			return got, errors.New("unchanged silence start is earlier than server updatedAt")
+		}
+	} else if !serverStart.After(requestedStart) || !serverStart.Equal(updated) {
+		return got, errors.New("silence startsAt is neither the requested time nor the server's creation time")
+	}
+	return got, nil
+}
+
+// METRICS-10 compares only with the first confirmed server GET. It never
+// tolerates a second normalization or replaces the baseline after recreation.
+func metricsSilenceMatchesBaseline(raw []byte, m *metricsAttemptState) error {
+	if len(m.silenceServerJSON) == 0 || !m.silenceConfirmed {
+		return errors.New("no confirmed pre-recreation server silence baseline")
+	}
+	var got, baseline metricsSilence
 	if err := json.Unmarshal(raw, &got); err != nil {
 		return err
 	}
-	if got.ID != m.silenceID || got.CreatedBy != "ani-installer-"+m.attempt || got.Comment != "ANI metrics persistence check "+m.attempt {
-		return fmt.Errorf("silence ID/owner/content differs from original: id=%q owner=%q", got.ID, got.CreatedBy)
-	}
-	var original metricsSilence
-	if err := json.Unmarshal(m.silenceJSON, &original); err != nil {
+	if err := json.Unmarshal(m.silenceServerJSON, &baseline); err != nil {
 		return err
 	}
-	starts, err := time.Parse(time.RFC3339Nano, got.StartsAt)
-	if err != nil {
-		return fmt.Errorf("silence startsAt invalid: %w", err)
+	if got.ID != m.silenceID || got.ID != baseline.ID || got.CreatedBy != baseline.CreatedBy || got.Comment != baseline.Comment || !maps.Equal(got.Annotations, baseline.Annotations) {
+		return errors.New("silence ID, owner, comment or annotations changed from the server baseline")
 	}
-	originalStarts, err := time.Parse(time.RFC3339Nano, original.StartsAt)
+	gotMatchers, err := metricsSilenceMatcherSet(got)
 	if err != nil {
 		return err
 	}
-	ends, err := time.Parse(time.RFC3339Nano, got.EndsAt)
-	if err != nil {
-		return fmt.Errorf("silence endsAt invalid: %w", err)
-	}
-	originalEnds, err := time.Parse(time.RFC3339Nano, original.EndsAt)
+	baseMatchers, err := metricsSilenceMatcherSet(baseline)
 	if err != nil {
 		return err
 	}
-	if !starts.Equal(originalStarts) || !ends.Equal(originalEnds) {
-		return errors.New("silence start/end window changed from the original content")
+	if !maps.Equal(gotMatchers, baseMatchers) {
+		return errors.New("silence matchers changed from the server baseline")
 	}
-	wanted := map[string]string{"alertname": metricsAlert, "run_id": m.attempt, "ani_attempt": m.attempt}
-	if len(got.Matchers) != len(wanted) {
-		return fmt.Errorf("silence matcher count=%d, want=%d", len(got.Matchers), len(wanted))
-	}
-	for _, matcher := range got.Matchers {
-		if matcher.IsRegex || wanted[matcher.Name] != matcher.Value {
-			return fmt.Errorf("silence matcher %s=%q changed or widened", matcher.Name, matcher.Value)
+	for _, field := range []struct{ name, current, original string }{
+		{"startsAt", got.StartsAt, baseline.StartsAt},
+		{"endsAt", got.EndsAt, baseline.EndsAt},
+		{"updatedAt", got.UpdatedAt, baseline.UpdatedAt},
+	} {
+		current, err := metricsSilenceTime(field.name, field.current)
+		if err != nil {
+			return err
 		}
-		delete(wanted, matcher.Name)
-	}
-	if len(wanted) != 0 {
-		return fmt.Errorf("silence matchers missing: %v", wanted)
+		original, err := metricsSilenceTime("baseline "+field.name, field.original)
+		if err != nil {
+			return err
+		}
+		if !current.Equal(original) {
+			return fmt.Errorf("silence %s changed from the server baseline", field.name)
+		}
 	}
 	return nil
 }
@@ -1114,11 +1211,20 @@ func metrics09(a *acceptanceAttempt, r *VerifyStepResult) error {
 	if err != nil {
 		return err
 	}
-	if err := metricsSilenceMatches([]byte(raw), m); err != nil {
+	confirmed, err := metricsSilenceMatchesRequest([]byte(raw), m)
+	if err != nil {
 		return err
 	}
+	if err := m.saveEvidence("silence-server-baseline.json", []byte(raw)); err != nil {
+		return err
+	}
+	m.silenceServerJSON = []byte(raw)
 	m.silenceConfirmed = true
-	r.Detail = "silence was created and read back by its original ID with exact attempt matchers"
+	r.Evidence["requestedStartsAt"] = now.Format(time.RFC3339)
+	r.Evidence["serverStartsAt"] = confirmed.StartsAt
+	r.Evidence["serverUpdatedAt"] = confirmed.UpdatedAt
+	r.Evidence["serverEndsAt"] = confirmed.EndsAt
+	r.Detail = "silence was created and read back by its original ID; server time baseline is fixed"
 	return nil
 }
 func metrics10(a *acceptanceAttempt, r *VerifyStepResult) error {
@@ -1157,7 +1263,7 @@ func metrics10(a *acceptanceAttempt, r *VerifyStepResult) error {
 			if err != nil {
 				return fmt.Sprintf("original silence ID %s unreadable after reconstruction: %v", m.silenceID, err), false
 			}
-			if err := metricsSilenceMatches([]byte(raw), m); err != nil {
+			if err := metricsSilenceMatchesBaseline([]byte(raw), m); err != nil {
 				return fmt.Sprintf("original silence content changed: %v", err), false
 			}
 			return "", true

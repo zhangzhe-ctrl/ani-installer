@@ -1,9 +1,11 @@
 package ani
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +21,7 @@ import (
 // Each scenario gets its own localhost API, dummy kubeconfig and temporary HOME.
 const metricsFakeKubectl = `#!/usr/bin/env python3
 import json,os,sys,yaml
+from datetime import datetime,timedelta
 from pathlib import Path
 state=Path(os.environ['FAKE_STATE_DIR']);argv=sys.argv[1:]
 for i,x in enumerate(argv):
@@ -136,12 +139,25 @@ if verb=='exec':
   write('silence-expired','1');print('200');sys.exit(0)
  if '/api/v2/silences' in script:
   payload=json.loads(extra[-1]);sid='silence-'+payload['matchers'][1]['value'];write('silence-id',sid)
+  requested=datetime.fromisoformat(payload['startsAt'].replace('Z','+00:00'))
+  def stamp(value):return value.isoformat(timespec='milliseconds').replace('+00:00','Z')
+  if os.getenv('FAKE_SILENCE_NO_NORMALIZE'):
+   payload['updatedAt']=stamp(requested-timedelta(seconds=1))
+  else:
+   normalized=stamp(requested+timedelta(seconds=1));payload['startsAt']=normalized;payload['updatedAt']=normalized
   payload['id']=sid;write('silence-content',json.dumps(payload));print(json.dumps({'silenceID':sid}));sys.exit(0)
  if '/api/v2/silence/' in script:
   sid=extra[-1]
   if sid!=read('silence-id') or (os.getenv('FAKE_SILENCE_LOST') and read('am-deleted')):sys.exit('silence missing')
   content=json.loads(read('silence-content'))
   if (os.getenv('FAKE_SILENCE_CONTENT_CHANGED') and read('am-deleted')) or os.getenv('FAKE_SILENCE_PRE_BAD'):content['endsAt']='2030-01-01T00:00:00Z'
+  if os.getenv('FAKE_SILENCE_MATCHER_NOT_EQUAL') and not read('am-deleted'):content['matchers'][0]['isEqual']=False
+  if os.getenv('FAKE_SILENCE_PRE_BAD_START') and not read('am-deleted'):
+   content['startsAt']=(datetime.fromisoformat(content['startsAt'].replace('Z','+00:00'))+timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z')
+  if read('am-deleted'):
+   if os.getenv('FAKE_SILENCE_START_CHANGED'):content['startsAt']=(datetime.fromisoformat(content['startsAt'].replace('Z','+00:00'))+timedelta(seconds=1)).isoformat(timespec='milliseconds').replace('+00:00','Z')
+   if os.getenv('FAKE_SILENCE_MATCHER_CHANGED'):content['matchers'][0]['value']='AnotherAlert'
+   if os.getenv('FAKE_SILENCE_COMMENT_CHANGED'):content['comment']='changed after recreation'
   content['status']={'state':'expired' if read('silence-expired') and not os.getenv('FAKE_SILENCE_EXPIRE_STUCK') else 'active'}
   print(json.dumps(content));sys.exit(0)
  sys.exit('unknown exec script '+script[:80]+' extra '+str(extra))
@@ -327,6 +343,33 @@ func metricsBusinessDeletes(t *testing.T, state string) []string {
 	}
 	return out
 }
+func metricsSilenceEvidence(t *testing.T, state string) (metricsSilence, metricsSilence) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(state), "out", "acceptance-*", "*", "silence-original.json"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("request evidence paths=%v err=%v", matches, err)
+	}
+	request, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := os.ReadFile(filepath.Join(filepath.Dir(matches[0]), "silence-server-baseline.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requested, server metricsSilence
+	if err := json.Unmarshal(request, &requested); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(baseline, &server); err != nil {
+		t.Fatal(err)
+	}
+	if requested.ID != "" || server.ID == "" || requested.UpdatedAt != "" || server.UpdatedAt == "" {
+		t.Fatalf("request and server evidence were overwritten or mixed: request=%+v server=%+v", requested, server)
+	}
+	return requested, server
+}
+
 func TestMetricsRunVerifyIsolatedAcceptance(t *testing.T) {
 	t.Run("METRICS-01-through-11-original-state-and-UID-cleanup", func(t *testing.T) {
 		report, state := metricsRunScenario(t, "", "")
@@ -355,6 +398,32 @@ func TestMetricsRunVerifyIsolatedAcceptance(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(state, "object-prometheusrule-"+report.Results[0].Steps[4].Evidence["ruleName"])); err == nil {
 			t.Fatal("attempt rule not cleaned")
 		}
+		requested, server := metricsSilenceEvidence(t, state)
+		originalStart, err := metricsSilenceTime("request", requested.StartsAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		serverStart, err := metricsSilenceTime("server", server.StartsAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		serverUpdate, err := metricsSilenceTime("updated", server.UpdatedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !serverStart.After(originalStart) || !serverStart.Equal(serverUpdate) || server.EndsAt != requested.EndsAt {
+			t.Fatalf("server did not normalize only startsAt: request=%+v server=%+v", requested, server)
+		}
+	})
+	t.Run("legal-future-start-needs-no-normalization", func(t *testing.T) {
+		report, state := metricsRunScenario(t, "FAKE_SILENCE_NO_NORMALIZE", "1")
+		if report.Overall != VerifyStatusPass {
+			t.Fatalf("unchanged server startsAt should pass: %+v", report.Results)
+		}
+		requested, server := metricsSilenceEvidence(t, state)
+		if requested.StartsAt != server.StartsAt || server.UpdatedAt == requested.StartsAt {
+			t.Fatalf("no-normalization case lost distinct server update time: request=%+v server=%+v", requested, server)
+		}
 	})
 	for _, tc := range []struct {
 		name, knob, value, step string
@@ -365,8 +434,13 @@ func TestMetricsRunVerifyIsolatedAcceptance(t *testing.T) {
 		{"original-sample-not-confirmed", "FAKE_MARKER_PRE_MISSING", "1", "METRICS-07", 0},
 		{"original-sample-lost", "FAKE_MARKER_LOST", "1", "METRICS-08", 1},
 		{"original-silence-not-confirmed", "FAKE_SILENCE_PRE_BAD", "1", "METRICS-09", 1},
+		{"abnormal-initial-start-refused", "FAKE_SILENCE_PRE_BAD_START", "1", "METRICS-09", 1},
+		{"non-equality-matcher-refused", "FAKE_SILENCE_MATCHER_NOT_EQUAL", "1", "METRICS-09", 1},
 		{"original-silence-lost", "FAKE_SILENCE_LOST", "1", "METRICS-10", 2},
 		{"silence-content-changed", "FAKE_SILENCE_CONTENT_CHANGED", "1", "METRICS-10", 2},
+		{"server-start-changed", "FAKE_SILENCE_START_CHANGED", "1", "METRICS-10", 2},
+		{"server-matcher-changed", "FAKE_SILENCE_MATCHER_CHANGED", "1", "METRICS-10", 2},
+		{"server-comment-changed", "FAKE_SILENCE_COMMENT_CHANGED", "1", "METRICS-10", 2},
 		{"second-target-refused-stops-cleanup", "FAKE_AM_FORBIDDEN", "1", "METRICS-10", 1},
 		{"same-name-replacement-409", "FAKE_REPLACE_AFTER_LAST_GET", "1", "METRICS-08", 0},
 		{"storage-identity-changed", "FAKE_NEW_PVC_UID", "uid-replaced", "METRICS-08", 1},
@@ -402,6 +476,110 @@ func TestMetricsRunVerifyIsolatedAcceptance(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMetricsSilencePythonHelpersHTTPProtocol(t *testing.T) {
+	const silenceID = "silence-from-localhost"
+	const attempt = "protocol-attempt"
+	requestStart := time.Date(2026, 9, 27, 8, 0, 0, 0, time.UTC)
+	payload := map[string]any{
+		"matchers": []any{
+			map[string]any{"name": "alertname", "value": metricsAlert, "isRegex": false},
+			map[string]any{"name": "run_id", "value": attempt, "isRegex": false},
+			map[string]any{"name": "ani_attempt", "value": attempt, "isRegex": false},
+		},
+		"startsAt":  requestStart.Format(time.RFC3339),
+		"endsAt":    requestStart.Add(2 * time.Hour).Format(time.RFC3339),
+		"createdBy": "ani-installer-" + attempt,
+		"comment":   "ANI metrics persistence check " + attempt,
+	}
+	requestBody, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type call struct {
+		method, path, contentType string
+		body                      []byte
+	}
+	calls := make(chan call, 2)
+	var stored []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v2/silences":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			var created map[string]any
+			if err := json.Unmarshal(body, &created); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			created["id"] = silenceID
+			serverNow := requestStart.Add(time.Second).Format(time.RFC3339Nano)
+			created["startsAt"] = serverNow
+			created["updatedAt"] = serverNow
+			created["annotations"] = map[string]string{}
+			created["status"] = map[string]string{"state": "active"}
+			stored, _ = json.Marshal(created)
+			calls <- call{r.Method, r.URL.Path, r.Header.Get("Content-Type"), body}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"silenceID":"` + silenceID + `"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v2/silence/"+silenceID:
+			calls <- call{method: r.Method, path: r.URL.Path}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(stored)
+		default:
+			http.Error(w, "unexpected silence request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	runHelper := func(script string, args ...string) string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "python3", append([]string{"-"}, args...)...)
+		cmd.Stdin = strings.NewReader(script)
+		env := make([]string, 0, len(os.Environ())+1)
+		for _, item := range os.Environ() {
+			if !strings.HasPrefix(item, "HOME=") && !strings.HasPrefix(item, "KUBECONFIG=") {
+				env = append(env, item)
+			}
+		}
+		cmd.Env = append(env, "HOME="+t.TempDir())
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("production Python helper failed: %v: %s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	created := runHelper(metricsSilenceCreatePython, server.URL, string(requestBody))
+	var response struct {
+		SilenceID string `json:"silenceID"`
+	}
+	if err := json.Unmarshal([]byte(created), &response); err != nil || response.SilenceID != silenceID {
+		t.Fatalf("create helper response=%q err=%v", created, err)
+	}
+	post := <-calls
+	if post.method != http.MethodPost || post.path != "/api/v2/silences" || post.contentType != "application/json" || !bytes.Equal(post.body, requestBody) {
+		t.Fatalf("create helper did not send the original payload: %+v", post)
+	}
+	got := runHelper(metricsSilenceGetPython, server.URL, silenceID)
+	get := <-calls
+	if get.method != http.MethodGet || get.path != "/api/v2/silence/"+silenceID {
+		t.Fatalf("get helper requested %+v", get)
+	}
+	m := &metricsAttemptState{attempt: attempt, silenceID: silenceID, silenceJSON: requestBody}
+	confirmed, err := metricsSilenceMatchesRequest([]byte(got), m)
+	if err != nil || confirmed.StartsAt != requestStart.Add(time.Second).Format(time.RFC3339Nano) {
+		t.Fatalf("normalized server GET rejected: %+v err=%v", confirmed, err)
+	}
+	m.silenceServerJSON = []byte(got)
+	m.silenceConfirmed = true
+	if err := metricsSilenceMatchesBaseline([]byte(got), m); err != nil {
+		t.Fatal(err)
 	}
 }
 

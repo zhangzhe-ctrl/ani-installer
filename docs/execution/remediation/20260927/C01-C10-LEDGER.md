@@ -692,3 +692,14 @@ commit `bdcd251`（`pkg/ani/acceptance_plan.go` 新增、`verify.go` 改造）�
 Fedora 隔离门禁：`scripts/check-code.sh` 初次 rc=1，原因是 `/tmp` 用户配额使 builtin 测试链接失败；未清共享缓存。改用任务自有 `/home/chabking/.cache/ani-metrics-c04-20260927/{tmp,home}` 后完整门禁 rc=0，源码树前后均为 `91bc56eb2247ac5bf98e639bcd1b9f7f3346b8e2d9a7e680c72fa7d8138d38cc`，批准 chart 6/6 校验通过。门禁日志与真实 rc 位于 Fedora `/tmp/ani-metrics-c04-20260927/gate-2.{log,rc,meta}`；这是**隔离代码验收**，不证明现场 cutover。
 
 最终候选在 Fedora 的完整 `scripts/check-code.sh` 门禁 rc=0（`gate-4.{meta,rc,log}`），`scripts/build-code.sh` 同源构建 rc=0（`build-2.{meta,rc,log}`）；两者位于 `/tmp/ani-metrics-c04-20260927/`，各自的源码树前后指纹均为 `1d78272462061a78423599dfe75e5de6a58c8ca021c1dbe0deced58ab2a25bd4`。构建脚本内置门禁也通过；先前 gate-2/gate-3 与 `ani-code-metrics-01` 是源码补强前的中间证据，不作为最终候选。最终同源包在 `/home/chabking/.cache/ani-metrics-c04-20260927/ani-code-metrics-02/`，`sha256sum -c SHA256SUMS` 全部通过，`kk` SHA-256 为 `dd7595ca977c163fd3988ed7ed70f4ca5e20cc595c73fb5addf6dd9866dce1b8`，`SHA256SUMS` SHA-256 为 `3af6d11cc0d34e17869b04107586039f46cc9b515147105f89484696ffd2f716`。候选完整 Git SHA、远端回读和该 SHA 的 CI 以最终交付报告核验；现场继续 `live_not_run`。
+
+
+### C04 metrics silence 创建时间规范化补录（2026-09-27）
+
+承接 `291e90e4c9cbf1682d8bf1778642aecfd1ea8c9e`；只修 METRICS-09/10 的 silence 时间比较。锁定 Alertmanager v0.32.1 的 `Silences.Set` 在新建 silence 时将早于服务器 now 的 `startsAt` 调整为 now，并把 `updatedAt` 设为同一个 now。旧实现把 POST 请求体当成唯一读回基准，因此这条正常服务端规范化会误报 METRICS-09 失败。
+
+现在每个 attempt 保留 `silence-original.json`（原 POST 请求）与 `silence-id`，首次 GET 验证同 ID、归属、comment、空 annotations、三个精确相等且非正则 matcher、原 `endsAt` 和有效 `updatedAt`。`startsAt` 仅接受原请求时刻，或晚于请求且早于 `endsAt`、同时等于服务端 `updatedAt` 的规范化时刻。首次验证成功后把原样服务端 GET 单独 fsync 为 `silence-server-baseline.json`，才允许 METRICS-09 pass。METRICS-10 只与该固定基准比较 ID、三个时间、matcher、归属、comment 和 annotations，不再从请求比较或重新建立基准。METRICS-11 的过期确认与条件清理未改。
+
+隔离 `TestMetricsRunVerifyIsolatedAcceptance` 默认让服务器把请求 `startsAt` 推后 1 秒并返回相同 `updatedAt`，11 步仍全部 pass；另有合法不规范化完整链。重建后分别改变 `startsAt`、`endsAt`、matcher、comment，均在 METRICS-10 fail 且不执行后续清理；首次异常规范化或非相等 matcher 在 METRICS-09 fail。`TestMetricsSilencePythonHelpersHTTPProtocol` 真实运行生产 Python POST/GET helper 到 localhost，逐项检查 HTTP 路径、方法、请求体与服务端规范化响应；其固定样本请求为 `2026-09-27T08:00:00Z`，服务端 `startsAt=updatedAt=2026-09-27T08:00:01Z`，`endsAt` 不变。此样本是协议 fixture，非现场 silence。
+
+Fedora 任务隔离环境中，`go test ./pkg/ani -run '^TestMetrics' -count=1 -timeout=5m` rc=0，`scripts/check-code.sh` rc=0，`scripts/build-code.sh` rc=0；真实 rc 与日志在 `/tmp/ani-metrics-silence-20260927/{focused,gate,build}.{rc,log}`，两次完整流程的源码树前后指纹均为 `8b30487fe56afe65dec1b429aad6aa20a2f0800fb420908935778fa41b9bf257`。唯一同源包 `/home/chabking/.cache/ani-metrics-silence-20260927/ani-code-silence-01/` 的 `sha256sum -c SHA256SUMS` 全通过，`kk` SHA-256 为 `1b676d7273e67cfc7b1aa00812ab075225c57616e9456f79aa76704dea885270`，`SHA256SUMS` SHA-256 为 `d9a6b9502c8d2076fb3602dd013f950a5f83502b9e576482437822ef9a280437`。候选完整提交 SHA、远端回读及该 SHA 的 CI 以交付回报核验；真实现场继续 `live_not_run`。
