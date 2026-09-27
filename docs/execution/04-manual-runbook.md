@@ -1,5 +1,28 @@
 # 04｜人工操作手册：从一张任务卡到一次可信验收
 
+## 2026-09-28｜B00–B07 累计包与 B13 本阶段预检（尚未首装）
+
+本节只覆盖 B00–B07 的 kcn+Ceph+基础服务+Multus+Milvus+Metrics Server+CSI Snapshot+KubeVirt/CDI+Volcano+Harbor 全选组合。B01b 外部 LB 未选，Kube-OVN 是另一个主 CNI 方案；B08–B12 未实施，完整 B13 未完成。详情与摘要见 [本阶段状态](evidence/B13-stage-20260928/status.md)。下方 2026-09-27 的首装是**旧底座候选**的历史结果，不能作本轮新增或最终首装证据。
+
+Fedora 上最终代码包为 `/home/chabking/ani-installer-runs/b00-b07/code-b00-b07-4d98b3f`，正式累计材料包为 `/home/chabking/ani-installer-runs/b00-b07/artifact-b00-b07-4d98b3f-r3`，私有完整 site 为 `/home/chabking/ani-installer-runs/b00-b07/site-b00-b07-full.private.yaml`（0600）。代码提交 `4d98b3fdba5e89585e8abee0d2401bfb98e62094`。代码与材料两个 `SHA256SUMS` 均 rc=0；正式包的 `kk ani validate` 与 `kk ani render` 均 rc=0，render 没有开发目录覆盖。它们仅证明静态输入；B00–B07 新增功能和 B13 干净首装均 **not_run**。
+
+**现场停点：**三台现有目标的 Ceph 数据盘各 50 GiB、三副本，原始容量 150 GiB；所选 PVC 声明合计 72 GiB，满额需要至少 216 GiB raw，差额至少 66 GiB raw（另需 Ceph 开销和快照余量）。三节点均无有效 NTP 同步源，现有 Ceph 有 MON_CLOCK_SKEW、CSI 认证类型和 PG 告警。容量与离线时间前置未满足，未恢复快照、未清盘、未向 node1 传包或运行安装；不能通过缩小选项/副本或用旧集群补装来冒充本阶段完整首装。只读命令和退出码在 Fedora 私有的 `b13-readonly-preflight-20260928.txt`，容量计算在 `b13-capacity-preflight-20260928.md`。
+
+具备声明容量与时间源、并确认原始干净目标和安装权限后，先把上述**完整**代码包、材料包及私有 site 安全放到现场确认的 installerNode（不是 Fedora）。在该 installerNode 上以实际绝对路径设 `CODE_ROOT`、`ARTIFACT_DIR`、`SITE_FILE`、`EVIDENCE`，然后执行；以下命令尚未在本阶段目标上运行：
+
+```bash
+: "${CODE_ROOT:?}" "${ARTIFACT_DIR:?}" "${SITE_FILE:?}" "${EVIDENCE:?}"
+(cd "$CODE_ROOT" && sha256sum -c SHA256SUMS)
+(cd "$ARTIFACT_DIR" && sha256sum -c SHA256SUMS)
+"$CODE_ROOT/kk" ani validate --config "$SITE_FILE" --package-root "$ARTIFACT_DIR" --output "$EVIDENCE/validate"
+"$CODE_ROOT/kk" ani render --config "$SITE_FILE" --package-root "$ARTIFACT_DIR" --output "$EVIDENCE/render"
+sudo "$CODE_ROOT/install.sh" "$SITE_FILE" "$ARTIFACT_DIR"
+# 仅在读取到本次真实 install-success run.json 后，再按其实际路径设 BASE_RUN：
+sudo "$CODE_ROOT/kk" ani verify --run "$BASE_RUN" --level smoke --kubeconfig "$KUBECONFIG_FILE" --output "$EVIDENCE/smoke"
+```
+
+运行前还要按本阶段任务卡检查完整共存请求、KVM、地址、证书、离线时间及材料可用性；安装失败保留现场和真实 rc，不在目标机改源码或联网补料。安装通过后以同一正式包检查同版本 noop；本轮旧集群的底座旧证据不能替代新增证据。
+
 ## 2026-09-27｜正式离线包的原始安装用法
 
 本节记录 2026-09-27 在获准的三节点实验环境对候选 `f76ff2e36ccfeaef39a36c2c4ea9bad08d84f3dd` 的**实际执行**；下方 2026-09-24 的 R 卡是历史计划。本次只覆盖 kcn + Ceph、底座 cert-manager/PostgreSQL/NATS/metrics/Loki/Fluent Bit、计划内新增 Valkey。**结论：指定组合安装和基本功能通过，保留 Ceph 健康告警。**这不签发其他可选组合、专项重建恢复或生产全面验收。

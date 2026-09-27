@@ -516,65 +516,55 @@ tasks:
   - 收口边界声明：R04 的 GitHub CI 由本推送首跑并闭环（首跑红=对照时间炸弹，修复 a6c09ff 后二跑绿），详见 status-decision.md 收口段；R06–R14 的 live_pending 专项（SSH 断连实机、registry 冷启动、非默认 CIDR/引号变体实机、外部 SC 实机、kubeovn 全链、opensearch 实机）不因 R16 收口而闭合。范围外登记补全（与 status-decision 对齐）：run-state phase 成功轮停留 registry_content_verified；components execute 的 --kk 默认依赖 PATH（建议 os.Args[0] 兜底）。
 - id: B00
   title: 冻结既有底座和基础服务，不顺手升级
-  dependsOn:
-  - R16
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [R16]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
+  notes: ["旧底座证据保留；本轮 pg_trgm 与下游专用 RGW 前置已纳入正式流程，但本轮实机写读未运行。"]
 - id: B01
   title: Multus 接入；默认 VPC LoadBalancer 单独开关
-  dependsOn:
-  - R10
-  - R11
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [R10, R11, B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  conditionalSelection: {externalLoadBalancer: false, alternateKubeOVN: separate_not_run}
+  evidence: [docs/execution/evidence/B01-20260928/material-investigation.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B02
   title: Milvus 单一固定组合
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B02-20260927/milvus-checker-image.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B03
   title: Metrics Server：补齐PodMetrics API
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B04
   title: CSI快照控制器、快照类与恢复
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B05
   title: KubeVirt与CDI：先CPU虚拟机，再导入持久磁盘
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
-  conditionalDependencies:
-    snapshot: B04
-    additionalNetwork: B01
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  conditionalDependencies: {snapshot: B04, additionalNetwork: B01}
+  evidence: [docs/execution/evidence/B05-20260928/local-progress.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B06
   title: Volcano CPU 队列与gang调度
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B06-20260928/local-progress.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B07
   title: Harbor、离线扫描、节点信任与准入接入
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B07-20260928/material-investigation.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B08
   title: Notebooks 控制器与CPU工作区
   dependsOn:
@@ -612,21 +602,16 @@ tasks:
   evidence: []
 - id: B13
   title: 选定组件的整体离线收官
-  dependsOn:
-  - B02
-  - B03
-  - B04
-  - B05
-  - B06
-  - B07
-  - B08
-  - B09
-  - B10
-  - B11
-  - B12
+  dependsOn: [B02, B03, B04, B05, B06, B07, B08, B09, B10, B11, B12]
   status: not_started
   selected: null
-  evidence: []
+  stageScope: B00-B07_only
+  stageDependsOn: [B00, B01, B02, B03, B04, B05, B06, B07]
+  stageStatus: blocked_capacity_and_time_source
+  stageInstall: not_run
+  stageFunctionalChecks: not_run
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
+  notes: ["本阶段不依赖 B08-B12；当前三盘三副本原始容量较所选声明至少缺 66 GiB，且无有效离线时间源，未恢复快照或执行首装；全量 B13 不标 completed。"]
 - id: O01
   title: 可选：Dex / 外部OIDC接入
   dependsOn:
