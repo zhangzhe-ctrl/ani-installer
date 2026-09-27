@@ -83,12 +83,15 @@
   template:
     src: hosts.toml
     dest: '/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003/hosts.toml'
-- name: ANI Harbor | Activate CA and reconnect the existing runtime sequentially
+- name: ANI Harbor | Activate the node CA trust on each selected node
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: update-ca-certificates
+- name: ANI Harbor | Reconnect and verify the existing runtime on each selected node
   loop: "{{ .ani.nodes | toJson }}"
   delegate_to: "{{ .item }}"
   command: |
     set -euo pipefail
-    update-ca-certificates
     systemctl restart containerd
     systemctl is-active --quiet containerd
     crictl info >/dev/null
