@@ -109,10 +109,25 @@ declare -A OWNED=()
 CLEANUP_FAILURES=()
 ATTEMPT_LABEL="ani-attempt=$RUN_ID"
 
+# A uid as the API server issues one. The shape is checked, not trusted: the
+# value below becomes the precondition of a delete, so a response that carries
+# anything else — a warning line, a message, nothing at all — must never be
+# recorded as an object this run owns.
+POD_UID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
 own_pod() { # own_pod <name> <uid-from-the-create-response>
   local name="$1" uid="$2"
   if [ -z "$uid" ]; then
     CLEANUP_FAILURES+=("$name: created but the API returned no uid, so this run cannot prove it owns the object")
+    return 1
+  fi
+  if [[ ! "$uid" =~ $POD_UID_RE ]]; then
+    # C08: this is where a mixed stdout/stderr capture used to poison the ledger.
+    # A successful create may well answer with a warning on stderr; if both
+    # streams landed in one variable, the recorded "uid" would be
+    # "warning text + uid", the precondition would be sent wrong, and the
+    # ownership ledger would still look perfectly clean.
+    CLEANUP_FAILURES+=("$name: the create response $(printf '%q' "$uid") is not a pod uid, so nothing is claimed and nothing will be deleted")
     return 1
   fi
   OWNED["$name"]="$uid"
@@ -130,21 +145,31 @@ own_pod() { # own_pod <name> <uid-from-the-create-response>
 # create — and then hand itself the authority to delete it. A taken name is a
 # collision to report.
 create_pod() { # create_pod <name> <manifest-file>
-  local name="$1" manifest="$2" uid rc=0
+  local name="$1" manifest="$2" uid rc=0 err_file
   [ -s "$manifest" ] || { CLEANUP_FAILURES+=("$name: the manifest $manifest is empty"); return 1; }
-  uid="$(kubectl -n "$NS" create -f "$manifest" --output jsonpath='{.metadata.uid}' 2>&1)" || rc=$?
+  install -d -m 0700 "$EVIDENCE/create" 2>/dev/null || true
+  err_file="$EVIDENCE/create/$name.stderr"
+  # stdout is the protocol (it becomes the claimed uid); stderr is evidence only.
+  uid="$(kubectl -n "$NS" create -f "$manifest" --output jsonpath='{.metadata.uid}' 2>"$err_file")" || rc=$?
   if [ "$rc" -ne 0 ]; then
-    CLEANUP_FAILURES+=("$name: the create-only request failed (rc=$rc) and nothing was adopted: ${uid##*$'\n'}")
+    CLEANUP_FAILURES+=("$name: the create-only request failed (rc=$rc) and nothing was adopted: $(tail -n 1 "$err_file" 2>/dev/null)")
     return 1
+  fi
+  if [ -s "$err_file" ]; then
+    # Recorded, never merged into the identity.
+    note "$name: created with a warning on stderr (see $err_file)"
   fi
   own_pod "$name" "$uid"
 }
 
 # conditional_release asks this run's own executable to delete one pod under the
-# uid its create returned. The answer is a token, not an exit code, because
-# "released" and "absent" end the obligation while every other answer keeps it.
+# uid its create returned, and reads the answer as a protocol, not as a string
+# that happens to start the right way. The request it issued is the only thing it
+# compares against: rc must be zero, the answer must be the single expected line,
+# its outcome must be one of the two tokens that end the obligation exactly, and
+# its namespace/name/uid must be the object this call named.
 conditional_release() { # conditional_release <name> <uid>
-  local name="$1" uid="$2" out rc=0 first
+  local name="$1" uid="$2" answer out rc=0 err_file fields=()
   if [ -z "${ANI_KK_BIN:-}" ]; then
     CLEANUP_FAILURES+=("$name: kept at uid $uid; this run was given no conditional delete entry point (ANI_KK_BIN is empty) and will not delete a pod by name")
     return 1
@@ -153,19 +178,46 @@ conditional_release() { # conditional_release <name> <uid>
     CLEANUP_FAILURES+=("$name: kept at uid $uid; ANI_KK_BIN=${ANI_KK_BIN} is not executable, so no preconditioned delete could be issued")
     return 1
   fi
-  out="$("${ANI_KK_BIN}" ani pod-release --kubeconfig "$KUBECONFIG_FILE" --namespace "$NS" --pod "$name" --uid "$uid" 2>&1)" || rc=$?
-  first="${out%%$'\n'*}"
-  printf 'pod-release %s %s rc=%s :: %s\n' "$name" "$uid" "$rc" "$first" >> "$EVIDENCE/cleanup.txt"
-  case "$first" in
-    deleted*)
-      note "released $name (uid $uid)"
+  install -d -m 0700 "$EVIDENCE/release" 2>/dev/null || true
+  err_file="$EVIDENCE/release/$name.stderr"
+  out="$("${ANI_KK_BIN}" ani pod-release --kubeconfig "$KUBECONFIG_FILE" --namespace "$NS" --pod "$name" --uid "$uid" 2>"$err_file")" || rc=$?
+  # One answer line. Anything appended to it is a second statement about the
+  # object, and which of the two to believe is not this run's to guess.
+  if [ "$(printf '%s\n' "$out" | grep -c .)" -ne 1 ]; then
+    answer="$(printf '%s\n' "$out" | head -n 2 | tr '\n' '|')"
+    printf 'pod-release %s %s rc=%s :: unexpected answer count: %s\n' "$name" "$uid" "$rc" "$answer" >> "$EVIDENCE/cleanup.txt"
+    CLEANUP_FAILURES+=("$name: kept, the release answer was not exactly one line (rc=$rc): $(printf '%q' "$answer")")
+    return 1
+  fi
+  answer="$out"
+  read -r -a fields <<<"$answer"
+  printf 'pod-release %s %s rc=%s :: %s\n' "$name" "$uid" "$rc" "$answer" >> "$EVIDENCE/cleanup.txt"
+  # A non-zero exit with a well-shaped token is a contradiction, and the exit
+  # status is not decorative: the delete may or may not have happened, so the
+  # obligation stands and nothing is re-issued.
+  if [ "$rc" -ne 0 ]; then
+    CLEANUP_FAILURES+=("$name: kept, the release answered \"$answer\" with rc=$rc; a contradictory answer is not a deletion and is never retried")
+    return 1
+  fi
+  if [ "${#fields[@]}" -ne 4 ] || [ "${fields[1]}" != "$NS" ] || [ "${fields[2]}" != "$name" ] || [ "${fields[3]}" != "$uid" ]; then
+    # The answer describes something other than the object this call named. That
+    # includes an outcome token carrying trailing text.
+    CLEANUP_FAILURES+=("$name: kept, the release answered \"$answer\", which is not the 4-field answer for $NS/$name at uid $uid")
+    return 1
+  fi
+  case "${fields[0]}" in
+    deleted)
+      # What the server accepted is a conditional DELETE. This does not claim the
+      # object has finished terminating — re-reading it and deleting again under a
+      # fresh uid is the exact thing this path forbids.
+      note "delete of $name accepted under uid $uid (object removal not re-verified by this attempt)"
       return 0 ;;
-    not_found*)
+    not_found)
       # Not "deleted by this run": this attempt never removed anything.
       note "$name is already gone; not claimed as deleted by this attempt"
       return 0 ;;
     *)
-      CLEANUP_FAILURES+=("$name: kept, the conditional delete did not succeed (rc=$rc): $first")
+      CLEANUP_FAILURES+=("$name: kept, the release outcome \"${fields[0]}\" is not one this run may act on")
       return 1 ;;
   esac
 }
@@ -297,16 +349,17 @@ start_client() {
     fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
   fi
   local created_uid rc=0
+  install -d -m 0700 "$EVIDENCE/create" 2>/dev/null || true
   created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
       --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' \
-      --command -- python3 -c 'import time; time.sleep(3600)')" || rc=$?
+      --command -- python3 -c 'import time; time.sleep(3600)' 2>"$EVIDENCE/create/$CLIENT_POD.stderr")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # Nothing was adopted: a failed create leaves this run owning no object, and
     # an AlreadyExists here means someone else holds that name.
-    CLEANUP_FAILURES+=("$CLIENT_POD: the create-only request failed (rc=$rc) and nothing was adopted")
+    CLEANUP_FAILURES+=("$CLIENT_POD: the create-only request failed (rc=$rc) and nothing was adopted: $(tail -n 1 "$EVIDENCE/create/$CLIENT_POD.stderr" 2>/dev/null)")
     fail "could not create the verification client pod $CLIENT_POD"
   fi
-  own_pod "$CLIENT_POD" "$created_uid"
+  own_pod "$CLIENT_POD" "$created_uid" || fail "the client pod was created but its identity could not be claimed"
   $KC wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
 }
 

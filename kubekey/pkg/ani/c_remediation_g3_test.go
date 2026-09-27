@@ -40,14 +40,29 @@ state="__STATE__"
 log="$state/calls"
 lock="$state/.lock"
 podfile() { printf '%s' "$1" | tr -c 'a-zA-Z0-9._-' '_' ; }
+# A real API server answers a create with a UUID and may put warnings on stderr.
+# Both shapes are modelled here, because the checker's whole claim of ownership
+# rests on separating them.
+mint_uid() { # mint_uid <name>
+  local h; h="$(printf '%s-%s' "$1" "$RANDOM$RANDOM$RANDOM" | cksum | awk '{print $1}')"
+  printf '%08x-1111-4222-8333-%012x\n' "$h" "$h"
+}
 # c08_create mints the object the way an API server would: a name that is already
 # taken is refused, and the uid it assigns is the only uid the creator may claim.
 c08_create() { # c08_create <name> <attempt-label-value>
   local key; key="$(podfile "$1")"
   if [ -e "$state/pod-$key.uid" ]; then echo "Error from server (AlreadyExists): pods \"$1\" already exists" >&2; return 1; fi
-  printf 'uid-created-%s-%s\n' "$1" "$RANDOM$RANDOM" > "$state/pod-$key.uid"
+  mint_uid "$1" > "$state/pod-$key.uid"
   [ -n "$2" ] && printf '%s' "$2" > "$state/attempt-$key"
   return 0
+}
+# c08_emit_uid prints the create response the way kubectl --output jsonpath does:
+# the uid on stdout and nothing else, unless a knob models a server warning or a
+# malformed identity.
+c08_emit_uid() { # c08_emit_uid <name> <created|configured>
+  [ -n "${FAKE_CREATE_STDERR_WARN:-}" ] && printf 'Warning: resource pods/%s is missing the kubectl.kubernetes.io/last-applied-configuration annotation\n' "$1" >&2
+  if [ -n "${FAKE_CREATE_NOT_A_UID:-}" ]; then printf 'not-a-pod-uid\n'; return 0; fi
+  cat "$state/pod-$(podfile "$1").uid"
 }
 call() {
   for i in $(seq 1 400); do
@@ -86,7 +101,7 @@ if [[ "$args" == *" run "* ]]; then
   nm="$(printf '%s' "$args" | awk '{for(i=1;i<=NF;i++) if($i=="run"){print $(i+1); exit}}')"
   attempt="$(printf '%s' "$args" | sed -n 's/.*--labels ani-attempt=\([^ ]*\).*/\1/p')"
   c08_create "$nm" "$attempt" || exit 1
-  case "$args" in *"jsonpath={.metadata.uid}"*) printf '%s\n' "$(cat "$state/pod-$(podfile "$nm").uid")" ;; *) printf 'pod/%s created\n' "$nm" ;; esac
+  case "$args" in *"jsonpath={.metadata.uid}"*) c08_emit_uid "$nm" ;; *) printf 'pod/%s created\n' "$nm" ;; esac
   exit 0
 fi
 # A create is how the script makes its marker, client and inspector pods: the
@@ -101,7 +116,7 @@ if [[ "$args" == *" create -f "* ]]; then
   attempt="$(printf '%s\n' "$manifest" | sed -n 's/.*ani-attempt: *//p' | head -1 | tr -d '"')"
   [ -n "$nm" ] || { echo "fake kubectl: create with no metadata.name (file=$file)" >&2; exit 1; }
   c08_create "$nm" "$attempt" || exit 1
-  case "$args" in *"jsonpath={.metadata.uid}"*) printf '%s\n' "$(cat "$state/pod-$(podfile "$nm").uid")" ;; *) printf 'pod/%s created\n' "$nm" ;; esac
+  case "$args" in *"jsonpath={.metadata.uid}"*) c08_emit_uid "$nm" ;; *) printf 'pod/%s created\n' "$nm" ;; esac
   exit 0
 fi
 # apply is not a create: it would update whatever already owns the name and let
@@ -158,10 +173,18 @@ case "${FAKE_RELEASE_RESULT:-}" in
   forbidden) printf 'forbidden %s %s %s\n' "$ns" "$pod" "$uid"; exit 1 ;;
   timeout)   printf 'timeout %s %s %s\n' "$ns" "$pod" "$uid"; exit 1 ;;
   garbage)   echo "the quick brown fox"; exit 0 ;;
+  # A well-shaped outcome token carrying extra text is not the token.
+  unexpected) printf 'deletedUnexpected %s %s %s\n' "$ns" "$pod" "$uid"; exit 0 ;;
+  # The right token, and an exit status that says the opposite.
+  nonzero)    printf 'deleted %s %s %s\n' "$ns" "$pod" "$uid"; exit 1 ;;
+  # An answer about a different object than the one this call named.
+  wrongobject) printf 'deleted %s someone-else %s\n' "$ns" "$uid"; exit 0 ;;
+  # Two statements about the same object in one answer.
+  multiline)   printf 'deleted %s %s %s\nnot_found %s %s %s\n' "$ns" "$pod" "$uid" "$ns" "$pod" "$uid"; exit 0 ;;
 esac
 printf 'deleted %s %s %s\n' "$ns" "$pod" "$uid"
-# FAKE_DELETE_KEEPS_OBJECT answers success while leaving the object standing: the
-# case a swallowed cleanup failure used to hide.
+# FAKE_DELETE_KEEPS_OBJECT answers the delete while leaving the object standing:
+# the case a swallowed cleanup failure used to hide.
 [ -n "${FAKE_DELETE_KEEPS_OBJECT:-}" ] || rm -f "$state/$key" "$state/attempt-$(podfile "$pod")"
 printf 'released %s %s\n' "$pod" "$uid" >> "$state/deletes"
 exit 0
@@ -776,8 +799,8 @@ release_all_owned`)
 		// a ledger only held in a shell variable would be lost the moment the
 		// function ran in a subshell, which is precisely how the first version of
 		// this helper recorded nothing at all.
-		if !strings.Contains(out, "LEDGER=ani-log-marker-owned uid-created-ani-log-marker-owned") {
-			t.Fatalf("the ownership ledger did not record the uid from the create response: %s", out)
+		if want := "LEDGER=ani-log-marker-owned " + c08StateUID(t, state, "ani-log-marker-owned"); !strings.Contains(out, want) {
+			t.Fatalf("the ownership ledger did not record the uid from the create response.\nwant: %s\ngot: %s", want, out)
 		}
 		if !strings.Contains(out, "OWNED_COUNT=0") {
 			t.Fatalf("the owned probe was still listed after cleanup: %s", out)
@@ -818,6 +841,8 @@ spec:
       image: busybox
 MANIFEST
 create_pod ani-fb-insp-swapped "$EVIDENCE/ani-fb-insp-swapped.yaml"
+CLAIMED="$(tail -n 1 "$EVIDENCE/owned-pods.txt" | cut -d' ' -f2)"
+echo "CLAIMED=$CLAIMED"
 printf 'uid-SOMEONE-ELSE\n' > "$FAKE_STATE_DIR/pod-ani-fb-insp-swapped.uid"
 release_pod ani-fb-insp-swapped || true`)
 		if !strings.Contains(out, "kept") || !strings.Contains(out, "conflict") {
@@ -835,8 +860,17 @@ release_pod ani-fb-insp-swapped || true`)
 		// And the uid that travelled is the one this run created with, never the
 		// one standing there now.
 		releases := c08ReadFile(t, filepath.Join(state, "releases"))
-		if !strings.Contains(releases, "uid=uid-created-ani-fb-insp-swapped") {
-			t.Fatalf("the release did not carry the uid from the create response: %s", releases)
+		claimed := ""
+		for _, line := range strings.Split(out, "\n") {
+			if value, ok := strings.CutPrefix(line, "CLAIMED="); ok {
+				claimed = strings.TrimSpace(value)
+			}
+		}
+		if claimed == "" || claimed == "uid-SOMEONE-ELSE" {
+			t.Fatalf("the create response did not yield a usable uid: %q in %s", claimed, out)
+		}
+		if !strings.Contains(releases, "uid="+claimed) {
+			t.Fatalf("the release did not carry the uid from the create response: want uid=%s, got %s", claimed, releases)
 		}
 		if strings.Contains(releases, "uid-SOMEONE-ELSE") {
 			t.Fatalf("the run re-read the replacement's uid and deleted under it: %s", releases)
@@ -1024,7 +1058,7 @@ MANIFEST
 create_pod ani-fb-insp-stubborn "$EVIDENCE/ani-fb-insp-stubborn.yaml"
 export FAKE_DELETE_KEEPS_OBJECT=1
 release_pod ani-fb-insp-stubborn || true`)
-		if !strings.Contains(out, "released ani-fb-insp-stubborn") {
+		if !strings.Contains(out, "delete of ani-fb-insp-stubborn accepted under uid") {
 			t.Fatalf("an accepted release was not reported as accepted: %s", out)
 		}
 		if !strings.Contains(out, "FAILURES=none") {
@@ -1056,6 +1090,127 @@ func c08CountLines(log, marker string) int {
 	return n
 }
 
+// c08ProbeSnippet writes and creates one labelled probe manifest. Each answer
+// contract case starts from a real create rather than a hand-written ledger.
+func c08ProbeSnippet(name string) string {
+	return `
+mkdir -p "$EVIDENCE"
+cat > "$EVIDENCE/` + name + `.yaml" <<MANIFEST
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ` + name + `
+  labels:
+    ani-attempt: "$RUN_ID"
+spec:
+  restartPolicy: Never
+  containers:
+    - name: marker
+      image: busybox
+MANIFEST
+create_pod ` + name + ` "$EVIDENCE/` + name + `.yaml"
+`
+}
+
+// TestC08_TheReleaseAnswerIsAProtocolNotAString covers the two return-value
+// contracts the packaged checker depends on: a create response is only usable if
+// stdout carried the uid and nothing else, and a release answer only ends the
+// run's obligation if it is exactly the answer this call should get.
+func TestC08_TheReleaseAnswerIsAProtocolNotAString(t *testing.T) {
+	a, _, home := c07DummyKubeconfigs(t)
+	state := c08FakeCluster(t, home)
+	run := c08SourceChecker(t, home, a)
+
+	t.Run("a create that succeeds with a warning on stderr still claims a bare uid", func(t *testing.T) {
+		name := "ani-fb-insp-warned"
+		out := run(t, `export FAKE_CREATE_STDERR_WARN=1`+c08ProbeSnippet(name)+`echo DONE`)
+		uid := c08StateUID(t, state, name)
+		if len(uid) != 36 || strings.Count(uid, "-") != 4 {
+			t.Fatalf("the uid the fake server issued is not UUID-shaped (%q):\n%s", uid, out)
+		}
+		if want := "LEDGER=" + name + " " + uid; !strings.Contains(out, want) {
+			t.Fatalf("the ledger did not record the bare uid from stdout.\nwant substring: %s\ngot: %s", want, out)
+		}
+		if !strings.Contains(out, "DONE") {
+			t.Fatalf("the run stopped on a warning that accompanies a success: %s", out)
+		}
+		if strings.Contains(out, "FAILURES="+name) {
+			t.Fatalf("a stderr warning poisoned the ownership claim: %s", out)
+		}
+	})
+
+	t.Run("a create response that is not a uid claims nothing", func(t *testing.T) {
+		name := "ani-fb-insp-baduid"
+		out := run(t, `export FAKE_CREATE_NOT_A_UID=1`+c08ProbeSnippet(name)+`
+release_all_owned || true`)
+		if !strings.Contains(out, "is not a pod uid") {
+			t.Fatalf("a non-uid create response was accepted as an identity: %s", out)
+		}
+		if strings.Contains(out, "LEDGER="+name) {
+			t.Fatalf("the run claimed ownership from a response that is not a uid: %s", out)
+		}
+		if !strings.Contains(out, "OWNED_COUNT=0") {
+			t.Fatalf("a refused claim still left an entry in the ledger: %s", out)
+		}
+		if deletes := c08ReadFile(t, filepath.Join(state, "deletes")); strings.Contains(deletes, name) {
+			t.Fatalf("an object whose identity was never claimed was deleted: %s", deletes)
+		}
+	})
+
+	// Each of these is a release answer that must NOT be treated as a deletion:
+	// the token is right, or nearly right, while some other part of the contract
+	// says the caller may conclude nothing.
+	for _, bad := range []struct {
+		knob     string
+		wants    []string
+		describe string
+	}{
+		{"nonzero", []string{"contradictory answer"}, "a deleted token with a non-zero exit"},
+		{"unexpected", []string{"not one this run may act on"}, "deletedUnexpected"},
+		{"wrongobject", []string{"not the 4-field answer"}, "an answer naming a different pod"},
+		{"multiline", []string{"not exactly one line"}, "two answers in one response"},
+	} {
+		t.Run("release refused for "+bad.describe, func(t *testing.T) {
+			name := "ani-fb-insp-" + bad.knob
+			out := run(t, c08ProbeSnippet(name)+`export FAKE_RELEASE_RESULT=`+bad.knob+`
+release_pod `+name+` || true
+report_cleanup || echo REPORT_CLEANUP_RETURNED_NONZERO`)
+			for _, want := range bad.wants {
+				if !strings.Contains(out, want) {
+					t.Fatalf("%s was reported as a normal cleanup (missing %q):\n%s", bad.describe, want, out)
+				}
+			}
+			if !strings.Contains(out, "OWNED_COUNT=1") {
+				t.Fatalf("%s must keep the ownership record: %s", bad.describe, out)
+			}
+			if !strings.Contains(out, "REPORT_CLEANUP_RETURNED_NONZERO") {
+				t.Fatalf("%s must fail the run: %s", bad.describe, out)
+			}
+			if deletes := c08ReadFile(t, filepath.Join(state, "deletes")); strings.Contains(deletes, name) {
+				t.Fatalf("%s was treated as a completed deletion: %s", bad.describe, deletes)
+			}
+			// And a refusal is never answered by trying again.
+			if got := c08CountLines(c08ReadFile(t, filepath.Join(state, "releases")), "pod="+name+" "); got != 1 {
+				t.Fatalf("%s produced %d release requests, want exactly 1:\n%s", bad.describe, got, out)
+			}
+		})
+	}
+
+	t.Run("an accepted delete is reported as accepted, not as verified gone", func(t *testing.T) {
+		name := "ani-fb-insp-accepted"
+		out := run(t, c08ProbeSnippet(name)+`release_pod `+name+` || true`)
+		if !strings.Contains(out, "delete of "+name+" accepted under uid") {
+			t.Fatalf("the accepted delete was not described as an acceptance: %s", out)
+		}
+		if strings.Contains(out, "not claimed as deleted") || strings.Contains(out, "already gone") {
+			t.Fatalf("the accepted and the absent answers were conflated: %s", out)
+		}
+		if !strings.Contains(out, "OWNED_COUNT=0") || !strings.Contains(out, "FAILURES=none") {
+			t.Fatalf("an accepted delete must end the obligation cleanly: %s", out)
+		}
+	})
+}
+
 func c08ReadFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -1063,4 +1218,10 @@ func c08ReadFile(t *testing.T, path string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// c08StateUID is the uid the fake API server assigned to a pod name.
+func c08StateUID(t *testing.T, state, name string) string {
+	t.Helper()
+	return strings.TrimSpace(c08ReadFile(t, filepath.Join(state, "pod-"+c08Escape(name)+".uid")))
 }
