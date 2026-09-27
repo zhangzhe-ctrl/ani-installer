@@ -184,3 +184,7 @@ o matching network interface found for encap networks: [192.168.101.0/24]. This 
   about the build that ships it would invalidate itself. The full-length source tree fingerprint, binary
   digest and per-stage exit codes are recorded in `../docs/execution/progress.yaml` (task `F-LIVE`) and in
   the out-of-tree ledgers under `/home/chabking/ani-installer-runs/f-live-20260926/`.
+
+## 2026-09-27 原始安装交付范围调整
+
+本轮仅交付正式离线包的选定配置首装、基本 smoke、支持范围内组件新增与重复执行的可执行步骤。现有 `kk ani install`、`kk ani verify --level smoke`、`kk ani components install/execute` 保持原入口；独立的 acceptance 开发不作为首装交付条件。旧代码包 `verify.sh CONFIG ARTIFACT` 会先做局部探针、再把 config-validation 记录交给只接受成功记录的正式 verifier，现提前拒绝并指向真实 install-success `run.json`。Fluent Bit 旧脚本的直接 acceptance 曾绕过一次性账本删除业务 Pod，现也在第一条 Kubernetes 请求前拒绝。已保存的 Fluent Bit 未提交开发稿不在本轮提交或代码包内。R16 实机证据只适用于其原代码树和选定组合；新代码包当前只有隔离门禁/构建证据，现场仍为 live_not_run。操作步骤见 `../../docs/execution/04-manual-runbook.md` 顶部当前章节。

@@ -332,6 +332,11 @@ case "$LEVEL" in
   smoke|acceptance) : ;;
   *) fail "ANI_VERIFY_LEVEL must be 'smoke' or 'acceptance', got '$LEVEL'" ;;
 esac
+# A legacy direct acceptance would delete the backend and collector Pods
+# without the formal run ledger. Refuse before any Kubernetes request.
+if [ "$LEVEL" = acceptance ]; then
+  fail "use kk ani verify --level acceptance --only fluent-bit --allow-pod-recreate; the legacy script cannot spend business recreation quota"
+fi
 
 # Run a python program inside the cluster from a file, so no multi-line program
 # has to survive a shell boundary.

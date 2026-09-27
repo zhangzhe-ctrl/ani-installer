@@ -1,5 +1,55 @@
 # 04｜人工操作手册：从一张任务卡到一次可信验收
 
+## 2026-09-27｜正式离线包的原始安装用法
+
+本节是当前首装范围的操作顺序；下方 2026-09-24 的 R 卡与实验步骤是历史计划，不能当作本版命令的状态。以下是**将来在另行授权的 installerNode 上执行**的步骤，本轮没有连接或修改实验节点。只使用已选定的 kcn + Ceph 组合及原组件选择：底座为 cert-manager、PostgreSQL、NATS、metrics、Loki、Fluent Bit，Valkey 按已批准计划另行新增；OpenSearch 等其他配置不由这组证据签发。
+
+1. 在执行机上分别设置 `CODE_ROOT`（本轮同源代码包目录）、`ARTIFACT_DIR`（已批准且摘要校验过的离线材料包目录）、`SITE_FILE`（该站点已审核的底座配置）、`EVIDENCE`（本次私有输出目录）。三个输入必须是实际绝对路径；示例配置中的 `CHANGE_ME` 和磁盘占位符不能直接使用。先核对执行机、配置、材料、目标磁盘与允许范围。**不要把 Fedora 上的包路径当成目标机路径。**
+2. 在执行机核包并做本地输入检查；`validate` 只检查配置，不能代替安装的材料预检：
+
+   ```bash
+   : "${CODE_ROOT:?}" "${ARTIFACT_DIR:?}" "${SITE_FILE:?}" "${EVIDENCE:?}"
+   (cd "$CODE_ROOT" && sha256sum -c SHA256SUMS)
+   (cd "$ARTIFACT_DIR" && sha256sum -c SHA256SUMS)
+   "$CODE_ROOT/kk" ani validate --config "$SITE_FILE" --output "$EVIDENCE/validate"
+   "$CODE_ROOT/kk" ani render --config "$SITE_FILE" --package-root "$ARTIFACT_DIR" --output "$EVIDENCE/render"
+   ```
+
+3. 只在已确认是**干净、获授权**的安装目标上执行一次首装，并保存 stdout/stderr、真实退出码、`run-state.json` 与命令打印的 install-success `run.json` 路径。安装自身还会执行材料、锁、端口、目标和磁盘预检；失败后不要用第二个目录或确认变量盲重试。
+
+   ```bash
+   sudo "$CODE_ROOT/install.sh" "$SITE_FILE" "$ARTIFACT_DIR"
+   # 与 sudo "$CODE_ROOT/kk" ani install --config "$SITE_FILE" --package-root "$ARTIFACT_DIR" 二选一
+   ```
+
+4. 读取上一步**真实成功记录路径**为 `BASE_RUN`，设置本次选定的 `KUBECONFIG_FILE`，执行基本检查并查看生成的报告；不得从 `validate` 的输出取 `run.json`，也不要调用旧 `verify.sh CONFIG ARTIFACT`。本范围不调用 `--level acceptance` 或 `--allow-pod-recreate`。
+
+   ```bash
+   : "${BASE_RUN:?install-success run.json}" "${KUBECONFIG_FILE:?}"
+   sudo "$CODE_ROOT/kk" ani verify --run "$BASE_RUN" --level smoke \
+     --kubeconfig "$KUBECONFIG_FILE" --output "$EVIDENCE/smoke"
+   ```
+
+5. 只对已批准、材料已在原 registry、且当前底座健康的组件新增。以计划内 Valkey 为例，先把 `ADD_SITE_FILE` 设成仅含该新增选择的已审核配置；`--only` 不能用来改变网络、存储或已有底座。`components install` 只产计划，检查结果后把其实际打印的计划路径设为 `PLAN_JSON`，再执行一次。执行结果打印的记录路径设为 `COMP_RUN`，用该记录做 smoke；观察记录的 `already_installed`/`noop` 只证明只读重复执行，不等于又安装了一次。
+
+   ```bash
+   : "${ADD_SITE_FILE:?}" "${BASE_RUN:?}" "${KUBECONFIG_FILE:?}"
+   sudo "$CODE_ROOT/kk" ani components install --config "$ADD_SITE_FILE" \
+     --package-root "$ARTIFACT_DIR" --base-run "$BASE_RUN" \
+     --kubeconfig "$KUBECONFIG_FILE" --only valkey --output "$EVIDENCE/components"
+   : "${PLAN_JSON:?use the plan path printed by components install}"
+   sudo "$CODE_ROOT/kk" ani components execute --plan "$PLAN_JSON" \
+     --config "$ADD_SITE_FILE" --package-root "$ARTIFACT_DIR" \
+     --base-run "$BASE_RUN" --kubeconfig "$KUBECONFIG_FILE" \
+     --kk "$CODE_ROOT/kk" --output "$EVIDENCE/components"
+   : "${COMP_RUN:?use the record path printed by components execute}"
+   sudo "$CODE_ROOT/kk" ani verify --run "$COMP_RUN" --level smoke \
+     --only valkey --kubeconfig "$KUBECONFIG_FILE" --output "$EVIDENCE/components-smoke"
+   ```
+
+**版本与证据边界：**R16 的干净离线首装和后续 Valkey 新增/no-op 实测属于各自记录的旧代码树与选定配置。本节对应的代码包只有 Fedora 隔离门禁、构建和包摘要证据；新版本首装、smoke、新增及重复执行都仍待另行授权实测。当前未完成的 Fluent Bit 重建恢复验收不属于这里的通过条件；直接调用旧重型脚本的入口已改为提前拒绝。保留既有材料锁、集群目标绑定和一次性额度。
+
+
 2026-09-24 / r1。**本文件是将来执行步骤，不是本次实际操作日志。** 本轮没有连接Fedora/目标集群；路径必须由R00核对后填写。允许的测试节点为`172.16.101.20`、`.21`、`.22`；任何其他目标都停止。
 
 ## 1. 区分三种终端

@@ -33,6 +33,48 @@ import (
 // whose behaviour F01 changed.
 // ---------------------------------------------------------------------------
 
+// The packaged legacy entry must refuse before it validates a config or
+// launches its old network probes. The formal verifier needs a real success
+// record, not the validation-only record this wrapper used to invent.
+func TestLegacyVerifyWrapperRefusesBeforeClusterWork(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "verify.sh")
+	cmd := exec.Command("bash", script, "nonexistent-site.yaml", "nonexistent-artifact")
+	cmd.Env = append(os.Environ(), "ANI_VERIFY_LIB_ONLY=", "HOME="+t.TempDir(), "KUBECONFIG="+filepath.Join(t.TempDir(), "dummy-kubeconfig"))
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "verify.sh is retired: use kk ani verify --run <install-success-run.json> --level smoke") {
+		t.Fatalf("legacy wrapper must refuse before touching any supplied path: err=%v output=%s", err, out)
+	}
+}
+
+// Direct legacy acceptance once bypassed the formal ledger and deleted two
+// business Pods. The shipped script must refuse before its first API request.
+func TestLegacyFluentAcceptanceRefusesBeforeKubectl(t *testing.T) {
+	base := t.TempDir()
+	kubeconfig := filepath.Join(base, "dummy-kubeconfig")
+	if err := os.WriteFile(kubeconfig, []byte("apiVersion: v1\nkind: Config\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(base, "bin")
+	if err := os.MkdirAll(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	callLog := filepath.Join(base, "kubectl-calls")
+	fake := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$FAKE_KUBECTL_LOG\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "kubectl"), []byte(fake), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := g6RenderVerify(t, "fluent-bit")
+	cmd := exec.Command("bash", script)
+	cmd.Env = append(os.Environ(), "ANI_VERIFY_LIB_ONLY=", "ANI_VERIFY_LEVEL=acceptance", "ANI_VERIFY_KUBECONFIG="+kubeconfig, "KUBECONFIG="+kubeconfig, "ANI_VERIFY_OUTPUT_DIR="+filepath.Join(base, "out"), "FAKE_KUBECTL_LOG="+callLog, "PATH="+binDir+":"+os.Getenv("PATH"), "HOME="+filepath.Join(base, "home"))
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "legacy script cannot spend business recreation quota") {
+		t.Fatalf("direct legacy acceptance must refuse: err=%v output=%s", err, out)
+	}
+	if _, err := os.Stat(callLog); !os.IsNotExist(err) {
+		t.Fatalf("direct legacy acceptance invoked kubectl: %v", err)
+	}
+}
+
 // g6FakeKubectl records every invocation and answers the read-only node count
 // with a single node, so a script that requires a 3-node base must stop at its
 // first readiness gate. Everything else fails: a script that reaches for a

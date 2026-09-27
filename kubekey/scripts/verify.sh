@@ -205,6 +205,11 @@ ani_verify_registry() { # ani_verify_registry <image-table> <registry-host> <reg
 if [[ "$ANI_VERIFY_LIB_ONLY" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
+# This legacy wrapper constructs a config-validation record, which the formal
+# verifier correctly refuses as proof of an installed run. Stop before its old
+# registry/network probes can touch a cluster and then fail at dispatch.
+echo "verify.sh is retired: use kk ani verify --run <install-success-run.json> --level smoke --kubeconfig <run-kubeconfig>" >&2
+exit 1
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/etc/kubernetes/admin.conf}"
 # R12/A12: every kubectl request carries a request-timeout larger than the
 # longest wait below (180s), so a hung API request can never block forever.
