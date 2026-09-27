@@ -109,6 +109,14 @@ version::ldflags() {
     add_ldflag "gitVersion" "${GIT_VERSION}"
     add_ldflag "gitReleaseCommit" "${GIT_RELEASE_COMMIT}"
 
+    # ANI source-tree fingerprint: the real code identity for the install-success
+    # record (F04). build-code.sh exports ANI_SOURCE_TREE_FINGERPRINT after
+    # computing it over the frozen source; a plain `go build` leaves it unset and
+    # RunInstall honestly records "not-embedded" rather than reusing a digest.
+    if [[ -n "${ANI_SOURCE_TREE_FINGERPRINT:-}" ]]; then
+        ldflags+=("-X 'github.com/kubesphere/kubekey/v4/pkg/ani.SourceTreeFingerprint=${ANI_SOURCE_TREE_FINGERPRINT}'")
+    fi
+
     # The -ldflags parameter takes a single string, so join the output.
     echo "${ldflags[*]-}"
 }

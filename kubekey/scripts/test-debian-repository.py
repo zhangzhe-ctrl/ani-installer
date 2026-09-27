@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -13,7 +14,24 @@ block = block.split('\n  when:', 1)[0].split('  command: |\n', 1)[1]
 script = '\n'.join(line[4:] for line in block.splitlines())
 script = re.sub(r'^PKGS=.*$', 'PKGS="chrony"', script, flags=re.M)
 
-for failure in ('update', 'install', 'none'):
+# The scenarios this suite covers. The aggregate counters below fail the run if
+# this list is ever emptied, so a silently shrinking suite cannot report success.
+CASES = ('update', 'install', 'none')
+
+
+class Result:
+    def __init__(self) -> None:
+        self.passed: list[str] = []
+        self.failed: list[str] = []
+
+    def check(self, test_id: str, condition: bool, detail: str) -> bool:
+        (self.passed if condition else self.failed).append(f"{test_id}: {detail}")
+        print(f"  {'PASS' if condition else 'FAIL'}  {test_id} — {detail}")
+        return condition
+
+
+def run_case(failure: str) -> str:
+    """Run one mocked-APT scenario; every assertion is exactly the original one."""
     with tempfile.TemporaryDirectory(prefix='ani-apt-test-') as tmp:
         d = Path(tmp)
         (d / 'bin').mkdir()
@@ -52,4 +70,34 @@ exit 0
             assert ' install ' not in ' ' + calls.replace('\n', ' '), calls
         assert 'Dir::State::lists=' in calls, calls
         assert 'Dir::Etc::sourceparts=-' in calls, calls
-        print(f'PASS apt={failure}, exit={result.returncode}, original sources preserved')
+    return f'apt={failure}, exit={result.returncode}, original sources preserved'
+
+
+def main() -> int:
+    res = Result()
+    for failure in CASES:
+        try:
+            detail = run_case(failure)
+        except AssertionError as exc:                       # keep the original message
+            res.check(f'apt={failure}', False, f'assertion failed: {exc}')
+        else:
+            res.check(f'apt={failure}', True, detail)
+
+    total = len(res.passed) + len(res.failed)
+    print()
+    print(f"cases passed: {len(res.passed)}")
+    print(f"cases failed: {len(res.failed)}")
+    for item in res.failed:
+        print(f"  FAILED {item}")
+    if res.failed:
+        return 1
+    if total == 0:
+        print("ZERO CASES RUN: refusing to pass a suite that executed nothing",
+              file=sys.stderr)
+        return 1
+    print("ALL DEBIAN REPOSITORY TESTS PASSED")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

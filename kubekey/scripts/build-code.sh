@@ -39,6 +39,10 @@ OUTPUT="$(mkdir -p "$(dirname "$OUTPUT")" && cd "$(dirname "$OUTPUT")" && pwd)/$
 mkdir -p "$OUTPUT"
 
 echo "[2/4] building kk with builtin assets"
+# Embed the frozen source-tree fingerprint so the install-success record can
+# carry a real code identity (F04). It equals fingerprint_before only if the
+# tree is unchanged across the build, which is verified immediately below.
+export ANI_SOURCE_TREE_FINGERPRINT="$fingerprint_before"
 PATH="$(dirname "$GO_BIN"):$PATH" make -C "$ROOT" build-kk-dev
 KK="$ROOT/_output/bin/kk"
 if [[ ! -s "$KK" ]]; then

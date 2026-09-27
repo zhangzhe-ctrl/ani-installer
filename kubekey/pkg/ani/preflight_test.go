@@ -40,8 +40,11 @@ func r09ArtifactFixture(t *testing.T, dir string, helmContent, isoContent string
 		"config/repository-iso-checksums.txt",
 		"config/components.lock.yaml",
 		"images/images.tsv",
+		"images/images.haul.tar.zst",
+		"packages/kubekey-artifact.tgz",
 		"repository/ubuntu-24.04-debs-amd64.iso",
 		"bin/helm",
+		"bin/hauler",
 	} {
 		path := filepath.Join(dir, relative)
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -154,12 +157,14 @@ func TestPreflightUnitAndPortChecks(t *testing.T) {
 		ArtifactRoot: artifact, ReportBaseDir: filepath.Join(artifact, "reports"),
 		HelmPath: filepath.Join(artifact, "bin", "helm"),
 	}
-	// The unit check with explicit runners: an error means the unit is active.
-	activeRunner := func(string, ...string) error { return errors.New("active") }
+	// The unit check with explicit runners, matching real `systemctl is-active
+	// --quiet` semantics: exit 0 (nil error) means the unit is ACTIVE and must
+	// be refused; a non-zero exit (error) means it is not running and is safe.
+	activeRunner := func(string, ...string) error { return nil }
 	if err := CheckUnitInactive(serviceUnitName, activeRunner); err == nil {
-		t.Fatal("an active unit must fail CheckUnitInactive")
+		t.Fatal("an active unit (is-active exit 0) must fail CheckUnitInactive")
 	}
-	inactiveRunner := func(string, ...string) error { return nil }
+	inactiveRunner := func(string, ...string) error { return errors.New("exit status 3") }
 	if err := CheckUnitInactive(serviceUnitName, inactiveRunner); err != nil {
 		t.Fatalf("an inactive unit must pass: %v", err)
 	}

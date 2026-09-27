@@ -23,16 +23,41 @@
 # No image is fetched from a remote registry: the cluster image and the chart's
 # chown init image are rewritten to the site registry in values.yaml.
 
+- name: ANI Opensearch | Assert this run's execution context
+  # C07: the kubeconfig, log and fragment directories are decided once by the
+  # run and published into the config spec, so a role must not pick its own
+  # default. This check exists because a role can be executed on a host reached
+  # over SSH where a file the parent process could read is simply absent: the
+  # only acceptable answer there is to fail before the first write, not to fall
+  # back to a local admin credential.
+  command: |
+    set -euo pipefail
+    kubeconfig_file='{{ .ani.run.kubeconfig }}'
+    if [ -z "$kubeconfig_file" ]; then
+      echo "no kubeconfig was supplied for this run; refusing to guess one" >&2
+      exit 1
+    fi
+    if [ ! -f "$kubeconfig_file" ]; then
+      echo "kubeconfig $kubeconfig_file does not exist on this host; refusing to write component material against an unreachable context" >&2
+      exit 1
+    fi
+    for declared in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$declared" in
+        /*) ;;
+        *) echo "run scope path $declared is not absolute" >&2; exit 1 ;;
+      esac
+    done
+
 - name: ANI OpenSearch | Create work directory
   command: |
     set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/opensearch
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+    install -d -m 0700 "{{ .ani.run.connections_dir }}"
 
 - name: ANI OpenSearch | Create the observability namespace
   command: |
     set -euo pipefail
-    kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f -
 
 - name: ANI OpenSearch | Require the packaged Helm binary
   command: test -x "{{ .ani.artifact_root }}/bin/helm"
@@ -77,7 +102,7 @@
 
 - name: ANI OpenSearch | Issue the node and admin certificates
   command: |
-    kubectl apply -f /etc/kubernetes/ani/opensearch/certificates.yaml
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply -f /etc/kubernetes/ani/opensearch/certificates.yaml
 
 # A34/A34b: the Fluent Bit collector mounts ani-opensearch-fluent-bit-tls for
 # the TLS CA trust of the opensearch output. Nothing created it — the loki
@@ -100,19 +125,19 @@
     # kubeovn-full-h5a29).
     n=0
     for i in $(seq 1 60); do
-      if kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls >/dev/null 2>&1; then
-        n=$(kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' | base64 -d | wc -c)
+      if KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls >/dev/null 2>&1; then
+        n=$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' | base64 -d | wc -c)
         [ "$n" -gt 100 ] && break
       fi
       sleep 2
     done
     [ "$n" -gt 100 ] || { echo "ani-opensearch-node-tls ca.crt never appeared" >&2; exit 1; }
-    kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' \
       | base64 -d \
-      | kubectl -n {{ .ani.components.logging.namespace }} create secret generic ani-opensearch-fluent-bit-tls \
+      | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} create secret generic ani-opensearch-fluent-bit-tls \
           --from-file=ca.crt=/dev/stdin \
           --dry-run=client -o yaml \
-      | kubectl -n {{ .ani.components.logging.namespace }} apply --server-side -f -
+      | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} apply --server-side -f -
 
 # cert-manager issues asynchronously, so the readiness of both Certificates is
 # waited on before anything reads the resulting Secrets. Without this the chart
@@ -122,7 +147,7 @@
   command: |
     set -euo pipefail
     for cert in ani-opensearch-node-tls ani-opensearch-admin-tls; do
-      kubectl -n {{ .ani.components.logging.namespace }} wait \
+      KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} wait \
         --for=condition=Ready "certificate/$cert" --timeout=300s
     done
 
@@ -150,21 +175,21 @@
 
 - name: ANI OpenSearch | Create the security configuration Secret
   command: |
-    kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml
 
 - name: ANI OpenSearch | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm upgrade --install ani-opensearch-master
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" {{ .ani.artifact_root }}/bin/helm install ani-opensearch-master
     {{ .ani.artifact_root }}/charts/opensearch/3.8.0.tgz
     --namespace {{ .ani.components.logging.namespace }} --create-namespace
     --values /etc/kubernetes/ani/opensearch/values.yaml
-    --wait --timeout 1200s
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 1200s
 
 # The cluster is a StatefulSet in this Chart, so this waits for the same object
 # the Chart renders rather than for a Deployment that does not exist.
 - name: ANI OpenSearch | Wait for the OpenSearch StatefulSet
   command: |
-    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} rollout status \
       statefulset/ani-opensearch-master --timeout=900s
 
 - name: ANI OpenSearch | Wait for the data PVC to bind
@@ -177,7 +202,7 @@
     # waited on the pod-shaped name ani-opensearch-master-0, which never exists,
     # and the derived form cannot drift from the Chart.
     sts=ani-opensearch-master
-    template="$(kubectl -n {{ .ani.components.logging.namespace }} get statefulset "$sts" \
+    template="$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get statefulset "$sts" \
       -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}')"
     if [ -z "$template" ]; then
       echo "statefulset/$sts declares no volume claim template" >&2
@@ -185,7 +210,7 @@
     fi
     pvc="${template}-${sts}-0"
     echo "waiting for pvc/$pvc"
-    kubectl -n {{ .ani.components.logging.namespace }} wait \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} wait \
       --for=jsonpath='{.status.phase}'=Bound "pvc/$pvc" --timeout=300s
 
 # The security index has to be seeded before the cluster is usable: with
@@ -231,18 +256,18 @@
 - name: ANI OpenSearch | Seed the security index and the collector credential
   command: |
     set -euo pipefail
-    kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml
 
     # The hashing Job creates the hash, the admin credential and the collector
     # credential in one step, so all three always agree. It is a one-shot Job
     # rather than an init container because it has to run after the cluster is
     # up, not as part of it.
-    kubectl -n {{ .ani.components.logging.namespace }} wait \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} wait \
       --for=condition=Complete job/ani-opensearch-security-init --timeout=900s
 
     # A failed Job must stop the install here rather than leave a cluster that
     # no client can authenticate to.
-    succeeded="$(kubectl -n {{ .ani.components.logging.namespace }} get job \
+    succeeded="$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get job \
       ani-opensearch-security-init -o jsonpath='{.status.succeeded}')"
     if [ "$succeeded" != "1" ]; then
       echo "the security initialization Job did not succeed" >&2
@@ -259,9 +284,9 @@
 - name: ANI OpenSearch | Restart the OpenSearch pod so the seeded security config is loaded at boot
   command: |
     set -euo pipefail
-    kubectl -n {{ .ani.components.logging.namespace }} delete pod \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} delete pod \
       ani-opensearch-master-0 --wait --timeout=300s
-    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} rollout status \
       statefulset/ani-opensearch-master --timeout=900s
     # A41b: Ready is not loaded. The security plugin loads the seeded
     # configuration asynchronously after the cluster state recovers, and until
@@ -271,11 +296,11 @@
     # untouched cluster returned 200 minutes later. Poll the administrator
     # credential until the cluster accepts it before anything else talks to
     # the cluster.
-    svc="$(kubectl -n {{ .ani.components.logging.namespace }} get svc \
+    svc="$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get svc \
       ani-opensearch-master -o jsonpath='{.spec.clusterIP}')"
-    u="$(kubectl -n {{ .ani.components.logging.namespace }} get secret \
+    u="$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get secret \
       ani-opensearch-admin -o jsonpath='{.data.username}' | base64 -d)"
-    p="$(kubectl -n {{ .ani.components.logging.namespace }} get secret \
+    p="$(KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} get secret \
       ani-opensearch-admin -o jsonpath='{.data.password}' | base64 -d)"
     ok=0
     for i in $(seq 1 60); do
@@ -303,11 +328,12 @@
 - name: ANI OpenSearch | Run component verification
   command: |
     set -euo pipefail
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
-    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+    install -d -m 0700 "{{ .ani.run.logs_dir }}"
+    ANI_VERIFY_OUTPUT_DIR="{{ .ani.run.logs_dir }}" \
+    ANI_VERIFY_KUBECONFIG="{{ .ani.run.kubeconfig }}" \
       bash /etc/kubernetes/ani/opensearch/verify.sh
 
 - name: ANI OpenSearch | Render connection facts fragment
   template:
     src: connection.md
-    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/opensearch.md"
+    dest: "{{ .ani.run.connections_dir }}/opensearch.md"

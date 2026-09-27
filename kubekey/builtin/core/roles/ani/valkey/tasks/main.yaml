@@ -16,11 +16,36 @@
 # style offline references; no remote registry is contacted and there is no
 # network access here.
 
+- name: ANI Valkey | Assert this run's execution context
+  # C07: the kubeconfig, log and fragment directories are decided once by the
+  # run and published into the config spec, so a role must not pick its own
+  # default. This check exists because a role can be executed on a host reached
+  # over SSH where a file the parent process could read is simply absent: the
+  # only acceptable answer there is to fail before the first write, not to fall
+  # back to a local admin credential.
+  command: |
+    set -euo pipefail
+    kubeconfig_file='{{ .ani.run.kubeconfig }}'
+    if [ -z "$kubeconfig_file" ]; then
+      echo "no kubeconfig was supplied for this run; refusing to guess one" >&2
+      exit 1
+    fi
+    if [ ! -f "$kubeconfig_file" ]; then
+      echo "kubeconfig $kubeconfig_file does not exist on this host; refusing to write component material against an unreachable context" >&2
+      exit 1
+    fi
+    for declared in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$declared" in
+        /*) ;;
+        *) echo "run scope path $declared is not absolute" >&2; exit 1 ;;
+      esac
+    done
+
 - name: ANI Valkey | Create work directory
   command: |
     set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/valkey
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+    install -d -m 0700 "{{ .ani.run.connections_dir }}"
 
 - name: ANI Valkey | Generate stable credentials for this run
   command: |
@@ -43,14 +68,14 @@
 - name: ANI Valkey | Create the application namespace
   command: |
     set -euo pipefail
-    kubectl create namespace ani-platform --dry-run=client -o yaml | kubectl apply --server-side -f -
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl create namespace ani-platform --dry-run=client -o yaml | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f -
 
 - name: ANI Valkey | Create the auth secret
   command: |
     set -euo pipefail
-    kubectl -n ani-platform create secret generic ani-valkey-auth \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform create secret generic ani-valkey-auth \
       --from-file=valkey-password=/etc/kubernetes/ani/valkey/valkey.pw \
-      --dry-run=client -o yaml | kubectl apply --server-side -f -
+      --dry-run=client -o yaml | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f -
 
 - name: ANI Valkey | Render the server config (password lives only in this file)
   command: |
@@ -69,9 +94,9 @@
 - name: ANI Valkey | Publish the server config as a Secret
   command: |
     set -euo pipefail
-    kubectl -n ani-platform create secret generic ani-valkey-config \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform create secret generic ani-valkey-config \
       --from-file=valkey.conf=/etc/kubernetes/ani/valkey/valkey.conf \
-      --dry-run=client -o yaml | kubectl apply --server-side -f -
+      --dry-run=client -o yaml | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f -
 
 - name: ANI Valkey | Render StatefulSet and Service
   template:
@@ -83,15 +108,15 @@
 
 - name: ANI Valkey | Apply StatefulSet and Service
   command: |
-    kubectl apply --server-side -f /etc/kubernetes/ani/valkey/10-statefulset.yaml
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f /etc/kubernetes/ani/valkey/10-statefulset.yaml
 
 - name: ANI Valkey | Wait for StatefulSet rollout
   command: |
-    kubectl -n ani-platform rollout status statefulset/valkey --timeout=600s
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform rollout status statefulset/valkey --timeout=600s
 
 - name: ANI Valkey | Wait for the RWO PVC to bind
   command: |
-    kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/data-valkey-0 --timeout=300s
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/data-valkey-0 --timeout=300s
 
 - name: ANI Valkey | Render component verification script
   template:
@@ -108,8 +133,9 @@
 - name: ANI Valkey | Run component verification
   command: |
     set -euo pipefail
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
-    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
+    install -d -m 0700 "{{ .ani.run.logs_dir }}"
+    ANI_VERIFY_OUTPUT_DIR="{{ .ani.run.logs_dir }}" \
+    ANI_VERIFY_KUBECONFIG="{{ .ani.run.kubeconfig }}" \
       bash /etc/kubernetes/ani/valkey/verify.sh
 
 # Connection facts are rendered by the role that owns the resources, so the
@@ -119,4 +145,4 @@
 - name: ANI Valkey | Render connection facts fragment
   template:
     src: connection.md
-    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/valkey.md"
+    dest: "{{ .ani.run.connections_dir }}/valkey.md"

@@ -238,10 +238,20 @@ func TestCodeAndArtifactBuildScriptsAreSeparate(t *testing.T) {
 		`REPOSITORY_ISO`,
 		`KUBEKEY_ARTIFACT`,
 		`HAULER_ARCHIVE`,
-		`"$OUTPUT/bin/hauler"`,
+		`--source "hauler=$HAULER_BIN"`,
+		`--loose-copy "repository/$(basename "$REPOSITORY_ISO")"`,
 		`"$OUTPUT/packages/kubekey-artifact.tgz"`,
 		`"$OUTPUT/images/images.haul.tar.zst"`,
-		`"$OUTPUT/repository/ubuntu-24.04-debs-amd64.iso"`,
+		// F06: the material rules are kk's Go steps, not shell heuristics.
+		`MATERIALS_KK`,
+		`materials place-tools`,
+		`materials place-charts`,
+		`materials verify-registry`,
+		`materials inject-repository-iso`,
+		`materials record-evidence`,
+		`materials land-images`,
+		`EVIDENCE_SOURCES`,
+		`--evidence-dir`,
 	} {
 		if !strings.Contains(artifact, want) {
 			t.Fatalf("artifact build script missing %q", want)
@@ -254,9 +264,15 @@ func TestCodeAndArtifactBuildScriptsAreSeparate(t *testing.T) {
 		`builtin/core/roles/ani/smoke/templates/probe.sh`,
 		`mkdir -p "$OUTPUT/manifests"`,
 		`cp -R "$ROOT/builtin/core/roles/ani`,
+		// F06: a third grep/awk material rule set is what let a foreign chart be
+		// copied to an approved path with exit 0. It must not come back.
+		`grep -oE 'artifactChartPath: \S+'`,
+		`grep -qF "$cand_sha"`,
+		`awk '/binarySha256:/`,
+		`tar tf "$artifact_tar"`,
 	} {
 		if strings.Contains(artifact, forbidden) {
-			t.Fatalf("artifact build script still builds or copies code release %q", forbidden)
+			t.Fatalf("artifact build script must not contain %q (code-release copying, or a shell material rule that bypasses the lock)", forbidden)
 		}
 	}
 	if !strings.Contains(install, `KK="$ROOT/kk"`) || !strings.Contains(install, `--package-root "$ARTIFACT_ROOT"`) {

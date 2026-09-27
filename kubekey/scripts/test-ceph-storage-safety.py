@@ -68,10 +68,19 @@ if tool == "findmnt":
     sys.exit(0)
 
 if tool == "blkid":
+    # Real blkid answers with its exit status: 0 = a signature was found (and it
+    # names it), 2 = no signature, anything else = the probe did not run. The
+    # fixture follows that contract so the pre-flight cannot mistake a failed
+    # probe for a blank disk.
     entry = device_for(args[-1]) if args else None
+    status = int(entry.get("blkid_rc", 0)) if entry else 0
     if entry and entry.get("blkid"):
         print(entry["blkid"])
-    sys.exit(0)
+    if status not in (0, 2) and entry and entry.get("blkid_error"):
+        print(entry["blkid_error"], file=sys.stderr)
+    elif status not in (0, 2):
+        print(f"blkid: {args[-1]}: probing failed", file=sys.stderr)
+    sys.exit(status)
 
 if tool == "lsblk":
     flags = [a for a in args if a.startswith("-")]
@@ -193,7 +202,9 @@ sys.exit(0)
 def clean_device(resolved: str, name: str) -> dict:
     return {"resolved": resolved, "name": name, "type": "disk", "size": "50G", "fstype": "",
             "mountpoint": "", "ancestors": [name], "ancestor_types": ["disk"],
-            "subtree": [name], "children": [], "blkid": ""}
+            "subtree": [name], "children": [], "blkid": "",
+            # A blank disk is what blkid reports with exit status 2 and no output.
+            "blkid_rc": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +225,7 @@ def test_preflight_rejections(res: Result, work: Path) -> None:
         },
         "device carries a signature": {
             "devices": {"/dev/disk/by-id/x": {**clean_device("/dev/sdb", "sdb"),
-                                              "blkid": "/dev/sdb: TYPE=\"ext4\""}},
+                                              "blkid": "/dev/sdb: TYPE=\"ext4\"", "blkid_rc": 0}},
             "mount_sources": ["/dev/sda2"],
         },
         "device is mounted": {
@@ -284,6 +295,25 @@ def test_preflight_rejections(res: Result, work: Path) -> None:
                   "预检确实检查了设备签名（调用过 blkid）")
     finally:
         box.close()
+
+    # T42 (F06 small regression): blkid's exit status IS the answer. A probe that
+    # could not run must never be read as "this disk is blank".
+    for name, entry, want in [
+        ("T-R05-02h-probe-error",
+         dict(clean_device("/dev/sdb", "sdb"), blkid_rc=4, blkid_error="blkid: /dev/sdb: Permission denied"),
+         "not proof of a blank disk"),
+        ("T-R05-02i-zero-without-tag",
+         dict(clean_device("/dev/sdb", "sdb"), blkid_rc=0, blkid=""),
+         "the probe result is unusable"),
+    ]:
+        box = Sandbox({"devices": {"/dev/disk/by-id/x": entry},
+                       "mount_sources": ["/dev/sda2"]})
+        try:
+            rc, out, err = box.run(["bash", str(PREFLIGHT), "node1", "/dev/disk/by-id/x"])
+            res.check(name, rc != 0 and want in err,
+                      f"{name}: 探测异常不得当作空白盘（rc={rc}, stderr 尾部={err.strip().splitlines()[-1] if err.strip() else ''}）")
+        finally:
+            box.close()
 
     # Reading the devices from the rendered per-node list is how the role runs it.
     box = Sandbox({"devices": {"/dev/disk/by-id/x": clean_device("/dev/sdb", "sdb")},

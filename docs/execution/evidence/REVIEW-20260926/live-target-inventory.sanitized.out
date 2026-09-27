@@ -1,0 +1,70 @@
+host=node1 date=2026-09-26T21:31:24+08:00 boot_id=073ea98a-782d-4a7d-b410-5e7452312db2
+
+=== cluster health (read-only) ===
+node1 Ready v1.35.8
+node2 Ready v1.35.8
+node3 Ready v1.35.8
+not-running pods: 1
+
+=== lab install lock holder ===
+lock file: -rw------- 1 root root 0 Sep 26 17:07 /var/lib/ani-installer/ani-install.lock
+
+=== base first-install record (must stay unchanged) ===
+9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2  /var/lib/ani-installer/ani-lab/run.json
+7025a791e93f6cae19ce0c0e29cc4bc84808cb840844d5e91b6129637e96d0a8  /var/lib/ani-installer/ani-lab/connections.md
+-rw-r--r-- 1 root root 2303 2026-09-26T17:26:09 /var/lib/ani-installer/ani-lab/run.json
+
+=== components execution records on disk ===
+ani-components-ani-lab-20260926-185409
+ani-components-ani-lab-20260926-191310
+ani-components-ani-lab-20260926-192953
+ani-components-ani-lab-20260926-195008
+ani-components-ani-lab-20260926-195644
+f1cd0425eb847acb91aeb5ea1c706e68226ddd4e87d7125197d231e5d113f6e2 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-185409//components-run.json mode=600
+f61f1629f942ed2a5091a9039c4eb527d12dee3e3810e12f62915e4736fe91b5 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-191310//components-run.json mode=600
+22d1edc2ad04058837ecbc55862f96c7f89f85a62916805f4c99cf27fc451d7f /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-192953//components-run.json mode=600
+39e1bfb3f5fdd435a97dcfa529556c1769a559e62cc54999b53a02faf26e7117 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-195008//components-run.json mode=600
+11d3f06ad14589e7cd1f542a41fb57a8479e4d833b3eb9a6c3a4ddcfaf172ab7 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-195644//components-run.json mode=600
+
+=== valkey workload identity (proof of no reinstall) ===
+6a6552d5-b3e0-4361-b88a-77f315e992a7 gen=1 rv=10929 created=2026-09-26T09:30:20Z
+f208e3c0-11ec-4fed-8e85-89d8f5405f63 started=2026-09-26T09:30:20Z image=<LAB-MGMT-IP>:5000/valkey/valkey:8.1.10-alpine
+97974c99-6b2d-4d56-97f8-97680e3dec76 vol=pvc-97974c99-6b2d-4d56-97f8-97680e3dec76 phase=Bound
+
+=== postgresql workload identity (ownership marker read-back) ===
+{"ani.io/managed-by":"ani-lab","app.kubernetes.io/name":"ani-postgresql"}
+{"ani.io/managed-by":"ani-lab","app.kubernetes.io/name":"ani-valkey"}
+
+=== delivered code releases on the node ===
+e510374085e66590a8f38df5940b918a6c638f9aa4c1a583cbfd0ce418288f36  /home/ubuntu/f-live/ani-code-live-05
+0b031f4d3b1835e3266a7f97a37a4dfe787871d2ee35235f4ca7a99a2e9c198f  /home/ubuntu/f-live/ani-code-live-07
+fd279f1945a29897ea509944a142258611deffdd3ee16e5b1216d7e6761c0241  /home/ubuntu/f-live/ani-code-live-08
+eb6ef568bab3690a4523194e9f7bf6ebd7b6f83d01a884c000618ae70fd97f93  /home/ubuntu/f-live/ani-code-live-09
+4eb946a65ff47c70dbd88f40b2035ac7478c02aca76a933d38ee12ffc34f1fb1  /home/ubuntu/f-live/ani-code-live-10
+add-plan
+add-plan-noop
+add-run
+ani-artifact-live-02
+ani-code-live-05
+ani-code-live-07
+ani-code-live-08
+ani-code-live-09
+ani-code-live-10
+base-before.sha
+install-console.log
+install-T0.txt
+l06
+l08
+l09
+l10
+ns-after.txt
+ns-before.txt
+site-a-r2.yaml
+site-valkey-on.yaml
+
+=== site config digests present ===
+57db2f4a7bb6203a6a8fe26984a3c0f8fcd95b1120375ab962fee1c8a31890cf  /home/ubuntu/f-live/site-valkey-on.yaml
+=== isolation state ===
+ANI-OFFLINE chains: 12
+public https: BLOCKED
+[rcapture] flock+probe exit=0 @ 2026-09-26T21:31:34+08:00

@@ -1,0 +1,19 @@
+# Reproduction of the CI failure predicted in REVIEW note §6, run on this host (no cluster).
+#
+#   git clone -b review/installer-f-remediation-20260926 <local-repo> /tmp/pristine
+#   cd /tmp/pristine/kubekey && bash scripts/check-code.sh      # -> rc 1
+#
+# The clone has no kubekey/ani/charts/*.tgz (gitignored, and the lock records them as
+# chartSource downloads), so the gate stops at the chart-bytes test. Every other step that
+# ran before it passed.
+# GitHub's runner is expected to hit the same step (same script, ubuntu-24.04, fresh checkout, no
+# charts in the repository) — that is a prediction from this reproduction, not an observed run result.
+
+--- FAIL: TestChartSpecsMatchTheApprovedLockAndTheChartBytes (0.00s)
+    f_live_materials_test.go:70: component "nats": read the chart's own identity from ../../ani/charts/nats/2.14.6.tgz: open chart archive ../../ani/charts/nats/2.14.6.tgz: open ../../ani/charts/nats/2.14.6.tgz: no such file or directory
+
+## gate termination (same run, tail of the same log)
+FAIL	github.com/kubesphere/kubekey/v4/pkg/ani	29.626s
+
+# Only the chart-bytes test fails; every other suite that ran before it passed. The
+# lines above are the gate's own verdict, not a cluster result.

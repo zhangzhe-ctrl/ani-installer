@@ -9,10 +9,17 @@
 # What it runs, cheapest first, so a broken task file fails before a full build:
 #   1. required tools and a Go toolchain that satisfies go.mod
 #   2. ANI role task shape + shell syntax + no-network-fetch check
-#   3. go build ./... , go vet ./pkg/ani/... , go test ./pkg/ani/...
-#   4. the behavioural suites in scripts/test-*.py (credentials, task errors,
-#      apt repository, kubeconfig export)
-#   5. bash -n over every release script
+#   3. python module precheck for the behaviour suites
+#   4. go build (untagged AND -tags builtin: the shipped CLI), go vet and
+#      go test for ./pkg/ani/..., ./pkg/connector/... and ./cmd/kk/...
+#      — the ANI product code lives behind -tags builtin, so a gate without it
+#      never compiles what actually ships (F10)
+#   4b. locked chart material the source-tree gate reads — the gate's only
+#       network step, always after the build and always before the tests, and
+#       never inside one
+#   5. the behavioural suites in scripts/test-*.py (credentials, task errors,
+#      apt repository, kubeconfig export, offline materials, gate itself)
+#   6. bash -n over every release script
 #
 # The real render gates (template FuncMap, Chart values, connection docs) live
 # in pkg/ani's Go tests and are therefore already part of step 3.
@@ -33,6 +40,17 @@ done
 [[ -n "$GO_BIN" && -x "$GO_BIN" ]] || fail "go toolchain not found; set GO_BIN to an executable go (never downloaded here)"
 echo "go binary: $GO_BIN"
 echo "python3: $(python3 -V 2>&1)"
+
+# The behaviour suites below import third-party modules. A missing module must
+# fail here with its name instead of failing inside a suite (or, worse, being
+# skipped) — F10: the gate has to say what it actually covered.
+step "python modules the behaviour suites import"
+for module in yaml; do
+  if ! python3 -c "import ${module}" 2>/dev/null; then
+    fail "python3 has no module ${module}; the behaviour suites need it (this gate never installs anything)"
+  fi
+  echo "python3 module ${module}: available"
+done
 
 step "Go toolchain satisfies go.mod (GOTOOLCHAIN=${GOTOOLCHAIN:-unset})"
 required="$(awk '/^go /{print $2; exit}' go.mod)"
@@ -132,14 +150,62 @@ if errors:
 print(f"OK: {len(files)} ANI task files validated")
 PY_EOF
 
-step "go build ./..."
+# The product ANI CLI and the embedded builtin project live behind -tags builtin
+# (cmd/kk/app/builtin, pkg/ani/components_project_builtin.go). A gate that only
+# builds the untagged tree has never compiled the code that ships (F10), so both
+# shapes are built, vetted and tested here.
+step "go build ./... (untagged tree)"
 "$GO_BIN" build ./...
 
-step "go vet ./pkg/ani/..."
-"$GO_BIN" vet ./pkg/ani/...
+step "go build -tags builtin ./... (the shipped ANI CLI and embedded builtin tree)"
+"$GO_BIN" build -tags builtin ./...
+
+step "go vet (untagged and builtin, product packages)"
+"$GO_BIN" vet ./pkg/ani/... ./pkg/connector/...
+"$GO_BIN" vet -tags builtin ./pkg/ani/... ./pkg/connector/... ./cmd/...
+
+# The gate test TestChartSpecsMatchTheApprovedLockAndTheChartBytes opens the real
+# chart archives under ani/charts to keep the component spec table, the approved
+# lock and the shipped bytes from drifting apart again — it is the check that
+# caught cert-manager being declared "1.21.2" while the lock and the archive both
+# say "v1.21.2". Those archives are gitignored material, so a clean checkout has
+# none and the gate fails for want of input, not for want of correctness.
+#
+# This step is the one place that touches the network, and it is deliberately in
+# front of the gate rather than inside a test: the tests themselves never fetch,
+# and a missing or wrong-bytes chart is reported here as a preparation failure.
+# Each chart is verified against the full sha256 its own lock entry approves and
+# against the identity its own Chart.yaml declares; a cache hit is re-verified,
+# not trusted. Nothing is skipped, weakened or worked around with t.Skip.
+step "locked chart material the source-tree gate reads (C10)"
+ANI_CHART_CACHE_DIR="${ANI_CHART_CACHE:-$HOME/.cache/ani-installer-charts}"
+ANI_CHART_PREP_BIN="$(mktemp -d)/kk-prepare-charts"
+mkdir -p "$ANI_CHART_CACHE_DIR"
+echo "chart cache: $ANI_CHART_CACHE_DIR"
+# Prepared with the untagged build if the builtin CLI cannot be produced at all;
+# this is the only step allowed to run before go build, so its own failure must
+# say which of the two happened.
+prepare_args=(--lock ani/components.lock.yaml --root ani --cache "$ANI_CHART_CACHE_DIR")
+[[ -z "${ANI_CHARTS_OFFLINE:-}" ]] || prepare_args+=(--offline)
+# The built tree is used rather than `go run`: the compile step above has already
+# succeeded, and a failure here must be reported as a material failure, not
+# mistaken for a toolchain or compile error.
+if ! "$GO_BIN" build -o "$ANI_CHART_PREP_BIN" -tags builtin ./cmd/kk ||
+    ! "$ANI_CHART_PREP_BIN" ani materials prepare-charts "${prepare_args[@]}"; then
+  fail "chart preparation from the approved lock failed (see the lock chart ... line above)"
+fi
 
 step "go test -count=1 ./pkg/ani/... (render gates and behaviour tests)"
 "$GO_BIN" test -count=1 ./pkg/ani/...
+
+step "go test -count=1 -tags builtin ./pkg/connector/... ./cmd/kk/..."
+"$GO_BIN" test -tags builtin -count=1 ./pkg/connector/... ./cmd/kk/...
+
+# The builtin-tagged pkg/ani tree is the shape the release actually runs (the
+# embedded project materializer registers itself in init), so its tests are run
+# in that shape as well.
+step "go test -count=1 -tags builtin ./pkg/ani/..."
+"$GO_BIN" test -tags builtin -count=1 ./pkg/ani/...
 
 step "behaviour suites in scripts/"
 for suite in test-lab-credentials.py test-ani-task-errors.py \

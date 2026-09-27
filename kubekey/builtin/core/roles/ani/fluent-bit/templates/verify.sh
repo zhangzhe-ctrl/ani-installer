@@ -32,6 +32,23 @@
 # deletion of a named pod. It never resets, wipes, or clears a cluster
 # resource, and it never deletes a PVC.
 set -euo pipefail
+# C07: one kubeconfig decides the target of this whole checker, and it is
+# required rather than defaulted. Falling back to /etc/kubernetes/admin.conf here
+# meant the layer that rendered this script could pin one cluster while kubectl
+# silently used another (or whatever $HOME/.kube/config holds).
+KUBECONFIG_FILE="${ANI_VERIFY_KUBECONFIG:?name the kubeconfig this verification runs against; ANI_VERIFY_KUBECONFIG has no default}"
+if [ ! -f "$KUBECONFIG_FILE" ]; then
+  echo "kubeconfig $KUBECONFIG_FILE does not exist; refusing to guess another target" >&2
+  exit 1
+fi
+if [ -n "${KUBECONFIG:-}" ] && [ "$KUBECONFIG" != "$KUBECONFIG_FILE" ]; then
+  echo "ambiguous target: ANI_VERIFY_KUBECONFIG=$KUBECONFIG_FILE but the environment carries KUBECONFIG=$KUBECONFIG" >&2
+  exit 1
+fi
+# Exporting it is what binds every bare `kubectl` below to the same context, so
+# no call can drift to a per-layer default.
+export KUBECONFIG="$KUBECONFIG_FILE"
+KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_FILE")
 
 NS="{{ .ani.components.logging.namespace }}"
 BACKEND="{{ .ani.components.logging.backend }}"
@@ -45,13 +62,201 @@ TOOL_IMAGE="{{ index .ani.images "docker.io/library/python:3.13.11-alpine3.23" }
 # product-level scan would reject the nil spelling itself -- which is also
 # why this comment must never contain that literal.
 BUSYBOX_IMAGE="{{ index .ani.images "docker.io/library/busybox:1.37.0" }}"
-CLIENT_POD="ani-fluent-bit-verify-client"
 
 OUT_DIR="${ANI_VERIFY_OUTPUT_DIR:-/var/lib/ani-installer/logs}"
 install -d -m 0700 "$OUT_DIR"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+
+# C08: every object this script creates is named for THIS attempt and recorded
+# with the uid it was created with. The names used to be fixed
+# (ani-fluent-bit-verify-client, ani-log-marker-1/2/3), so two smoke passes — or
+# one pass and a leftover from the last incident — deleted each other's probes,
+# and each script began by deleting a pod it had not created. A marker is only
+# evidence while the attempt that wrote it still owns it.
+#
+# Lowercase, DNS-label safe, and short enough that prefix + "-post" still fits a
+# pod name: date + pid + 8 hex, and pid plus the uuid make two attempts on the
+# same host in the same second impossible to collide.
+ATTEMPT_TOKEN="$(tr -d '-' < /proc/sys/kernel/random/uuid | cut -c1-8)"
+[ -n "$ATTEMPT_TOKEN" ] || { echo "cannot make an attempt token" >&2; exit 1; }
+RUN_ID="$(date -u +%Y%m%d%H%M%S)-$$-${ATTEMPT_TOKEN}"
 EVIDENCE="$OUT_DIR/fluent-bit-verify-$RUN_ID"
 install -d -m 0700 "$EVIDENCE"
+
+CLIENT_POD="ani-fb-client-${RUN_ID}"
+MARKER_PREFIX="ani-log-marker-${RUN_ID}"
+INSPECTOR_PREFIX="ani-fb-insp-${RUN_ID}"
+
+# OWNED is this attempt's ownership ledger: pod name -> the uid the API server
+# gave back when THIS attempt created it. It is deliberately not a later read: a
+# uid fetched after the fact can belong to whoever replaced our pod, and recording
+# that as ours would license deleting a stranger.
+#
+# C08: that uid is not merely a verification — it IS the condition of the delete.
+# A probe is released through this run's own executable (`kk ani pod-release`),
+# which puts the uid into DeleteOptions.Preconditions so the API server checks the
+# identity and deletes it as one operation. kubectl cannot send that condition at
+# all, and a label selection authorises a whole set the run never created a claim
+# over, so neither is used here. Where no entry point was supplied, the probe is
+# KEPT and reported: a leftover pod is a fact the operator can act on, while a
+# delete-by-name can remove an object this run has no authority over.
+#
+# The attempt label stays on every probe: it is how a human finds what an aborted
+# run left behind, and nothing more.
+#
+# Cleanup failures go to CLEANUP_FAILURES and fail the run. Swallowing them with
+# `|| true` is what let probes accumulate silently.
+declare -A OWNED=()
+CLEANUP_FAILURES=()
+ATTEMPT_LABEL="ani-attempt=$RUN_ID"
+
+# A uid as the API server issues one. The shape is checked, not trusted: the
+# value below becomes the precondition of a delete, so a response that carries
+# anything else — a warning line, a message, nothing at all — must never be
+# recorded as an object this run owns.
+POD_UID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
+own_pod() { # own_pod <name> <uid-from-the-create-response>
+  local name="$1" uid="$2"
+  if [ -z "$uid" ]; then
+    CLEANUP_FAILURES+=("$name: created but the API returned no uid, so this run cannot prove it owns the object")
+    return 1
+  fi
+  if [[ ! "$uid" =~ $POD_UID_RE ]]; then
+    # C08: this is where a mixed stdout/stderr capture used to poison the ledger.
+    # A successful create may well answer with a warning on stderr; if both
+    # streams landed in one variable, the recorded "uid" would be
+    # "warning text + uid", the precondition would be sent wrong, and the
+    # ownership ledger would still look perfectly clean.
+    CLEANUP_FAILURES+=("$name: the create response $(printf '%q' "$uid") is not a pod uid, so nothing is claimed and nothing will be deleted")
+    return 1
+  fi
+  OWNED["$name"]="$uid"
+  printf '%s %s\n' "$name" "$uid" >> "$EVIDENCE/owned-pods.txt"
+}
+
+# create_pod creates a manifest the caller already wrote to disk and records the
+# uid the API returned for it. A manifest file rather than a pipe, because a pod
+# definition piped through command substitution never reaches kubectl: the create
+# would silently send an empty document, and an ownership ledger built on top of
+# that would be recording nothing while looking exactly like it recorded something.
+#
+# C08: `create`, never `apply`. apply updates whatever object already owns the
+# name, so a run that "created" a probe this way could adopt a pod it did not
+# create — and then hand itself the authority to delete it. A taken name is a
+# collision to report.
+create_pod() { # create_pod <name> <manifest-file>
+  local name="$1" manifest="$2" uid rc=0 err_file
+  [ -s "$manifest" ] || { CLEANUP_FAILURES+=("$name: the manifest $manifest is empty"); return 1; }
+  install -d -m 0700 "$EVIDENCE/create" 2>/dev/null || true
+  err_file="$EVIDENCE/create/$name.stderr"
+  # stdout is the protocol (it becomes the claimed uid); stderr is evidence only.
+  uid="$(kubectl -n "$NS" create -f "$manifest" --output jsonpath='{.metadata.uid}' 2>"$err_file")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    CLEANUP_FAILURES+=("$name: the create-only request failed (rc=$rc) and nothing was adopted: $(tail -n 1 "$err_file" 2>/dev/null)")
+    return 1
+  fi
+  if [ -s "$err_file" ]; then
+    # Recorded, never merged into the identity.
+    note "$name: created with a warning on stderr (see $err_file)"
+  fi
+  own_pod "$name" "$uid"
+}
+
+# conditional_release asks this run's own executable to delete one pod under the
+# uid its create returned, and reads the answer as a protocol, not as a string
+# that happens to start the right way. The request it issued is the only thing it
+# compares against: rc must be zero, the answer must be the single expected line,
+# its outcome must be one of the two tokens that end the obligation exactly, and
+# its namespace/name/uid must be the object this call named.
+conditional_release() { # conditional_release <name> <uid>
+  local name="$1" uid="$2" answer out rc=0 err_file fields=()
+  if [ -z "${ANI_KK_BIN:-}" ]; then
+    CLEANUP_FAILURES+=("$name: kept at uid $uid; this run was given no conditional delete entry point (ANI_KK_BIN is empty) and will not delete a pod by name")
+    return 1
+  fi
+  if [ ! -x "${ANI_KK_BIN}" ]; then
+    CLEANUP_FAILURES+=("$name: kept at uid $uid; ANI_KK_BIN=${ANI_KK_BIN} is not executable, so no preconditioned delete could be issued")
+    return 1
+  fi
+  install -d -m 0700 "$EVIDENCE/release" 2>/dev/null || true
+  err_file="$EVIDENCE/release/$name.stderr"
+  out="$("${ANI_KK_BIN}" ani pod-release --kubeconfig "$KUBECONFIG_FILE" --namespace "$NS" --pod "$name" --uid "$uid" 2>"$err_file")" || rc=$?
+  # One answer line. Anything appended to it is a second statement about the
+  # object, and which of the two to believe is not this run's to guess.
+  if [ "$(printf '%s\n' "$out" | grep -c .)" -ne 1 ]; then
+    answer="$(printf '%s\n' "$out" | head -n 2 | tr '\n' '|')"
+    printf 'pod-release %s %s rc=%s :: unexpected answer count: %s\n' "$name" "$uid" "$rc" "$answer" >> "$EVIDENCE/cleanup.txt"
+    CLEANUP_FAILURES+=("$name: kept, the release answer was not exactly one line (rc=$rc): $(printf '%q' "$answer")")
+    return 1
+  fi
+  answer="$out"
+  read -r -a fields <<<"$answer"
+  printf 'pod-release %s %s rc=%s :: %s\n' "$name" "$uid" "$rc" "$answer" >> "$EVIDENCE/cleanup.txt"
+  # A non-zero exit with a well-shaped token is a contradiction, and the exit
+  # status is not decorative: the delete may or may not have happened, so the
+  # obligation stands and nothing is re-issued.
+  if [ "$rc" -ne 0 ]; then
+    CLEANUP_FAILURES+=("$name: kept, the release answered \"$answer\" with rc=$rc; a contradictory answer is not a deletion and is never retried")
+    return 1
+  fi
+  if [ "${#fields[@]}" -ne 4 ] || [ "${fields[1]}" != "$NS" ] || [ "${fields[2]}" != "$name" ] || [ "${fields[3]}" != "$uid" ]; then
+    # The answer describes something other than the object this call named. That
+    # includes an outcome token carrying trailing text.
+    CLEANUP_FAILURES+=("$name: kept, the release answered \"$answer\", which is not the 4-field answer for $NS/$name at uid $uid")
+    return 1
+  fi
+  case "${fields[0]}" in
+    deleted)
+      # What the server accepted is a conditional DELETE. This does not claim the
+      # object has finished terminating — re-reading it and deleting again under a
+      # fresh uid is the exact thing this path forbids.
+      note "delete of $name accepted under uid $uid (object removal not re-verified by this attempt)"
+      return 0 ;;
+    not_found)
+      # Not "deleted by this run": this attempt never removed anything.
+      note "$name is already gone; not claimed as deleted by this attempt"
+      return 0 ;;
+    *)
+      CLEANUP_FAILURES+=("$name: kept, the release outcome \"${fields[0]}\" is not one this run may act on")
+      return 1 ;;
+  esac
+}
+
+release_pod() { # release_pod <name> — delete ONLY what this attempt created
+  local name="$1" want
+  want="${OWNED[$name]:-}"
+  if [ -z "$want" ]; then
+    note "leaving $name alone: this attempt did not create it"
+    return 0
+  fi
+  # There is no read before the delete: the server is the authority on whether the
+  # object at this name is still the one this attempt created, which is exactly
+  # what a client-side check cannot guarantee.
+  if conditional_release "$name" "$want"; then
+    unset 'OWNED[$name]'
+  fi
+}
+
+# release_all_owned walks this attempt's own ledger, one object and one uid at a
+# time. It is not a batch delete and never selects by label: the ledger is the
+# only set this run has a claim over, and an object that cannot be released stays
+# in it so the run reports what is still there.
+release_all_owned() {
+  local name
+  if [ "${#OWNED[@]}" -eq 0 ]; then return 0; fi
+  for name in "${!OWNED[@]}"; do
+    release_pod "$name"
+  done
+}
+
+report_cleanup() {
+  [ "${#CLEANUP_FAILURES[@]}" -eq 0 ] && return 0
+  printf 'fluent-bit verify: probe cleanup did not complete cleanly:\n' >&2
+  local failure
+  for failure in "${CLEANUP_FAILURES[@]}"; do printf '  - %s\n' "$failure" >&2; done
+  printf 'The evidence directory is left in place on purpose: %s\n' "$EVIDENCE" >&2
+  return 1
+}
 
 fail() { echo "fluent-bit verify: $*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
@@ -116,6 +321,23 @@ case "$BACKEND" in
   *) fail "unsupported logging backend '$BACKEND'" ;;
 esac
 
+# F01 real layer split. `smoke` (default; install role + `kk ani verify --level
+# smoke`) does only config sanity ([1]) and the read-only per-attempt marker
+# collection probe ([2]) — it never rebuilds the backend/collector pods, never
+# mutates retention, and never clears other attempts' objects. `acceptance`
+# runs the two planned Pod-recreation durability checks ([3],[4]) and the
+# retention policy check ([5]) plus the run's own cleanup ([6]).
+LEVEL="${ANI_VERIFY_LEVEL:-smoke}"
+case "$LEVEL" in
+  smoke|acceptance) : ;;
+  *) fail "ANI_VERIFY_LEVEL must be 'smoke' or 'acceptance', got '$LEVEL'" ;;
+esac
+# A legacy direct acceptance would delete the backend and collector Pods
+# without the formal run ledger. Refuse before any Kubernetes request.
+if [ "$LEVEL" = acceptance ]; then
+  fail "use kk ani verify --level acceptance --only fluent-bit --allow-pod-recreate; the legacy script cannot spend business recreation quota"
+fi
+
 # Run a python program inside the cluster from a file, so no multi-line program
 # has to survive a shell boundary.
 py() {
@@ -124,9 +346,25 @@ py() {
 }
 
 start_client() {
-  $KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
-  $KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
-    --command -- python3 -c 'import time; time.sleep(3600)' >/dev/null
+  # C08: create-only. A name that is already taken is a collision to report, not
+  # an object to clear away — deleting it would destroy another attempt's live
+  # probe. The check below is a clearer message for the common case; the create
+  # itself is what actually decides, because a name can change hands in between.
+  if [ -n "$($KC get pod "$CLIENT_POD" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
+  fi
+  local created_uid rc=0
+  install -d -m 0700 "$EVIDENCE/create" 2>/dev/null || true
+  created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
+      --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' \
+      --command -- python3 -c 'import time; time.sleep(3600)' 2>"$EVIDENCE/create/$CLIENT_POD.stderr")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    # Nothing was adopted: a failed create leaves this run owning no object, and
+    # an AlreadyExists here means someone else holds that name.
+    CLEANUP_FAILURES+=("$CLIENT_POD: the create-only request failed (rc=$rc) and nothing was adopted: $(tail -n 1 "$EVIDENCE/create/$CLIENT_POD.stderr" 2>/dev/null)")
+    fail "could not create the verification client pod $CLIENT_POD"
+  fi
+  own_pod "$CLIENT_POD" "$created_uid" || fail "the client pod was created but its identity could not be claimed"
   $KC wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
 }
 
@@ -222,21 +460,27 @@ mapfile -t NODES < <(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.
 [ "${#NODES[@]}" -ge 1 ] || fail "no nodes found"
 
 declare -A MARKER_OF
+declare -A MARKER_POD_OF
 for i in "${!NODES[@]}"; do
   node="${NODES[$i]}"
   seq_n=$((i + 1))
-  pod="ani-log-marker-${seq_n}"
+  pod="${MARKER_PREFIX}-${seq_n}"
   marker="ANI-MARKER-${RUN_ID}-n${seq_n}-$(hostname)-${node}"
   MARKER_OF["$node"]="$marker"
+  MARKER_POD_OF["$node"]="$pod"
   note "node $node -> pod $pod"
-  $KC delete pod "$pod" --ignore-not-found --wait=true --timeout=300s >/dev/null
-  cat <<EOF | $KC apply -f -
+  if [ -n "$($KC get pod "$pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "marker pod $pod already exists; refusing to delete a probe this attempt did not create"
+  fi
+  mkdir -p "$EVIDENCE/manifests"
+  cat > "$EVIDENCE/manifests/$pod.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: $pod
   labels:
     ani-marker: "$pod"
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $node
@@ -245,16 +489,17 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo '$marker'; i=0; while [ \$i -lt 90 ]; do sleep 1; i=\$((i+1)); done"
+        - 'echo "$marker"; sleep 90'
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
 EOF
+  create_pod "$pod" "$EVIDENCE/manifests/$pod.yaml" || fail "could not create the marker pod $pod"
 done
 
 for i in "${!NODES[@]}"; do
   seq_n=$((i + 1))
-  $KC wait --for=condition=Ready "pod/ani-log-marker-${seq_n}" --timeout=180s
+  $KC wait --for=condition=Ready "pod/${MARKER_PREFIX}-${seq_n}" --timeout=180s
 done
 
 # Markers are read from the marker pods' own logs first, so the expected value
@@ -262,7 +507,7 @@ done
 {
   for i in "${!NODES[@]}"; do
     seq_n=$((i + 1))
-    $KC logs "ani-log-marker-${seq_n}"
+    $KC logs "${MARKER_PREFIX}-${seq_n}"
   done
 } | tee "$EVIDENCE/markers-written.txt"
 
@@ -407,8 +652,11 @@ cat > "$EVIDENCE/check_metadata.py" <<'PY'
 import json, re, sys
 
 found = json.load(open(sys.argv[1]))
-nodes = sys.argv[2:-1]
-expected_ns = sys.argv[-1]
+nodes = sys.argv[2:-2]
+expected_ns = sys.argv[-2]
+# C08: the probe pod is named for the attempt, so the expected pod name comes
+# from the run rather than from a constant another run could also claim.
+marker_prefix = sys.argv[-1]
 
 REQUIRED = ("namespace", "pod", "container", "node")
 
@@ -418,7 +666,7 @@ for marker, entry in sorted(found.items()):
         raise SystemExit(f"{marker}: cannot parse the marker sequence number")
     idx = int(seq.group(1))
     want_node = nodes[idx - 1]
-    want_pod = f"ani-log-marker-{idx}"
+    want_pod = f"{marker_prefix}-{idx}"
 
     if "stream" in entry:  # Loki: metadata is in the stream labels
         labels = entry["stream"]
@@ -445,9 +693,21 @@ PY
 $KC exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/markers-found.json' \
   < "$EVIDENCE/markers-found.txt"
 py "$EVIDENCE/check_metadata.py" /tmp/markers-found.json \
-  "${NODES[@]}" "$NS" | tee "$EVIDENCE/metadata.txt"
+  "${NODES[@]}" "$NS" "$MARKER_PREFIX" | tee "$EVIDENCE/metadata.txt"
 
 note "all $want_nodes markers found in $BACKEND with correct namespace/pod/container/node"
+
+# F01: smoke ends after the read-only collection probe. It created only this
+# attempt's marker/client pods, and releases each of those under the uid its own
+# create returned; it exits BEFORE the backend/collector Pod rebuilds, so no
+# existing service is restarted and no global retention/routing is touched during
+# install or smoke.
+if [ "$LEVEL" = smoke ]; then
+  release_all_owned
+  report_cleanup || exit 1
+  note "fluent-bit SMOKE verification passed: config sane, $want_nodes markers collected into $BACKEND (read-only; no pod rebuild, no retention change)"
+  exit 0
+fi
 
 note "== [3] rebuilding the backend pod keeps the records =="
 # The backend's PVC and UID are recorded before and after, so "the same volume"
@@ -484,14 +744,14 @@ note "rebuilding backend pod $old_backend_pod (uid $old_backend_pod_uid)"
 # comparison is not affected by new data arriving in between.
 kubectl -n "$NS" delete pod "$old_backend_pod" --wait=true --timeout=300s >/dev/null
 if ! k5_pod_ready "$BACKEND_SELECTOR" 600s; then
-  note "K5_REBUILD backend: the rebuilt pod is not Ready; performing the one planned rebuild of the backend pod"
-  echo "k5_rebuild_planned backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-  kubectl -n "$NS" delete pod -l "$BACKEND_SELECTOR" --timeout=180s >/dev/null 2>&1 || true
+  # F01: the single planned rebuild is the exact-pod delete above. The waiter is
+  # read-only — it never issues a second (selector-wide) delete. Wait out a
+  # bounded window, then record read-only evidence and fail without repairing.
+  note "K5_WAIT backend: rebuilt pod not Ready within 600s; waiting without a second rebuild"
+  echo "k5_wait_extend backend $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   if ! k5_pod_ready "$BACKEND_SELECTOR" 420s; then
-    # R02: no agent restart and no third rebuild. Record read-only evidence and
-    # fail the check; the caller's exit code stays this failure.
     k5_collect_failure_evidence backend || true
-    fail "the rebuilt backend pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
+    fail "the rebuilt backend pod did not become Ready and the one planned rebuild is already spent (no second rebuild, no agent restart is attempted)"
   fi
 fi
 
@@ -541,16 +801,25 @@ victim_pod="$($KC get pod -l "app.kubernetes.io/name=fluent-bit" \
 # the collector mounts at /var/lib/fluent-bit (values: fluent-bit-state ->
 # /var/lib/ani-installer/fluent-bit), so it sees the collector's own files.
 # Read-only, and deleted after each use.
+INSPECTOR_N=0
 cursor_ls() { # cursor_ls <node> <outfile>
-  local node="$1" out="$2" inspector="ani-fb-cursor-inspector" ph i
-  $KC delete pod "$inspector" --ignore-not-found --wait=true --timeout=300s >/dev/null 2>&1 || true
-  cat <<EOF | $KC apply -f - >/dev/null
+  local node="$1" out="$2" ph i
+  # C08: one uniquely named inspector per call, owned by this attempt. Reusing a
+  # fixed name and deleting it first is how concurrent runs destroyed each other.
+  INSPECTOR_N=$((INSPECTOR_N + 1))
+  local inspector="${INSPECTOR_PREFIX}-${INSPECTOR_N}"
+  if [ -n "$($KC get pod "$inspector" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+    fail "inspector $inspector already exists; refusing to delete a probe this attempt did not create"
+  fi
+  mkdir -p "$EVIDENCE/manifests"
+  cat > "$EVIDENCE/manifests/$inspector.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: $inspector
   labels:
     ani-verify: cursor-inspector
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $node
@@ -572,6 +841,7 @@ spec:
         path: /var/lib/ani-installer/fluent-bit
         type: Directory
 EOF
+  create_pod "$inspector" "$EVIDENCE/manifests/$inspector.yaml" || fail "could not create the cursor inspector for $node"
   ph=""; i=0
   while [ "$i" -lt 60 ]; do
     ph="$($KC get pod "$inspector" -o jsonpath='{.status.phase}' 2>/dev/null)"
@@ -581,7 +851,7 @@ EOF
   done
   [ "$ph" = "Succeeded" ] || fail "the cursor inspector pod on $node did not finish in 120s"
   $KC logs "$inspector" > "$out"
-  $KC delete pod "$inspector" --wait=true --timeout=300s >/dev/null
+  release_pod "$inspector"
 }
 
 cursor_ls "$victim_node" "$EVIDENCE/cursor-before.txt"
@@ -591,19 +861,18 @@ grep -q 'tail.db' "$EVIDENCE/cursor-before.txt" \
 
 note "rebuilding collector pod $victim_pod on $victim_node"
 kubectl -n "$NS" delete pod "$victim_pod" --wait=true --timeout=300s >/dev/null
-# Same single-planned-rebuild handling as the backend step above: one bounded
-# re-wait, and on failure read-only evidence plus a failing check. The agent
-# restart and the extra rebuilds are gone (R02).
+# F01: the single planned rebuild is the exact-pod delete above. The waiter is
+# read-only — it never issues a second (selector/field-scoped) delete. Keep
+# waiting out a bounded window, then record read-only evidence and fail without
+# repairing.
 if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
   --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
-  note "K5_REBUILD collector: the rebuilt pod is not Ready; performing the one planned rebuild of the collector pod"
-  echo "k5_rebuild_planned collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
-  kubectl -n "$NS" delete pod -l "app.kubernetes.io/name=fluent-bit" \
-    --field-selector "spec.nodeName=$victim_node" --timeout=180s >/dev/null 2>&1 || true
+  note "K5_WAIT collector: rebuilt pod not Ready within 300s; waiting without a second rebuild"
+  echo "k5_wait_extend collector $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVIDENCE/k5-retries.txt"
   if ! $KC wait --for=condition=Ready "pod" -l "app.kubernetes.io/name=fluent-bit" \
     --field-selector "spec.nodeName=$victim_node" --timeout=300s; then
     k5_collect_failure_evidence collector || true
-    fail "the rebuilt collector pod did not become Ready and the planned rebuild is already spent (no agent restart is attempted)"
+    fail "the rebuilt collector pod did not become Ready and the one planned rebuild is already spent (no second rebuild, no agent restart is attempted)"
   fi
 fi
 
@@ -617,12 +886,17 @@ grep -q 'tail.db' "$EVIDENCE/cursor-after.txt" \
 
 # New markers after the rebuild: the tail input must resume, not stop.
 new_run="${RUN_ID}-post"
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
-cat <<EOF | $KC apply -f -
+post_pod="${MARKER_PREFIX}-post"
+if [ -n "$($KC get pod "$post_pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
+  fail "marker pod $post_pod already exists; refusing to delete a probe this attempt did not create"
+fi
+cat > "$EVIDENCE/manifests/$post_pod.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ani-log-marker-post
+  name: $post_pod
+  labels:
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $victim_node
@@ -631,12 +905,13 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo 'ANI-MARKER-$new_run'; i=0; while [ \$i -lt 120 ]; do sleep 1; i=\$((i+1)); done"
+        - 'echo "ANI-MARKER-$new_run"; sleep 120'
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
 EOF
-$KC wait --for=condition=Ready pod/ani-log-marker-post --timeout=180s
+create_pod "$post_pod" "$EVIDENCE/manifests/$post_pod.yaml" || fail "could not create the post-rebuild marker $post_pod"
+$KC wait --for=condition=Ready "pod/$post_pod" --timeout=180s
 
 cat > "$EVIDENCE/await_one.py" <<'PY'
 import base64, json, ssl, sys, time, urllib.parse, urllib.request
@@ -855,17 +1130,19 @@ echo "retention-expiry=not_verified (requires the retention period to elapse)" \
   | tee "$EVIDENCE/retention-expiry.txt"
 
 note "== [6] cleanup of this run's own test pods =="
-$KC delete pod ani-log-marker-post --ignore-not-found --wait=true --timeout=300s >/dev/null
-for i in "${!NODES[@]}"; do
-  seq_n=$((i + 1))
-  $KC delete pod "ani-log-marker-${seq_n}" --ignore-not-found --wait=true --timeout=300s >/dev/null
-done
-$KC delete pod "$CLIENT_POD" --ignore-not-found --wait=true --timeout=300s >/dev/null
+# C08: this is the only cleanup, and it sits on the success path. A run that
+# failed earlier exits before reaching it, so its probes and its evidence stay
+# exactly where the failure left them for whoever investigates next.
+release_all_owned
+# The residue scan below only sees pods that exist; it cannot tell a pod this
+# attempt still owns from one it lost track of. report_cleanup carries exactly
+# that distinction, so it is said before anything else concludes on the run.
+report_cleanup || exit 1
 
-# Only this run's own marker pods are removed. The markers stay in the backend,
-# which is intentional: they are the evidence for the rebuild checks above.
-leftover="$($KC get pod -o name 2>/dev/null | grep -cE 'ani-log-marker|'"$CLIENT_POD" || true)"
-[ "$leftover" = "0" ] || fail "test pods were left behind in $NS"
+# Only this attempt's own prefixes are considered — a leftover from an earlier
+# incident is evidence, not this run's litter.
+leftover="$($KC get pod -o name 2>/dev/null | grep -cE "(${MARKER_PREFIX}|${CLIENT_POD}|${INSPECTOR_PREFIX})" || true)"
+[ "$leftover" = "0" ] || fail "this attempt left its own test pods behind in $NS"
 
 note "fluent-bit verify passed"
 note "evidence: $EVIDENCE"

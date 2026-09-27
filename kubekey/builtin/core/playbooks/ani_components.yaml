@@ -10,10 +10,15 @@
 # The scope comes from the run record: the components installer renders
 # .ani.components_run.scope (a map of component id -> true) into the config
 # from the R15.1 plan. A role runs only when BOTH its component switch is
-# enabled in that config AND the scope map contains it. Base installs never
-# set components_run (indexing a missing map yields the zero value), so this
-# playbook cannot widen a components run beyond --only, and the same roles
-# keep their original gating under create_cluster.
+# enabled in that config AND the scope map contains it; a scope map that
+# simply lacks the id yields the zero value and skips the role. A spec with
+# no components_run block at all does NOT skip: `index` of an untyped nil is
+# a template error, and the task fails (measured by
+# TestC07_ComponentSwitchHasExactlyTheThreeStatesThePlaybooksDescribe). That
+# combination cannot occur here, because this playbook is only ever invoked
+# by a components run, which always renders the scope — and this playbook
+# cannot widen a run beyond --only, nor does it share gating with
+# create_cluster, where the same roles keep their original condition.
 #
 # Ownership and versions were checked at plan time (R15.1): a same-version
 # helm release is already_installed and is never executed again, and a

@@ -83,7 +83,11 @@ ani_verify_components() { # ani_verify_components <site-config> <selection-file>
     # exit code; the `||` guard captures it without toggling the shell's errexit
     # (which would leak into the caller).
     component_exit=0
-    ANI_VERIFY_KUBECONFIG="$kubeconfig_file" ANI_VERIFY_OUTPUT_DIR="$log_dir" \
+    # F01: this legacy wrapper is the post-install/smoke trajectory. Pin the
+    # level explicitly so component checkers run their readiness-only branch;
+    # the full alert-chain/durability path is only reached through
+    # `kk ani verify --level acceptance --allow-pod-recreate`.
+    ANI_VERIFY_LEVEL=smoke ANI_VERIFY_KUBECONFIG="$kubeconfig_file" ANI_VERIFY_OUTPUT_DIR="$log_dir" \
       bash "$component_script" 2>&1 | tee "$log_dir/component-$component_name.log" || component_exit=$?
     if [[ "$component_exit" -ne 0 ]]; then
       echo "component $component_name verification failed; exit=$component_exit; log=$log_dir/component-$component_name.log" >&2
@@ -201,6 +205,11 @@ ani_verify_registry() { # ani_verify_registry <image-table> <registry-host> <reg
 if [[ "$ANI_VERIFY_LIB_ONLY" == "1" ]]; then
   return 0 2>/dev/null || exit 0
 fi
+# This legacy wrapper constructs a config-validation record, which the formal
+# verifier correctly refuses as proof of an installed run. Stop before its old
+# registry/network probes can touch a cluster and then fail at dispatch.
+echo "verify.sh is retired: use kk ani verify --run <install-success-run.json> --level smoke --kubeconfig <run-kubeconfig>" >&2
+exit 1
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/etc/kubernetes/admin.conf}"
 # R12/A12: every kubectl request carries a request-timeout larger than the
 # longest wait below (180s), so a hung API request can never block forever.

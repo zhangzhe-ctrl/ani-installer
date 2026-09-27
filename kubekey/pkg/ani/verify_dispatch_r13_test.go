@@ -32,16 +32,59 @@ import (
 // ---------------------------------------------------------------------------
 
 // r13RunRecord writes run.json (and optionally run-state.json) for a run.
+// Under the F04 contract a record is consumable only if it is an
+// install-success record with a 64-hex site digest and a populated identity;
+// the install state must report the terminal succeeded phase/result. `phase`
+// drives the state: PhaseSucceeded → a consumable success; PhaseInstallFailed or
+// a mid-flight phase → refused.
 func r13RunRecord(t *testing.T, dir string, withState bool, phase string, components ...string) (string, string) {
 	t.Helper()
+	digest := strings.Repeat("a", 64)
+	runID := "ani-ani-lab-20260924-130000"
+	// A record's consumable result mirrors the install state's terminal phase.
+	recordResult := ResultSucceeded
+	statePhase := phase
+	if statePhase == "" {
+		statePhase = PhaseSucceeded
+	}
+	switch statePhase {
+	case PhaseSucceeded:
+		recordResult = ResultSucceeded
+	case PhaseInstallFailed:
+		recordResult = ResultFailed
+	default:
+		// installing / registry_content_verified / preflight_failed: never a
+		// success marker under F04.
+		recordResult = ResultRunning
+	}
 	manifest := RunManifest{
-		SchemaVersion: RunManifestSchemaVersion,
-		ConfigDigest:  "r13digest0000000000000000000000000000000000000000000000000000000",
-		ClusterName:   "ani-lab",
-		Profile:       "full",
-		NetworkStack:  "kcn",
-		Components:    components,
-		StorageClass:  "ani-block",
+		SchemaVersion:      RunManifestSchemaVersion,
+		RecordKind:         RecordKindInstallSuccess,
+		RunID:              runID,
+		Result:             recordResult,
+		ConfigDigest:       digest,
+		ClusterName:        "ani-lab",
+		Profile:            "full",
+		NetworkStack:       "kcn",
+		Components:         components,
+		StorageClass:       "ani-block",
+		MaterialsValidated: true,
+		// C01 pins an acceptance to the host the record names, because that is
+		// where the product lock lives. These tests run "on" the installer, so the
+		// fixture owns a loopback address; TestC01 covers the host that does not.
+		Installer: ManifestInstaller{
+			Name:         "node1",
+			Address:      "127.0.0.1",
+			RegistryHost: "127.0.0.1",
+			RegistryPort: 5000,
+		},
+		Identity: ManifestIdentity{
+			SiteConfigDigest:    digest,
+			MaterialsLockDigest: strings.Repeat("b", 64),
+			ClusterUID:          "uid-kube-system-audit",
+			NodeCount:           3,
+			ReadyNodes:          []string{"node1", "node2", "node3"},
+		},
 	}
 	if len(manifest.Components) == 0 {
 		manifest.Components = nil
@@ -58,15 +101,17 @@ func r13RunRecord(t *testing.T, dir string, withState bool, phase string, compon
 		return runFile, ""
 	}
 	state := InstallState{
-		SchemaVersion:  InstallStateSchemaVersion,
-		RunID:          "ani-ani-lab-20260924-130000",
-		StartedAt:      "2026-09-24T13:00:00Z",
-		Phase:          phase,
-		ChangesStarted: true,
-		RemoteResult:   RemoteResultDeterministic,
-		ClusterName:    "ani-lab",
-		Targets:        []string{"node1", "node2", "node3"},
-		ConfigDigest:   manifest.ConfigDigest,
+		SchemaVersion:    InstallStateSchemaVersion,
+		RunID:            runID,
+		StartedAt:        "2026-09-24T13:00:00Z",
+		Phase:            statePhase,
+		Result:           recordResult,
+		ChangesStarted:   true,
+		RemoteResult:     RemoteResultDeterministic,
+		ClusterName:      "ani-lab",
+		Targets:          []string{"node1", "node2", "node3"},
+		SiteConfigDigest: digest,
+		ConfigDigest:     digest,
 	}
 	encodedState, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -80,9 +125,26 @@ func r13RunRecord(t *testing.T, dir string, withState bool, phase string, compon
 }
 
 // r13FakeKubectl writes a state-driven fake kubectl. Knobs (all env):
-//   FAKE_STICKY_POD_UID=1  delete does NOT change the pod UID (no recreation)
-//   FAKE_NEW_PVC_UID=x     delete also replaces the PVC object with UID x
-//   FAKE_MARKER_CONTENT=x  what `exec ... cat marker` answers
+//
+//	FAKE_STICKY_POD_UID=1  delete does NOT change the pod UID (no recreation)
+//	FAKE_NEW_PVC_UID=x     delete also replaces the PVC object with UID x
+//	FAKE_NOT_READY=1       the recreated pod reports Ready=False (Running but
+//	                       not Ready, which the acceptance must reject)
+//	FAKE_DATA_LOST=1       the committed SQL read-back returns empty (the row
+//	                       did not survive the recreation)
+//	FAKE_PG_MISMATCH=x     the read-back returns x instead of the token
+//	FAKE_CONTROLLER_UID=x  the live StatefulSet has a different uid than the
+//	                       pod's owner reference (C03 owner-generation check)
+//	FAKE_OWNER_NOT_CONTROLLER=1  the owner reference is not the controller
+//	FAKE_POD_CLAIMS=x      the pod mounts these PVC claims (default the target's)
+//	FAKE_PV_CLAIM_UID=x    the PV is bound back to this claim uid
+//	FAKE_REPLACE_AFTER_LAST_GET=1  the object is swapped for a same-name
+//	                       replacement after the client's final GET, which only a
+//	                       uid carried IN the delete request can survive (C03)
+//
+// The fake also records every uid the delete requests were restricted to in
+// $state/delete-uid-preconditions, so a test can assert the precondition
+// travelled with the request rather than inferring it from an outcome.
 func r13FakeKubectl(t *testing.T, binDir, stateDir string) string {
 	t.Helper()
 	script := `#!/usr/bin/env bash
@@ -90,23 +152,74 @@ state="${FAKE_STATE_DIR:?}"
 printf '%s\n' "$*" >> "$state/kubectl-calls.log"
 args="$*"
 case "$args" in
+  *"get namespace kube-system"*)
+    # Consuming a components execution record re-reads the live cluster
+    # fingerprint before it trusts the record's base binding.
+    printf '%s\n' "${FAKE_CLUSTER_UID:-uid-kube-system-audit}"; exit 0 ;;
+  *"get nodes"*"-o json"*)
+    printf '%s\n' '{"items":[{"metadata":{"name":"node1"},"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"metadata":{"name":"node2"},"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"metadata":{"name":"node3"},"status":{"conditions":[{"type":"Ready","status":"True"}]}}]}'
+    exit 0 ;;
+  *"get pod"*"ownerReferences"*"name"*)
+    # derive the owning controller from the pod name (postgresql-0 -> postgresql)
+    # The owning StatefulSet is the pod name minus its ordinal instance suffix,
+    # which is how a controller owns pod N: stripping only "-0" would make a plan
+    # with a second replica (postgresql-1) unauthorisable.
+    name="$(printf '%s' "$args" | sed -n 's/.*get pod \([A-Za-z0-9._-]*\).*/\1/p')"
+    printf '%s\n' "$(printf '%s' "$name" | sed -E 's/-[0-9]+$//')"; exit 0 ;;
+  *"get pod"*"ownerReferences"*"controller"*)
+    if [ -n "${FAKE_OWNER_NOT_CONTROLLER:-}" ]; then echo "false"; else echo "true"; fi; exit 0 ;;
+  *"get pod"*"ownerReferences"*"uid"*)
+    printf '%s\n' "${FAKE_OWNER_UID:-uid-controller-postgresql}"; exit 0 ;;
+  *"get statefulset"*"metadata.uid"*)
+    printf '%s\n' "${FAKE_CONTROLLER_UID:-uid-controller-postgresql}"; exit 0 ;;
+  *"get pod"*"persistentVolumeClaim.claimName"*)
+    # The claims a pod mounts are part of the fixture, not a guess: the state file
+    # says which volume this pod really uses, so a target whose PVC the pod does
+    # not mount is refused (C03) instead of passing on unrelated storage.
+    if [ -n "${FAKE_POD_CLAIMS:-}" ]; then printf '%s\n' "$FAKE_POD_CLAIMS"; else cat "$state/pod-claims" 2>/dev/null; fi
+    exit 0 ;;
+  *"get persistentvolume"*"claimRef.uid"*)
+    printf '%s\n' "${FAKE_PV_CLAIM_UID:-$(cat "$state/pvc-uid" 2>/dev/null)}"; exit 0 ;;
   *"get pod"*"metadata.uid"*)
-    cat "$state/pod-uid" 2>/dev/null; exit 0 ;;
-  *"get pod"*"status.phase"*)
-    echo "Running"; exit 0 ;;
+    n=0; [ -f "$state/uid-reads" ] && n="$(cat "$state/uid-reads")"
+    n=$((n+1)); printf '%s\n' "$n" > "$state/uid-reads"
+    if [ -n "${FAKE_REPLACE_UID_ON_REREAD:-}" ] && [ "$n" -ge 2 ]; then
+      echo "uid-SOMEONE-ELSE-replaced"; exit 0
+    fi
+    pn="$(printf '%s' "$args" | sed -n 's/.*get pod \([A-Za-z0-9._-]*\).*/\1/p')"
+    if [ -n "$pn" ] && [ -f "$state/pod-uid-$pn" ]; then cat "$state/pod-uid-$pn"; else cat "$state/pod-uid" 2>/dev/null; fi
+    exit 0 ;;
+  *"get pod"*"Ready"*status*|"get pod"*conditions*Ready*)
+    if [ -n "${FAKE_NOT_READY:-}" ]; then echo "False"; else echo "True"; fi; exit 0 ;;
   *"get pvc"*"metadata.uid"*)
     cat "$state/pvc-uid" 2>/dev/null; exit 0 ;;
+  *"get pvc"*"volumeName"*)
+    echo "pv-acceptance-0"; exit 0 ;;
   *"delete pod"*)
-    if [ -z "${FAKE_STICKY_POD_UID:-}" ]; then
-      printf 'uid-new-%s\n' "$(date +%s%N)" > "$state/pod-uid"
-    fi
-    if [ -n "${FAKE_NEW_PVC_UID:-}" ]; then
-      printf '%s\n' "$FAKE_NEW_PVC_UID" > "$state/pvc-uid"
-    fi
-    printf 'delete\n' >> "$state/deleted"
+    # C03: no longer here. The delete is issued by client-go against the isolated
+    # API endpoint (verify_apiserver_r13_test.go), which answers Preconditions the
+    # way the API documents. A shell fake that greps a uid out of argv and then
+    # decides whether to honour it proves the shape of a command line, not that the
+    # authorisation reached a server, so it is deliberately gone: reaching this
+    # branch at all is now a failure.
+    echo "fake kubectl: a pod delete must go through the API client, not kubectl argv ($args)" >&2
+    exit 9 ;;
+  *"psql"*"SELECT"*"ani_acceptance"*)
+    tok="$(printf '%s' "$args" | sed -n "s/.*WHERE k='\([a-z0-9-]*\)'.*/\1/p")"
+    if [ -n "${FAKE_DATA_LOST:-}" ]; then echo ""; exit 0; fi
+    if [ -n "${FAKE_PG_MISMATCH:-}" ]; then echo "$FAKE_PG_MISMATCH"; exit 0; fi
+    echo "$tok"; exit 0 ;;
+  *"psql"*"INSERT"*|"printf"*">"*"marker"*)
     exit 0 ;;
-  *"-- sh -c"*)
-    echo "${FAKE_MARKER_CONTENT:-}"; exit 0 ;;
+  *"get pod"*"hostPath.path"*)
+    if [ -n "${FAKE_HOSTPATHS:-}" ]; then printf '%s\n' "$FAKE_HOSTPATHS"; else cat "$state/hostpath-paths" 2>/dev/null; fi
+    exit 0 ;;
+  *"get pod"*"items[0].metadata.name"*)
+    printf '%s\n' "${FAKE_DAEMON_POD:-ani-fluent-bit-abc}"; exit 0 ;;
+  *"get node "**"metadata.uid"*)
+    printf '%s\n' "${FAKE_NODE_UID:-uid-node-1}"; exit 0 ;;
+  *"get daemonset"*"metadata.uid"*)
+    printf '%s\n' "${FAKE_DAEMONSET_UID:-${FAKE_CONTROLLER_UID:-uid-controller-postgresql}}"; exit 0 ;;
 esac
 echo "fake kubectl: unsupported $args" >&2
 exit 2
@@ -120,6 +233,9 @@ exit 2
 	}
 	if err := os.WriteFile(filepath.Join(stateDir, "pvc-uid"), []byte("uid-pvc-data-postgresql-0"), 0o600); err != nil {
 		t.Fatalf("seed pvc uid: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "pod-claims"), []byte("data-postgresql-0"), 0o600); err != nil {
+		t.Fatalf("seed pod claims: %v", err)
 	}
 	return path
 }
@@ -163,11 +279,32 @@ func r13Prepare(t *testing.T) (baseDir, stateDir string) {
 		}
 	}
 	r13FakeKubectl(t, binDir, stateDir)
+	// C03: the delete goes through real client-go, so the harness has to hand it a
+	// kubeconfig that resolves to a socket. The isolated endpoint and the fake
+	// kubectl share one state directory, so the identity the reads report and the
+	// object the delete is authorised against cannot quietly be two different things.
+	r13AttachAPIServer(t, baseDir, stateDir)
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 	t.Setenv("ANI_VERIFY_POD_RECREATE_TIMEOUT", "3s")
 	// The fake kubectl child processes read their state from here.
 	t.Setenv("FAKE_STATE_DIR", stateDir)
+	// The acceptance ledger + shared product lock live in a canonical state
+	// dir that is independent of --output; tests point both at a temp dir.
+	t.Setenv("ANI_ACCEPTANCE_STATE_DIR", filepath.Join(baseDir, "acceptance-state"))
+	t.Setenv("ANI_INSTALL_LOCK", filepath.Join(baseDir, "acceptance-state", "ani-install.lock"))
 	return baseDir, stateDir
+}
+
+// r13FindAcceptanceReport globs the run-scoped, scope-keyed acceptance report
+// (its exact name embeds a hash of the selected targets, so tests must not
+// hard-code it).
+func r13FindAcceptanceReport(t *testing.T, outDir string) string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(outDir, "verify-acceptance-*.json"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("no acceptance report found in %s: %v", outDir, err)
+	}
+	return matches[0]
 }
 
 // T-R13-01: install and smoke trajectories never recreate a component Pod,
@@ -179,7 +316,7 @@ func TestVerifyDispatcherLevels(t *testing.T) {
 		outDir := filepath.Join(baseDir, "verify-out")
 		r13StubScript(t, scriptDir, "cert-manager", "CERT-OK")
 		r13StubScript(t, scriptDir, "valkey", "VALKEY-OK")
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "cert-manager", "valkey")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "cert-manager", "valkey")
 
 		input := VerifyInput{
 			RunFile:    runFile,
@@ -196,24 +333,40 @@ func TestVerifyDispatcherLevels(t *testing.T) {
 		if report.Overall != VerifyStatusPass || len(report.Results) != 2 {
 			t.Fatalf("unexpected smoke report: %+v", report)
 		}
-		// The smoke trajectory must not issue a single kubectl call, let
-		// alone a pod deletion.
+		// The smoke trajectory must not mutate anything. It is no longer true that
+		// it issues no kubectl call at all: C01 binds every verification to the
+		// cluster its kubeconfig actually reaches, which is two reads. So the
+		// guarantee is stated as what smoke may and may not ask for, and any new
+		// call has to be justified here.
 		if _, err := os.Stat(filepath.Join(stateDir, "deleted")); !os.IsNotExist(err) {
 			t.Fatal("smoke deleted something")
 		}
-		if _, err := os.Stat(filepath.Join(stateDir, "kubectl-calls.log")); !os.IsNotExist(err) {
-			t.Fatal("smoke called kubectl at all")
+		calls, err := os.ReadFile(filepath.Join(stateDir, "kubectl-calls.log"))
+		if err != nil {
+			t.Fatalf("smoke must have read the live cluster identity it is attesting (C01): %v", err)
 		}
+		for _, mutating := range []string{" delete ", " apply ", " exec ", " patch ", " replace ", " create ",
+			" drain ", " cordon ", " taint ", " label ", " annotate ", " rollout ", " scale ", " run "} {
+			if strings.Contains(string(calls), mutating) {
+				t.Fatalf("smoke issued a mutating kubectl verb %q:\n%s", mutating, calls)
+			}
+		}
+		if !strings.Contains(string(calls), "get namespace kube-system") {
+			t.Fatalf("smoke did not bind the live cluster identity (C01):\n%s", calls)
+		}
+		// Smoke evidence is scoped to the subject it verified, so a base run and
+		// a components execution can never overwrite each other's evidence.
 		for _, component := range []string{"cert-manager", "valkey"} {
-			if _, err := os.Stat(filepath.Join(outDir, "smoke-"+component, "result.txt")); err != nil {
-				t.Fatalf("smoke evidence for %s missing: %v", component, err)
+			dir := filepath.Join(outDir, "smoke-ani-ani-lab-20260924-130000-"+component)
+			if _, err := os.Stat(filepath.Join(dir, "result.txt")); err != nil {
+				t.Fatalf("smoke evidence for %s missing at %s: %v", component, dir, err)
 			}
 		}
 	})
 
 	t.Run("acceptance without the flag is refused", func(t *testing.T) {
 		baseDir, _ := r13Prepare(t)
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
 		outDir := filepath.Join(baseDir, "verify-out")
 		input := VerifyInput{
 			RunFile:   runFile,
@@ -260,7 +413,7 @@ func TestVerifyDispatcherLevels(t *testing.T) {
 			ScriptDir: filepath.Join(baseDir, "scripts"),
 		}
 		err := RunVerify(context.Background(), input, os.Stdout)
-		if err == nil || !strings.Contains(err.Error(), "outside this run record") {
+		if err == nil || !strings.Contains(err.Error(), "outside what this run record attests") {
 			t.Fatalf("--only beyond the record must be rejected, got %v", err)
 		}
 	})
@@ -269,11 +422,10 @@ func TestVerifyDispatcherLevels(t *testing.T) {
 // T-R13-02 + T-R13-03: the acceptance engine judges the recreation by UIDs,
 // not names, and the PVC/data contracts decide pass or fail.
 func TestVerifyAcceptanceRecreation(t *testing.T) {
-	t.Run("same name with a new UID is a recreation; data and PVC survive", func(t *testing.T) {
+	t.Run("same name with a new UID is a recreation; committed data and PVC survive", func(t *testing.T) {
 		baseDir, _ := r13Prepare(t)
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
 		outDir := filepath.Join(baseDir, "verify-out")
-		t.Setenv("FAKE_MARKER_CONTENT", "ani-acceptance-uid-old-postgresql-0")
 
 		input := VerifyInput{
 			RunFile:          runFile,
@@ -286,7 +438,7 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 		if err := RunVerify(context.Background(), input, os.Stdout); err != nil {
 			t.Fatalf("acceptance should pass on a clean recreation: %v", err)
 		}
-		report := r13ReadReport(t, filepath.Join(outDir, "verify-acceptance-ani-ani-lab-20260924-130000.json"))
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, outDir))
 		if report.Overall != VerifyStatusPass || len(report.Results) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
 		}
@@ -307,10 +459,9 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 
 	t.Run("same name and same UID is not a recreation", func(t *testing.T) {
 		baseDir, _ := r13Prepare(t)
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
 		t.Setenv("FAKE_STICKY_POD_UID", "1")
 		t.Setenv("ANI_VERIFY_POD_RECREATE_TIMEOUT", "2s")
-		t.Setenv("FAKE_MARKER_CONTENT", "ani-acceptance-uid-old-postgresql-0")
 		input := VerifyInput{
 			RunFile:          runFile,
 			StateFile:        stateFile,
@@ -322,16 +473,38 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 		if err := RunVerify(context.Background(), input, os.Stdout); err == nil {
 			t.Fatal("an identical UID must fail the acceptance")
 		}
-		report := r13ReadReport(t, filepath.Join(baseDir, "verify-out", "verify-acceptance-ani-ani-lab-20260924-130000.json"))
-		if !strings.Contains(report.Results[0].Detail, "old UID must disappear") {
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, filepath.Join(baseDir, "verify-out")))
+		if !strings.Contains(report.Results[0].Detail, "come back Ready with a new UID") {
 			t.Fatalf("the failure must be the recreation assertion: %+v", report.Results[0])
 		}
 	})
 
-	t.Run("pod came back but the data marker is lost fails", func(t *testing.T) {
+	t.Run("a Running-but-not-Ready pod never passes the recreation", func(t *testing.T) {
 		baseDir, _ := r13Prepare(t)
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql")
-		t.Setenv("FAKE_MARKER_CONTENT", "something-else")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
+		t.Setenv("FAKE_NOT_READY", "1")
+		t.Setenv("ANI_VERIFY_POD_RECREATE_TIMEOUT", "2s")
+		input := VerifyInput{
+			RunFile:          runFile,
+			StateFile:        stateFile,
+			Level:            VerifyLevelAcceptance,
+			AllowPodRecreate: true,
+			Output:           filepath.Join(baseDir, "verify-out"),
+			Kubeconfig:       filepath.Join(baseDir, "kubeconfig"),
+		}
+		if err := RunVerify(context.Background(), input, os.Stdout); err == nil {
+			t.Fatal("a recreated-but-not-Ready pod must fail the acceptance")
+		}
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, filepath.Join(baseDir, "verify-out")))
+		if !strings.Contains(report.Results[0].Detail, "Running-but-not-Ready is never a pass") {
+			t.Fatalf("the failure must record the Ready requirement: %+v", report.Results[0])
+		}
+	})
+
+	t.Run("committed PostgreSQL row lost after the rebuild fails", func(t *testing.T) {
+		baseDir, _ := r13Prepare(t)
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
+		t.Setenv("FAKE_DATA_LOST", "1")
 		input := VerifyInput{
 			RunFile:          runFile,
 			StateFile:        stateFile,
@@ -342,19 +515,39 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 		}
 		err := RunVerify(context.Background(), input, os.Stdout)
 		if err == nil {
-			t.Fatal("a lost data marker must fail the acceptance")
+			t.Fatal("a lost committed row must fail the acceptance (a marker file never proves persistence)")
 		}
-		report := r13ReadReport(t, filepath.Join(baseDir, "verify-out", "verify-acceptance-ani-ani-lab-20260924-130000.json"))
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, filepath.Join(baseDir, "verify-out")))
 		if report.Results[0].Status != VerifyStatusFailed ||
-			!strings.Contains(report.Results[0].Detail, "did not survive") {
+			!strings.Contains(report.Results[0].Detail, "did not survive the recreation") {
 			t.Fatalf("the data-loss failure must be recorded: %+v", report.Results[0])
+		}
+	})
+
+	t.Run("a mismatched committed value fails even though the marker file survived", func(t *testing.T) {
+		baseDir, _ := r13Prepare(t)
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
+		t.Setenv("FAKE_PG_MISMATCH", "some-other-value")
+		input := VerifyInput{
+			RunFile:          runFile,
+			StateFile:        stateFile,
+			Level:            VerifyLevelAcceptance,
+			AllowPodRecreate: true,
+			Output:           filepath.Join(baseDir, "verify-out"),
+			Kubeconfig:       filepath.Join(baseDir, "kubeconfig"),
+		}
+		if err := RunVerify(context.Background(), input, os.Stdout); err == nil {
+			t.Fatal("a mismatched committed value must fail the acceptance")
+		}
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, filepath.Join(baseDir, "verify-out")))
+		if !strings.Contains(report.Results[0].Detail, "did not survive the recreation") {
+			t.Fatalf("the mismatch must be recorded as a persistence failure: %+v", report.Results[0])
 		}
 	})
 
 	t.Run("a replaced PVC can never pass", func(t *testing.T) {
 		baseDir, _ := r13Prepare(t)
-		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql")
-		t.Setenv("FAKE_MARKER_CONTENT", "ani-acceptance-uid-old-postgresql-0")
+		runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql")
 		t.Setenv("FAKE_NEW_PVC_UID", "uid-pvc-REPLACED")
 		input := VerifyInput{
 			RunFile:          runFile,
@@ -368,7 +561,7 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 		if err == nil {
 			t.Fatal("a replaced PVC must fail the acceptance")
 		}
-		report := r13ReadReport(t, filepath.Join(baseDir, "verify-out", "verify-acceptance-ani-ani-lab-20260924-130000.json"))
+		report := r13ReadReport(t, r13FindAcceptanceReport(t, filepath.Join(baseDir, "verify-out")))
 		if !strings.Contains(report.Results[0].Detail, "PVC was replaced") {
 			t.Fatalf("the PVC failure must be recorded: %+v", report.Results[0])
 		}
@@ -379,22 +572,24 @@ func TestVerifyAcceptanceRecreation(t *testing.T) {
 // acceptance result coexists with the install record instead of overwriting it.
 func TestVerifyAcceptanceStopAndRecords(t *testing.T) {
 	baseDir, stateDir := r13Prepare(t)
-	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseRegistryVerified, "postgresql", "nats")
-	// postgresql's marker read fails; nats must never be touched.
-	t.Setenv("FAKE_MARKER_CONTENT", "wrong")
+	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql", "nats")
+	// postgresql's committed row is lost after the rebuild; nats must never be
+	// touched (first failure stops all further mutation).
+	t.Setenv("FAKE_DATA_LOST", "1")
+	outDir := filepath.Join(baseDir, "verify-out")
 	input := VerifyInput{
 		RunFile:          runFile,
 		StateFile:        stateFile,
 		Level:            VerifyLevelAcceptance,
 		AllowPodRecreate: true,
-		Output:           filepath.Join(baseDir, "verify-out"),
+		Output:           outDir,
 		Kubeconfig:       filepath.Join(baseDir, "kubeconfig"),
 	}
 	err := RunVerify(context.Background(), input, os.Stdout)
 	if err == nil {
 		t.Fatal("the failing first acceptance must fail the run")
 	}
-	report := r13ReadReport(t, filepath.Join(baseDir, "verify-out", "verify-acceptance-ani-ani-lab-20260924-130000.json"))
+	report := r13ReadReport(t, r13FindAcceptanceReport(t, outDir))
 	if len(report.Results) != 2 {
 		t.Fatalf("both components must be recorded: %+v", report.Results)
 	}
@@ -409,25 +604,31 @@ func TestVerifyAcceptanceStopAndRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read delete log: %v", err)
 	}
-	if strings.Count(strings.TrimSpace(string(deleted)), "delete") != 1 {
+	if n := r13SuccessfulDeletions(string(deleted)); n != 1 {
 		t.Fatalf("exactly one planned recreation may happen, log:\n%s", deleted)
 	}
 
 	// T-R13-05: the install record keeps its own success while the acceptance
-	// failure stands; a second identical acceptance attempt is refused.
+	// failure stands; a second identical acceptance attempt is refused by the
+	// durable ledger (independent of --output), not by the report file.
 	state, err := ReadRunState(stateFile)
 	if err != nil {
 		t.Fatalf("read install state: %v", err)
 	}
-	if state.Phase != PhaseRegistryVerified || state.RemoteResult != RemoteResultDeterministic {
+	if state.Phase != PhaseSucceeded || state.Result != ResultSucceeded || state.RemoteResult != RemoteResultDeterministic {
 		t.Fatalf("the install record must be untouched by verification: %+v", state)
 	}
-	if _, err := os.Stat(filepath.Join(baseDir, "verify-out", "verify-acceptance-ani-ani-lab-20260924-130000.json")); err != nil {
-		t.Fatalf("the acceptance report must persist: %v", err)
-	}
+	// A re-run pointed at a DIFFERENT --output must still be refused: the delete
+	// quota lives in the canonical ledger, so changing output does not re-arm it.
+	input.Output = filepath.Join(baseDir, "verify-out-2")
 	retryErr := RunVerify(context.Background(), input, os.Stdout)
-	if retryErr == nil || !strings.Contains(retryErr.Error(), "already exists") {
-		t.Fatalf("a failed acceptance must block a parameter-identical re-run, got %v", retryErr)
+	if retryErr == nil {
+		t.Fatal("a prior acceptance attempt must block a second delete for the same run+target regardless of --output")
+	}
+	retryReport := r13ReadReport(t, r13FindAcceptanceReport(t, input.Output))
+	if retryReport.Results[0].Status != VerifyStatusFailed ||
+		!strings.Contains(retryReport.Results[0].Detail, "already recorded") {
+		t.Fatalf("the ledger must refuse a re-issued delete for postgresql: %+v", retryReport.Results[0])
 	}
 	deleted2, _ := os.ReadFile(filepath.Join(stateDir, "deleted"))
 	if string(deleted2) != string(deleted) {
@@ -437,6 +638,7 @@ func TestVerifyAcceptanceStopAndRecords(t *testing.T) {
 	// A smoke run for the same run still works and writes its own report —
 	// it never repeats the acceptance.
 	input.Level = VerifyLevelSmoke
+	input.Output = filepath.Join(baseDir, "verify-out")
 	input.ScriptDir = filepath.Join(baseDir, "scripts")
 	r13StubScript(t, input.ScriptDir, "postgresql", "PG-OK")
 	r13StubScript(t, input.ScriptDir, "nats", "NATS-OK")

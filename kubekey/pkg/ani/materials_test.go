@@ -64,8 +64,38 @@ func TestMaterialsLockParsesShippedFile(t *testing.T) {
 	if len(lock.Charts) < 5 {
 		t.Fatalf("the shipped lock yielded %d charts, want at least 5", len(lock.Charts))
 	}
-	if len(lock.Tools) != 1 {
-		t.Fatalf("the shipped lock yielded %d tools, want 1 (helm)", len(lock.Tools))
+	byName := map[string]LockedTool{}
+	for _, tool := range lock.Tools {
+		byName[tool.Name] = tool
+	}
+	if len(lock.Tools) != 2 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" {
+		t.Fatalf("the shipped lock must approve exactly helm and hauler, got %d tools: %v", len(lock.Tools), lock.Tools)
+	}
+	for name, tool := range byName {
+		if !digestPattern.MatchString("sha256:" + tool.BinarySHA256) {
+			t.Fatalf("tool %s has a non-sha256 binarySha256 %q", name, tool.BinarySHA256)
+		}
+		if tool.ArtifactPath != "bin/"+name {
+			t.Fatalf("tool %s is approved for %q, want bin/%s", name, tool.ArtifactPath, name)
+		}
+		if !strings.HasPrefix(tool.Source, "https://") {
+			t.Fatalf("tool %s source %q is not an authenticated https origin", name, tool.Source)
+		}
+		if !digestPattern.MatchString("sha256:" + tool.SourceTarballSHA256) {
+			t.Fatalf("tool %s has a non-sha256 sourceTarballSha256 %q", name, tool.SourceTarballSHA256)
+		}
+	}
+	// hauler's evidence stops at publisher checksums: the entry has to say so,
+	// because a checksum file is not a signature and silence would overstate it.
+	hauler := byName["hauler"]
+	if hauler.ChecksumsSHA256 == "" || hauler.ChecksumsFile == "" {
+		t.Fatalf("tool hauler must record the official checksums file and its digest, got %+v", hauler)
+	}
+	if !strings.Contains(hauler.IntegrityNote, "签名") && !strings.Contains(hauler.IntegrityNote, "signature") {
+		t.Fatalf("tool hauler's integrityNote must state the checksum-vs-signature limit, got %q", hauler.IntegrityNote)
+	}
+	if len(hauler.TagCommit) < 7 {
+		t.Fatalf("tool hauler must record the git object its release tag points at, got %q", hauler.TagCommit)
 	}
 	chart, ok := lock.ChartByArtifactPath("charts/cert-manager/v1.21.2.tgz")
 	if !ok || chart.SHA256 == "" {

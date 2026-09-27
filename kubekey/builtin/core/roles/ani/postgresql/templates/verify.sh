@@ -8,7 +8,22 @@
 # copied into an output file.
 set -euo pipefail
 
-KUBECONFIG_FILE="${ANI_VERIFY_KUBECONFIG:-/etc/kubernetes/admin.conf}"
+# C07: one kubeconfig decides the target of this whole checker, and it is
+# required rather than defaulted. Falling back to /etc/kubernetes/admin.conf here
+# meant the layer that rendered this script could pin one cluster while kubectl
+# silently used another (or whatever $HOME/.kube/config holds).
+KUBECONFIG_FILE="${ANI_VERIFY_KUBECONFIG:?name the kubeconfig this verification runs against; ANI_VERIFY_KUBECONFIG has no default}"
+if [ ! -f "$KUBECONFIG_FILE" ]; then
+  echo "kubeconfig $KUBECONFIG_FILE does not exist; refusing to guess another target" >&2
+  exit 1
+fi
+if [ -n "${KUBECONFIG:-}" ] && [ "$KUBECONFIG" != "$KUBECONFIG_FILE" ]; then
+  echo "ambiguous target: ANI_VERIFY_KUBECONFIG=$KUBECONFIG_FILE but the environment carries KUBECONFIG=$KUBECONFIG" >&2
+  exit 1
+fi
+# Exporting it is what binds every bare `kubectl` below to the same context, so
+# no call can drift to a per-layer default.
+export KUBECONFIG="$KUBECONFIG_FILE"
 KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_FILE")
 PG_IMAGE="{{ index .ani.images "docker.io/library/postgres:17.11-bookworm" }}"
 NS=ani-platform

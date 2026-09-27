@@ -1,0 +1,142 @@
+=== A) local release identity (what we are about to ship) ===
+d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4  /home/chabking/workspace/ani-installer/kubekey/build/ani-code-live-13/kk
+总计 124120
+-rwxr-xr-x. 1 chabking chabking       803  9月26日 22:29 install.sh
+-rwxr-xr-x. 1 chabking chabking 127044160  9月26日 22:29 kk
+-rwxr-xr-x. 1 chabking chabking     11446  9月26日 22:29 network-probe.sh
+-rwxr-xr-x. 1 chabking chabking     15801  9月26日 22:29 probe.sh
+-rw-r--r--. 1 chabking chabking       390  9月26日 22:29 SHA256SUMS
+-rwxr-xr-x. 1 chabking chabking     16282  9月26日 22:29 verify.sh
+
+=== B) transfer release (tar over ssh) ===
+rc_transfer=0
+
+=== C) unpack + recompute checksums ON THE TARGET ===
+./install.sh: OK
+./kk: OK
+./network-probe.sh: OK
+./probe.sh: OK
+./verify.sh: OK
+d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4  kk
+KK_EXECUTABLE_OK
+rc_verify_transfer=0
+
+=== D) run the read-only verification chain on node1 (as root) ===
+=== identity of what runs here ===
+d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4  /home/ubuntu/f-live/ani-code-live-13/kk
+./install.sh: OK
+./kk: OK
+./network-probe.sh: OK
+./probe.sh: OK
+./verify.sh: OK
+host=node1 date=2026-09-26T22:30:26+08:00
+lab install lock: -rw------- 1 root root 0 Sep 26 17:07 /var/lib/ani-installer/ani-install.lock
+lock holder:
+base record digest before: 9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2
+
+=== 0) which pod is not Running/Completed (base health detail) ===
+ani-installer-smoke    ani-smoke-backend                                           0/1   Unknown     0               5h16m
+
+=== valkey + postgresql identities BEFORE ===
+6a6552d5-b3e0-4361-b88a-77f315e992a7 gen=1 rv=10929 created=2026-09-26T09:30:20Z
+f208e3c0-11ec-4fed-8e85-89d8f5405f63 started=2026-09-26T09:30:20Z restarts=0 image=<LAB-MGMT-IP>:5000/valkey/valkey:8.1.10-alpine
+97974c99-6b2d-4d56-97f8-97680e3dec76 vol=pvc-97974c99-6b2d-4d56-97f8-97680e3dec76 phase=Bound
+
+=== 1) production PLAN (read-only) ===
+rc_plan=0
+components image docker.io/valkey/valkey:8.1.10-alpine: approved materials lock and images.tsv pin: served platform manifest e55eb7bfbce0 matches, platform sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7 with 8 blob(s) present
+components plan valkey: already_installed
+components plan written: run=ani-components-ani-lab-20260926-223027 plan=/home/ubuntu/f-live/l13/plan/components-plan-ani-components-ani-lab-20260926-223027.json runRecord=/home/ubuntu/f-live/l13/plan/runs/ani-components-ani-lab-20260926-223027/run.json
+NOTE: this is the R15.1 plan only; executing the planned components is the R15.2 card
+plan=/home/ubuntu/f-live/l13/plan/components-plan-ani-components-ani-lab-20260926-223027.json
+plan kind:
+
+=== 2) production EXECUTE (expected: read-only no-op that lands a record) ===
+rc_execute=0
+components execute valkey: already_installed
+components execute overall: pass (run=ani-components-ani-lab-20260926-223027 no-op=true)
+components record: /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-223027/components-run.json
+NOTE: this record attests a read-only observation (didInstall=false); it grants verification scope for the components it confirmed ANI-owned, and no change authority over anything else.
+RECORD=/var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-223027/components-run.json
+
+=== 3) the record the product printed, as written ===
+-rw------- 1 root root 3752 Sep 26 22:30 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-223027/components-run.json
+record_sha256=20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40
+recordKind       = components-execution
+subject runId     = ani-components-ani-lab-20260926-223027
+operation         = noop  didInstall = False
+result            = succeeded
+base runId        = ani-ani-lab-20260926-090732  base uid = 1b6d17fe-fc92-4b72-b6d3-0fcf32888e64
+base record sha    = 9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2
+base config digest = 67969228dca842bd28a9efd7f514f57e2d92f47c06a04e5c6ca5cd69037d94e2
+requestedScope     = ['valkey']
+executed           = None  observedExisting = ['valkey']
+  target valkey already_installed StatefulSet ani-platform/valkey uid= 6a6552d5-b3e0-4361-b88a-77f315e992a7
+    detail: rendered manifest StatefulSet ani-platform/valkey (ANI-owned, left untouched); no earlier components execution record installed valkey; this observation cannot claim when it was installed
+  evidence plan /home/ubuntu/f-live/l13/plan/components-plan-ani-components-ani-lab-20260926 ef9491ea1d697e13 MATCH
+  evidence execute-report /home/ubuntu/f-live/l13/run/components-execute-ani-components-ani-lab-202609 c99b0e9277e7a256 MATCH
+installer identity: {'sourceTreeFingerprint': 'b155498b0d2c41d23789016381c53a598cce12cb4a719049363515334d283e1e', 'codeCommit': 'f58430e84a1949b837c59139dc45979c33ae5c4f', 'codeBinaryDigest': 'd1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4', 'materialsLockDigest': '02d5dea90ffceadb047f8471e47539ed4d55b2d9fe09a8caa8f079afd1d9dd34'}
+
+=== 4) REAL verify consuming that record (the L-06 capability) ===
+rc_verify=0
+verify smoke valkey: pass
+verify smoke overall: pass (run=ani-components-ani-lab-20260926-223027 report=/home/ubuntu/f-live/l13/verify/verify-smoke-ani-components-ani-lab-20260926-223027.json)
+NOTE: subject is a components observation record for run ani-components-ani-lab-20260926-223027 (operation=noop, didInstall=false, base run ani-ani-lab-20260926-090732): it verifies what it confirmed already ANI-owned and attests no installation by this pass.
+total 8
+drwxr-xr-x 2 root root 4096 Sep 26 22:30 smoke-ani-components-ani-lab-20260926-223027-valkey
+-rw-r--r-- 1 root root 1335 Sep 26 22:30 verify-smoke-ani-components-ani-lab-20260926-223027.json
+--- report provenance ---
+report: verify-smoke-ani-components-ani-lab-20260926-223027.json
+    recordKind = components-execution
+    runId = ani-components-ani-lab-20260926-223027
+    baseRunId = ani-ani-lab-20260926-090732
+    operation = noop
+    didInstall = False
+    installerCodeBinaryDigest = d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4
+    verifierCodeBinaryDigest = d1a2ca98270b98799fb73bb84aeedd7ac7e6db308f60656288066d8352888fd4
+    level = smoke
+    overall = pass
+    subjects: [{'component': 'valkey', 'status': 'pass', 'detail': '[1/4] workload and resources\n[2/4] authorized client job (auth SET/GET + TTL expiry over Service DNS)\n  job/ani-vk-ok-20260926223030-381916 comp
+
+=== 5) refusals (each must be non-zero) ===
+rc_acceptance_on_observation=1
+Error: a read-only observation record (didInstall=false) grants verification scope only; acceptance performs a declared recreation and is refused for run ani-components-ani-lab-20260926-223027
+a read-only observation record (didInstall=false) grants verification scope only; acceptance performs a declared recreation and is refused for run ani-components-ani-lab-20260926-223027rc_out_of_scope=1
+Error: --only names components outside what this run record attests (valkey): nats
+--only names components outside what this run record attests (valkey): natsrc_plan_as_record=1
+Error: this is a components plan, not an execution record; verify consumes a "install-success" or a "components-execution" record and a plan is neither
+this is a components plan, not an execution record; verify consumes a "install-success" or a "components-execution" record and a plan is neithertampered: widened scope with nats and didInstall=true
+rc_tampered=1
+Error: components execution record says didInstall=true with operation "noop"; the two must agree
+components execution record says didInstall=true with operation "noop"; the two must agreerc_torn=1
+Error: parse the run record /home/ubuntu/f-live/l13/torn.json: unexpected end of JSON input
+parse the run record /home/ubuntu/f-live/l13/torn.json: unexpected end of JSON inputlanded record digest after refusals: 20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40 (expect 20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40)
+
+=== 6) the first install's own verify path is untouched ===
+rc_base_smoke=0
+verify smoke loki: pass
+verify smoke fluent-bit: pass
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l13/v-base/verify-smoke-ani-ani-lab-20260926-090732.json)
+NOTE: subject is the first install's own success record (run ani-ani-lab-20260926-090732).
+rc_base_smoke_pg=0
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l13/v-base-pg/verify-smoke-ani-ani-lab-20260926-090732.json)
+NOTE: subject is the first install's own success record (run ani-ani-lab-20260926-090732).
+
+=== 7) identities AFTER (must be byte-identical to BEFORE) ===
+6a6552d5-b3e0-4361-b88a-77f315e992a7 gen=1 rv=10929 created=2026-09-26T09:30:20Z
+f208e3c0-11ec-4fed-8e85-89d8f5405f63 started=2026-09-26T09:30:20Z restarts=0 image=<LAB-MGMT-IP>:5000/valkey/valkey:8.1.10-alpine
+97974c99-6b2d-4d56-97f8-97680e3dec76 vol=pvc-97974c99-6b2d-4d56-97f8-97680e3dec76 phase=Bound
+VALKEY-UNCHANGED (no reinstall, no recreation, no apply)
+base record digest after: 9f16b755f863e9d3c8e61e73217098573a203a5c8955b9464e1a3d149b8ecfc2
+prior l10 record digest: 39e1bfb3f5fdd435a97dcfa529556c1769a559e62cc54999b53a02faf26e7117 (expect 39e1bfb3f5fdd435a97dcfa529556c1769a559e62cc54999b53a02faf26e7117)
+all components records now:
+  f1cd0425eb847acb91aeb5ea1c706e68226ddd4e87d7125197d231e5d113f6e2 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-185409/
+  f61f1629f942ed2a5091a9039c4eb527d12dee3e3810e12f62915e4736fe91b5 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-191310/
+  22d1edc2ad04058837ecbc55862f96c7f89f85a62916805f4c99cf27fc451d7f /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-192953/
+  39e1bfb3f5fdd435a97dcfa529556c1769a559e62cc54999b53a02faf26e7117 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-195008/
+  11d3f06ad14589e7cd1f542a41fb57a8479e4d833b3eb9a6c3a4ddcfaf172ab7 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-195644/
+  4f2e89ef837cd049f68842ccdc48629344051b11a361769d2b371a3867df15bd /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-213342/
+  20113b35531918169d436f99ff6f9560b6d0220ccf969752b03cbf50c7da6b40 /var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260926-223027/
+not-running pods after: 1
+rc_chain=0
+[rcapture] exit=0 @ 2026-09-26T22:34:33+08:00

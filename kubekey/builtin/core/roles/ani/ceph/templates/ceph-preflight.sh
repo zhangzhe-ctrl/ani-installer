@@ -79,8 +79,24 @@ for device in "$@"; do
 
   echo "  -- $device -> $resolved"
   echo "     $(lsblk -ndo NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT "$resolved" 2>/dev/null | tr -s ' ')"
-  blkid_out="$(blkid "$resolved" 2>/dev/null || true)"
-  [ -z "$blkid_out" ] || echo "     blkid: $blkid_out"
+  # blkid's exit status is the answer, not its output: 0 means a signature is
+  # there, 2 means the probe found none, and anything else means the probe did
+  # not run. Treating `blkid ... || true` as "no signature" would let a failed
+  # probe stand in as proof of a blank disk.
+  blkid_rc=0
+  blkid_out="$(blkid "$resolved" 2>&1)" || blkid_rc=$?
+  case "$blkid_rc" in
+    0)
+      # A signature exists only if blkid actually named one; a zero status with
+      # nothing on stdout is not a device to accept and not one to blame on the
+      # operator either.
+      [ -n "$blkid_out" ] || fail "blkid exited 0 for $resolved without naming a signature; the probe result is unusable"
+      echo "     blkid: $blkid_out"
+      fail "$device ($resolved) already carries a signature; refusing to touch it (wipe or re-declare it deliberately)"
+      ;;
+    2) echo "     blkid: no signature on $resolved" ;;
+    *) fail "blkid could not probe $resolved (exit $blkid_rc): $blkid_out — a failed probe is not proof of a blank disk" ;;
+  esac
 
   ancestors="$(lsblk -sno NAME "$resolved" 2>/dev/null | tr -d ' ' | sort -u)"
   descendants="$(lsblk -rno NAME "$resolved" 2>/dev/null | tr -d ' ' | sort -u)"
@@ -97,7 +113,6 @@ for device in "$@"; do
     *" lvm "*|*" raid"*|*" md "*|*" crypt "*) fail "$device ($resolved) sits on an LVM/RAID/encrypted device, which is not a blank data disk" ;;
   esac
 
-  [ -z "$blkid_out" ] || fail "$device ($resolved) already carries a signature; refusing to touch it (wipe or re-declare it deliberately)"
   fstype="$(lsblk -ndo FSTYPE "$resolved" 2>/dev/null | tr -d ' ')"
   [ -z "$fstype" ] || fail "$device ($resolved) carries a $fstype filesystem"
   children_in_use="$(lsblk -rno NAME,MOUNTPOINT "$resolved" 2>/dev/null | awk 'NF > 1 {print $1}' | tr '\n' ' ')"

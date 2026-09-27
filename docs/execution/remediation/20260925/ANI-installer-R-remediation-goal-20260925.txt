@@ -1,0 +1,42 @@
+整改 zhangzhe-ctrl/ani-installer：关闭复审F01–F12，交付代码修复、回归和准确状态。不是再写方案，不重跑R00–R16，不扩展B系列。
+
+【依据与边界】
+先读随附整改细则、复审报告/证据包及仓库AGENTS.md、docs/execution/progress.yaml、status-decision.md。审查基线为 f58430e84a1949b837c59139dc45979c33ae5c4f；记录当前提交与本地改动，保留后续有效修改，不强制回退。有异议须给生产调用链和可执行反证。证据包建议Go回归未在完整仓库编译，须适配执行。
+沿用 KubeKey、独立代码包/材料包、现有组件选择和存储安全合同；kcn 专属 Envoy 不供业务复用，kubeovn 不安装该组合。不轮换当前实验口令、不泄露凭据、不升级组件/改批准摘要凑通过；不加自动升级、强制接管、清盘、自愈或通用编排平台。
+先改代码、隔离测试及构建；实机、快照、重启、推送须有用户明确有效授权，不能从旧报告推定。缺少实机授权/材料只阻塞相应验收，继续独立代码工作，不伪造底座记录。暂不推进 B 系列自动实机安装。
+
+【执行方式】
+保留F01–F12编号，按六组连续整改；先统一最小状态/身份合同，可按依赖调序，不要每组结束只写报告等待确认。每项做到“生产路径复现→最小修复→同一回归通过”。可fake外部命令/API，但被测函数、模板、role、脚本须用真实实现，不用echo替身或重写逻辑。禁止删除检查、放宽断言、吞错、跳过 builtin 或将本轮缺陷再次标成 out-of-scope。
+
+一、验证边界和取消：F01/F09。
+修改pkg/ani/verify.go、scripts/verify.sh、metrics/fluent-bit等真实检查器及connector取消链。首装/新增的安装后检查与 smoke 不得重建既有服务 Pod、改全局告警配置或清理历史测试现场；允许本 attempt 独占的探针和隔离测试数据。完整告警链/持久化能力移到显式 acceptance，不删功能。
+删除“先删 Pod，helper 超时再删”的补救分支。专项按 run+目标在稳定状态目录中先原子登记意图再变更，受产品锁保护，不以 --output 位置决定是否执行过。核对 controller、Pod UID、PVC/PV关系，每个授权目标至多删一次；失败停止后续变更，只读取证；崩溃/远端未知不自动重放。不误挡不同目标的合法专项。
+PostgreSQL 用已提交 SQL 数据、NATS 用 JetStream 持久消息/消费确认验证重建前后内容，不能只 cat 文件。等待 Ready，不把 Running 当成功。context、阶段截止时间和请求超时必须进入真实子进程；只终止本任务进程/会话，不杀共享连接；无法证明远端结束就记 unknown。
+
+二、组件计划执行及所有权：F02/F03/F08。
+修改components_install.go、ani_components.yaml及角色。首装、组件execute、变更验收共用产品锁；当前拓扑可限制原安装节点执行，不另建分布式锁系统。
+execute 持锁后重新核验实际集群稳定身份、节点集合/Ready、CNI健康、registry、实际PVC所用StorageClass、成功底座、代码及材料身份；不得仅比较两份配置。计划与实际 kubectl/Helm/SSH 绑定同一目标及有效 kubeconfig，不受 HOME/KUBECONFIG 漂移影响。
+严格校验plan/schema/runID/摘要/状态，重算 --only 和依赖闭包，拒绝未知、暂缓、禁用、重复或越界项目。计划后现场/材料发生相关变化须重新计划，未写集群即退出。
+Helm 查询当前 revision、部署状态及受管归属，不能固定读 v1；manifest组件建立本安装器可追溯归属。自有同版本且健康返回 already_installed，无待执行项按只读 no-op；外部同名、版本不符、failed/pending及不明状态拒绝，不隐式 upgrade/adopt。只有明确NotFound可新建，Forbidden/超时不能当不存在。新增独立输出片段/日志/结果，不覆盖首装记录；不执行底座/CNI/Ceph/registry生命周期。
+
+三、成功记录与真实预检：F04/F05。
+修改 runner.go、preflight.go、run_manifest.go并同步消费者。区分配置校验产物与成功安装记录；首装成功自动产出可信run.json、状态及连接事实，供新增/验收消费，禁止人工补success绕过。计划成功不等于安装成功，新记录不得把未执行组件列成已安装。
+最后完成阶段与最终结果分开，所有退出记录 failed/cancelled/unknown等真实结果；源码树指纹、代码提交/二进制摘要、规范站点摘要、材料锁摘要各取真实来源。record/state的schema、runID、配置及集群身份必须一致；验证/新增拒绝非成功、未知、不匹配和畸形记录，短摘要返回错误不panic。专项失败不篡改已成功首装的历史结果。
+修复CheckUnitInactive空实现及反向判断，真实区分active/inactive/not-found/查询失败；已有外部同名unit不得接管。统一实际消费的required/material预检，核对所选归档、工具可执行性、Chart摘要、ISO记录与checksum；失败不得占用不可复用安装目录或导入/启动服务。锁、独立诊断/临时目录可写，“零业务变更”不等于“零文件写入”。格式错误/读取失败不得跳过。保留磁盘声明和默认类保护，blkid失败不得当空盘。
+
+四、材料全链路：F06。
+修改 materials.go、build-offline.sh及首装/新增调用。复用结构化MaterialsLock，按具体组件/name/version/artifactPath/hash精确绑定，禁止整份YAML grep摘要。落盘材料再核对；批准摘要来自既定批准源，不从待验文件生成批准值。
+新制包与现成Hauler归档走相同实际内容检查；正确数量/tag/HEAD200不能替代摘要。按批准映射解析仓库路径；OCI index继续读取所选平台子manifest并检查config/layer闭包。嵌套artifact中的ISO按准确路径与批准内容核验，不能凭同名跳过。首装/新增共用内容校验；安装现场不联网补材料。缺批准来源明确阻塞对应材料，不改锁凑数。
+
+五、render及独立发布入口：F07/F12。
+修改config.go、CLI和嵌入项目/发布路径。render与实际playbook共享有效选择，修正kcn+base差异；固定离线Helm展开真实Chart及hooks/CRDs，不以values解析替代。YAML/Python/shell分别验证；非法YAML、同文件/跨文件重复资源、非允许缺值失败；运行时字段精确豁免，不因.item/.stdout或文件名后缀放过整文件。
+默认使用当前代码包的嵌入或受校验资源；子kk默认os.Executable绝对路径，显式覆盖校验并记录身份。无源码、任意工作目录、PATH无kk或存在旧kk时都应正确运行。补报告§4小项回归，保留kcn合法encap/intranet包含关系。
+
+六、门禁和证据：F10/F11。
+保留统一check-code.sh，补普通与builtin正式构建/测试、变更包vet、pkg/connector测试、真实checker行为、CLI发布包隔离测试及Python依赖检查。workflow覆盖根实验脚本、config和所有实际检查输入；历史负面对照固定提交，不依赖HEAD巧合。缺工具/材料要报错，不能静默跳测。
+冷启动证据必须读内容并绑定主机、unit、材料、新旧bootID与真实冷拉结果；空文件、旧/错对象证据不能verified，is-enabled不等于重启通过。无授权不自动重启或清镜像缓存。
+
+【验收与交付】
+实现细则正反测试，尤其：真实smoke零服务重建、专项最多一次、超时停止；错误/过期/并发计划零集群变更；非成功run/错摘要拒绝；active unit与坏包前置失败；跨组件合法Chart错配失败；缺子manifest/层与内外ISO不符失败；render误报漏报消除；builtin/connector进入真实门禁；空冷启动证据不通过。
+局部回归后运行完整统一门禁，再从同一源码/材料构建独立发布物。授权且前置齐备时重验选定组合：干净首装→产品自动生成成功记录→smoke→计划并新增一个组件→重复只读no-op→明确授权的专项。核对未选组件及底座没有被本次命令变更；不得靠手工修集群再报通过。kubeovn/OpenSearch/外部存储/冷启动未实测的组合单列，不扩大“全部通过”。
+交付diff、测试、实际命令/退出码/日志、源码/二进制/材料标识及F01–F12结论；更新现有进度，避免另建重复台账。明确区分code_fixed、local_gate_pass、ci_pass、live_pass_selected、blocked/not_verified；CI只有实际对应提交运行成功才可写通过。未完成项说明原因和下一条动作，不用旧R16/CI绿色替代本轮结果。先执行，不以计划文档作为最终交付。

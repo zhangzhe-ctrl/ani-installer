@@ -228,9 +228,14 @@ def command_tokens(block: str) -> list[str]:
     """
     names = set(FAKE_COMMANDS)
     for line in real_command_lines(block):
-        # Stop at the first template placeholder: an argument that comes from
-        # the site config cannot be part of a literal injection target.
-        line = line.split("{{", 1)[0]
+        # A site-config argument cannot be part of a literal injection target, so
+        # each placeholder is replaced by a marker the candidate loop stops on.
+        # Truncating the whole line at the first `{{` used to be equivalent while
+        # placeholders only ever appeared in arguments; C07 put the run's
+        # kubeconfig in front of the command (`KUBECONFIG="{{...}}" kubectl ...`),
+        # and then it deleted the command as well and every block looked
+        # untestable. The marker keeps the command and still refuses the argument.
+        line = re.sub(r"\{\{.*?\}\}", "{{CONFIG}}", line)
         tokens = [t.strip("'\"") for t in re.split(r"[\s|;&()=]+", line) if t.strip("'\"")]
         for index, token in enumerate(tokens):
             if token not in names:
@@ -399,6 +404,24 @@ def test_every_multicommand_block_stops(box: Sandbox, res: Result) -> None:
             total += 1
             target = command_tokens(command)
             if not target:
+                # A block made only of builtins cannot be intercepted through the
+                # fake PATH, so injecting a failure there proves nothing. The run
+                # context guard is exactly that shape — its whole contract is
+                # "refuse, before writing anything, when the context is not on
+                # this host" — and that is testable directly: run it as written
+                # (its paths are unrendered placeholders, so they do not exist)
+                # and require a non-zero exit with no commands issued at all.
+                # Any other token-less block still fails the coverage check.
+                if "Assert this run's execution context" in name:
+                    box.reset()
+                    rc, _out, guard_err = box.run(command)
+                    writes = [row for row in box.calls() if is_write(row)]
+                    ok = rc != 0 and not writes
+                    res.check(f"R03-coverage-{role}:{name}", ok,
+                              f"上下文守卫在声明的上下文不存在时必须非零且不写任何东西（rc={rc}, writes={writes}, stderr={guard_err.strip()[:80]}）")
+                    if ok:
+                        executed += 1
+                    continue
                 res.check(f"R03-coverage-{role}:{name}", False,
                           "无法从块中确定首命令的注入 token")
                 continue

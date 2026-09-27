@@ -14,6 +14,7 @@ import (
 	"text/template"
 
 	kkTmpl "github.com/kubesphere/kubekey/v4/pkg/converter/tmpl"
+	"gopkg.in/yaml.v3"
 )
 
 const siteConfigTemplate = `name: ani-lab
@@ -879,7 +880,10 @@ func TestConnectionsDocumentAssemblesEnabledFragments(t *testing.T) {
 		}
 	}
 	dest := filepath.Join(workRoot, "connections.md")
-	if err := writeConnections(dest, workRoot, rows); err != nil {
+	// writeConnections now takes the fragment directory the roles were told to
+	// write into, because that is the whole point of the run scope: the caller
+	// cannot hand it one place and have the roles fill another.
+	if err := writeConnections(dest, dir, rows); err != nil {
 		t.Fatalf("writeConnections: %v", err)
 	}
 	info, err := os.Stat(dest)
@@ -1110,8 +1114,14 @@ func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 		if !strings.Contains(string(tasks), "src: connection.md") {
 			t.Fatalf("%s tasks do not render connection.md", name)
 		}
-		if !strings.Contains(string(tasks), "work/connections.d") {
-			t.Fatalf("%s tasks do not create the connections.d directory", name)
+		// C07: the directory is no longer a path each role invents. A role that
+		// fell back to hardcoding the base install's connections.d would pass the
+		// old assertion and fail this one.
+		if !strings.Contains(string(tasks), "{{ .ani.run.connections_dir }}") {
+			t.Fatalf("%s tasks do not take the connections fragment directory from the run scope", name)
+		}
+		if strings.Contains(string(tasks), "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d") {
+			t.Fatalf("%s tasks still hardcode the base install's connections.d", name)
 		}
 	}
 }
@@ -1146,6 +1156,34 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		"network":     true,
 		"images":      true,
 		"storage":     true,
+		// C07's run scope. Not whitelisted on trust: the loop below proves
+		// KubeKeyConfig actually emits .ani.run with the fields roles read, so
+		// this entry cannot drift into a key nobody builds.
+		"run": true,
+	}
+
+	// The premise of the allow-list is that the installer builds these keys, so
+	// check it against the generator rather than against this comment.
+	siteConfig, err := parseSite(t, "components:\n  certManager:\n    enabled: true\n")
+	if err != nil {
+		t.Fatalf("parse the guard's site config: %v", err)
+	}
+	generated, err := KubeKeyConfig(siteConfig, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
+	if err != nil {
+		t.Fatalf("build the config spec the roles are validated against: %v", err)
+	}
+	aniBlock, _ := generated["ani"].(map[string]any)
+	for _, key := range []string{"components", "images", "storage", "registry", "network", "run"} {
+		if _, present := aniBlock[key]; !present {
+			t.Fatalf("the installer does not build .ani.%s at all, yet roles are allowed to read it", key)
+		}
+	}
+	runScope, _ := aniBlock["run"].(map[string]any)
+	for _, field := range []string{"kubeconfig", "logs_dir", "connections_dir"} {
+		value, _ := runScope[field].(string)
+		if value == "" || !filepath.IsAbs(value) {
+			t.Fatalf(".ani.run.%s must be a non-empty absolute path, got %q", field, value)
+		}
 	}
 
 	checked := 0
@@ -1339,10 +1377,10 @@ func TestMetricsRoleIsWiredAndOffline(t *testing.T) {
 	}
 }
 
-// TestMetricsVerifyExercisesRealApis pins the substance of the C2 acceptance:
-// the script must query the real HTTP APIs, drive a firing/resolved pair, and
-// rebuild pods. A script that only checked readiness would still render and
-// parse, so the claims are asserted on content.
+// TestMetricsVerifyExercisesRealApis keeps the installed smoke script and the
+// formal RunVerify acceptance plan distinct. The isolated RunVerify tests drive
+// the actual protocol/parsing path; this check pins the source routing and the
+// two one-shot business targets so a script shortcut cannot reappear.
 func TestMetricsVerifyExercisesRealApis(t *testing.T) {
 	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "metrics", "templates", "verify.sh")
 	data, err := os.ReadFile(path)
@@ -1350,72 +1388,37 @@ func TestMetricsVerifyExercisesRealApis(t *testing.T) {
 		t.Fatalf("read metrics verify.sh: %v", err)
 	}
 	script := string(data)
-
-	for _, want := range []struct{ needle, why string }{
-		{"/api/v1/query?", "must query the Prometheus HTTP API"},
-		{"/api/v1/query_range?", "must read the pre-rebuild sample back by range query"},
-		{"node_uname_info", "must prove node-exporter reads the machine"},
-		{"kube_node_info", "must prove kube-state-metrics reads the API"},
-		{"container_memory_working_set_bytes", "must check a real cAdvisor container metric"},
-		{"vector(1) == 1", "must drive a real firing transition"},
-		{"vector(0) == 1", "must resolve by evaluating to an empty vector"},
-		{"sendResolved: true", "resolved delivery must be configured"},
-		{"fingerprint", "the resolved notification must be matched on fingerprint"},
-		{"delete pod -l app.kubernetes.io/name=prometheus", "must rebuild the Prometheus pod"},
-		{"delete pod -l app.kubernetes.io/name=alertmanager", "must rebuild the Alertmanager pod"},
-		{"ani_metrics_rebuild_marker", "must write its own sample before the rebuild"},
-		{"silenceID", "must create and read back a real Alertmanager silence"},
-		{"rollout status", "must wait on the workload state rather than sleeping"},
-		{`.metadata.uid`, "must compare object identities across the rebuild"},
-		{"node-exporter ready on", "must fail when node-exporter does not cover every node"},
-	} {
-		if !strings.Contains(script, want.needle) {
-			t.Fatalf("metrics verify.sh does not contain %q: it %s", want.needle, want.why)
-		}
-	}
-
-	// The alert must fire by returning a sample and resolve by returning none,
-	// so the rule expressions must not use `bool`: with bool, vector(0) == 1
-	// would return the sample 0 and keep the alert firing forever. Only the
-	// expr lines are inspected, because the script explains the choice in
-	// comments.
-	for _, line := range strings.Split(script, "\n") {
-		if !strings.Contains(line, "expr:") {
-			continue
-		}
-		if strings.Contains(line, "bool") {
-			t.Fatalf("rule expression uses a bool modifier and could never resolve: %s", strings.TrimSpace(line))
-		}
-	}
-	// Both transitions must be expressed as a comparison against a literal, so
-	// the non-firing case is an empty vector rather than a zero sample.
-	if !strings.Contains(script, `expr: vector(1) == 1`) {
-		t.Fatal("the firing rule must compare vector(1) against 1")
-	}
-	if !strings.Contains(script, `expr: vector(0) == 1`) {
-		t.Fatal("the resolved rule must compare vector(0) against 1")
-	}
-	// Nothing may write alerts straight into Alertmanager instead of letting
-	// Prometheus evaluate them.
-	for _, bad := range []string{"/api/v2/alerts", "/api/v1/alerts"} {
-		if strings.Contains(script, bad) {
-			t.Fatalf("metrics verify.sh posts to %s, which would bypass Prometheus evaluation", bad)
-		}
-	}
-	// The lab image must be the locked offline one, not a live pull.
-	if !strings.Contains(script, `index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`) {
-		t.Fatal("metrics verify.sh does not use the locked offline python image")
-	}
-	// Cleanup has to remove this run's temporary objects.
-	for _, want := range []string{
-		`delete prometheusrule "$RULE_NAME"`,
-		`delete alertmanagerconfig "$AMCFG_NAME"`,
-		`delete deployment "$RECV_DEPLOY"`,
-		`delete pod "$CLIENT_POD"`,
-	} {
+	for _, want := range []string{"/api/v1/query?", "node_uname_info", "kube_node_info", "container_memory_working_set_bytes", `index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`, "kk ani verify --level acceptance"} {
 		if !strings.Contains(script, want) {
-			t.Fatalf("metrics verify.sh does not clean up: %q", want)
+			t.Fatalf("metrics smoke script lost %q", want)
 		}
+	}
+	for _, forbidden := range []string{"delete pod -l", "silence_gc.py", `-l run_id="$RUN_LABEL"`, "/api/v2/alerts"} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("metrics smoke script retained unsafe heavy action %q", forbidden)
+		}
+	}
+	plan, ok := acceptancePlans["metrics"]
+	if !ok || len(plan.Steps) != 11 {
+		t.Fatalf("formal metrics plan has %d steps, want 11", len(plan.Steps))
+	}
+	for i, step := range plan.Steps {
+		want := fmt.Sprintf("METRICS-%02d", i+1)
+		if step.ID != want || step.Run == nil {
+			t.Fatalf("step %d is not declared executable: %+v", i+1, step)
+		}
+	}
+	if plan.Steps[7].Target != "prometheus" || plan.Steps[9].Target != "alertmanager" {
+		t.Fatalf("business targets are not assigned to METRICS-08/10")
+	}
+	for _, key := range []string{"prometheus", "alertmanager"} {
+		target := acceptanceTargets[key]
+		if target.Namespace != MetricsNamespace || target.ControllerKind != "StatefulSet" || target.PVCName == "" || target.PodName == "" {
+			t.Fatalf("incomplete %s target: %+v", key, target)
+		}
+	}
+	if !strings.Contains(metricsWritePython, "X-Prometheus-Remote-Write-Version") || !strings.Contains(metricsRangePython, "/api/v1/query_range?") || !strings.Contains(metricsSilenceCreatePython, "/api/v2/silences") || !strings.Contains(metricsSilenceGetPython, "/api/v2/silence/") {
+		t.Fatal("formal plan lost real Prometheus/Alertmanager protocol operations")
 	}
 }
 
@@ -1700,12 +1703,20 @@ func TestOpenSearchRoleIsWiredAndOffline(t *testing.T) {
 	// without it, and the Job was rendered but never submitted, so the wait on
 	// it could only time out.
 	secretApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-config.yaml")
-	helmInstall := strings.Index(taskText, "helm upgrade --install ani-opensearch-master")
+	helmInstall := strings.Index(taskText, "helm install ani-opensearch-master")
 	if secretApply < 0 {
 		t.Fatal("opensearch tasks never apply the security configuration Secret")
 	}
 	if helmInstall < 0 || secretApply > helmInstall {
 		t.Fatal("the security configuration Secret is applied after Helm, so a clean install deadlocks on a missing Secret")
+	}
+	// Ownership is established at create time only: a repeated run must fail on
+	// an existing release rather than silently upgrade someone else's.
+	if strings.Contains(taskText, "helm upgrade --install") {
+		t.Fatal("opensearch Helm release must be created with `helm install --labels`, never `helm upgrade --install`")
+	}
+	if !strings.Contains(taskText, "ani.io/managed-by=") {
+		t.Fatal("opensearch Helm release is created without the ani.io/managed-by ownership label")
 	}
 	initApply := strings.Index(taskText, "kubectl apply -f /etc/kubernetes/ani/opensearch/security-init.yaml")
 	initWait := strings.Index(taskText, "job/ani-opensearch-security-init")
@@ -2130,9 +2141,20 @@ func TestFluentBitVerifyProvesCollectionPath(t *testing.T) {
 			t.Fatalf("fluent-bit verify.sh does not use the locked offline image %s", want)
 		}
 	}
-	// This run's own test pods have to be removed.
-	if !strings.Contains(script, "delete pod ani-log-marker-post") {
-		t.Fatal("fluent-bit verify.sh does not clean up its post-rebuild marker pod")
+	// C08: this run's own test pods are still removed, but by ownership rather
+	// than by a fixed name — the name is scoped to the attempt precisely so two
+	// runs cannot delete each other's probes.
+	if !strings.Contains(script, `post_pod="${MARKER_PREFIX}-post"`) {
+		t.Fatal("fluent-bit verify.sh no longer names its post-rebuild marker pod after this attempt")
+	}
+	if !strings.Contains(script, `create_pod "$post_pod"`) {
+		t.Fatal("fluent-bit verify.sh no longer records the post-rebuild marker pod's create-time uid as this attempt's own")
+	}
+	if !strings.Contains(script, "release_all_owned") {
+		t.Fatal("fluent-bit verify.sh does not release the pods this attempt owns")
+	}
+	if strings.Contains(script, "delete pod ani-log-marker-post") {
+		t.Fatal("fluent-bit verify.sh deleted a fixed-name pod again (C08 regression)")
 	}
 	// The script must fail loudly rather than continue past a broken step.
 	if !strings.Contains(script, "set -euo pipefail") {
@@ -2389,6 +2411,8 @@ func TestVerifyNeverRepairsNetwork(t *testing.T) {
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2418,8 +2442,11 @@ echo "REBUILD_RC=$rc"
 				t.Fatalf("verification touched the network layer (%q):\n%s", forbidden, calls)
 			}
 		}
-		if got := r02Count(calls, "delete pod -l app.kubernetes.io/name=prometheus"); got != 1 {
-			t.Fatalf("expected exactly one planned rebuild of the component's own pod, got %d:\n%s", got, calls)
+		// F01: the readiness waiter is read-only. It must NEVER delete a pod on
+		// timeout — the single planned rebuild, where one is needed, belongs to
+		// the acceptance caller, not to a recovery branch inside the checker.
+		if got := r02Count(calls, "delete pod"); got != 0 {
+			t.Fatalf("k5_rebuild_wait must not delete/rebuild anything (the recovery branch is removed), got %d deletes:\n%s", got, calls)
 		}
 		evidence, err := os.ReadFile(filepath.Join(outDir, "k5-failure-prometheus.txt"))
 		if err != nil {
@@ -2430,12 +2457,52 @@ echo "REBUILD_RC=$rc"
 		}
 	})
 
+	t.Run("metrics/durability caller rebuilds exactly once and the waiter adds none", func(t *testing.T) {
+		// Reproduces the F01 sequence: the acceptance caller performs one planned
+		// `delete pod`, then calls k5_rebuild_wait. Across BOTH steps the pod may
+		// be deleted at most once — the waiter must not turn it into two.
+		rendered := r02RenderScript(t, metricsRel, r02Context())
+		binDir, callLog := r02FakeKubectl(t)
+		script := `set +e
+export ANI_VERIFY_LIB_ONLY=1
+export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
+export KUBECTL_LOG="$KUBECTL_LOG"
+source "$RENDERED"
+set +e
+export FAKE_READY=1
+"${KUBECTL[@]}" -n "$NS" delete pod -l app.kubernetes.io/name=prometheus --timeout=180s
+k5_rebuild_wait "app.kubernetes.io/name=prometheus" "prometheus" 5s 5s
+echo "REBUILD_RC=$?"
+`
+		stdout, stderr, code := r02RunBash(t, script, map[string]string{
+			"PATH":        binDir + ":" + os.Getenv("PATH"),
+			"RENDERED":    rendered,
+			"OUT_DIR":     t.TempDir(),
+			"KUBECTL_LOG": callLog,
+			"FAKE_READY":  "1",
+		})
+		if code != 0 {
+			t.Fatalf("harness failed: %s\n%s", stdout, stderr)
+		}
+		logContent, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read kubectl log: %v", err)
+		}
+		if got := r02Count(string(logContent), "delete pod -l app.kubernetes.io/name=prometheus"); got != 1 {
+			t.Fatalf("exactly one planned rebuild across caller+waiter expected, got %d:\n%s", got, logContent)
+		}
+	})
+
 	t.Run("metrics/normal path still waits and never rebuilds", func(t *testing.T) {
 		rendered := r02RenderScript(t, metricsRel, r02Context())
 		binDir, callLog := r02FakeKubectl(t)
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2472,6 +2539,8 @@ echo "REBUILD_RC=$?"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -2556,6 +2625,8 @@ echo "REBUILD_RC=$?"
 		script := `set +e
 export ANI_VERIFY_LIB_ONLY=1
 export ANI_VERIFY_OUTPUT_DIR="$OUT_DIR"
+export ANI_VERIFY_KUBECONFIG="${KUBECONFIG_FILE:-$OUT_DIR/harness.kubeconfig}"
+[ -f "$ANI_VERIFY_KUBECONFIG" ] || printf 'apiVersion: v1\nkind: Config\n' > "$ANI_VERIFY_KUBECONFIG"
 export KUBECTL_LOG="$KUBECTL_LOG"
 source "$RENDERED"
 set +e
@@ -3141,6 +3212,65 @@ func TestExampleSiteConfigsMatchTheSchema(t *testing.T) {
 		}
 		if !c.Storage.Enabled || c.Storage.provider() != "ceph" {
 			t.Fatalf("%s must declare its storage explicitly (R05)", filepath.Base(path))
+		}
+	}
+}
+
+// TestManifestComponentsStampOwnershipOnTheirWorkload is the L-05 regression.
+// The live ownership probe reads `ani.io/managed-by` from the workload object
+// it is about to adopt or leave alone, so a manifest component that stamps the
+// marker only on its Service is invisible to that probe: re-planning it reports
+// "no ownership marker ... adopting foreign workloads is not supported" for the
+// installer's own StatefulSet, and the same-version read-only no-op becomes
+// unreachable. 2026-09-26 proved this on a live cluster after adding valkey.
+func TestManifestComponentsStampOwnershipOnTheirWorkload(t *testing.T) {
+	actions := regexp.MustCompile(`{{[^}]*}}`)
+	for _, component := range []string{"postgresql", "valkey"} {
+		spec := componentInstallSpecs[component]
+		if spec.Release != "" {
+			t.Fatalf("%s is expected to be manifest-owned for this check", component)
+		}
+		path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", component, "templates", "statefulset.yaml")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", component, err)
+		}
+		content := string(raw)
+		if !strings.Contains(content, "ani.io/managed-by: {{ .kubernetes.cluster_name }}") {
+			t.Fatalf("%s template never binds %s to the cluster name", component, aniManagedByLabel)
+		}
+		// Only the object head (kind + metadata) is parsed: the spec bodies carry
+		// template conditionals that are not standalone YAML.
+		found := false
+		for _, document := range strings.Split(content, "\n---\n") {
+			lines := strings.Split(document, "\n")
+			for index, line := range lines {
+				if strings.HasPrefix(line, "spec:") {
+					lines = lines[:index]
+					break
+				}
+			}
+			var doc struct {
+				Kind     string `yaml:"kind"`
+				Metadata struct {
+					Name   string            `yaml:"name"`
+					Labels map[string]string `yaml:"labels"`
+				} `yaml:"metadata"`
+			}
+			if err := yaml.Unmarshal([]byte(actions.ReplaceAllString(strings.Join(lines, "\n"), "RENDERED")), &doc); err != nil {
+				t.Fatalf("%s: decode an object head: %v", component, err)
+			}
+			if doc.Kind != spec.WorkloadKind || doc.Metadata.Name != spec.WorkloadName {
+				continue
+			}
+			found = true
+			if got := doc.Metadata.Labels[aniManagedByLabel]; got != "RENDERED" {
+				t.Fatalf("%s: %s %s carries no %s in its own metadata.labels (the live probe reads the workload, not the Service); labels=%v",
+					component, spec.WorkloadKind, spec.WorkloadName, aniManagedByLabel, doc.Metadata.Labels)
+			}
+		}
+		if !found {
+			t.Fatalf("%s: template does not render a %s named %s", component, spec.WorkloadKind, spec.WorkloadName)
 		}
 	}
 }

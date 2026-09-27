@@ -1,0 +1,54 @@
+# First install (base run ani-ani-lab-20260926-090732) and base smoke — sanitized excerpt
+#
+# Sources: off-repo /home/chabking/ani-installer-runs/f-live-20260926/live-retry2/step2.txt
+#   (captured on node1 during the live-05 clean install) and l06-live/fluentbit-forensics.out
+#   section H (read-only re-verify after the disclosed, unauthorized acceptance rotation).
+# Redaction applied: lab addresses -> <LAB-MGMT-IP>, pod CIDR -> <LAB-POD-IP>; these particular
+#   lines carried no addresses. No credential value appears anywhere in this file.
+# rc note: rc_smoke below is "$?"-grade (command redirected, not piped). The rc labels in
+#   live-retry2/step3.sh came from 'cmd | tail -N' and are deliberately NOT quoted here.
+
+=== run identity ===
+    "runId": "ani-ani-lab-20260926-090732",
+    "startedAt": "2026-09-26T09:07:48Z",
+    "finishedAt": "2026-09-26T09:26:09Z",
+    "phase": "succeeded",
+    "result": "succeeded",
+    "remoteResult": "remote_result_deterministic",
+    "sourceTreeFingerprint": "ff1c664de89e8145efa57f7a3bfc5a674774db459029d360397bd0af04cfee6f",
+    "codeBinaryDigest": "e510374085e66590a8f38df5940b918a6c638f9aa4c1a583cbfd0ce418288f36",
+    "siteConfigDigest": "67969228dca842bd28a9efd7f514f57e2d92f47c06a04e5c6ca5cd69037d94e2",
+    "packageConfigDigest": "50ff2faae7f3f922a58d4407f9bf2d07380e33540a1f08f8ecd1de48b88ed924",
+    "artifactLockDigest": "02d5dea90ffceadb047f8471e47539ed4d55b2d9fe09a8caa8f079afd1d9dd34",
+
+=== smoke probe summary ===
+envoy_attempt_1_pod=ani-smoke-client-w7kr4
+envoy_attempt_1_uid=76e85e49-781f-4122-b3f8-bd3af7c8d7fd
+envoy_attempt_1_node=node2
+envoy_attempts=1
+result=pass
+envoy_result=pass
+
+=== public URLs in console: 0 ===
+=== base smoke ===
+
+=== base smoke ===
+verify smoke cert-manager: pass
+verify smoke postgresql: pass
+verify smoke nats: pass
+verify smoke metrics: pass
+verify smoke loki: pass
+verify smoke fluent-bit: pass
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/verify-smoke/verify-smoke-ani-ani-lab-20260926-090732.json)
+rc_smoke=0
+
+## read-only re-verify of the whole base after the pod rotation (fluentbit-forensics.out section H):
+verify smoke fluent-bit: pass
+verify smoke overall: pass (run=ani-ani-lab-20260926-090732 report=/home/ubuntu/f-live/l11/v-fb-1/verify-smoke-ani-ani-lab-20260926-090732.json)
+rc_base_smoke_second=0
+verify smoke cert-manager: pass
+verify smoke postgresql: pass
+verify smoke nats: pass
+verify smoke metrics: pass
+verify smoke loki: pass
+verify smoke fluent-bit: pass

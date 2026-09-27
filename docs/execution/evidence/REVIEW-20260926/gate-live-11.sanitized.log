@@ -1,0 +1,32 @@
+# gate log, filtered to result lines (full log stays off-repo)
+ok  	github.com/kubesphere/kubekey/v4/pkg/ani	27.736s
+ok  	github.com/kubesphere/kubekey/v4/pkg/connector	1.289s
+ok  	github.com/kubesphere/kubekey/v4/cmd/kk/app/builtin	0.157s
+ok  	github.com/kubesphere/kubekey/v4/cmd/kk/app/options	0.052s
+ok  	github.com/kubesphere/kubekey/v4/cmd/kk/app/options/builtin	0.045s
+ok  	github.com/kubesphere/kubekey/v4/pkg/ani	28.723s
+cases passed: 39
+cases failed: 0
+ALL R01 LOCAL TESTS PASSED
+cases passed: 73
+cases failed: 0
+ALL R03 TASK-ERROR TESTS PASSED
+cases passed: 36
+cases failed: 0
+ALL R05 STORAGE SAFETY TESTS PASSED
+cases passed: 26
+cases failed: 0
+ALL R07.2 BUILD MATERIAL TESTS PASSED
+cases passed: 3
+cases failed: 0
+ALL DEBIAN REPOSITORY TESTS PASSED
+cases passed: 4
+cases failed: 0
+ALL KUBECONFIG EXPORT TESTS PASSED
+cases passed: 24
+cases failed: 0
+ALL R04 GATE TESTS PASSED
+check-code PASSED: go go1.26.7, tree 0e933a3eec0440f29361abc15bb05eff31faec6020db6d07f8258a690b91d316
+code release complete at /home/chabking/workspace/ani-installer/kubekey/build/ani-code-live-11
+source tree 0e933a3eec0440f29361abc15bb05eff31faec6020db6d07f8258a690b91d316 (unchanged across gate, build and packaging)
+rc=0
