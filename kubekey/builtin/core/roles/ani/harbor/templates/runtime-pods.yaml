@@ -1,0 +1,21 @@
+{{- range .ani.nodes }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-b07-runtime-{{ . }}
+  namespace: ani-harbor
+  labels:
+    app: ani-b07-runtime-check
+    ani.io/managed-by: '{{ $.kubernetes.cluster_name }}'
+spec:
+  nodeName: {{ . }}
+  restartPolicy: Never
+  imagePullSecrets:
+    - name: ani-harbor-pull
+  containers:
+    - name: pull
+      image: {{ (index $.ani.components "harbor").external_address }}:30003/ani-b07-test/busybox:1.37.0
+      imagePullPolicy: Always
+      command: ["/bin/sh", "-c", "echo ANI_B07_RUNTIME_PULL_OK"]
+---
+{{- end }}

@@ -1,0 +1,19 @@
+# Adapted from official cdi-cr.yaml v1.66.1 SHA256 a497f90de608c1df26f9ee4095289373f17132d74a2042ca03e00c17c964f8a7
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: CDI
+metadata:
+  name: cdi
+  labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
+spec:
+  config:
+    featureGates:
+      - HonorWaitForFirstConsumer
+    scratchSpaceStorageClass: '{{ (index .ani.components "kubevirt").scratch_storage_class }}'
+  imagePullPolicy: IfNotPresent
+  infra:
+    nodeSelector:
+      kubernetes.io/os: linux
+  workload:
+    nodeSelector:
+      kubernetes.io/os: linux

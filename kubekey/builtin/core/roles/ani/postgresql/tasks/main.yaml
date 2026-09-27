@@ -113,6 +113,15 @@
   command: |
     KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform wait --for=jsonpath='{.status.phase}=Bound' pvc/data-postgresql-0 --timeout=300s
 
+- name: ANI PostgreSQL | Ensure pg_trgm exists in the application database
+  # docker-entrypoint-initdb.d runs only on an empty PGDATA. This idempotent
+  # step also covers an already-initialized PostgreSQL component on addition.
+  command: |
+    set -euo pipefail
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n ani-platform exec postgresql-0 -- \
+      sh -ec 'PGPASSWORD="$(cat /etc/postgres-admin/postgres-password)" \
+        psql -X -v ON_ERROR_STOP=1 -U postgres -d ani -c "CREATE EXTENSION IF NOT EXISTS pg_trgm"'
+
 - name: ANI PostgreSQL | Render component verification script
   template:
     src: verify.sh

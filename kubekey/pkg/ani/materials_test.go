@@ -68,8 +68,8 @@ func TestMaterialsLockParsesShippedFile(t *testing.T) {
 	for _, tool := range lock.Tools {
 		byName[tool.Name] = tool
 	}
-	if len(lock.Tools) != 2 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" {
-		t.Fatalf("the shipped lock must approve exactly helm and hauler, got %d tools: %v", len(lock.Tools), lock.Tools)
+	if len(lock.Tools) != 3 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" || byName["virtctl"].Name != "virtctl" {
+		t.Fatalf("the shipped lock must approve exactly helm, hauler, and virtctl, got %d tools: %v", len(lock.Tools), lock.Tools)
 	}
 	for name, tool := range byName {
 		if !digestPattern.MatchString("sha256:" + tool.BinarySHA256) {

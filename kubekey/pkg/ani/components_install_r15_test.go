@@ -662,7 +662,7 @@ func TestComponentsInstallRejections(t *testing.T) {
 		{
 			name:            "deferred id",
 			componentsBlock: "  nats: {enabled: true}",
-			only:            "milvus",
+			only:            "notebooks",
 			wantInErr:       []string{"deferred batch"},
 		},
 		{

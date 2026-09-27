@@ -1,0 +1,70 @@
+---
+# B03 Metrics Server. The kubelet certificate gate runs before the first write.
+- name: ANI Metrics Server | Assert this run's execution context
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    for path in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$path" in /*) ;; *) exit 1 ;; esac
+    done
+
+- name: ANI Metrics Server | Create work and connection directories
+  command: |
+    set -euo pipefail
+    install -d -m 0700 /etc/kubernetes/ani/metrics-server '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Metrics Server | Render TLS and ownership preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/metrics-server/prereq.sh
+
+- name: ANI Metrics Server | Reject foreign provider or untrusted kubelet certificates
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/metrics-server/prereq.sh
+
+- name: ANI Metrics Server | Publish cluster CA for kubelet verification
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kube-system create configmap ani-metrics-server-kubelet-ca \
+      --from-file=ca.crt=/etc/kubernetes/pki/ca.crt --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI Metrics Server | Render fixed Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/metrics-server/values.yaml
+
+- name: ANI Metrics Server | Require packaged Helm
+  command: test -x '{{ .ani.artifact_root }}/bin/helm'
+
+- name: ANI Metrics Server | Require packaged Chart
+  command: test -s '{{ .ani.artifact_root }}/charts/metrics-server/3.14.0.tgz'
+
+- name: ANI Metrics Server | Install API aggregation provider
+  command: >-
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' {{ .ani.artifact_root }}/bin/helm install ani-metrics-server
+    {{ .ani.artifact_root }}/charts/metrics-server/3.14.0.tgz
+    --namespace kube-system --values /etc/kubernetes/ani/metrics-server/values.yaml
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 600s
+
+- name: ANI Metrics Server | Wait for the owned Deployment
+  command: |
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kube-system rollout status deployment/ani-metrics-server --timeout=600s
+
+- name: ANI Metrics Server | Render functional checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/metrics-server/verify.sh
+
+- name: ANI Metrics Server | Check fresh PodMetrics CPU and memory
+  command: |
+    set -euo pipefail
+    install -d -m 0700 '{{ .ani.run.logs_dir }}'
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/metrics-server/verify.sh
+
+- name: ANI Metrics Server | Render connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/metrics-server.md'

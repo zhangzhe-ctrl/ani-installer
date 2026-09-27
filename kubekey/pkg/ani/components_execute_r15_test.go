@@ -390,7 +390,7 @@ func TestComponentsPlaybookStaysComponentsOnly(t *testing.T) {
 	playbook := string(data)
 	for _, role := range []string{
 		"ani/cert-manager", "ani/postgresql", "ani/valkey", "ani/nats",
-		"ani/metrics", "ani/loki", "ani/opensearch", "ani/fluent-bit",
+		"ani/metrics", "ani/loki", "ani/opensearch", "ani/fluent-bit", "ani/milvus", "ani/metrics-server", "ani/snapshot-controller", "ani/kubevirt", "ani/volcano",
 	} {
 		if !strings.Contains(playbook, "role: "+role) {
 			t.Fatalf("the playbook must list %s", role)
@@ -407,7 +407,7 @@ func TestComponentsPlaybookStaysComponentsOnly(t *testing.T) {
 	}
 	// Every role is gated on the scope map, so a base context can never
 	// trigger it and a components run can never widen beyond --only.
-	if strings.Count(playbook, "(index .ani.components_run.scope") != 8 {
-		t.Fatalf("all eight roles must be scope-gated:\n%s", playbook)
+	if strings.Count(playbook, "(index .ani.components_run.scope") != 14 {
+		t.Fatalf("all fourteen roles must be scope-gated:\n%s", playbook)
 	}
 }

@@ -1,0 +1,94 @@
+---
+# B02 fixed Standalone Milvus 2.6.24 on Chart 5.0.25, dedicated etcd,
+# embedded RocksMQ and Rook RGW. This role is opt-in through components.milvus.
+- name: ANI Milvus | Assert this run's execution context
+  command: |
+    set -euo pipefail
+    for declared in '{{ .ani.run.kubeconfig }}' '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$declared" in /*) ;; *) echo "Milvus run scope path is not absolute" >&2; exit 1 ;; esac
+    done
+    test -f '{{ .ani.run.kubeconfig }}'
+
+- name: ANI Milvus | Create private work and evidence directories
+  command: |
+    set -euo pipefail
+    install -d -m 0700 /etc/kubernetes/ani/milvus
+    install -d -m 0700 '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Milvus | Ensure the component namespace exists
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI Milvus | Render RGW ownership preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/milvus/prereq.sh
+
+- name: ANI Milvus | Check RGW, bucket class and claim ownership before writes
+  command: |
+    set -euo pipefail
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/milvus/prereq.sh
+
+- name: ANI Milvus | Render retained RGW bucket class and dedicated claim
+  template:
+    src: bucket.yaml
+    dest: /etc/kubernetes/ani/milvus/bucket.yaml
+
+- name: ANI Milvus | Apply RGW bucket class and claim
+  command: |
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/milvus/bucket.yaml
+
+- name: ANI Milvus | Render S3 write-read checker
+  template:
+    src: s3-verify.sh
+    dest: /etc/kubernetes/ani/milvus/s3-verify.sh
+
+- name: ANI Milvus | Verify isolated S3 bucket write and read
+  command: |
+    set -euo pipefail
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/milvus/s3-verify.sh
+
+- name: ANI Milvus | Require the packaged Helm binary
+  command: test -x '{{ .ani.artifact_root }}/bin/helm'
+
+- name: ANI Milvus | Render fixed Chart values without S3 secrets
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/milvus/values.yaml
+
+- name: ANI Milvus | Restrict rendered Chart values
+  command: chmod 0600 /etc/kubernetes/ani/milvus/values.yaml
+
+- name: ANI Milvus | Install fixed Chart and its dedicated etcd offline
+  command: >-
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' {{ .ani.artifact_root }}/bin/helm install ani-milvus
+    {{ .ani.artifact_root }}/charts/milvus/5.0.25.tgz
+    --namespace ani-platform --values /etc/kubernetes/ani/milvus/values.yaml
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 1200s
+
+- name: ANI Milvus | Wait for Standalone and dedicated etcd
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform rollout status deployment/ani-milvus-standalone --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform rollout status statefulset/ani-milvus-etcd --timeout=600s
+
+- name: ANI Milvus | Render vector function checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/milvus/verify.sh
+
+- name: ANI Milvus | Verify vector insert, flush, index, load and search
+  command: |
+    set -euo pipefail
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/milvus/verify.sh
+
+- name: ANI Milvus | Render connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/milvus.md'

@@ -42,8 +42,18 @@ fi
 EXTRA_IMAGE_TARS="${EXTRA_IMAGE_TARS:-}"
 EXTRA_IMAGE_ORIGINALS="${EXTRA_IMAGE_ORIGINALS:-}"
 HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the fixed chart renders}"
+VIRTCTL_BIN="${VIRTCTL_BIN:-}"
+KUBEVIRT_GUEST="${KUBEVIRT_GUEST:-}"
+TRIVY_DB_FILE="${TRIVY_DB_FILE:-}"
+TRIVY_DB_METADATA="${TRIVY_DB_METADATA:-}"
+TRIVY_JAVA_DB_FILE="${TRIVY_JAVA_DB_FILE:-}"
+TRIVY_JAVA_DB_METADATA="${TRIVY_JAVA_DB_METADATA:-}"
 CHARTS_DIR="${CHARTS_DIR:-$ROOT/ani/charts}"
 COMPONENT_LOCK="${COMPONENT_LOCK:-$ROOT/ani/components.lock.yaml}"
+B05_LOCKED=false
+B07_LOCKED=false
+if grep -q "^batchB05:" "$COMPONENT_LOCK"; then B05_LOCKED=true; fi
+if grep -q "^batchB07:" "$COMPONENT_LOCK"; then B07_LOCKED=true; fi
 # Source-side record of the repository ISO digest: this file lives in the repo,
 # outside the artifact, so an attacker who regenerates the artifact's own
 # SHA256SUMS still cannot make a wrong ISO acceptable.
@@ -80,6 +90,8 @@ for original in $EXTRA_IMAGE_ORIGINALS; do
   fi
 done
 required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO" "$HELM_BIN" "$COMPONENT_LOCK" "$ISO_CHECKSUMS")
+if "$B05_LOCKED"; then required+=("$VIRTCTL_BIN" "$KUBEVIRT_GUEST"); fi
+if "$B07_LOCKED"; then required+=("$TRIVY_DB_FILE" "$TRIVY_DB_METADATA" "$TRIVY_JAVA_DB_FILE" "$TRIVY_JAVA_DB_METADATA"); fi
 if [[ -z "$KUBEKEY_ARTIFACT" ]]; then
   required+=("$KK_BIN")
 fi
@@ -91,6 +103,10 @@ for path in "${required[@]}"; do
 done
 if [[ ! -x "$HAULER_BIN" ]]; then
   echo "HAULER_BIN must be executable: $HAULER_BIN" >&2
+  exit 1
+fi
+if "$B05_LOCKED" && [[ ! -x "$VIRTCTL_BIN" ]]; then
+  echo "VIRTCTL_BIN must be executable: $VIRTCTL_BIN" >&2
   exit 1
 fi
 if [[ ! -x "$HELM_BIN" ]]; then
@@ -128,6 +144,8 @@ CONFIG="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
 IMAGES_TSV="$(cd "$(dirname "$IMAGES_TSV")" && pwd)/$(basename "$IMAGES_TSV")"
 OUTPUT="$(mkdir -p "$(dirname "$OUTPUT")" && cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")"
 WORK="$(mktemp -d "$ROOT/build/ani-artifact.XXXXXX")"
+mkdir -p "$WORK/tmp"
+export TMPDIR="$WORK/tmp"
 REGISTRY_PID=""
 cleanup() {
   if [[ -n "$REGISTRY_PID" ]]; then
@@ -287,13 +305,26 @@ else
         --rewrite "$rewrite" \
         --store "$STORE"
     done < "$IMAGES_TSV"
-    for tar_path in $EXTRA_IMAGE_TARS; do
+    read -r -a extra_tars <<< "$EXTRA_IMAGE_TARS"
+    read -r -a extra_originals <<< "$EXTRA_IMAGE_ORIGINALS"
+    for i in "${!extra_tars[@]}"; do
+      tar_path="${extra_tars[$i]}"
+      original="${extra_originals[$i]}"
       if [[ ! -f "$tar_path" ]]; then
         echo "EXTRA_IMAGE_TARS entry not found: $tar_path" >&2
         exit 1
       fi
-      echo "loading extra image tar: $tar_path"
-      "$HAULER_BIN" store load -s "$STORE" -f "$tar_path"
+      hauler_ref="$(awk -F'\t' -v o="$original" '$1==o{print $2}' "$IMAGES_TSV")"
+      rewrite="${hauler_ref#127.0.0.1:5000/}"
+      python3 - "$tar_path" "$hauler_ref" <<'CHECK_TAR'
+import json, sys, tarfile
+with tarfile.open(sys.argv[1]) as archive:
+    tags = json.load(archive.extractfile('manifest.json'))[0].get('RepoTags', [])
+if tags != [sys.argv[2]]:
+    raise SystemExit(f'extra image tar RepoTags mismatch: {tags!r} != {[sys.argv[2]]!r}')
+CHECK_TAR
+      echo "importing extra Docker image tar: $tar_path as $rewrite"
+      skopeo copy "docker-archive:$tar_path" "oci:$STORE:$rewrite"
     done
   fi
   # Record the approved source manifests into the package, then build the shipped
@@ -311,11 +342,51 @@ install -m 0644 "$IMAGES_TSV" "$OUTPUT/images/images.tsv"
 echo "[3/6] placing fixed binaries, repository ISO and chart material"
 # F06: tools and charts are placed by Go against the individual lock entry that
 # approves them (digest + name/version + artifact path), and every landed file is
-# re-read. Both shipped binaries are lock-approved, so nothing lands in bin/
+# re-read. Every shipped binary is lock-approved, so nothing lands in bin/
 # without an approved digest behind it.
-materials place-tools --lock "$COMPONENT_LOCK" --artifact-root "$OUTPUT" \
-  --source "helm=$HELM_BIN" --source "hauler=$HAULER_BIN"
+tool_sources=(--source "helm=$HELM_BIN" --source "hauler=$HAULER_BIN")
+if "$B05_LOCKED"; then tool_sources+=(--source "virtctl=$VIRTCTL_BIN"); fi
+materials place-tools --lock "$COMPONENT_LOCK" --artifact-root "$OUTPUT" "${tool_sources[@]}"
 materials place-charts --lock "$COMPONENT_LOCK" --charts-dir "$CHARTS_DIR" --artifact-root "$OUTPUT"
+# B05 guest is fixed by the official publisher digest in batchB05.guest and
+# checked against source-side lock bytes before copying into the artifact.
+if "$B05_LOCKED"; then
+GUEST_SHA256="$(sed -n '/^  guest:/,/^  images:/s/^    sha256: //p' "$COMPONENT_LOCK" | head -1)"
+if [[ "$GUEST_SHA256" != "7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a7283a8396e4b75b" ]]; then
+  echo "B05 guest lock digest changed without review: $GUEST_SHA256" >&2
+  exit 1
+fi
+echo "$GUEST_SHA256  $KUBEVIRT_GUEST" | sha256sum -c -
+install -D -m 0644 "$KUBEVIRT_GUEST" "$OUTPUT/guest/cirros-0.6.3-x86_64-disk.img"
+echo "$GUEST_SHA256  $OUTPUT/guest/cirros-0.6.3-x86_64-disk.img" | sha256sum -c -
+fi
+# B07 scanner cache comes from four fixed files, extracted from the pinned OCI
+# database layers. Verify source-side lock digests and the landed package bytes.
+if "$B07_LOCKED"; then
+read -r DB_SHA DB_META_SHA JAVA_SHA JAVA_META_SHA < <(awk '
+  /^  trivyDatabase:/ {section="db"; next}
+  /^  trivyJavaDatabase:/ {section="java"; next}
+  /^  images:/ && section=="java" {exit}
+  section=="db" && /dbSha256:/ {db=$2}
+  section=="db" && /metadataSha256:/ {dbmeta=$2}
+  section=="java" && /dbSha256:/ {java=$2}
+  section=="java" && /metadataSha256:/ {javameta=$2}
+  END {print db, dbmeta, java, javameta}
+' "$COMPONENT_LOCK")
+if [[ "$DB_SHA" != "4bf01c98f9af59d4ec9ab6c8f4f22740230830e8be9172970e74dcb8257cd53b" ||
+      "$DB_META_SHA" != "eec14e933a21b2dba78c45d2c0de61a6408e14cee008a07908079e4cd6c905d7" ||
+      "$JAVA_SHA" != "e99e2d1212f4f1ef8281f95ffa72b667ce3fb8d00db0c4b2ddfcc3283b87612c" ||
+      "$JAVA_META_SHA" != "f730c0616742e306095594ef51359f81cd05e48cff224112a59c8fbd68449e31" ]]; then
+  echo "B07 scanner database lock digests changed without review" >&2
+  exit 1
+fi
+printf '%s  %s\n' "$DB_SHA" "$TRIVY_DB_FILE" "$DB_META_SHA" "$TRIVY_DB_METADATA" "$JAVA_SHA" "$TRIVY_JAVA_DB_FILE" "$JAVA_META_SHA" "$TRIVY_JAVA_DB_METADATA" | sha256sum -c -
+install -D -m 0644 "$TRIVY_DB_FILE" "$OUTPUT/scanner/db/trivy.db"
+install -D -m 0644 "$TRIVY_DB_METADATA" "$OUTPUT/scanner/db/metadata.json"
+install -D -m 0644 "$TRIVY_JAVA_DB_FILE" "$OUTPUT/scanner/java-db/trivy-java.db"
+install -D -m 0644 "$TRIVY_JAVA_DB_METADATA" "$OUTPUT/scanner/java-db/metadata.json"
+printf '%s  %s\n' "$DB_SHA" "$OUTPUT/scanner/db/trivy.db" "$DB_META_SHA" "$OUTPUT/scanner/db/metadata.json" "$JAVA_SHA" "$OUTPUT/scanner/java-db/trivy-java.db" "$JAVA_META_SHA" "$OUTPUT/scanner/java-db/metadata.json" | sha256sum -c -
+fi
 
 # The repository ISO is approved by the SOURCE-SIDE record (outside the artifact,
 # so a regenerated in-package SHA256SUMS can never legitimise a wrong ISO), then
@@ -345,6 +416,9 @@ install -m 0644 "$COMPONENT_LOCK" "$OUTPUT/config/components.lock.yaml"
   echo "config.materials-verification.txt sha256:$(sha256sum "$MATERIALS_LOG" | awk '{print $1}')"
   echo "bin.helm sha256:$(sha256sum "$OUTPUT/bin/helm" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
   echo "bin.hauler sha256:$(sha256sum "$OUTPUT/bin/hauler" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
+  if "$B05_LOCKED"; then echo "bin.virtctl sha256:$(sha256sum "$OUTPUT/bin/virtctl" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"; fi
+  if "$B05_LOCKED"; then echo "guest.cirros sha256:$(sha256sum "$OUTPUT/guest/cirros-0.6.3-x86_64-disk.img" | awk '{print $1}') (approved by batchB05.guest in source-side lock)"; fi
+  if "$B07_LOCKED"; then echo "scanner.db sha256:$DB_SHA scanner.db.metadata sha256:$DB_META_SHA scanner.java-db sha256:$JAVA_SHA scanner.java-db.metadata sha256:$JAVA_META_SHA (approved by batchB07 in source-side lock)"; fi
   echo "repository.iso sha256:$(sha256sum "$OUTPUT/repository/$(basename "$REPOSITORY_ISO")" | awk '{print $1}') (approved by $ISO_CHECKSUMS, loose and inside packages/kubekey-artifact.tgz)"
   echo "images.archive sha256:$(sha256sum "$OUTPUT/images/images.haul.tar.zst" | awk '{print $1}') (saved from a store that passed the registry content gate)"
 } > "$OUTPUT/config/materials-source.txt"

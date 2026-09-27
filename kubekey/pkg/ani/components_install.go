@@ -70,22 +70,27 @@ type componentInstallSpec struct {
 // componentsDeferred lists the IDs later batches will add; --only rejects
 // them with the deferred message instead of plain "unknown".
 var componentsDeferred = []string{
-	"metrics-server", "snapshot-controller", "milvus", "kubevirt", "cdi",
-	"volcano", "harbor", "notebooks", "trainer", "hub", "kserve", "pipelines",
+	"cdi",
+	"notebooks", "trainer", "hub", "kserve", "pipelines",
 }
 
 // componentInstallSpecs covers every canonical component ID of
-// componentsOrder. Ids outside this map (metrics-server, milvus, ...) are
-// deferred batches: --only rejects them outright.
+// componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
-	"cert-manager": {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
-	"postgresql":   {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
-	"valkey":       {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
-	"nats":         {Namespace: "ani-platform", Release: "nats", Chart: "nats", ChartVersion: "2.14.6", WorkloadKind: "StatefulSet", WorkloadName: "nats", NeedsStorage: true},
-	"metrics":      {Namespace: "ani-observability", Release: "ani-metrics", Chart: "kube-prometheus-stack", ChartVersion: "85.4.0", WorkloadKind: "StatefulSet", WorkloadName: "prometheus-ani-metrics-prometheus", NeedsStorage: true},
-	"loki":         {Namespace: "ani-observability", Release: "ani-loki", Chart: "loki", ChartVersion: "18.13.3", WorkloadKind: "StatefulSet", WorkloadName: "ani-loki", NeedsStorage: true},
-	"opensearch":   {Namespace: "ani-observability", Release: "ani-opensearch-master", Chart: "opensearch", ChartVersion: "3.8.0", WorkloadKind: "StatefulSet", WorkloadName: "ani-opensearch-master", NeedsStorage: true, InternalDeps: []string{"fluent-bit"}},
-	"fluent-bit":   {Namespace: "ani-observability", Release: "ani-fluent-bit", Chart: "fluent-bit", ChartVersion: "0.58.2", WorkloadKind: "DaemonSet", WorkloadName: "ani-fluent-bit"},
+	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
+	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
+	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
+	"nats":                {Namespace: "ani-platform", Release: "nats", Chart: "nats", ChartVersion: "2.14.6", WorkloadKind: "StatefulSet", WorkloadName: "nats", NeedsStorage: true},
+	"milvus":              {Namespace: "ani-platform", Release: "ani-milvus", Chart: "milvus", ChartVersion: "5.0.25", WorkloadKind: "Deployment", WorkloadName: "ani-milvus-standalone", NeedsStorage: true},
+	"metrics-server":      {Namespace: "kube-system", Release: "ani-metrics-server", Chart: "metrics-server", ChartVersion: "3.14.0", WorkloadKind: "Deployment", WorkloadName: "ani-metrics-server"},
+	"snapshot-controller": {Namespace: "kube-system", WorkloadKind: "Deployment", WorkloadName: "ani-snapshot-controller", NeedsStorage: true},
+	"kubevirt":            {Namespace: "kubevirt", WorkloadKind: "Deployment", WorkloadName: "virt-operator", NeedsStorage: true, InternalDeps: []string{"cdi"}},
+	"harbor":              {Namespace: "ani-harbor", Release: "ani-harbor", Chart: "harbor", ChartVersion: "1.19.2", WorkloadKind: "StatefulSet", WorkloadName: "ani-harbor-trivy", NeedsStorage: true, InternalDeps: []string{"dedicated-db", "dedicated-valkey", "offline-trivy-db"}},
+	"volcano":             {Namespace: "volcano-system", Release: "ani-volcano", Chart: "volcano", ChartVersion: "1.15.2", WorkloadKind: "Deployment", WorkloadName: "ani-volcano-scheduler"},
+	"metrics":             {Namespace: "ani-observability", Release: "ani-metrics", Chart: "kube-prometheus-stack", ChartVersion: "85.4.0", WorkloadKind: "StatefulSet", WorkloadName: "prometheus-ani-metrics-prometheus", NeedsStorage: true},
+	"loki":                {Namespace: "ani-observability", Release: "ani-loki", Chart: "loki", ChartVersion: "18.13.3", WorkloadKind: "StatefulSet", WorkloadName: "ani-loki", NeedsStorage: true},
+	"opensearch":          {Namespace: "ani-observability", Release: "ani-opensearch-master", Chart: "opensearch", ChartVersion: "3.8.0", WorkloadKind: "StatefulSet", WorkloadName: "ani-opensearch-master", NeedsStorage: true, InternalDeps: []string{"fluent-bit"}},
+	"fluent-bit":          {Namespace: "ani-observability", Release: "ani-fluent-bit", Chart: "fluent-bit", ChartVersion: "0.58.2", WorkloadKind: "DaemonSet", WorkloadName: "ani-fluent-bit"},
 }
 
 // ComponentsInstallInput is the input of `kk ani components install`.
@@ -500,11 +505,13 @@ func notFoundErr(err error) bool {
 // recorded in the plan.
 func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	invariants := map[string]string{
-		"clusterName":   base.ClusterName,
-		"networkStack":  base.NetworkStack,
-		"profile":       base.Profile,
-		"registry":      fmt.Sprintf("%s:%d", base.Installer.RegistryHost, base.Installer.RegistryPort),
-		"installerNode": base.Installer.Name,
+		"clusterName":    base.ClusterName,
+		"networkStack":   base.NetworkStack,
+		"networkMultus":  fmt.Sprint(base.NetworkMultus),
+		"multusTestCIDR": base.MultusTestCIDR,
+		"profile":        base.Profile,
+		"registry":       fmt.Sprintf("%s:%d", base.Installer.RegistryHost, base.Installer.RegistryPort),
+		"installerNode":  base.Installer.Name,
 	}
 	check := func(field, baseValue, newValue string) error {
 		if baseValue != newValue {
@@ -516,6 +523,12 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 		return nil, err
 	}
 	if err := check("networkStack", base.NetworkStack, new.NetworkStack); err != nil {
+		return nil, err
+	}
+	if err := check("networkMultus", fmt.Sprint(base.NetworkMultus), fmt.Sprint(new.NetworkMultus)); err != nil {
+		return nil, err
+	}
+	if err := check("multusTestCIDR", base.MultusTestCIDR, new.MultusTestCIDR); err != nil {
 		return nil, err
 	}
 	if err := check("profile", base.Profile, new.Profile); err != nil {
@@ -771,6 +784,9 @@ func checkCNIHealth(ctx context.Context, runner kubectlRunner, cluster ClusterCo
 	probes, err := cniHealthProbes(cluster.Network.Stack)
 	if err != nil {
 		return err
+	}
+	if cluster.Network.Multus.Enabled {
+		probes = append(probes, cniWorkload{"kube-system", "ani-multus"})
 	}
 	for _, workload := range probes {
 		raw, err := runner.jsonpath(ctx, "daemonset", workload.name, workload.namespace,

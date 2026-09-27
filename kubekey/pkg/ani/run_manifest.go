@@ -75,11 +75,13 @@ const (
 // credential. It is produced from the parsed config, never from raw YAML text,
 // so comments, quoting and key order cannot change it.
 type RunManifest struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	ConfigDigest  string `json:"configDigest"`
-	ClusterName   string `json:"clusterName"`
-	Profile       string `json:"profile"`
-	NetworkStack  string `json:"networkStack"`
+	SchemaVersion  int    `json:"schemaVersion"`
+	ConfigDigest   string `json:"configDigest"`
+	ClusterName    string `json:"clusterName"`
+	Profile        string `json:"profile"`
+	NetworkStack   string `json:"networkStack"`
+	NetworkMultus  bool   `json:"networkMultus,omitempty"`
+	MultusTestCIDR string `json:"multusTestCIDR,omitempty"`
 
 	// RecordKind + RunID + Result + Identity are the F04 identity contract.
 	// A config-validation record leaves Result empty and Identity zeroed;
@@ -178,12 +180,14 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 	}
 
 	manifest := RunManifest{
-		SchemaVersion: RunManifestSchemaVersion,
-		RecordKind:    RecordKindConfigValidation,
-		ConfigDigest:  digest,
-		ClusterName:   c.Name,
-		Profile:       installProfile(c.Profile),
-		NetworkStack:  networkStack(c.Network.Stack),
+		SchemaVersion:  RunManifestSchemaVersion,
+		RecordKind:     RecordKindConfigValidation,
+		ConfigDigest:   digest,
+		ClusterName:    c.Name,
+		Profile:        installProfile(c.Profile),
+		NetworkStack:   networkStack(c.Network.Stack),
+		NetworkMultus:  c.Network.Multus.Enabled,
+		MultusTestCIDR: c.Network.Multus.TestCIDR,
 		Installer: ManifestInstaller{
 			Name:         installer.Name,
 			Address:      installer.Address,

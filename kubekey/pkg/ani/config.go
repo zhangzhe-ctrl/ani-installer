@@ -36,9 +36,9 @@ var (
 	// The first four are the foundation batch; the last four are the
 	// observability batch, whose last three rows are derived from the typed
 	// logging backend rather than written independently.
-	componentsOrder = [8]string{
+	componentsOrder = [14]string{
 		"cert-manager", "postgresql", "valkey", "nats",
-		"metrics", "loki", "opensearch", "fluent-bit",
+		"metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 	}
 )
 
@@ -52,6 +52,49 @@ type StorageComponent struct {
 	Enabled      bool   `yaml:"enabled"`
 	StorageClass string `yaml:"storageClass"`
 	StorageSize  string `yaml:"storageSize"`
+}
+
+// SnapshotComponent selects the cluster-wide CSI snapshot controller and Rook classes.
+type SnapshotComponent struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// KubeVirtComponent selects the CPU VM plus CDI persistent import slice.
+// VMNode is an explicit target for the hardware KVM gate and own test VM.
+type KubeVirtComponent struct {
+	Enabled             bool   `yaml:"enabled"`
+	VMNode              string `yaml:"vmNode"`
+	StorageClass        string `yaml:"storageClass"`
+	ScratchStorageClass string `yaml:"scratchStorageClass"`
+	StorageSize         string `yaml:"storageSize"`
+}
+
+// HarborComponent selects Harbor with a dedicated database, cache and scanner.
+// ExternalAddress is the exact declared node IPv4 used by HTTPS NodePort 30003.
+type HarborComponent struct {
+	Enabled         bool   `yaml:"enabled"`
+	ExternalAddress string `yaml:"externalAddress"`
+	StorageClass    string `yaml:"storageClass"`
+	StorageSize     string `yaml:"storageSize"`
+}
+
+// VolcanoComponent selects the CPU Queue/PodGroup scheduler slice.
+type VolcanoComponent struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// MetricsServerComponent selects the standalone metrics.k8s.io API provider.
+type MetricsServerComponent struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// MilvusComponent selects Standalone Milvus, its dedicated etcd and one RGW
+// bucket. Both PVCs use the declared class; the bucket is provisioned by Rook.
+type MilvusComponent struct {
+	Enabled         bool   `yaml:"enabled"`
+	StorageClass    string `yaml:"storageClass"`
+	StorageSize     string `yaml:"storageSize"`
+	EtcdStorageSize string `yaml:"etcdStorageSize"`
 }
 
 // MetricsComponent is the single switch for the whole metrics/alerts stack
@@ -110,12 +153,18 @@ func metricsRunID(c Components, clusterName string) string {
 // Components selects which components this run installs. Every switch is
 // independent and defaults to off.
 type Components struct {
-	CertManager CertManagerComponent `yaml:"certManager"`
-	PostgreSQL  StorageComponent     `yaml:"postgresql"`
-	Valkey      StorageComponent     `yaml:"valkey"`
-	NATS        StorageComponent     `yaml:"nats"`
-	Metrics     MetricsComponent     `yaml:"metrics"`
-	Logging     LoggingComponent     `yaml:"logging"`
+	CertManager        CertManagerComponent   `yaml:"certManager"`
+	PostgreSQL         StorageComponent       `yaml:"postgresql"`
+	Valkey             StorageComponent       `yaml:"valkey"`
+	NATS               StorageComponent       `yaml:"nats"`
+	Milvus             MilvusComponent        `yaml:"milvus"`
+	MetricsServer      MetricsServerComponent `yaml:"metricsServer"`
+	SnapshotController SnapshotComponent      `yaml:"snapshotController"`
+	KubeVirt           KubeVirtComponent      `yaml:"kubevirt"`
+	Volcano            VolcanoComponent       `yaml:"volcano"`
+	Harbor             HarborComponent        `yaml:"harbor"`
+	Metrics            MetricsComponent       `yaml:"metrics"`
+	Logging            LoggingComponent       `yaml:"logging"`
 }
 
 // Storage providers accepted by storage.provider.
@@ -166,6 +215,9 @@ func DefaultComponents() Components {
 		PostgreSQL: StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "10Gi"},
 		Valkey:     StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "2Gi"},
 		NATS:       StorageComponent{StorageClass: DefaultStorageClass, StorageSize: "5Gi"},
+		Milvus:     MilvusComponent{StorageClass: DefaultStorageClass, StorageSize: "10Gi", EtcdStorageSize: "5Gi"},
+		KubeVirt:   KubeVirtComponent{StorageClass: DefaultStorageClass, ScratchStorageClass: DefaultStorageClass, StorageSize: "2Gi"},
+		Harbor:     HarborComponent{StorageClass: DefaultStorageClass, StorageSize: "10Gi"},
 		Metrics: MetricsComponent{
 			StorageClass:            DefaultStorageClass,
 			PrometheusStorageSize:   "5Gi",
@@ -211,14 +263,20 @@ type ComponentRow struct {
 // backends or for collection without a backend.
 func (c Components) Selection() []ComponentRow {
 	enabled := map[string]bool{
-		"cert-manager": c.CertManager.Enabled,
-		"postgresql":   c.PostgreSQL.Enabled,
-		"valkey":       c.Valkey.Enabled,
-		"nats":         c.NATS.Enabled,
-		"metrics":      c.Metrics.Enabled,
-		"loki":         c.Logging.LogBackend() == loggingLoki,
-		"opensearch":   c.Logging.LogBackend() == loggingOpenSearch,
-		"fluent-bit":   c.loggingEnabled(),
+		"cert-manager":        c.CertManager.Enabled,
+		"postgresql":          c.PostgreSQL.Enabled,
+		"valkey":              c.Valkey.Enabled,
+		"nats":                c.NATS.Enabled,
+		"milvus":              c.Milvus.Enabled,
+		"metrics-server":      c.MetricsServer.Enabled,
+		"snapshot-controller": c.SnapshotController.Enabled,
+		"kubevirt":            c.KubeVirt.Enabled,
+		"volcano":             c.Volcano.Enabled,
+		"harbor":              c.Harbor.Enabled,
+		"metrics":             c.Metrics.Enabled,
+		"loki":                c.Logging.LogBackend() == loggingLoki,
+		"opensearch":          c.Logging.LogBackend() == loggingOpenSearch,
+		"fluent-bit":          c.loggingEnabled(),
 	}
 	rows := make([]ComponentRow, 0, len(componentsOrder))
 	for _, name := range componentsOrder {
@@ -245,6 +303,12 @@ func (c Components) storage(name string) *StorageComponent {
 		return &c.Valkey
 	case "nats":
 		return &c.NATS
+	case "kubevirt":
+		return &StorageComponent{Enabled: c.KubeVirt.Enabled, StorageClass: c.KubeVirt.StorageClass, StorageSize: c.KubeVirt.StorageSize}
+	case "harbor":
+		return &StorageComponent{Enabled: c.Harbor.Enabled, StorageClass: c.Harbor.StorageClass, StorageSize: c.Harbor.StorageSize}
+	case "milvus":
+		return &StorageComponent{Enabled: c.Milvus.Enabled, StorageClass: c.Milvus.StorageClass, StorageSize: c.Milvus.StorageSize}
 	case "loki":
 		return &StorageComponent{
 			Enabled:      c.Logging.LogBackend() == loggingLoki,
@@ -271,7 +335,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -419,6 +483,14 @@ func (c Components) validate() error {
 			return err
 		}
 	}
+	if c.Milvus.Enabled {
+		if strings.TrimSpace(c.Milvus.EtcdStorageSize) == "" {
+			return fmt.Errorf("components.milvus.etcdStorageSize is required when milvus is enabled")
+		}
+		if err := parsePositiveQuantity("components.milvus.etcdStorageSize", c.Milvus.EtcdStorageSize); err != nil {
+			return err
+		}
+	}
 	if err := c.validateMetrics(); err != nil {
 		return err
 	}
@@ -486,6 +558,30 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 	keys := make([]ImageKey, 0, len(all))
 	for _, key := range all {
 		switch key.Group {
+		case "metrics-server":
+			if base || !c.Components.MetricsServer.Enabled {
+				continue
+			}
+		case "snapshot-controller":
+			if base || !c.Components.SnapshotController.Enabled {
+				continue
+			}
+		case "kubevirt":
+			if base || !c.Components.KubeVirt.Enabled {
+				continue
+			}
+		case "harbor":
+			if base || !c.Components.Harbor.Enabled {
+				continue
+			}
+		case "volcano":
+			if base || !c.Components.Volcano.Enabled {
+				continue
+			}
+		case "milvus":
+			if base || !c.Components.Milvus.Enabled {
+				continue
+			}
 		case "metrics":
 			if base || !c.Components.Metrics.Enabled {
 				continue
@@ -514,6 +610,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 			}
 		case "kubeovn":
 			if base || stack != "kubeovn" {
+				continue
+			}
+		case "multus":
+			if !c.Network.Multus.Enabled {
 				continue
 			}
 		case "components":
@@ -555,6 +655,18 @@ func requiredChartPaths(c ClusterConfig) []string {
 	}
 	if c.Components.NATS.Enabled {
 		paths = append(paths, "charts/nats/2.14.6.tgz")
+	}
+	if c.Components.Milvus.Enabled {
+		paths = append(paths, "charts/milvus/5.0.25.tgz")
+	}
+	if c.Components.MetricsServer.Enabled {
+		paths = append(paths, "charts/metrics-server/3.14.0.tgz")
+	}
+	if c.Components.Volcano.Enabled {
+		paths = append(paths, "charts/volcano/1.15.2.tgz")
+	}
+	if c.Components.Harbor.Enabled {
+		paths = append(paths, "charts/harbor/1.19.2.tgz")
 	}
 	if c.Components.Metrics.Enabled {
 		paths = append(paths, "charts/kube-prometheus-stack/85.4.0.tgz")
@@ -604,11 +716,19 @@ type Network struct {
 	// binds the kubeovn stack only; a kcn site may still carry it (ignored),
 	// mirroring how the kcn subsection is ignored under kubeovn.
 	KubeOVN KubeOVN `yaml:"kubeovn"`
+	// Multus is added after the selected primary CNI; it never switches CNI stacks.
+	Multus MultusNetwork `yaml:"multus"`
 }
 
-// KubeOVN is the network.kubeovn subsection. The loadBalancer/multus fields of
-// the blueprint §6.3 target schema are separate B01 work and deliberately not
-// accepted here: strict decoding rejects them until that task lands.
+// MultusNetwork selects B01a and a node-local test range. The range is
+// exclusively for the installer's same-node smoke Pods, not a cross-node IPAM.
+type MultusNetwork struct {
+	Enabled  bool   `yaml:"enabled"`
+	TestCIDR string `yaml:"testCIDR"`
+}
+
+// KubeOVN is the network.kubeovn subsection. External LB configuration is
+// a separate conditional B01b branch and remains rejected by strict decoding.
 type KubeOVN struct {
 	// DefaultGateway is the pod network gateway. Empty derives the first
 	// usable IPv4 address of the pod CIDR (network address + 1), so a
@@ -998,6 +1118,30 @@ func Validate(c ClusterConfig) error {
 	if err := validateStorage(c, names); err != nil {
 		return err
 	}
+	if c.Components.SnapshotController.Enabled && (!c.Storage.Enabled || c.Storage.provider() != storageProviderCeph) {
+		return fmt.Errorf("components.snapshotController requires storage.enabled=true and storage.provider=ceph for the fixed RBD/CephFS snapshot classes")
+	}
+	if c.Components.Harbor.Enabled {
+		address := strings.TrimSpace(c.Components.Harbor.ExternalAddress)
+		ip := net.ParseIP(address)
+		if ip == nil || ip.To4() == nil {
+			return fmt.Errorf("components.harbor.externalAddress must be a declared node IPv4")
+		}
+		if _, ok := addresses[address]; !ok {
+			return fmt.Errorf("components.harbor.externalAddress %q is not a declared node address", address)
+		}
+	}
+	if c.Components.KubeVirt.Enabled {
+		if strings.TrimSpace(c.Components.KubeVirt.VMNode) == "" {
+			return fmt.Errorf("components.kubevirt.vmNode is required for the explicit hardware KVM gate")
+		}
+		if _, ok := names[c.Components.KubeVirt.VMNode]; !ok {
+			return fmt.Errorf("components.kubevirt.vmNode %q is not a declared node", c.Components.KubeVirt.VMNode)
+		}
+		if strings.TrimSpace(c.Components.KubeVirt.ScratchStorageClass) == "" {
+			return fmt.Errorf("components.kubevirt.scratchStorageClass is required for CDI")
+		}
+	}
 	if strings.TrimSpace(c.SSH.User) == "" {
 		return fmt.Errorf("ssh.user is required")
 	}
@@ -1121,6 +1265,49 @@ func Validate(c ClusterConfig) error {
 	if networkStack(stack) == "kubeovn" {
 		if _, err := resolveKubeOVNNetwork(c); err != nil {
 			return err
+		}
+	}
+	if !c.Network.Multus.Enabled && strings.TrimSpace(c.Network.Multus.TestCIDR) != "" {
+		return fmt.Errorf("network.multus.testCIDR requires network.multus.enabled=true")
+	}
+	if c.Network.Multus.Enabled {
+		if strings.TrimSpace(c.Network.Multus.TestCIDR) == "" {
+			return fmt.Errorf("network.multus.testCIDR is required for the node-local B01 smoke network")
+		}
+		testNet, err := parseIPv4Prefix("network.multus.testCIDR", c.Network.Multus.TestCIDR)
+		if err != nil {
+			return err
+		}
+		if testNet.Bits() > 29 {
+			return fmt.Errorf("network.multus.testCIDR must provide at least two Pod addresses")
+		}
+		for _, other := range []struct{ name, cidr string }{{"network.podCIDR", c.Network.PodCIDR}, {"network.serviceCIDR", c.Network.ServiceCIDR}} {
+			p, err := parseIPv4Prefix(other.name, other.cidr)
+			if err != nil {
+				return err
+			}
+			if testNet.Contains(p.Addr()) || p.Contains(testNet.Addr()) {
+				return fmt.Errorf("network.multus.testCIDR overlaps %s", other.name)
+			}
+		}
+		if stack == "kubeovn" {
+			joinCIDR := c.Network.KubeOVN.JoinCIDR
+			if joinCIDR == "" {
+				joinCIDR = defaultKubeOVNJoinCIDR
+			}
+			join, err := parseIPv4Prefix("network.kubeovn.joinCIDR", joinCIDR)
+			if err != nil {
+				return err
+			}
+			if testNet.Contains(join.Addr()) || join.Contains(testNet.Addr()) {
+				return fmt.Errorf("network.multus.testCIDR overlaps network.kubeovn.joinCIDR")
+			}
+		}
+		for _, node := range c.Nodes {
+			addr, err := netip.ParseAddr(node.Address)
+			if err == nil && testNet.Contains(addr) {
+				return fmt.Errorf("network.multus.testCIDR contains node %s address", node.Name)
+			}
 		}
 	}
 	return c.Components.validate()
@@ -1330,6 +1517,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 				"management_interface": c.Network.ManagementInterface,
 				"pod_cidr":             c.Network.PodCIDR,
 				"service_cidr":         c.Network.ServiceCIDR,
+				"multus":               map[string]any{"enabled": c.Network.Multus.Enabled, "test_cidr": c.Network.Multus.TestCIDR},
 				"kubeovn": map[string]any{
 					"default_gateway": kubeovnNet.DefaultGateway,
 					"join_cidr":       kubeovnNet.JoinCIDR,
@@ -1390,6 +1578,25 @@ func componentSpec(c Components, clusterName string) map[string]any {
 		// temporary objects to this installation. An empty value keeps a
 		// disabled stack from matching anything at all.
 		"run_id": metricsRunID(c, clusterName),
+	}
+	spec["harbor"] = map[string]any{
+		"enabled":          c.Harbor.Enabled,
+		"external_address": c.Harbor.ExternalAddress,
+		"storage_class":    c.Harbor.StorageClass,
+		"storage_size":     c.Harbor.StorageSize,
+	}
+	spec["kubevirt"] = map[string]any{
+		"enabled":               c.KubeVirt.Enabled,
+		"vm_node":               c.KubeVirt.VMNode,
+		"storage_class":         c.KubeVirt.StorageClass,
+		"scratch_storage_class": c.KubeVirt.ScratchStorageClass,
+		"storage_size":          c.KubeVirt.StorageSize,
+	}
+	spec["milvus"] = map[string]any{
+		"enabled":           c.Milvus.Enabled,
+		"storage_class":     c.Milvus.StorageClass,
+		"storage_size":      c.Milvus.StorageSize,
+		"etcd_storage_size": c.Milvus.EtcdStorageSize,
 	}
 	// The log backend is one string, not a pair of booleans, so a role cannot
 	// see two enabled backends. The loki/opensearch/fluent-bit rows above are
@@ -1510,6 +1717,8 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return networkStack(c.Network.Stack) == "kcn"
 	case "kubeovn":
 		return networkStack(c.Network.Stack) == "kubeovn"
+	case "multus":
+		return c.Network.Multus.Enabled
 	case "ceph":
 		return c.Storage.Enabled && c.Storage.provider() == storageProviderCeph && installProfile(c.Profile) != "base"
 	case "cert-manager":
@@ -1520,6 +1729,18 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return c.Components.Valkey.Enabled && installProfile(c.Profile) != "base"
 	case "nats":
 		return c.Components.NATS.Enabled && installProfile(c.Profile) != "base"
+	case "milvus":
+		return c.Components.Milvus.Enabled && installProfile(c.Profile) != "base"
+	case "metrics-server":
+		return c.Components.MetricsServer.Enabled && installProfile(c.Profile) != "base"
+	case "snapshot-controller":
+		return c.Components.SnapshotController.Enabled && installProfile(c.Profile) != "base"
+	case "kubevirt":
+		return c.Components.KubeVirt.Enabled && installProfile(c.Profile) != "base"
+	case "volcano":
+		return c.Components.Volcano.Enabled && installProfile(c.Profile) != "base"
+	case "harbor":
+		return c.Components.Harbor.Enabled && installProfile(c.Profile) != "base"
 	case "metrics":
 		return c.Components.Metrics.Enabled && installProfile(c.Profile) != "base"
 	case "loki":
@@ -1616,7 +1837,7 @@ func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table Ima
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".sh") && !strings.HasSuffix(path, ".txt")) {
+		if entry.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".sh") && !strings.HasSuffix(path, ".txt") && !strings.HasSuffix(path, ".md")) {
 			return nil
 		}
 		roleRel, err := filepath.Rel(rolesDir, path)

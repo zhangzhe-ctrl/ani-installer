@@ -176,11 +176,10 @@ func TestKubeOVNLBAndEnvoyStayOut(t *testing.T) {
 		t.Fatalf("error = %v, want it to name loadBalancer", err)
 	}
 
-	site = r10KubeOVNSite("podCIDR: 10.16.0.0/16\n  serviceCIDR: 10.96.0.0/16\n  multus: {enabled: true}")
-	if _, err := ParseClusterConfig([]byte(site)); err == nil {
-		t.Fatal("network.multus is B01 scope and must be rejected until that task lands")
-	} else if !strings.Contains(err.Error(), "multus") {
-		t.Fatalf("error = %v, want it to name multus", err)
+	// B01a Multus is now a valid secondary attachment on Kube-OVN too.
+	site = r10KubeOVNSite("podCIDR: 10.16.0.0/16\n  serviceCIDR: 10.96.0.0/16\n  multus: {enabled: true, testCIDR: 198.18.0.0/29}")
+	if _, err := ParseClusterConfig([]byte(site)); err != nil {
+		t.Fatalf("B01a Multus site must parse: %v", err)
 	}
 
 	// Rendered manifest: no B01 LB attachment/subnet resources.

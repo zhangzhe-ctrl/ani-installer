@@ -1,0 +1,19 @@
+# Volcano 1.15.2 CPU-only. Chart source is official volcano-1.15.2 with the
+# unrelated unconditional JobFlow dependency removed before packaging.
+basic:
+  image_registry: {{ .ani.registry }}
+  controller_image_name: volcanosh/vc-controller-manager
+  scheduler_image_name: volcanosh/vc-scheduler
+  admission_image_name: volcanosh/vc-webhook-manager
+  image_tag_version: v1.15.2
+  image_pull_policy: IfNotPresent
+custom:
+  scheduler_name: volcano
+  admission_enable: true
+  controller_enable: true
+  scheduler_enable: true
+  agent_scheduler_enable: false
+  colocation_enable: false
+  metrics_enable: false
+  common_labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'

@@ -609,12 +609,15 @@ func effectiveSelection(c ClusterConfig) []ComponentRow {
 // before deployment instead of mid-install. The foundation batch lists
 // cert-manager and NATS; the observability batch lists its four Charts.
 var componentChartMaterials = map[string]string{
-	"cert-manager": "charts/cert-manager/v1.21.2.tgz",
-	"nats":         "charts/nats/2.14.6.tgz",
-	"metrics":      "charts/kube-prometheus-stack/85.4.0.tgz",
-	"loki":         "charts/loki/18.13.3.tgz",
-	"opensearch":   "charts/opensearch/3.8.0.tgz",
-	"fluent-bit":   "charts/fluent-bit/0.58.2.tgz",
+	"cert-manager":   "charts/cert-manager/v1.21.2.tgz",
+	"nats":           "charts/nats/2.14.6.tgz",
+	"milvus":         "charts/milvus/5.0.25.tgz",
+	"metrics-server": "charts/metrics-server/3.14.0.tgz",
+	"volcano":        "charts/volcano/1.15.2.tgz",
+	"metrics":        "charts/kube-prometheus-stack/85.4.0.tgz",
+	"loki":           "charts/loki/18.13.3.tgz",
+	"opensearch":     "charts/opensearch/3.8.0.tgz",
+	"fluent-bit":     "charts/fluent-bit/0.58.2.tgz",
 }
 
 // writeComponentSelection records this run's effective component selection for

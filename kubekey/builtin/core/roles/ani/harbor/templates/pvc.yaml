@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ani-harbor-trivy-cache
+  namespace: ani-harbor
+  labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: '{{ (index .ani.components "harbor").storage_class }}'
+  resources:
+    requests:
+      storage: 8Gi

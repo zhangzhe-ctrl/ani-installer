@@ -1,0 +1,26 @@
+# Official metrics-server Chart 3.14.0 / app 0.9.0.
+fullnameOverride: ani-metrics-server
+image:
+  repository: {{ .ani.registry }}/metrics-server/metrics-server
+  tag: v0.9.0
+  pullPolicy: IfNotPresent
+apiService:
+  create: true
+  insecureSkipTLSVerify: false
+tls:
+  type: helm
+  helm:
+    lookup: true
+    certDurationDays: 365
+addonResizer:
+  enabled: false
+args:
+  - --kubelet-certificate-authority=/etc/metrics-server/kubelet-ca/ca.crt
+extraVolumes:
+  - name: kubelet-ca
+    configMap:
+      name: ani-metrics-server-kubelet-ca
+extraVolumeMounts:
+  - name: kubelet-ca
+    mountPath: /etc/metrics-server/kubelet-ca
+    readOnly: true

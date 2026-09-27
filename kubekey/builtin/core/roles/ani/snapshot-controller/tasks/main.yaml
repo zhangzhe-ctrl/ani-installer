@@ -1,0 +1,87 @@
+---
+# B04 v8.5.0 global controller, volume snapshot CRDs and fixed Rook classes.
+- name: ANI Snapshot | Assert run scope and prepare private render directory
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    for path in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$path" in /*) ;; *) exit 1 ;; esac
+    done
+    install -d -m 0700 /etc/kubernetes/ani/snapshot-controller '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Snapshot | Render ownership and CSI preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/snapshot-controller/prereq.sh
+
+- name: ANI Snapshot | Refuse foreign controller or incompatible Ceph CSI classes
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/snapshot-controller/prereq.sh
+
+- name: ANI Snapshot | Render official v8.5.0 VolumeSnapshotClass CRD
+  template:
+    src: crd-volumesnapshotclasses.yaml
+    dest: /etc/kubernetes/ani/snapshot-controller/01-volumesnapshotclasses.yaml
+
+- name: ANI Snapshot | Render official v8.5.0 VolumeSnapshotContent CRD
+  template:
+    src: crd-volumesnapshotcontents.yaml
+    dest: /etc/kubernetes/ani/snapshot-controller/02-volumesnapshotcontents.yaml
+
+- name: ANI Snapshot | Render official v8.5.0 VolumeSnapshot CRD
+  template:
+    src: crd-volumesnapshots.yaml
+    dest: /etc/kubernetes/ani/snapshot-controller/03-volumesnapshots.yaml
+
+- name: ANI Snapshot | Install volume snapshot APIs
+  command: |
+    set -euo pipefail
+    for file in /etc/kubernetes/ani/snapshot-controller/0[123]-*.yaml; do
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f "$file"
+    done
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s \
+      crd/volumesnapshotclasses.snapshot.storage.k8s.io \
+      crd/volumesnapshotcontents.snapshot.storage.k8s.io \
+      crd/volumesnapshots.snapshot.storage.k8s.io
+
+- name: ANI Snapshot | Render controller and scoped RBAC
+  template:
+    src: controller.yaml
+    dest: /etc/kubernetes/ani/snapshot-controller/10-controller.yaml
+
+- name: ANI Snapshot | Install global snapshot controller
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/snapshot-controller/10-controller.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kube-system rollout status deployment/ani-snapshot-controller --timeout=600s
+
+- name: ANI Snapshot | Render explicit Retain classes for both Rook drivers
+  template:
+    src: classes.yaml
+    dest: /etc/kubernetes/ani/snapshot-controller/20-classes.yaml
+
+- name: ANI Snapshot | Install RBD and CephFS snapshot classes
+  command: |
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/snapshot-controller/20-classes.yaml
+
+- name: ANI Snapshot | Ensure the test namespace exists
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI Snapshot | Render create-and-restore checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/snapshot-controller/verify.sh
+
+- name: ANI Snapshot | Verify RBD and CephFS snapshot restore
+  command: |
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/snapshot-controller/verify.sh
+
+- name: ANI Snapshot | Render connection and Retain lifecycle facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/snapshot-controller.md'

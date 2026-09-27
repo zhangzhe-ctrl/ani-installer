@@ -36,6 +36,18 @@
       when: '{{ and (index .ani.components "valkey").enabled (index .ani.components_run.scope "valkey") }}'
     - role: ani/nats
       when: '{{ and (index .ani.components "nats").enabled (index .ani.components_run.scope "nats") }}'
+    - role: ani/milvus
+      when: '{{ and (index .ani.components "milvus").enabled (index .ani.components_run.scope "milvus") }}'
+    - role: ani/metrics-server
+      when: '{{ and (index .ani.components "metrics-server").enabled (index .ani.components_run.scope "metrics-server") }}'
+    - role: ani/snapshot-controller
+      when: '{{ and (index .ani.components "snapshot-controller").enabled (index .ani.components_run.scope "snapshot-controller") }}'
+    - role: ani/kubevirt
+      when: '{{ and (index .ani.components "kubevirt").enabled (index .ani.components_run.scope "kubevirt") }}'
+    - role: ani/harbor
+      when: '{{ and (index .ani.components "harbor").enabled (index .ani.components_run.scope "harbor") }}'
+    - role: ani/volcano
+      when: '{{ and (index .ani.components "volcano").enabled (index .ani.components_run.scope "volcano") }}'
     # The observability batch keeps the base gating semantics (one typed log
     # backend, metrics first because the log roles reuse its namespace) and
     # adds the same scope condition as every other role.

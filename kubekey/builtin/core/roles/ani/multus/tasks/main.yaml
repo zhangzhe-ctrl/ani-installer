@@ -1,0 +1,97 @@
+---
+# B01a runs only after the chosen primary CNI. It never changes network.stack.
+- name: ANI Multus | Create render and evidence directories
+  command: install -d -m 0700 /etc/kubernetes/ani/multus '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Multus | Create node preflight directory
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: install -d -m 0700 /etc/kubernetes/ani/multus
+
+- name: ANI Multus | Render node preflight on every Kubernetes node
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  template:
+    src: preflight-node.sh
+    dest: /etc/kubernetes/ani/multus/preflight-node.sh
+
+- name: ANI Multus | Check runtime CNI paths, binaries and primary delegate on every node
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: bash /etc/kubernetes/ani/multus/preflight-node.sh
+
+- name: ANI Multus | Render ownership and NAD API preflight
+  template:
+    src: preflight-global.sh
+    dest: /etc/kubernetes/ani/multus/preflight-global.sh
+
+- name: ANI Multus | Refuse foreign global resources
+  command: ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/multus/preflight-global.sh
+
+- name: ANI Multus | Prepare host paths used by the pinned thick daemon
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: install -d -m 0755 /etc/cni/multus/net.d /var/lib/cni/multus /run/k8s.cni.cncf.io /run/netns /run/multus
+
+- name: ANI Multus | Render upstream NAD CRD
+  template:
+    src: nad-crd.yaml
+    dest: /etc/kubernetes/ani/multus/01-nad-crd.yaml
+
+- name: ANI Multus | Install NAD API only if missing
+  command: |
+    set -euo pipefail
+    if grep -qx missing /etc/kubernetes/ani/multus/crd-state; then
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/multus/01-nad-crd.yaml
+    else
+      rc=$?
+      [ "$rc" -eq 1 ] || exit "$rc"
+    fi
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s crd/network-attachment-definitions.k8s.cni.cncf.io
+
+- name: ANI Multus | Render pinned thick daemon, shim installer and RBAC
+  template:
+    src: resources.yaml
+    dest: /etc/kubernetes/ani/multus/10-resources.yaml
+
+- name: ANI Multus | Install Multus after primary CNI
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/multus/10-resources.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kube-system rollout status daemonset/ani-multus --timeout=600s
+
+- name: ANI Multus | Confirm generated shim and nonrecursive delegate on every node
+  loop: "{{ .groups.k8s_cluster | default list | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: |
+    test -S /run/multus/multus.sock
+    test -x /opt/cni/bin/multus-shim
+    bash /etc/kubernetes/ani/multus/preflight-node.sh
+
+- name: ANI Multus | Ensure test namespace exists
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI Multus | Render node-local test NAD
+  template:
+    src: test-nad.yaml
+    dest: /etc/kubernetes/ani/multus/20-test-nad.yaml
+
+- name: ANI Multus | Install owned test NAD
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/multus/20-test-nad.yaml
+
+- name: ANI Multus | Render data-plane checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/multus/verify.sh
+
+- name: ANI Multus | Check net1 communication, primary eth0 and DNS
+  command: |
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' bash /etc/kubernetes/ani/multus/verify.sh
+
+- name: ANI Multus | Render connection and scope facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/multus.md'

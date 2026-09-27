@@ -1,0 +1,62 @@
+# Milvus Chart 5.0.25; the chart declares app 2.6.21, explicitly override to
+# v2.6.24. The OBC supplies credentials through Secret-backed environment vars;
+# no S3 key enters the Helm values, release Secret or ConfigMap.
+cluster:
+  enabled: false
+image:
+  all:
+    repository: {{ .ani.registry }}/milvusdb/milvus
+    tag: v2.6.24
+standalone:
+  replicas: 1
+  messageQueue: rocksmq
+  persistence:
+    enabled: true
+    persistentVolumeClaim:
+      storageClass: {{ .ani.components.milvus.storage_class }}
+      size: {{ .ani.components.milvus.storage_size }}
+  extraEnv:
+    - name: MINIO_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: ani-milvus-objects
+          key: AWS_ACCESS_KEY_ID
+    - name: MINIO_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: ani-milvus-objects
+          key: AWS_SECRET_ACCESS_KEY
+etcd:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: {{ .ani.registry }}
+    repository: milvusdb/etcd
+    tag: 3.5.25-r1
+  persistence:
+    enabled: true
+    storageClass: {{ .ani.components.milvus.storage_class }}
+    size: {{ .ani.components.milvus.etcd_storage_size }}
+minio:
+  enabled: false
+pulsarv3:
+  enabled: false
+pulsar:
+  enabled: false
+kafka:
+  enabled: false
+woodpecker:
+  enabled: false
+tei:
+  enabled: false
+externalS3:
+  enabled: true
+  host: rook-ceph-rgw-ani-store.rook-ceph.svc.cluster.local
+  port: 80
+  accessKey: ""
+  secretKey: ""
+  useSSL: false
+  bucketName: ani-milvus-objects
+  rootPath: files
+  cloudProvider: aws
+  useVirtualHost: false

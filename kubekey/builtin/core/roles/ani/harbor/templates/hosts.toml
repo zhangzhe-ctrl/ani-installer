@@ -1,0 +1,4 @@
+server = "https://{{ (index .ani.components "harbor").external_address }}:30003"
+[host."https://{{ (index .ani.components "harbor").external_address }}:30003"]
+capabilities = ["pull", "resolve", "push"]
+ca = "/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003/ca.crt"

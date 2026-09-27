@@ -1,0 +1,95 @@
+---
+- name: ANI KubeVirt | Check selected host has hardware KVM before cluster writes
+  delegate_to: '{{ (index .ani.components "kubevirt").vm_node }}'
+  command: |
+    set -euo pipefail
+    test -c /dev/kvm
+    grep -Eq '(^|[[:space:]])(vmx|svm)([[:space:]]|$)' /proc/cpuinfo
+    test -r /dev/kvm && test -w /dev/kvm
+
+- name: ANI KubeVirt | Create private render directory
+  command: install -d -m 0700 /etc/kubernetes/ani/kubevirt '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI KubeVirt | Render material, storage and owner preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/kubevirt/prereq.sh
+
+- name: ANI KubeVirt | Refuse missing KVM material, WFFC storage or foreign resources
+  command: bash /etc/kubernetes/ani/kubevirt/prereq.sh
+
+- name: ANI KubeVirt | Render official operator manifests with pinned registry images
+  template:
+    src: kubevirt-operator.yaml
+    dest: /etc/kubernetes/ani/kubevirt/kubevirt-operator.yaml
+
+- name: ANI KubeVirt | Render official CDI operator manifest with pinned registry images
+  template:
+    src: cdi-operator.yaml
+    dest: /etc/kubernetes/ani/kubevirt/cdi-operator.yaml
+
+- name: ANI KubeVirt | Render KubeVirt and CDI custom resources
+  template:
+    src: kubevirt-cr.yaml
+    dest: /etc/kubernetes/ani/kubevirt/kubevirt-cr.yaml
+
+- name: ANI KubeVirt | Render CDI custom resource
+  template:
+    src: cdi-cr.yaml
+    dest: /etc/kubernetes/ani/kubevirt/cdi-cr.yaml
+
+- name: ANI KubeVirt | Install KubeVirt operator and wait for its API
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/kubevirt-operator.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s crd/kubevirts.kubevirt.io
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kubevirt rollout status deployment/virt-operator --timeout=600s
+
+- name: ANI KubeVirt | Install KubeVirt runtime
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/kubevirt-cr.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kubevirt wait --for=condition=Available --timeout=900s kubevirt/kubevirt
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kubevirt rollout status deployment/virt-api --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n kubevirt rollout status deployment/virt-controller --timeout=600s
+
+- name: ANI KubeVirt | Install CDI operator and wait for its API
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/cdi-operator.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s crd/cdis.cdi.kubevirt.io
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n cdi rollout status deployment/cdi-operator --timeout=600s
+
+- name: ANI KubeVirt | Install CDI runtime
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/cdi-cr.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s crd/datavolumes.cdi.kubevirt.io
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n cdi rollout status deployment/cdi-deployment --timeout=900s
+
+- name: ANI KubeVirt | Ensure package source namespace exists
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI KubeVirt | Render package-backed guest HTTP source
+  template:
+    src: guest-source.yaml
+    dest: /etc/kubernetes/ani/kubevirt/guest-source.yaml
+
+- name: ANI KubeVirt | Start guest source inside the offline cluster
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/guest-source.yaml
+
+- name: ANI KubeVirt | Render DataVolume, VM and restart checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/kubevirt/verify.sh
+
+- name: ANI KubeVirt | Import guest, run command and preserve disk across stop/start
+  command: bash /etc/kubernetes/ani/kubevirt/verify.sh
+
+- name: ANI KubeVirt | Render connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/kubevirt.md'
