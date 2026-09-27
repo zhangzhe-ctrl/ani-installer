@@ -2,9 +2,49 @@
 
 ## 2026-09-27｜正式离线包的原始安装用法
 
-本节是当前首装范围的操作顺序；下方 2026-09-24 的 R 卡与实验步骤是历史计划，不能当作本版命令的状态。以下是**将来在另行授权的 installerNode 上执行**的步骤，本轮没有连接或修改实验节点。只使用已选定的 kcn + Ceph 组合及原组件选择：底座为 cert-manager、PostgreSQL、NATS、metrics、Loki、Fluent Bit，Valkey 按已批准计划另行新增；OpenSearch 等其他配置不由这组证据签发。
+本节记录 2026-09-27 在获准的三节点实验环境对候选 `f76ff2e36ccfeaef39a36c2c4ea9bad08d84f3dd` 的**实际执行**；下方 2026-09-24 的 R 卡是历史计划。本次只覆盖 kcn + Ceph、底座 cert-manager/PostgreSQL/NATS/metrics/Loki/Fluent Bit、计划内新增 Valkey。**结论：指定组合安装和基本功能通过，保留 Ceph 健康告警。**这不签发其他可选组合、专项重建恢复或生产全面验收。
 
-1. 在执行机上分别设置 `CODE_ROOT`（本轮同源代码包目录）、`ARTIFACT_DIR`（已批准且摘要校验过的离线材料包目录）、`SITE_FILE`（该站点已审核的底座配置）、`EVIDENCE`（本次私有输出目录）。三个输入必须是实际绝对路径；示例配置中的 `CHANGE_ME` 和磁盘占位符不能直接使用。先核对执行机、配置、材料、目标磁盘与允许范围。**不要把 Fedora 上的包路径当成目标机路径。**
+### 本次执行实例（仅供核对，当前集群不得重放首装）
+
+执行机为 `node1`（172.16.101.20），Fedora 仅用于控制和归档。经明确授权，`test-installer-01/02/03`（VMID 5/6/7，与 .20/.21/.22 对应）在只读映射核对后恢复到各自 `snapshotId=1`；恢复后确认无旧集群/安装记录，三台声明的 Ceph 设备路径均指向未挂载的 `/dev/sdb`。三台按既有 `ANI-OFFLINE` netfilter 方法隔离，安装前后规则核对均 rc=0，实验锁已释放。没有触碰其他 VM、合并 main、发布 Release 或执行重型验收。
+
+```bash
+CODE_ROOT=/home/ubuntu/f-live/ani-code-install-03
+ARTIFACT_DIR=/home/ubuntu/f-live/ani-artifact-live-02
+SITE_FILE=/home/ubuntu/f-live/site-base-r2.yaml
+ADD_SITE_FILE=/home/ubuntu/f-live/site-valkey.yaml
+EVIDENCE=/home/ubuntu/f-live/evidence-install-f76ff2e
+KUBECONFIG_FILE=/etc/kubernetes/admin.conf
+BASE_RUN=/var/lib/ani-installer/ani-lab/run.json
+PLAN_JSON=$EVIDENCE/components/components-plan-ani-components-ani-lab-20260927-203545.json
+COMP_RUN=/var/lib/ani-installer/ani-lab/components/ani-components-ani-lab-20260927-203545/components-run.json
+REPEAT_PLAN_JSON=$EVIDENCE/components-repeat/components-plan-ani-components-ani-lab-20260927-204115.json
+```
+
+配置文件 SHA-256：底座 `deb4a8b7d673e014fb17d01f88565c0273c1912c4d17af470b903dad1da77552`，新增 `57db2f4a7bb6203a6a8fe26984a3c0f8fcd95b1120375ab962fee1c8a31890cf`；两者语义上仅 Valkey 的启用选择不同。产品记录的配置摘要分别为 `67969228dca842bd28a9efd7f514f57e2d92f47c06a04e5c6ca5cd69037d94e2` 和 `003b0da327e3621ce0ec0654892a1a6e4ce8c32432ced665f9a41c6c9a28a9f6`。执行机两个包的 `sha256sum -c SHA256SUMS` 均 rc=0：`kk` **文件摘要**为 `3c4caae4cd09a6905f030210c3e339fe8d58594d6c326a5320bc413e476278fd`，代码包 **SHA256SUMS 清单文件摘要**为 `08f6db49d5f0c2542d3480855037ee1f2d3e2306be4ac954d3f16439af5649c8`，材料包 **SHA256SUMS 清单文件摘要**为 `1e2a4e73190037d46a9b664b26b82f8e04011b5787d245058dbddb1c703b4799`，材料锁摘要为 `02d5dea90ffceadb047f8471e47539ed4d55b2d9fe09a8caa8f079afd1d9dd34`。清单文件摘要**不是**整个材料归档的单文件摘要。[该提交 CI](https://github.com/zhangzhe-ctrl/ani-installer/actions/runs/36314798711) 的 head SHA 相同且结论为 success。
+
+| 阶段 | 实际结果与记录 |
+| --- | --- |
+| 一次首装 | `kk ani install` rc=0；`/var/lib/ani-installer/ani-lab/run.json` 为 `recordKind=install-success`、`result=succeeded`、run `ani-ani-lab-20260927-120855`，仅含原六组件，Valkey 未启用。 |
+| 基本功能 | 对该产品记录运行正式 `ani verify --level smoke` rc=0，六组件逐项及 overall 为 pass；现有通用跨节点网络/DNS 探针 rc=0，node1→node3、node2→node3 的 PodIP/ServiceIP/DNS 内容断言均通过；安装内 RBD 与 CephFS 写入读回任务成功。 |
+| Valkey 真实新增 | `components install --only valkey` 计划 rc=0 且仅 Valkey planned；`components execute` rc=0，产品记录 `operation=add,didInstall=true`；从该执行记录运行 `verify --level smoke --only valkey` rc=0，带认证 SET/GET、TTL 到期与未认证拒绝均通过。 |
+| 同版本重复执行 | 再生成计划 rc=0，Valkey `already_installed`；执行 rc=0，记录 `operation=noop,didInstall=false`；前后 14 个相关控制器/PVC 的 UID、代次和 spec、14 个 Pod UID、原首装与新增记录摘要均未变化。 |
+
+每一步的实际命令、真实退出码和日志在 `EVIDENCE` 下的对应 `.command/.rc/.log`。smoke 期间控制端 SSH 断开，先核实原进程和 node1 的 `smoke.rc=0` 后继续，没有重发 smoke。13 项关键证据的 `delivery-evidence.sha256` 在 node1 与 Fedora 私有归档中均逐项校验通过；**证据清单文件摘要**为 `8f355721504277a9e71c766d37b579225db4a6d2d7a397b67e33e8493da2aaec`。Fedora 仓外归档在 `/home/chabking/.cache/ani-install-delivery-20260927/archive/node1/`，原始配置、日志和记录留在私有目录，不进入 Git。
+
+### Ceph 已知告警（仅只读判读，本轮未处理）
+
+本次运行的是 Ceph Tentacle `20.2.4`，三 OSD 均 up/in，CephCluster 为 `Ready / HEALTH_WARN`。基础 RBD/CephFS 读写通过**不等于**安全认证、故障恢复或持续可用性已验收。
+
+- **认证：**`AUTH_INSECURE_CLIENT_KEY_TYPE` 指向 `client.csi-cephfs-node.1`、`client.csi-cephfs-provisioner.1`、`client.csi-rbd-node.1`、`client.csi-rbd-provisioner.1` 四个 `aes` 客户端密钥；并有 `AUTH_INSECURE_KEYS_ALLOWED`（monmap 仍允许 `aes,aes256k`）和 `AUTH_INSECURE_KEYS_CREATABLE`。只读回读的 `mon_auth_allow_insecure_key` 在 mon.a 为 true、mon.b/c 为 false；不能用 mon.b 的 false 代替全群结论。20.2.4 含相关安全补丁，但旧 `aes` 凭据的风险仍需按 [Ceph Tentacle 告警说明](https://docs.ceph.com/en/tentacle/rados/operations/health-checks/)和 [CephX 安全公告](https://docs.ceph.com/en/latest/security/CVE-2025-30156/)处理。后续先核对 Rook/CSI 客户端兼容与密钥分发路径，再有计划地轮换四个客户端凭据、验证 CSI，并在所有必要实体安全后收紧允许的 cipher；不能直接关闭 `aes` 而中断认证。本轮未读取/输出密钥，也未更改认证策略。
+- **时钟：**`MON_CLOCK_SKEW` 最近一次回读显示 mon.b（node1）偏差 `0.422753s`、mon.c（node2）`0.0982324s`，均高于实际 `mon_clock_drift_allowed=0.05s`；偏差会随时间变化。三节点 chrony active，但 `NTPSynchronized=no`、`chronyc activity` 为 0 在线源；配置 `cn.pool.ntp.org` 当前地址未知，并启用 `local stratum 10`。按 [Ceph Tentacle 时钟告警说明](https://docs.ceph.com/en/tentacle/rados/operations/health-checks/)应规划离线可达的可靠时间源并核实监视器相互同步，随后确认告警消退；本轮不提高容忍阈值。监视器时间未可靠同步前，不把高可用持续性视为通过。
+- **PG：**`TOO_MANY_PGS` 为 `265 > mon_max_pg_per_osd=250`，当前 3 个 OSD in；现有 12 个池的 `pg_num` 合计 265（包括 RGW data 128、CephFS metadata 16/data 32、RBD 32，其他池合计 57）。依 [Ceph Tentacle 告警说明](https://docs.ceph.com/en/tentacle/rados/operations/health-checks/)，超阈值会阻止新建池、提高 `pg_num` 或提高副本数，并增加 OSD/mon/mgr 负担。后续应按实际池和 OSD 容量审定 PG/扩容方案；告警未解除前不把新增池/副本扩展视为已支持。本轮不提高阈值、不修改池。
+
+**使用限制：**本次只签发指定实验组合的安装与基本功能。上述认证和时间告警尚未收敛，不作为生产稳定版、安全认证或故障恢复的放行依据；未发现本轮读写失败，也没有证据证明现有数据损坏。Fluent Bit 重建恢复、告警生命周期、持久化重启及其他可选组件仍未由本次验证覆盖。
+
+### 后续仅在新的干净、获授权目标复用的操作顺序
+
+1. 在执行机上分别设置 `CODE_ROOT`（本轮同源代码包目录）、`ARTIFACT_DIR`（已批准且摘要校验过的离线材料包目录）、`SITE_FILE`（该站点已审核的底座配置）、`EVIDENCE`（本次私有输出目录）。四个输入必须是实际绝对路径；示例配置中的 `CHANGE_ME` 和磁盘占位符不能直接使用。先核对执行机、配置、材料、目标磁盘与允许范围。**不要把 Fedora 上的包路径当成目标机路径。**
 2. 在执行机核包并做本地输入检查；`validate` 只检查配置，不能代替安装的材料预检：
 
    ```bash
@@ -47,10 +87,10 @@
      --only valkey --kubeconfig "$KUBECONFIG_FILE" --output "$EVIDENCE/components-smoke"
    ```
 
-**版本与证据边界：**R16 的干净离线首装和后续 Valkey 新增/no-op 实测属于各自记录的旧代码树与选定配置。本节对应的代码包只有 Fedora 隔离门禁、构建和包摘要证据；新版本首装、smoke、新增及重复执行都仍待另行授权实测。当前未完成的 Fluent Bit 重建恢复验收不属于这里的通过条件；直接调用旧重型脚本的入口已改为提前拒绝。保留既有材料锁、集群目标绑定和一次性额度。
+**版本与证据边界：**上方实例是候选 `f76ff2e36ccfeaef39a36c2c4ea9bad08d84f3dd` 的本次实机结果；旧 R16/090732 结果仍只属于各自代码树与配置，旧账本及已消耗额度不改。当前集群已经安装，**不得重放第 3 步首装**；这些命令仅供另一台新的干净、获授权目标按其实际路径执行。`validate/render` 仍只证明输入检查，不能替代实机结果。
 
 
-2026-09-24 / r1。**本文件是将来执行步骤，不是本次实际操作日志。** 本轮没有连接Fedora/目标集群；路径必须由R00核对后填写。允许的测试节点为`172.16.101.20`、`.21`、`.22`；任何其他目标都停止。
+以下是 **2026-09-24 / r1 的历史计划**，其中“本轮未连接”仅指当时轮次，不能覆盖上方 2026-09-27 的实测记录。历史步骤中的路径须按对应 R00 核对后填写。允许的测试节点为`172.16.101.20`、`.21`、`.22`；任何其他目标都停止。
 
 ## 1. 区分三种终端
 

@@ -8,7 +8,7 @@ metadata:
     R00 只做只读校准与文档记录：未编译、未安装、未制包、未还原快照、未连接目标集群。
     源码基线 2026-09-24 冻结：HEAD 275827f17abeb0d84694d078d0bc2877307cf87e，
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
-  updatedAt: '2026-09-26'
+  updatedAt: '2026-09-27'
 tasks:
 - id: R00
   title: 冻结工作树、校准旧文档和执行环境
@@ -1020,3 +1020,27 @@ tasks:
   - CI 实读结果（不改口径、只补事实）：代码候选所在分支头 `8d9de2c7a39cc3f8fd55ac83a3627978daa364ad` 的 run **36262250848** / job **108460180210** 为 `completed/success`，九个步骤全 success，含新增的 `Restore the locked chart cache` 与被上一轮真实失败的 `Run the code gate`；上一轮那条“CI 预期失败”因此从预测变成已修复的实测。本地另在**零 .tgz 的 pristine clone + 空 chart 缓存**下跑完整门禁 rc=0（6/6 downloaded and verified、205 case 0 失败），并实测反向退出码：离线缺物 rc=1、缓存条目与自身摘要不符 rc=1、目标被改坏拒绝覆盖、随后联网重取 rc=0。
   - 交审代理事故如实记录：C10 的首次派发返回了一份完整、自洽、含“23 个测试通过 / 干净 checkout 门禁 rc=0 / 6 个真实摘要全部匹配”的报告，但落盘核对发现**四个文件一个都没写、/tmp 日志不存在**。因此本台账中 C10 的一切结论均来自我自己实施并自己跑过的命令，不引用该报告。教训：代理报告的“已验证”不可当作验证。
   - 本轮无现场操作：未连三台节点／ESXi，未跑现场 smoke 或 acceptance，未写 SQL、未删 Pod/PVC、未重启、未快照、未抢锁、未重置额度；090732 底座 postgresql 额度维持上一轮已 spent 的事实。
+
+- id: INSTALL-DELIVERY-20260927
+  title: 候选 f76ff2e 的指定组合正式离线安装交付验证
+  dependsOn: []
+  status: selected_combo_install_and_basic_function_pass_ceph_health_warn
+  selected: true
+  stages:
+    code: candidate_f76ff2e36ccfeaef39a36c2c4ea9bad08d84f3dd_ci_success_36314798711
+    materials: original_approved_offline_package_reused_and_sha256sums_verified
+    firstInstall: pass_run_ani_ani_lab_20260927_120855_rc0
+    basicSmoke: pass_six_components_plus_cross_node_network_dns_and_rbd_cephfs_rw
+    valkeyAddition: pass_real_add_record_didInstall_true_and_auth_rw_smoke
+    sameVersionNoOp: pass_already_installed_record_didInstall_false_resources_unchanged
+    cephHealth: ready_health_warn_auth_clock_pg_unresolved
+    specialistAcceptance: not_run_outside_selected_install_scope
+  evidence:
+  - docs/execution/04-manual-runbook.md
+  - /home/chabking/.cache/ani-install-delivery-20260927/archive/node1/home/ubuntu/f-live/evidence-install-f76ff2e/delivery-evidence.sha256
+  - /home/chabking/.cache/ani-install-delivery-20260927/archive/inputs-identity.txt
+  notes:
+  - 仅本次 kcn+Ceph、原六组件与 Valkey 新增组合通过；不把旧 R/F/C 或 Fluent Bit 重建恢复状态改成通过。
+  - node1 原证据及产品 run/组件记录已复制到 Fedora 私有仓外目录；13 项清单逐项核验。清单文件摘要与 kk 文件摘要、材料 SHA256SUMS 清单文件摘要分别记录在手册，不能当作整个材料包单文件摘要。
+  - Ceph 20.2.4 当前有 AUTH_INSECURE_CLIENT_KEY_TYPE/AUTH_INSECURE_KEYS_ALLOWED/AUTH_INSECURE_KEYS_CREATABLE、MON_CLOCK_SKEW、TOO_MANY_PGS；基础读写通过但安全认证、高可用持续性及扩容不由本次签发。只读判读和后续最小建议见手册，未修改现场。
+  - Fedora 原工作树的未提交 Fluent Bit/acceptance 开发稿保留；本条仅更新必要文档，不重构、不重建包、不重跑实机。
