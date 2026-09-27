@@ -216,8 +216,12 @@ verify_image_store() {
       exit 1
     fi
     waited=$((waited + 1))
-    if [[ "$waited" -ge 60 ]]; then
-      echo "timed out waiting for the packaged store to serve on 127.0.0.1:$port" >&2
+    # Hauler first stages every image into its local registry. An 86-image
+    # cumulative store takes longer than the old one-minute startup budget on
+    # the supported Fedora packager; keep waiting, then apply the same content
+    # gate once the registry is actually serving.
+    if [[ "$waited" -ge 600 ]]; then
+      echo "timed out waiting for the packaged store to serve on 127.0.0.1:$port after ${waited}s" >&2
       cat "$WORK/registry.log" >&2
       exit 1
     fi
