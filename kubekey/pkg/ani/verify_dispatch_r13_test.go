@@ -161,8 +161,11 @@ case "$args" in
     exit 0 ;;
   *"get pod"*"ownerReferences"*"name"*)
     # derive the owning controller from the pod name (postgresql-0 -> postgresql)
-    name="$(printf '%s' "$args" | sed -n 's/.*get pod \([a-z0-9-]*\).*/\1/p')"
-    printf '%s\n' "${name%-0}"; exit 0 ;;
+    # The owning StatefulSet is the pod name minus its ordinal instance suffix,
+    # which is how a controller owns pod N: stripping only "-0" would make a plan
+    # with a second replica (postgresql-1) unauthorisable.
+    name="$(printf '%s' "$args" | sed -n 's/.*get pod \([A-Za-z0-9._-]*\).*/\1/p')"
+    printf '%s\n' "$(printf '%s' "$name" | sed -E 's/-[0-9]+$//')"; exit 0 ;;
   *"get pod"*"ownerReferences"*"controller"*)
     if [ -n "${FAKE_OWNER_NOT_CONTROLLER:-}" ]; then echo "false"; else echo "true"; fi; exit 0 ;;
   *"get pod"*"ownerReferences"*"uid"*)
@@ -183,7 +186,9 @@ case "$args" in
     if [ -n "${FAKE_REPLACE_UID_ON_REREAD:-}" ] && [ "$n" -ge 2 ]; then
       echo "uid-SOMEONE-ELSE-replaced"; exit 0
     fi
-    cat "$state/pod-uid" 2>/dev/null; exit 0 ;;
+    pn="$(printf '%s' "$args" | sed -n 's/.*get pod \([A-Za-z0-9._-]*\).*/\1/p')"
+    if [ -n "$pn" ] && [ -f "$state/pod-uid-$pn" ]; then cat "$state/pod-uid-$pn"; else cat "$state/pod-uid" 2>/dev/null; fi
+    exit 0 ;;
   *"get pod"*"Ready"*status*|"get pod"*conditions*Ready*)
     if [ -n "${FAKE_NOT_READY:-}" ]; then echo "False"; else echo "True"; fi; exit 0 ;;
   *"get pvc"*"metadata.uid"*)
@@ -206,6 +211,15 @@ case "$args" in
     echo "$tok"; exit 0 ;;
   *"psql"*"INSERT"*|"printf"*">"*"marker"*)
     exit 0 ;;
+  *"get pod"*"hostPath.path"*)
+    if [ -n "${FAKE_HOSTPATHS:-}" ]; then printf '%s\n' "$FAKE_HOSTPATHS"; else cat "$state/hostpath-paths" 2>/dev/null; fi
+    exit 0 ;;
+  *"get pod"*"items[0].metadata.name"*)
+    printf '%s\n' "${FAKE_DAEMON_POD:-ani-fluent-bit-abc}"; exit 0 ;;
+  *"get node "**"metadata.uid"*)
+    printf '%s\n' "${FAKE_NODE_UID:-uid-node-1}"; exit 0 ;;
+  *"get daemonset"*"metadata.uid"*)
+    printf '%s\n' "${FAKE_DAEMONSET_UID:-${FAKE_CONTROLLER_UID:-uid-controller-postgresql}}"; exit 0 ;;
 esac
 echo "fake kubectl: unsupported $args" >&2
 exit 2

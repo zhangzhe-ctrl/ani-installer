@@ -82,18 +82,44 @@ type r13APIServer struct {
 	mu       sync.Mutex
 }
 
+// podUIDFile is where a pod's current uid lives. A per-name file wins when one
+// exists, so a plan that changes two pods can hold both identities at once; the
+// shared "pod-uid" is the fallback the single-pod fixtures already use, so those
+// tests keep working untouched.
+func (a *r13APIServer) podUIDFile(name string) string {
+	perPod := filepath.Join(a.stateDir, "pod-uid-"+r13SafeToken(name))
+	if _, err := os.Stat(perPod); err == nil {
+		return perPod
+	}
+	return filepath.Join(a.stateDir, "pod-uid")
+}
+
 func (a *r13APIServer) podUID(name string) string {
-	data, err := os.ReadFile(filepath.Join(a.stateDir, "pod-uid"))
+	data, err := os.ReadFile(a.podUIDFile(name))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
 
-func (a *r13APIServer) setPodUID(uid string) {
-	if err := os.WriteFile(filepath.Join(a.stateDir, "pod-uid"), []byte(uid+"\n"), 0o600); err != nil {
+func (a *r13APIServer) setPodUID(name, uid string) {
+	if err := os.WriteFile(a.podUIDFile(name), []byte(uid+"\n"), 0o600); err != nil {
 		panic(err)
 	}
+}
+
+// r13SafeToken turns a pod name into a file name suffix.
+func r13SafeToken(name string) string {
+	out := make([]rune, 0, len(name))
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			out = append(out, r)
+		default:
+			out = append(out, '_')
+		}
+	}
+	return string(out)
 }
 
 func (a *r13APIServer) appendTo(file, line string) {
@@ -120,7 +146,7 @@ func (a *r13APIServer) serve(w http.ResponseWriter, r *http.Request) {
 	// than at the moment the client last looked. FAKE_REPLACE_AFTER_LAST_GET still
 	// means "the object at this name is now somebody else's".
 	if os.Getenv("FAKE_REPLACE_AFTER_LAST_GET") != "" {
-		a.setPodUID("uid-INTRUDER-replaced")
+		a.setPodUID(name, "uid-INTRUDER-replaced")
 	}
 	current := a.podUID(name)
 
@@ -175,7 +201,7 @@ func (a *r13APIServer) serve(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("FAKE_STICKY_POD_UID") == "" {
 		// The controller recreates it: the name keeps standing with a new uid, which
 		// is what the acceptance waiter then looks for.
-		a.setPodUID(fmt.Sprintf("uid-new-%d", len(a.deletionCount())+1))
+		a.setPodUID(name, fmt.Sprintf("uid-new-%d", len(a.deletionCount())+1))
 	}
 	// The state the fake kubectl used to mutate on a delete moves with the delete.
 	// A PVC replaced underneath the recreation must still fail the check, and only
