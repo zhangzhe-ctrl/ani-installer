@@ -76,7 +76,7 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 	if err := ValidateRenderedArtifacts(files); err != nil {
 		t.Fatal(err)
 	}
-	chart := filepath.Join("..", "..", "ani", "charts", "harbor", "1.19.2.tgz")
+	chart := filepath.Join("..", "..", "ani", "charts", "harbor", "harbor-1.19.2.tgz")
 	if data, err := os.ReadFile(chart); err != nil || len(data) == 0 {
 		t.Fatalf("locked Harbor Chart unavailable: %v", err)
 	}
