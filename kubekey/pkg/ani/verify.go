@@ -103,6 +103,13 @@ type VerifyComponentResult struct {
 	Status    string            `json:"status"`
 	Detail    string            `json:"detail,omitempty"`
 	Evidence  map[string]string `json:"evidence,omitempty"`
+	// Steps is the component's declared check set with each step's own outcome.
+	// A component status of pass means every step below passed; the steps stay in
+	// the report so the claim can be read instead of trusted.
+	Steps []VerifyStepResult `json:"steps,omitempty"`
+	// Dependencies names the business objects this component's acceptance changed
+	// on behalf of another component, so a scoped run cannot hide their impact.
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // VerifyReport is the machine-readable record of one verify invocation.
@@ -162,6 +169,19 @@ type acceptanceTarget struct {
 	// servers that do not ship their own CLI (NATS uses nats-box; PostgreSQL
 	// execs psql that is present in its own container, so it is empty).
 	ClientImage string
+	// LedgerToken is the stable identity the one-change budget is keyed to. It
+	// deliberately does not contain the component: a shared object reached from two
+	// components' plans is one target with one budget, and a rename of the
+	// component, a sub-run or a different --output cannot reopen it. Empty falls
+	// back to ControllerName, which is what the original single-target components
+	// already used, so their existing ledger files keep blocking.
+	LedgerToken string
+	// NodeName + PodSelector + HostPath describe a workload whose pods are per-node
+	// and whose durable state is a hostPath rather than a PVC (the collector). A
+	// target declares either a PVC or a hostPath, never a fabrication of one.
+	NodeName    string
+	PodSelector string
+	HostPath    string
 }
 
 // acceptanceProtocols.
@@ -172,8 +192,14 @@ const (
 
 // acceptanceTargets registers every implemented acceptance check. Components
 // without an entry are skipped (never silently passed).
+// acceptanceTargets is the registry of business objects an acceptance plan may
+// change. It is keyed by the stable target identity rather than by component,
+// because one object can legitimately appear in two components' plans (the
+// logging backend is Fluent Bit's durability dependency and Loki's own target):
+// they resolve to the same entry, so they share the same one-change budget.
 var acceptanceTargets = map[string]acceptanceTarget{
 	"postgresql": {
+		LedgerToken:    "postgresql",
 		Namespace:      "ani-platform",
 		ControllerKind: "StatefulSet",
 		ControllerName: "postgresql",
@@ -184,6 +210,7 @@ var acceptanceTargets = map[string]acceptanceTarget{
 		AuxMarkerPath:  "/var/lib/postgresql/data/ani-acceptance-marker",
 	},
 	"nats": {
+		LedgerToken:    "nats",
 		Namespace:      "ani-platform",
 		ControllerKind: "StatefulSet",
 		ControllerName: "nats",
@@ -196,6 +223,62 @@ var acceptanceTargets = map[string]acceptanceTarget{
 		// means "resolve from the run manifest registry" at execution time.
 		ClientImage: "natsio/nats-box:0.19.7",
 	},
+}
+
+// protocolWriteThrough and protocolReadBackThrough adapt the existing
+// per-protocol implementations to a step's persistenceCheck.
+func protocolWriteThrough(a *acceptanceAttempt, t acceptanceTarget, token string) (string, bool) {
+	return protocolWrite(a.ctx, a.runner, t, a.registry, token)
+}
+
+func protocolReadBackThrough(a *acceptanceAttempt, t acceptanceTarget, token string) (string, bool) {
+	return protocolReadBack(a.ctx, a.runner, t, a.registry, token)
+}
+
+// recreateStep is the step shape a single-target component uses: one declared
+// object, one budget, the component's real protocol on both sides of it.
+func recreateStep(stepID, stepTitle, targetKey string) acceptanceStep {
+	return acceptanceStep{
+		ID: stepID, Title: stepTitle, Target: targetKey,
+		Run: func(a *acceptanceAttempt, result *VerifyStepResult) error {
+			step := a.recreateOnce(acceptanceTargets[targetKey], persistenceCheck{
+				Write:    protocolWriteThrough,
+				ReadBack: protocolReadBackThrough,
+			})
+			result.QuotaState = step.QuotaState
+			result.Detail = step.Detail
+			for key, value := range step.Evidence {
+				result.Evidence[key] = value
+			}
+			if step.Status != VerifyStatusPass {
+				return errors.New(step.Detail)
+			}
+			return nil
+		},
+	}
+}
+
+// acceptancePlans declares what acceptance can actually check, per component. A
+// component with no entry here has no acceptance, and naming it with --only is
+// refused before anything runs.
+var acceptancePlans = map[string]acceptancePlan{
+	"postgresql": {Steps: []acceptanceStep{
+		recreateStep("PG-01", "a committed row survives the one planned postgresql-0 recreation", "postgresql"),
+	}},
+	"nats": {Steps: []acceptanceStep{
+		recreateStep("NATS-01", "a persisted JetStream message survives the one planned nats-0 recreation", "nats"),
+	}},
+}
+
+// declaredAcceptanceComponents lists the components acceptance is implemented for,
+// sorted, for the refusal messages.
+func declaredAcceptanceComponents() []string {
+	names := make([]string, 0, len(acceptancePlans))
+	for name := range acceptancePlans {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // acceptanceLedger is the durable, pre-change intent record that makes a
@@ -249,8 +332,19 @@ func acceptanceStateDir(clusterName string) (string, error) {
 	return base, nil
 }
 
+// ledgerKey is the identity the one-change budget is bound to. Falling back to
+// the controller name keeps the files the single-target components already wrote
+// blocking after the change, so an old spent record cannot be re-armed by
+// renaming a constant in Go.
+func (a acceptanceTarget) ledgerKey() string {
+	if token := strings.TrimSpace(a.LedgerToken); token != "" {
+		return token
+	}
+	return a.ControllerName
+}
+
 func (a acceptanceTarget) ledgerFile(stateDir, runID string) string {
-	return filepath.Join(stateDir, fmt.Sprintf("ledger-%s-%s.json", runID, a.ControllerName))
+	return filepath.Join(stateDir, fmt.Sprintf("ledger-%s-%s.json", runID, a.ledgerKey()))
 }
 
 // VerifyInputDefaults fills the operational defaults.
@@ -568,11 +662,7 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 	// ever checking metrics.
 	var acceptanceNotDeclared []string
 	if input.Level == VerifyLevelAcceptance {
-		implemented := make([]string, 0, len(acceptanceTargets))
-		for name := range acceptanceTargets {
-			implemented = append(implemented, name)
-		}
-		sort.Strings(implemented)
+		implemented := declaredAcceptanceComponents()
 		declared, skipped := splitDeclaredTargets(scope)
 		// C04, explicitly requested: naming a component whose acceptance does not
 		// exist is refused BEFORE the lock and before any one-shot quota is
@@ -827,7 +917,7 @@ func runSmokeScope(ctx context.Context, input VerifyInput, subjectRunID string, 
 // from what it cannot, preserving scope order.
 func splitDeclaredTargets(scope []string) (declared, notDeclared []string) {
 	for _, component := range scope {
-		if _, ok := acceptanceTargets[component]; ok {
+		if _, ok := acceptancePlans[component]; ok {
 			declared = append(declared, component)
 			continue
 		}
@@ -1008,9 +1098,10 @@ func smokeKillFunc(cmd *exec.Cmd) error {
 	return nil
 }
 
-// runAcceptanceScope executes the declared one-shot persistence checks. The
-// FIRST failure stops the scope: remaining mutation checks are recorded
-// not_run and no further Pod recreation is attempted (R13 step 7 / T-R13-04).
+// runAcceptanceScope executes the declared check sets. The FIRST failing step
+// stops its component's plan and every later component's changes: the remaining
+// work is recorded not_run, and no further Pod recreation is attempted
+// (R13 step 7 / T-R13-04).
 func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRunner, deleter *podDeleter, scope []string, runID string, manifest RunManifest) ([]VerifyComponentResult, error) {
 	stateDir, err := acceptanceStateDir(manifest.ClusterName)
 	if err != nil {
@@ -1020,296 +1111,65 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 	results := make([]VerifyComponentResult, 0, len(scope))
 	failed := false
 	for _, component := range scope {
-		target, declared := acceptanceTargets[component]
+		plan, declared := acceptancePlans[component]
 		if !declared {
-			// runAcceptanceScope only receives declared targets (C04 narrows the
+			// runAcceptanceScope only receives declared components (C04 narrows the
 			// scope first), so this is a programming error, not an outcome.
 			return nil, fmt.Errorf("acceptance scope reached %s with no declaration; refusing to invent one", component)
 		}
 		if failed {
 			results = append(results, VerifyComponentResult{
-				Component: component,
-				Status:    VerifyStatusNotRun,
-				Detail:    "an earlier acceptance failed; no further mutation is attempted",
+				Component:    component,
+				Status:       VerifyStatusNotRun,
+				Dependencies: plan.Dependencies,
+				Detail:       "an earlier acceptance failed; no further mutation is attempted",
 			})
 			continue
 		}
-		result := runAcceptanceTarget(ctx, runner, deleter, component, target, stateDir, runID, registry)
+		attempt := &acceptanceAttempt{
+			ctx:       ctx,
+			runner:    runner,
+			deleter:   deleter,
+			component: component,
+			stateDir:  stateDir,
+			runID:     runID,
+			registry:  registry,
+			attempt:   attemptID(),
+			// C07: an acceptance run's own temporary output lives under the verify
+			// output it was given, never in the base install's runtime tree.
+			outputDir: filepath.Join(input.Output, "acceptance-"+sanitizePathToken(runID)+"-"+component),
+			scriptDir: input.ScriptDir,
+			evidence:  map[string]string{},
+		}
+		if err := os.MkdirAll(attempt.outputDir, 0o700); err != nil {
+			return nil, errors.Wrapf(err, "create the acceptance output directory %s for %s", attempt.outputDir, component)
+		}
+		// Refuse the whole plan before the first change if any target it declares
+		// is incomplete, unauthorisable, or already spent.
+		if err := preflightPlan(attempt, plan); err != nil {
+			results = append(results, VerifyComponentResult{
+				Component:    component,
+				Status:       VerifyStatusFailed,
+				Dependencies: plan.Dependencies,
+				Detail:       fmt.Sprintf("refused before any change: %v", err),
+			})
+			failed = true
+			continue
+		}
+		result := planOverall(component, attempt.runPlan(plan))
+		result.Dependencies = plan.Dependencies
+		for key, value := range attempt.evidence {
+			if result.Evidence == nil {
+				result.Evidence = map[string]string{}
+			}
+			result.Evidence[key] = value
+		}
 		results = append(results, result)
 		if result.Status != VerifyStatusPass {
 			failed = true
 		}
 	}
 	return results, nil
-}
-
-// runAcceptanceTarget performs the single planned recreation for one target,
-// proving persistence with the component's REAL business protocol, under a
-// durable at-most-once ledger:
-//  1. authorise the target from live facts, not names: the pod uid, its owner
-//     reference's controller flag and uid matched against the controller's own
-//     live uid, the PVC the pod really mounts, and the PV bound back to that PVC;
-//  2. durably record the intent BEFORE any change (delete quota consumed);
-//  3. write the token through the data protocol (PostgreSQL committed SQL row /
-//     NATS JetStream PubAck) — never a bare marker file;
-//  4. delete the Pod exactly once, with the authorised uid carried IN the request
-//     so a same-name replacement that appears after the last client read is not
-//     deleted — and the delete is refused outright if the server will not honour
-//     that condition, never retried without it;
-//  5. wait for the controller to recreate the Pod with a DIFFERENT UID and a
-//     Ready condition (not merely Running);
-//  6. read the SAME token back through the protocol and confirm the PVC object
-//     is unchanged.
-func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, deleter *podDeleter, component string, target acceptanceTarget, stateDir, runID, registry string) VerifyComponentResult {
-	result := VerifyComponentResult{Component: component}
-	evidence := map[string]string{
-		"controller": target.ControllerKind + "/" + target.ControllerName,
-		"pod":        target.Namespace + "/" + target.PodName,
-		"pvc":        target.PVCName,
-		"protocol":   target.Protocol,
-	}
-
-	// Authorization precondition: the target must exist and be the declared
-	// controller's Pod, bound to the declared PVC.
-	oldPodUID, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.uid}")
-	if err != nil || oldPodUID == "" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("target pod %s/%s not found or unreadable (Forbidden is not NotFound): %v", target.Namespace, target.PodName, err)
-		result.Evidence = evidence
-		return result
-	}
-	// C03: the owner is authorised by the controller's OWN live uid and its
-	// controller flag, not by the owner name alone. An adopted Pod that merely
-	// carries the right name — or one whose controller was replaced — is not the
-	// object this target declares, and deleting it would mutate something else.
-	ownerName, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].name}")
-	if err != nil || ownerName != target.ControllerName {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("pod %s is not owned by the declared controller %s (owner=%q): refusing to mutate an unexpected object", target.PodName, target.ControllerName, ownerName)
-		result.Evidence = evidence
-		return result
-	}
-	if isController, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].controller}"); err != nil || isController != "true" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("pod %s owner reference %q is not marked controller=true (got %q): refusing to recreate a Pod whose managing controller is unconfirmed", target.PodName, target.ControllerName, isController)
-		result.Evidence = evidence
-		return result
-	}
-	controllerKind := strings.ToLower(target.ControllerKind)
-	controllerUID, err := runner.jsonpath(ctx, controllerKind, target.ControllerName, target.Namespace, "{.metadata.uid}")
-	if err != nil || controllerUID == "" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("declared controller %s/%s cannot be read in %s; refusing to recreate a Pod whose controller identity is unconfirmed: %v",
-			target.ControllerKind, target.ControllerName, target.Namespace, err)
-		result.Evidence = evidence
-		return result
-	}
-	ownerUID, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.ownerReferences[0].uid}")
-	if err != nil || ownerUID != controllerUID {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("pod %s is owned by %q uid %q but the live %s/%s has uid %q: the Pod belongs to a different controller generation",
-			target.PodName, target.ControllerName, ownerUID, target.ControllerKind, target.ControllerName, controllerUID)
-		result.Evidence = evidence
-		return result
-	}
-	oldPVCUID, err := runner.jsonpath(ctx, "pvc", target.PVCName, target.Namespace, "{.metadata.uid}")
-	if err != nil || oldPVCUID == "" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("target PVC %s/%s not found: %v", target.Namespace, target.PVCName, err)
-		result.Evidence = evidence
-		return result
-	}
-	// C03: the declared PVC must be the volume THIS Pod actually mounts, and the
-	// PV must be bound back to THIS PVC object. Otherwise the check could recreate
-	// a Pod backed by other storage and still read its token from an untouched
-	// volume — a pass that proves nothing about persistence.
-	claimNames, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace,
-		"{.spec.volumes[*].persistentVolumeClaim.claimName}")
-	if err != nil {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the volumes of pod %s cannot be read: %v", target.PodName, err)
-		result.Evidence = evidence
-		return result
-	}
-	if !jsonpathListContains(claimNames, target.PVCName) {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("pod %s does not mount the declared PVC %s (its claims are %q): refusing to certify persistence of a volume it does not use",
-			target.PodName, target.PVCName, claimNames)
-		result.Evidence = evidence
-		return result
-	}
-	pvName, _ := runner.jsonpath(ctx, "pvc", target.PVCName, target.Namespace, "{.spec.volumeName}")
-	if pvName == "" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("PVC %s/%s is not bound to a persistent volume, so a recreation cannot certify durable storage", target.Namespace, target.PVCName)
-		result.Evidence = evidence
-		return result
-	}
-	claimRefUID, err := runner.jsonpath(ctx, "persistentvolume", pvName, "", "{.spec.claimRef.uid}")
-	if err != nil || claimRefUID != oldPVCUID {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("PV %s is claimed by uid %q but PVC %s has uid %q: the binding is not this pair, so persistence is not attestable",
-			pvName, claimRefUID, target.PVCName, oldPVCUID)
-		result.Evidence = evidence
-		return result
-	}
-	evidence["oldPodUID"] = oldPodUID
-	evidence["oldPVCUID"] = oldPVCUID
-	evidence["controllerUid"] = controllerUID
-	evidence["pv"] = pvName
-
-	token := "ani-accept-" + acceptanceToken()
-	rec := acceptanceLedger{
-		State: ledgerStateAttempted, RunID: runID, Target: component,
-		OldPodUID: oldPodUID, OldPVCUID: oldPVCUID,
-		Controller: target.ControllerKind + "/" + target.ControllerName,
-		Token:      token, StartedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-	existing, created, err := claimAcceptanceLedger(stateDir, runID, target, rec)
-	if err != nil {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("could not record the recreation intent: %v", err)
-		result.Evidence = evidence
-		return result
-	}
-	if !created {
-		// A prior attempt already consumed this (run,target)'s single recreation.
-		// Refuse to re-issue the delete; unknown is never auto-replayed.
-		evidence["ledgerState"] = existing.State
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the recreation for run %s target %s is already recorded as %s; refusing a second delete — start a new install run instead of replaying", runID, component, existing.State)
-		result.Evidence = evidence
-		return result
-	}
-
-	// Write the business token through the real protocol (aux marker is extra
-	// evidence only, never the pass test).
-	if detail, ok := protocolWrite(ctx, runner, target, registry, token); !ok {
-		result.Detail = detail + ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "write-failed")))
-		result.Status = VerifyStatusFailed
-		result.Evidence = evidence
-		return result
-	}
-	if target.AuxMarkerPath != "" {
-		_, _ = runner.execIn(ctx, target.Namespace, target.PodName, target.Container,
-			fmt.Sprintf("printf '%%s' '%s' > '%s'", token, target.AuxMarkerPath))
-	}
-
-	// Immediate pre-delete identity recheck (T08): the pod standing at this
-	// name must still be the exact object whose UID was captured and authorized.
-	// A same-name replacement (recreated by an operator, adopted by another
-	// owner) is never deleted by this run.
-	liveUID, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.uid}")
-	if err != nil || liveUID != oldPodUID {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the target pod identity changed before the delete (authorized %s, live %q); refusing to delete a same-name replacement", oldPodUID, liveUID)
-		result.Evidence = evidence
-		return result
-	}
-
-	// C03: the client-side recheck above is not the authorization — the server is.
-	// Between that read and the request the pod can be replaced under the same name,
-	// and a client-side check alone would then delete the newcomer. So the
-	// authorised uid travels INSIDE the delete as DeleteOptions.Preconditions.UID,
-	// which the API server evaluates as part of the deletion and answers 409 when it
-	// does not hold. Nothing in this function can issue a delete without it.
-	outcome, deleteErr := deleter.deletePodWithUIDPrecondition(ctx, target.Namespace, target.PodName, oldPodUID)
-	evidence["deleteOutcome"] = string(outcome)
-	switch outcome {
-	case deleteDeleted:
-		// The authorised object is gone; wait for the controller's replacement below.
-	case deleteConflict, deleteForbidden, deleteNotFound:
-		// A determinate refusal: the server answered, and this run deleted nothing.
-		// The claim stays spent, because re-issuing a declared change is what
-		// re-planning is for, and re-reading a fresh uid and deleting again is
-		// precisely the substitution the precondition exists to refuse.
-		result.Status = VerifyStatusFailed
-		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateRefused, string(outcome)))) + fmt.Sprintf("the uid-preconditioned delete of pod %s/%s was refused (%s: %v); this run deleted nothing and will not retry without the precondition",
-			target.Namespace, target.PodName, outcome, deleteErr)
-		result.Evidence = evidence
-		return result
-	default:
-		// Timeout, cancellation or any other failure: the request went out and its
-		// effect cannot be read, so it is recorded as unknown and never replayed.
-		result.Status = VerifyStatusFailed
-		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "delete-"+string(outcome)))) + fmt.Sprintf("the uid-preconditioned pod delete failed with an unknown remote outcome (%s: %v); it is not retried without the precondition",
-			outcome, deleteErr)
-		result.Evidence = evidence
-		return result
-	}
-	// Wait for a DIFFERENT UID that is Ready (condition, not phase) with a
-	// single bounded budget; no second delete, no agent restart.
-	recreateTimeout := 5 * time.Minute
-	if v := strings.TrimSpace(os.Getenv("ANI_VERIFY_POD_RECREATE_TIMEOUT")); v != "" {
-		if parsed, err := time.ParseDuration(v); err == nil && parsed > 0 {
-			recreateTimeout = parsed
-		}
-	}
-	deadline := time.Now().Add(recreateTimeout)
-	newPodUID := ""
-	for {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			result.Status = VerifyStatusFailed
-			result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateUnknown, "cancelled", newPodUID))) + fmt.Sprintf("waiting for the recreated pod was cancelled; remote result is unknown: %v", ctxErr)
-			result.Evidence = evidence
-			return result
-		}
-		uid, err := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace, "{.metadata.uid}")
-		if err == nil && uid != "" && uid != oldPodUID {
-			ready, _ := runner.jsonpath(ctx, "pod", target.PodName, target.Namespace,
-				"{.status.conditions[?(@.type==\"Ready\")].status}")
-			if ready == "True" {
-				newPodUID = uid
-				break
-			}
-		}
-		if time.Now().After(deadline) {
-			result.Status = VerifyStatusFailed
-			result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateUnknown, "not-ready", newPodUID))) + fmt.Sprintf("the pod did not come back Ready with a new UID within %s (last uid=%q); Running-but-not-Ready is never a pass", recreateTimeout, uid)
-			result.Evidence = evidence
-			return result
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(2 * time.Second):
-		}
-	}
-	evidence["newPodUID"] = newPodUID
-
-	newPVCUID, err := runner.jsonpath(ctx, "pvc", target.PVCName, target.Namespace, "{.metadata.uid}")
-	if err != nil || newPVCUID == "" {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the PVC %s is gone after the recreation: %v", target.PVCName, err)
-		result.Evidence = evidence
-		return result
-	}
-	evidence["newPVCUID"] = newPVCUID
-	if newPVCUID != oldPVCUID {
-		result.Status = VerifyStatusFailed
-		result.Detail = "the PVC was replaced by a new object; a persistence acceptance can never pass on fresh storage"
-		result.Evidence = evidence
-		return result
-	}
-
-	// Read the SAME business token back through the real protocol.
-	if detail, ok := protocolReadBack(ctx, runner, target, registry, token); !ok {
-		result.Status = VerifyStatusFailed
-		result.Detail = detail
-		result.Evidence = evidence
-		return result
-	}
-
-	if err := finalizeAcceptanceLedger(stateDir, runID, target, terminalLedgerWithNewPod(rec, ledgerStateDone, VerifyStatusPass, newPodUID)); err != nil {
-		result.Status = VerifyStatusFailed
-		result.Detail = fmt.Sprintf("the recreation passed but its ledger could not be finalized (result is not silently retried): %v", err)
-		result.Evidence = evidence
-		return result
-	}
-
-	result.Status = VerifyStatusPass
-	result.Detail = fmt.Sprintf("one planned recreation completed; %s persisted across the rebuild and the PVC object is unchanged", target.Protocol)
-	result.Evidence = evidence
-	return result
 }
 
 // acceptanceClient is the in-cluster one-shot image that carries the CLI for a
