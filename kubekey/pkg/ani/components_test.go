@@ -880,7 +880,10 @@ func TestConnectionsDocumentAssemblesEnabledFragments(t *testing.T) {
 		}
 	}
 	dest := filepath.Join(workRoot, "connections.md")
-	if err := writeConnections(dest, workRoot, rows); err != nil {
+	// writeConnections now takes the fragment directory the roles were told to
+	// write into, because that is the whole point of the run scope: the caller
+	// cannot hand it one place and have the roles fill another.
+	if err := writeConnections(dest, dir, rows); err != nil {
 		t.Fatalf("writeConnections: %v", err)
 	}
 	info, err := os.Stat(dest)
@@ -1111,8 +1114,14 @@ func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 		if !strings.Contains(string(tasks), "src: connection.md") {
 			t.Fatalf("%s tasks do not render connection.md", name)
 		}
-		if !strings.Contains(string(tasks), "work/connections.d") {
-			t.Fatalf("%s tasks do not create the connections.d directory", name)
+		// C07: the directory is no longer a path each role invents. A role that
+		// fell back to hardcoding the base install's connections.d would pass the
+		// old assertion and fail this one.
+		if !strings.Contains(string(tasks), "{{ .ani.run.connections_dir }}") {
+			t.Fatalf("%s tasks do not take the connections fragment directory from the run scope", name)
+		}
+		if strings.Contains(string(tasks), "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d") {
+			t.Fatalf("%s tasks still hardcode the base install's connections.d", name)
 		}
 	}
 }
@@ -1147,6 +1156,34 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		"network":     true,
 		"images":      true,
 		"storage":     true,
+		// C07's run scope. Not whitelisted on trust: the loop below proves
+		// KubeKeyConfig actually emits .ani.run with the fields roles read, so
+		// this entry cannot drift into a key nobody builds.
+		"run": true,
+	}
+
+	// The premise of the allow-list is that the installer builds these keys, so
+	// check it against the generator rather than against this comment.
+	siteConfig, err := parseSite(t, "components:\n  certManager:\n    enabled: true\n")
+	if err != nil {
+		t.Fatalf("parse the guard's site config: %v", err)
+	}
+	generated, err := KubeKeyConfig(siteConfig, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
+	if err != nil {
+		t.Fatalf("build the config spec the roles are validated against: %v", err)
+	}
+	aniBlock, _ := generated["ani"].(map[string]any)
+	for _, key := range []string{"components", "images", "storage", "registry", "network", "run"} {
+		if _, present := aniBlock[key]; !present {
+			t.Fatalf("the installer does not build .ani.%s at all, yet roles are allowed to read it", key)
+		}
+	}
+	runScope, _ := aniBlock["run"].(map[string]any)
+	for _, field := range []string{"kubeconfig", "logs_dir", "connections_dir"} {
+		value, _ := runScope[field].(string)
+		if value == "" || !filepath.IsAbs(value) {
+			t.Fatalf(".ani.run.%s must be a non-empty absolute path, got %q", field, value)
+		}
 	}
 
 	checked := 0

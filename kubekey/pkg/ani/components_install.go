@@ -300,7 +300,7 @@ func (input *ComponentsInstallInput) kubeconfigOrDefault() string {
 	if strings.TrimSpace(input.Kubeconfig) != "" {
 		return strings.TrimSpace(input.Kubeconfig)
 	}
-	return "/etc/kubernetes/admin.conf"
+	return DefaultKubeconfigPath
 }
 
 // loadComponentsInstallConfig parses and validates the NEW site config (the
@@ -1286,7 +1286,7 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	// has been written to the cluster yet.
 	kubeconfig := strings.TrimSpace(input.Kubeconfig)
 	if kubeconfig == "" {
-		kubeconfig = "/etc/kubernetes/admin.conf"
+		kubeconfig = DefaultKubeconfigPath
 	}
 	runner := kubectlRunner{bin: kubectlBin(), kubeconfig: kubeconfig}
 	liveID, notReady, err := captureLiveCluster(ctx, runner)
@@ -1494,6 +1494,18 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	if err != nil {
 		return err
 	}
+	// C07: the run's context is fixed before anything is written, and it is the
+	// kubeconfig the live-cluster binding above already vouched for. A path named
+	// here that does not exist on the host about to do the writing fails now,
+	// before a component is changed, rather than half-applying.
+	scope := ComponentsRunScope(plan.ClusterName, plan.RunID, input.Output, kubeconfig)
+	scope.KKBinary = kk
+	if err := scope.Validate(); err != nil {
+		return errors.Wrap(err, "the run's kubeconfig was bound to a cluster and then became unusable")
+	}
+	if err := scope.Replace(spec); err != nil {
+		return err
+	}
 	if err := writeYAML(filepath.Join(workRoot, "config.yaml"), map[string]any{
 		"apiVersion": "kubekey.kubesphere.io/v1",
 		"kind":       "Config",
@@ -1598,21 +1610,14 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	// This run's aggregated connections document is its own, written next to its
 	// runtime root, so the base install's connections.md is never replaced.
 	//
-	// R15.3 defect 6: the component roles render their per-component fragments
-	// into the canonical per-cluster runtime root (the base installer's contract,
-	// hardcoded in every role as /var/lib/ani-installer/<cluster>/work/
-	// connections.d), not into this run's --workdir, so they are read from there.
-	// That is an accepted limit rather than a claim of innocence: this run DOES
-	// leave files in the base's connections.d, and nothing here may be read as
-	// "the base's working files are untouched". Routing those fragments through
-	// the run's own directory needs all eight roles to take the path from the run
-	// context instead of hardcoding it, and is recorded as an open item.
-	// (docs/execution/progress.yaml, F-live/c01c10ConnectionsDirStillBaseScoped)
-	if plan.ClusterName == "" || plan.ClusterName == "." || plan.ClusterName == ".." ||
-		strings.ContainsAny(plan.ClusterName, `/\`) {
-		return fmt.Errorf("cluster name %q cannot form a safe runtime path", plan.ClusterName)
-	}
-	fragmentRoot := filepath.Join(runtimeBaseDir, plan.ClusterName, "work")
+	// R15.3 defect 6, closed by C07: the roles take their fragment destination from
+	// {{ .ani.run.connections_dir }}, which is the value applied to the spec above
+	// and therefore the value read back here. A components run writes into its own
+	// run directory and aggregates from that same directory, so it neither pollutes
+	// the base install's connections.d nor quietly satisfies itself from the base's
+	// older fragments. writeConnections refuses an enabled component with no
+	// fragment of this run, so a missing one is an error rather than a silent gap
+	// filled by a previous run's file.
 	rows := []ComponentRow{}
 	for _, row := range effectiveSelection(*cluster) {
 		for _, component := range executed {
@@ -1622,7 +1627,7 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 		}
 	}
 	connectionsFile := filepath.Join(root, "connections.md")
-	if err := writeConnections(connectionsFile, fragmentRoot, rows); err != nil {
+	if err := writeConnections(connectionsFile, scope.ConnectionsDir, rows); err != nil {
 		// The playbook did run, so the run's own outcome stays recorded; only
 		// the aggregation is unresolved and the operator is told so.
 		for index := range report.Results {

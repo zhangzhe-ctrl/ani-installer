@@ -91,11 +91,17 @@ INSPECTOR_PREFIX="ani-fb-insp-${RUN_ID}"
 # uid fetched after the fact can belong to whoever replaced our pod, and recording
 # that as ours would license deleting a stranger.
 #
-# The uid is still only a verification, not the condition of the delete: kubectl
-# offers no way to put DeleteOptions.Preconditions on the wire, so what makes a
-# deletion safe here is that every probe carries an attempt-unique label and the
-# delete selects by that label server-side. An object this run did not create
-# cannot match it, and a replacement under one of these names would not either.
+# C08: that uid is not merely a verification — it IS the condition of the delete.
+# A probe is released through this run's own executable (`kk ani pod-release`),
+# which puts the uid into DeleteOptions.Preconditions so the API server checks the
+# identity and deletes it as one operation. kubectl cannot send that condition at
+# all, and a label selection authorises a whole set the run never created a claim
+# over, so neither is used here. Where no entry point was supplied, the probe is
+# KEPT and reported: a leftover pod is a fact the operator can act on, while a
+# delete-by-name can remove an object this run has no authority over.
+#
+# The attempt label stays on every probe: it is how a human finds what an aborted
+# run left behind, and nothing more.
 #
 # Cleanup failures go to CLEANUP_FAILURES and fail the run. Swallowing them with
 # `|| true` is what let probes accumulate silently.
@@ -113,76 +119,82 @@ own_pod() { # own_pod <name> <uid-from-the-create-response>
   printf '%s %s\n' "$name" "$uid" >> "$EVIDENCE/owned-pods.txt"
 }
 
-# create_pod applies a manifest the caller already wrote to disk and records the
+# create_pod creates a manifest the caller already wrote to disk and records the
 # uid the API returned for it. A manifest file rather than a pipe, because a pod
 # definition piped through command substitution never reaches kubectl: the create
 # would silently send an empty document, and an ownership ledger built on top of
 # that would be recording nothing while looking exactly like it recorded something.
+#
+# C08: `create`, never `apply`. apply updates whatever object already owns the
+# name, so a run that "created" a probe this way could adopt a pod it did not
+# create — and then hand itself the authority to delete it. A taken name is a
+# collision to report.
 create_pod() { # create_pod <name> <manifest-file>
-  local name="$1" manifest="$2" uid
+  local name="$1" manifest="$2" uid rc=0
   [ -s "$manifest" ] || { CLEANUP_FAILURES+=("$name: the manifest $manifest is empty"); return 1; }
-  if ! uid="$(kubectl -n "$NS" apply -f "$manifest" --output jsonpath='{.metadata.uid}')"; then
-    CLEANUP_FAILURES+=("$name: the create failed")
+  uid="$(kubectl -n "$NS" create -f "$manifest" --output jsonpath='{.metadata.uid}' 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    CLEANUP_FAILURES+=("$name: the create-only request failed (rc=$rc) and nothing was adopted: ${uid##*$'\n'}")
     return 1
   fi
   own_pod "$name" "$uid"
 }
 
+# conditional_release asks this run's own executable to delete one pod under the
+# uid its create returned. The answer is a token, not an exit code, because
+# "released" and "absent" end the obligation while every other answer keeps it.
+conditional_release() { # conditional_release <name> <uid>
+  local name="$1" uid="$2" out rc=0 first
+  if [ -z "${ANI_KK_BIN:-}" ]; then
+    CLEANUP_FAILURES+=("$name: kept at uid $uid; this run was given no conditional delete entry point (ANI_KK_BIN is empty) and will not delete a pod by name")
+    return 1
+  fi
+  if [ ! -x "${ANI_KK_BIN}" ]; then
+    CLEANUP_FAILURES+=("$name: kept at uid $uid; ANI_KK_BIN=${ANI_KK_BIN} is not executable, so no preconditioned delete could be issued")
+    return 1
+  fi
+  out="$("${ANI_KK_BIN}" ani pod-release --kubeconfig "$KUBECONFIG_FILE" --namespace "$NS" --pod "$name" --uid "$uid" 2>&1)" || rc=$?
+  first="${out%%$'\n'*}"
+  printf 'pod-release %s %s rc=%s :: %s\n' "$name" "$uid" "$rc" "$first" >> "$EVIDENCE/cleanup.txt"
+  case "$first" in
+    deleted*)
+      note "released $name (uid $uid)"
+      return 0 ;;
+    not_found*)
+      # Not "deleted by this run": this attempt never removed anything.
+      note "$name is already gone; not claimed as deleted by this attempt"
+      return 0 ;;
+    *)
+      CLEANUP_FAILURES+=("$name: kept, the conditional delete did not succeed (rc=$rc): $first")
+      return 1 ;;
+  esac
+}
+
 release_pod() { # release_pod <name> — delete ONLY what this attempt created
-  local name="$1" want have
+  local name="$1" want
   want="${OWNED[$name]:-}"
   if [ -z "$want" ]; then
     note "leaving $name alone: this attempt did not create it"
     return 0
   fi
-  if ! have="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>&1)"; then
-    # A failed read is not "absent". Deleting by name anyway is exactly the
-    # read-then-delete-by-name pattern C08 is about, so the object stays and the
-    # run says so.
-    CLEANUP_FAILURES+=("$name: kept, its uid could not be read (${have##*$'\n'})")
-    return 1
-  fi
-  have="${have//[[:space:]]/}"
-  if [ -z "$have" ]; then
-    note "leaving $name alone: it is already gone"
+  # There is no read before the delete: the server is the authority on whether the
+  # object at this name is still the one this attempt created, which is exactly
+  # what a client-side check cannot guarantee.
+  if conditional_release "$name" "$want"; then
     unset 'OWNED[$name]'
-    return 0
   fi
-  if [ "$have" != "$want" ]; then
-    CLEANUP_FAILURES+=("$name: kept, it now carries uid $have, not the $want this attempt created")
-    unset 'OWNED[$name]'
-    return 1
-  fi
-  if ! kubectl -n "$NS" delete pod "$name" --wait=true --timeout=120s >/dev/null; then
-    CLEANUP_FAILURES+=("$name: the delete of a pod this attempt owns failed")
-    return 1
-  fi
-  if still="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null)" && [ -n "${still//[[:space:]]/}" ]; then
-    CLEANUP_FAILURES+=("$name: still present at uid $still after a delete that reported success")
-    return 1
-  fi
-  unset 'OWNED[$name]'
 }
 
-# release_all_owned removes everything this attempt created in one server-side
-# selection over the label it minted, then checks each recorded object really
-# went away. Anything left is reported rather than retried or forgotten.
+# release_all_owned walks this attempt's own ledger, one object and one uid at a
+# time. It is not a batch delete and never selects by label: the ledger is the
+# only set this run has a claim over, and an object that cannot be released stays
+# in it so the run reports what is still there.
 release_all_owned() {
-  local name want leftovers=()
+  local name
   if [ "${#OWNED[@]}" -eq 0 ]; then return 0; fi
-  if ! kubectl -n "$NS" delete pod -l "$ATTEMPT_LABEL" --wait=true --timeout=180s >/dev/null; then
-    CLEANUP_FAILURES+=("the attempt-labelled delete failed for ${#OWNED[@]} probe pod(s)")
-  fi
   for name in "${!OWNED[@]}"; do
-    want="${OWNED[$name]}"
-    if have="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null)" && [ -n "${have//[[:space:]]/}" ]; then
-      leftovers+=("$name@$have")
-    fi
-    unset 'OWNED[$name]'
+    release_pod "$name"
   done
-  if [ "${#leftovers[@]}" -gt 0 ]; then
-    CLEANUP_FAILURES+=("probe pods this attempt created are still present: ${leftovers[*]}")
-  fi
 }
 
 report_cleanup() {
@@ -277,15 +289,21 @@ py() {
 }
 
 start_client() {
-  # C08: a name that is already taken is a collision to report, not an object to
-  # clear away. Deleting it would destroy another attempt's live probe.
+  # C08: create-only. A name that is already taken is a collision to report, not
+  # an object to clear away — deleting it would destroy another attempt's live
+  # probe. The check below is a clearer message for the common case; the create
+  # itself is what actually decides, because a name can change hands in between.
   if [ -n "$($KC get pod "$CLIENT_POD" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
     fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
   fi
-  local created_uid
-  if ! created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
+  local created_uid rc=0
+  created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
       --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' \
-      --command -- python3 -c 'import time; time.sleep(3600)')"; then
+      --command -- python3 -c 'import time; time.sleep(3600)')" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    # Nothing was adopted: a failed create leaves this run owning no object, and
+    # an AlreadyExists here means someone else holds that name.
+    CLEANUP_FAILURES+=("$CLIENT_POD: the create-only request failed (rc=$rc) and nothing was adopted")
     fail "could not create the verification client pod $CLIENT_POD"
   fi
   own_pod "$CLIENT_POD" "$created_uid"
@@ -622,9 +640,10 @@ py "$EVIDENCE/check_metadata.py" /tmp/markers-found.json \
 note "all $want_nodes markers found in $BACKEND with correct namespace/pod/container/node"
 
 # F01: smoke ends after the read-only collection probe. It created only this
-# attempt's marker/client pods; it cleans those by name and exits BEFORE the
-# backend/collector Pod rebuilds, so no existing service is restarted and no
-# global retention/routing is touched during install or smoke.
+# attempt's marker/client pods, and releases each of those under the uid its own
+# create returned; it exits BEFORE the backend/collector Pod rebuilds, so no
+# existing service is restarted and no global retention/routing is touched during
+# install or smoke.
 if [ "$LEVEL" = smoke ]; then
   release_all_owned
   report_cleanup || exit 1

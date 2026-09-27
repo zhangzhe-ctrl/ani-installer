@@ -958,7 +958,9 @@ func TestSmokeProbePackagingWiring(t *testing.T) {
 
 	for _, want := range []string{
 		"src: probe.sh",
-		"KUBECONFIG_FILE=/etc/kubernetes/admin.conf ANI_SMOKE_OUTPUT=/etc/kubernetes/ani/smoke-output bash /etc/kubernetes/ani/smoke-probe.sh",
+		// C07: the probe is told which kubeconfig to use by the run scope, so the
+		// role can no longer name admin.conf itself.
+		`KUBECONFIG_FILE="{{ .ani.run.kubeconfig }}" ANI_SMOKE_OUTPUT=/etc/kubernetes/ani/smoke-output bash /etc/kubernetes/ani/smoke-probe.sh`,
 	} {
 		if !strings.Contains(role, want) {
 			t.Fatalf("smoke role missing wiring %q", want)
@@ -1014,7 +1016,10 @@ func TestSmokeRoleParsesAsKubeKeyBlocks(t *testing.T) {
 		t.Fatal("active smoke probe block not found")
 	}
 	command, _ := probe.UnknownField["command"].(string)
-	if command != "KUBECONFIG_FILE=/etc/kubernetes/admin.conf ANI_SMOKE_OUTPUT=/etc/kubernetes/ani/smoke-output bash /etc/kubernetes/ani/smoke-probe.sh" {
+	if command != `KUBECONFIG_FILE="{{ .ani.run.kubeconfig }}" ANI_SMOKE_OUTPUT=/etc/kubernetes/ani/smoke-output bash /etc/kubernetes/ani/smoke-probe.sh` {
 		t.Fatalf("active smoke probe command did not inline required environment: %q", command)
+	}
+	if strings.Contains(command, "/etc/kubernetes/admin.conf") {
+		t.Fatal("the smoke role hardcoded an admin kubeconfig again; the run scope owns that choice")
 	}
 }

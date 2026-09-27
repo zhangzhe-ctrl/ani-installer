@@ -16,16 +16,41 @@
 # No image is fetched from a remote registry: the single container image is
 # rewritten to the site registry below.
 
+- name: ANI Loki | Assert this run's execution context
+  # C07: the kubeconfig, log and fragment directories are decided once by the
+  # run and published into the config spec, so a role must not pick its own
+  # default. This check exists because a role can be executed on a host reached
+  # over SSH where a file the parent process could read is simply absent: the
+  # only acceptable answer there is to fail before the first write, not to fall
+  # back to a local admin credential.
+  command: |
+    set -euo pipefail
+    kubeconfig_file='{{ .ani.run.kubeconfig }}'
+    if [ -z "$kubeconfig_file" ]; then
+      echo "no kubeconfig was supplied for this run; refusing to guess one" >&2
+      exit 1
+    fi
+    if [ ! -f "$kubeconfig_file" ]; then
+      echo "kubeconfig $kubeconfig_file does not exist on this host; refusing to write component material against an unreachable context" >&2
+      exit 1
+    fi
+    for declared in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$declared" in
+        /*) ;;
+        *) echo "run scope path $declared is not absolute" >&2; exit 1 ;;
+      esac
+    done
+
 - name: ANI Loki | Create work directory
   command: |
     set -euo pipefail
     install -d -m 0755 /etc/kubernetes/ani/loki
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d"
+    install -d -m 0700 "{{ .ani.run.connections_dir }}"
 
 - name: ANI Loki | Create the observability namespace
   command: |
     set -euo pipefail
-    kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | kubectl apply --server-side -f -
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl create namespace {{ .ani.components.logging.namespace }} --dry-run=client -o yaml | KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl apply --server-side -f -
 
 - name: ANI Loki | Require the packaged Helm binary
   command: test -x "{{ .ani.artifact_root }}/bin/helm"
@@ -40,7 +65,7 @@
 
 - name: ANI Loki | Install the fixed Chart from the offline artifact
   command: >-
-    {{ .ani.artifact_root }}/bin/helm install ani-loki
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" {{ .ani.artifact_root }}/bin/helm install ani-loki
     {{ .ani.artifact_root }}/charts/loki/18.13.3.tgz
     --namespace {{ .ani.components.logging.namespace }} --create-namespace
     --values /etc/kubernetes/ani/loki/values.yaml
@@ -50,13 +75,13 @@
 # renders rather than for a Deployment that does not exist.
 - name: ANI Loki | Wait for the Loki StatefulSet
   command: |
-    kubectl -n {{ .ani.components.logging.namespace }} rollout status \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} rollout status \
       statefulset/ani-loki --timeout=600s
 
 - name: ANI Loki | Wait for the data PVC to bind
   command: |
     set -euo pipefail
-    kubectl -n {{ .ani.components.logging.namespace }} wait \
+    KUBECONFIG="{{ .ani.run.kubeconfig }}" kubectl -n {{ .ani.components.logging.namespace }} wait \
       --for=jsonpath='{.status.phase}'=Bound pvc/storage-ani-loki-0 --timeout=300s
 
 - name: ANI Loki | Render component verification script
@@ -77,12 +102,12 @@
 - name: ANI Loki | Run component verification
   command: |
     set -euo pipefail
-    install -d -m 0700 "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs"
-    ANI_VERIFY_OUTPUT_DIR="/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/logs" \
-    ANI_VERIFY_KUBECONFIG="/etc/kubernetes/admin.conf" \
+    install -d -m 0700 "{{ .ani.run.logs_dir }}"
+    ANI_VERIFY_OUTPUT_DIR="{{ .ani.run.logs_dir }}" \
+    ANI_VERIFY_KUBECONFIG="{{ .ani.run.kubeconfig }}" \
       bash /etc/kubernetes/ani/loki/verify.sh
 
 - name: ANI Loki | Render connection facts fragment
   template:
     src: connection.md
-    dest: "/var/lib/ani-installer/{{ .kubernetes.cluster_name }}/work/connections.d/loki.md"
+    dest: "{{ .ani.run.connections_dir }}/loki.md"

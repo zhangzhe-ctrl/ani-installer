@@ -418,6 +418,7 @@ kubeconfig 不可加载时不消耗任何额度。原 controller/PVC/PV 授权�
 **硬编码**为 `/etc/kubernetes/admin.conf`；`--kubeconfig` 显式值未贯穿 Go→子 kk→role→Helm/kubectl→checker。
 已核实这一项不能靠环境变量传递：SSH 连接器为远端命令从零构造环境（`pkg/connector/ssh_connector.go` 的
 `varsToEnviron`），只导出 `http_proxy`/`KUBECONFIG`/`KUBERNETES_SERVICE_HOST/PORT`，父 kk 的 `os.Environ()` 不过去。
+**这一段的两处事实在第三轮被实测推翻，见文末“第三轮”更正条；保留原文以便审计，不再作为改动依据。**
 正确接法是走本仓真实使用的渲染上下文与 inventory 变量（`pkg/ani/config.go` 构造 `.ani/.kubernetes/.images`，
 `pkg/kkims` 的 `kube_config` 已是 `/etc/kubernetes/<name>.conf` 的现成先例），
 并同一条上下文承载 connections 片段/日志目录，使首装写 base 目录、组件新增写自己的 run 目录并从同一目录聚合
@@ -433,6 +434,8 @@ kubeconfig 不可加载时不消耗任何额度。原 controller/PVC/PV 授权�
 另有装配陷阱：`.ani.components.<name>.enabled` 在真实渲染上下文里**恒为 false**（Go 字段无 yaml tag，
 渲染上下文由 `yaml.Marshal` 产生，键是 `certManager`/`metrics`/`logging`），
 所以任何以它为条件的 role 在实机每次都会跳过——接通时必须用 `.backend`/`.metrics.enabled` 这类真实字段。
+**这条在第三轮按真实生成器→落地 YAML→变量合并→条件求值实测推翻：`.enabled` 读到的就是站点写的值，
+开启时门条件为 true。原判断不成立，因此没有修改任何 `when` 条件。**详见文末更正条。
 本轮保留：batchv1.Job 构造与本地校验、显式未实现专项的拒绝与非通过汇总、全 pass 才 pass；
 未删除功能、未叫用户手跑绕账本的脚本；多目标账本（每目标至多一次、别名/子 run/output 不得二次开额度）
 与 RunVerify→真实协议函数集成测试待下一轮实现。
@@ -441,3 +444,99 @@ kubeconfig 不可加载时不消耗任何额度。原 controller/PVC/PV 授权�
 
 `scripts/check-code.sh` 完整一次 rc=0，树指纹 `c641e6b14b1765083bb54effeef8eeea336405ad630787ff178540dc32aa38a4`
 （gate/build/打包三处一致的机制未变）；包含本轮 C03/C08 改动。C10 的固定 Chart 准备与摘要校验保留、未改版本或批准 pin。
+
+## 第三轮（2026-09-27）：C07 执行上下文与连接片段隔离、C08 探针创建与条件清理
+
+本轮只交付这两项。C04 多目标重型验收入口保持“未实施”，需求未删除、未标完成。
+
+### 更正两条既有记录（实测，非口径调整）
+
+1. **`pkg/connector/ssh_connector.go` 不存在 `varsToEnviron`，SSH 也不导出 `KUBECONFIG`/`http_proxy`。**
+   真实代码是 `buildSudoCommand`：远端只收到一条
+   `TERM=dumb; export LANG=C.UTF-8; SUDO_USER=<user>; sudo -E <shell> -c "<渲染后的命令文本>"`，
+   会话建立过程一个 `env` 请求都不发（`sshConnector.session()` 仅 `RequestPty`）。
+   方向与原文相反的是**本地连接器**：`localConnector.ExecuteCommand` 用
+   `sudo -SE <shell> -c <cmd>` 且 `SetEnv(append(os.Environ(), "SUDO_USER=…"))`，父 kk 的环境**会**跟着过去。
+   结论仍是“不能靠环境变量承载运行上下文”，但理由变成：两条链对环境的处理天然不对称，
+   唯一两者都无条件携带的是渲染进命令文本本身。
+   证据：`TestC07_LocalAndSSHChainsCarryTheSameCommandAndNoInheritedTarget`（本进程注入 `KUBECONFIG=/parent-process/…`
+   后，SSH exec 报文里既不出现该路径也没有 `env` 请求，本地记录到的环境里它就是父进程的值；
+   两条链交给 shell 的 `-c` 脚本文本逐字节相等）、
+   `TestC07_SSHPayloadCarriesNoFallbackCredentialLookup`、
+   `TestC07_RemoteHostWithoutThePinnedKubeconfigIsStillGivenThePinnedPath`、
+   `TestC07_FakeExecReportsTheEnvironmentItWasGiven`（守卫：断言 fake 真的看见父环境，否则不对称结论不成立）。
+2. **“`.ani.components.<name>.enabled` 恒为 false”不成立，因此没有修改任何 `when` 条件。**
+   `componentSpec` 显式构造 `map[string]any{"enabled": row.Enabled}`，不依赖 Go 字段的 yaml tag。
+   实测链：站点 YAML → `LoadClusterConfig` → `KubeKeyConfig` → `writeYAML` → 真实 kk 加载器
+   （`cmd/kk/app/options.CommonOptions.Complete`）→ `variable.New`+`GetAllVariable` 合并 →
+   `api/project/v1` 解析真实 playbook → `tmpl.ParseBool` 求值：
+   开启=true、关闭=false、开启但不在本轮 scope=false；三种结果由
+   `TestC07_ComponentSwitchHasExactlyTheThreeStatesThePlaybooksDescribe` 记录。
+   顺带实测到另一条与 playbook 注释相反的事实：**整块 `components_run` 缺失时，条件不是“取零值跳过”，
+   而是 `index of untyped nil` 模板错误**（`ani_components.yaml` 原注释据此更正）。该组合在生产里不可达
+   ——该 playbook 只由 components run 调用，scope 必然渲染出来——所以只改注释，不改条件。
+
+### C07：一次确定的运行上下文 + 连接片段目录隔离 — code_fixed
+
+新增 `pkg/ani/run_scope.go` 的 `RunScope{Kubeconfig, LogsDir, ConnectionsDir, RunID, KKBinary}`，
+复用既有数据结构：由 `KubeKeyConfig` 直接构造并写进 `.ani.run`（不是某处 append `os.Environ`，也不是新增配置系统），
+`Apply` 拒绝二次决定，`Replace` 只允许覆盖一个已存在的 scope。
+- 首装：`InstallRunScope(cluster)` → admin.conf（由本次集群初始化产生）、`<base>/logs`、`<base>/work/connections.d`；
+  runner 再把自身可执行文件补进同一 scope，并让 `runKubeKeyLogged`、`captureClusterIdentity`、`writeConnections` 都读它，
+  三处此前硬编码 `/etc/kubernetes/admin.conf` 的调用点改为 scope 值；`verify.go`/`components_install.go`/`cmd/kk/app/builtin/ani.go`
+  的字面量统一为 `DefaultKubeconfigPath` 单一来源。
+- 组件新增：`ComponentsRunScope` → 命令行给定的 kubeconfig（已由 live-cluster 绑定校验背书）+ 自己的 `components-<run>/logs|work/connections.d`。
+- 8 个组件 role + smoke role：connections 片段目录、日志目录、checker 的 `ANI_VERIFY_KUBECONFIG`、
+  smoke 的 `KUBECONFIG_FILE` 全部改读 `{{ .ani.run.* }}`；96 处 kubectl/Helm 调用前置 `KUBECONFIG="{{ .ani.run.kubeconfig }}"`；
+  每个 role 的第一个 task 是“本 run 执行上下文”守卫（文件不在本机就失败，不回落到 admin.conf）。
+  ceph/envoy/kubeovn 三个 role 有意未改：它们在远端节点上跑，依赖节点自身的 `~/.kube/config`，不在本项边界内。
+- 片段写入与聚合读同一目录：`writeConnections(dest, dir, rows)` 的 dir 由调用方从 scope 传入，
+  组件 run 不再读写 base 的 `connections.d`，缺本轮片段直接失败而不借用旧片段，base 的 `run.json`/片段/`connections.md` 前后摘要不变。
+- 证据：`TestC07_RoleTasksRenderTheRunsKubeconfigIntoEveryClusterCall`（9 个 role 的每一条 cluster 调用）、
+  `TestC07_InstallScopeIsTheAdminConfigTheInstallCreates`、
+  `TestC07_TheCheckerIsGivenTheRunsOwnExecutable`、
+  `TestC07_ThePinnedContextDecidesWhichEndpointIsContactedAtAll`（两份互斥 dummy kubeconfig + 两个隔离 HTTP 端点：
+  执行真实渲染出的 nats kubectl/Helm 文本，pin=A 时 A 端点收到与调用数相等的请求、B 端点 0 条，交换后镜像成立）、
+  `TestC07_AKubeconfigMissingOnTheWritingHostFailsBeforeAnyWrite`、
+  `TestC07_AComponentsRunWritesAndReadsOnlyItsOwnFragments`、`TestC07_OneRunCannotDecideItsContextTwice`。
+  既有 `TestC07_CheckersHonourThePinnedKubeconfig`/`NoCheckerSilentlyFallsBackToAdminConf`/`ConflictingContextsAreRefusedNotGuessed` 保留。
+- 未安装 Ansible：条件求值与任务构建用的是本仓真实执行器（`pkg/executor` 的 `dealWhen`/`converter.MarshalBlock`/`modules.FindModule`/`variable.Extension2String` 同一条路径）。
+
+### C08：探针创建与条件清理 — code_fixed
+
+`fluent-bit/templates/verify.sh`：
+- **只创建语义**：`create_pod` 由 `kubectl apply -f` 改为 `kubectl create -f`；名字已被占用即失败且不认领任何东西，
+  归属记录只写创建响应返回的 uid。`start_client` 同样先创建、失败即报“未认领”。
+  测试侧 fake kubectl 对 `apply -f` 直接拒绝，回归会被抓住。
+- **删除接到既有 kk/client-go 条件删除能力**：新增最窄内部入口 `kk ani pod-release --kubeconfig --namespace --pod --uid`
+  （`pkg/ani/pod_release.go` → 复用 `pod_delete.go`，不另建服务、不复制凭据处理），
+  checker 的 `release_pod`/`release_all_owned` 改为逐条按登记 uid 调它，
+  不再有 GET-后-按名删除，不再有 `-l` 批量删除（标签只是辅助定位，不构成扩大删除集合的许可）。
+- **答案分支不许含糊**：`deleted` 才结束义务（且只声称“删除被接受”，不声称“已验证消失”、不二次读取新 uid 重删）；
+  `not_found` 记为“已不存在”，明确不叫“本轮删除”；`conflict`/`forbidden`/`timeout`/无法解析的答案保留对象、
+  **保留 OWNED 归属**并写入 `CLEANUP_FAILURES`，`report_cleanup` 让 run 失败并保留证据目录。
+  没有 `ANI_KK_BIN` 时不删除任何东西并报未完成——宁留探针也不按名删。
+- 业务 Pod 重建（acceptance 段 [3]/[4] 的两次计划内删除）与本轮探针清理是两条独立路径，额度互不消费；
+  它们仍是有名删除，属 C04 未接通范围，本轮不改动、不宣称完成。
+- 证据：wire 级 `TestC08_PodReleaseSendsTheUIDAsAServerSidePrecondition`（断言隔离端点收到的 DELETE 请求体
+  `preconditions.uid` 与 `Content-Type: application/json`，不是断言命令串）、
+  `TestC08_AReplacementUnderTheSameNameIsRefusedAndNotRetried`（409 只发一次请求、对象不变）、
+  `TestC08_AnAbsentPodIsReportedAsAbsentAndNeverAsDeleted`、
+  `TestC08_ForbiddenAndUnreachableAnswersKeepTheObligation`、
+  `TestC08_PodReleaseRefusesToInventATargetOrACondition`（缺任一入参时零请求到达端点）、
+  `TestC08_PodReleaseHonoursContextCancellationBeforeTouchingTheServer`、
+  `TestC08_PodReleaseCommandIsWiredAndRejectsAnUnconditionedCall`（checker 传的 flag 与 CLI 注册的 flag 一致）。
+  脚本级 `TestC08_OwnershipIsProofFromTheCreateNotFromALaterRead` 现覆盖：创建响应无 UID 不认领、
+  正常创建+清理、同名被占只创建失败、同名换 uid 被服务端拒绝且保留归属、forbidden/timeout/无法解析三种答案、
+  404 只记“已不存在”、无入口时零删除、只创建不认领、成功答案不重复发删除；
+  `TestC08_OverlappingRunsNeverDeleteEachOthersProbes` 保留并发整跑校验。
+- **边界照实登记**：这些是客户端与隔离端点上的证明。只跑到 client 探针的整跑不等于完整 Loki/collector 验收；
+  真 API server 是否在 etcd 层强制该前置条件、新增代码的实机 add-chain、连续离线冷启动仍为未测。
+
+### 第三轮门禁
+
+`bash scripts/check-code.sh` 完整一次 rc=0，树指纹 `13f7c394b6aa0aa62e568f0de6816c8265f82b2895e18223ff77967334d4ae67`（go1.26.7）。
+本轮为把 C07 的上下文放进 role 而修正了 `scripts/test-ani-task-errors.py` 的两处测试装配：
+模板占位符不再截掉整行（否则命令名一起被截掉，66 个多命令块全部无法注入），
+以及纯 builtin 的上下文守卫改为“直接执行、要求非零且零写入”的正向断言——两者都是加强，未放宽解析器或跳过任何块。
+C10 的固定 Chart 准备、lock 与版本/批准 pin 未改动。

@@ -81,8 +81,23 @@ case "$args" in
         if (match(line, /[^ ]/) - 1 <= indent) { inside = 0; next }
         if (line ~ /: true$/) { key = line; sub(/:.*/, "", key); gsub(/[ \t]/, "", key); print key }
       }' "$cfg" 2>/dev/null || true)"
-    if [ -n "${FAKE_RUNTIME_BASE:-}" ] && [ -n "$cluster" ] && [ -z "${FAKE_KK_NO_FRAGMENTS:-}" ]; then
-      mkdir -p "$FAKE_RUNTIME_BASE/$cluster/work/connections.d"
+    # A role writes its fragment where the run scope says, not where a previous
+    # run happened to look: read .ani.run.connections_dir back out of the config
+    # this invocation was handed, exactly as the rendered role does.
+    conndir="$(awk '
+      /^ *run:/ { inside = 1 }
+      inside && /connections_dir:/ { line = $0; sub(/.*connections_dir: */, "", line); gsub(/^"|"$/, "", line); print line; exit }
+    ' "$cfg" 2>/dev/null || true)"
+    if [ -n "${FAKE_REQUIRE_RUN_SCOPE:-}" ] && [ -z "$conndir" ]; then
+      echo "fake kk: the config spec carries no run scope connections_dir" >&2
+      exit 5
+    fi
+    fake_fragment_dir="${FAKE_OVERRIDE_CONNECTIONS_DIR:-$conndir}"
+    if [ -z "$fake_fragment_dir" ] && [ -n "${FAKE_RUNTIME_BASE:-}" ] && [ -n "$cluster" ]; then
+      fake_fragment_dir="$FAKE_RUNTIME_BASE/$cluster/work/connections.d"
+    fi
+    if [ -n "$fake_fragment_dir" ] && [ -n "$cluster" ] && [ -z "${FAKE_KK_NO_FRAGMENTS:-}" ]; then
+      mkdir -p "$fake_fragment_dir"
       for comp in $scope; do
         # A real role applies a workload for every component in scope, so the
         # fake must leave that resource existing afterwards: the execution
@@ -93,9 +108,9 @@ case "$args" in
         # simulated role forgets to write (the aggregation failure path).
         if [ "$comp" = "${FAKE_KK_MISSING_FRAGMENT:-}" ]; then continue; fi
         if [ "$comp" = nats ]; then
-          printf 'NATS connection facts\n' > "$FAKE_RUNTIME_BASE/$cluster/work/connections.d/nats.md"
+          printf 'NATS connection facts\n' > "$fake_fragment_dir/nats.md"
         else
-          printf '%s connection facts\n' "$comp" > "$FAKE_RUNTIME_BASE/$cluster/work/connections.d/$comp.md"
+          printf '%s connection facts\n' "$comp" > "$fake_fragment_dir/$comp.md"
         fi
       done
     fi

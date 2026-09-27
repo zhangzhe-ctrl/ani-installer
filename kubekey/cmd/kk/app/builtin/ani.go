@@ -39,6 +39,33 @@ func NewANICommand() *cobra.Command {
 	cmd.AddCommand(newANIVerifyCommand())
 	cmd.AddCommand(newANIComponentsCommand())
 	cmd.AddCommand(newANIMaterialsCommand())
+	cmd.AddCommand(newANIPodReleaseCommand())
+	return cmd
+}
+
+// newANIPodReleaseCommand is the internal conditional-delete entry a packaged
+// checker calls to remove a probe pod it created. It is hidden because it is not
+// an operator interface: it exists so that cleanup can carry the uid the create
+// response returned as a server-side precondition instead of deleting whatever
+// happens to stand at the name. Nothing about it lists, selects or retries.
+func newANIPodReleaseCommand() *cobra.Command {
+	input := ani.PodReleaseInput{}
+	cmd := &cobra.Command{
+		Use:    "pod-release",
+		Short:  "internal: delete one pod conditionally on the uid this run created it with",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return ani.RunPodRelease(cmd.Context(), input, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", "", "the run's kubeconfig; no default, no environment fallback")
+	cmd.Flags().StringVar(&input.Namespace, "namespace", "", "namespace of the pod to release")
+	cmd.Flags().StringVar(&input.Pod, "pod", "", "name of the pod to release")
+	cmd.Flags().StringVar(&input.UID, "uid", "", "the uid the create response returned; the delete is conditioned on it")
+	_ = cmd.MarkFlagRequired("kubeconfig")
+	_ = cmd.MarkFlagRequired("namespace")
+	_ = cmd.MarkFlagRequired("pod")
+	_ = cmd.MarkFlagRequired("uid")
 	return cmd
 }
 
@@ -71,7 +98,7 @@ func newANIComponentsExecuteCommand() *cobra.Command {
 	cmd.Flags().StringVar(&input.PackageRoot, "package-root", ".", "root of the original offline artifact")
 	cmd.Flags().StringVar(&input.BaseRunFile, "base-run", "", "install-success run.json of the base (default: the record the plan itself was built against)")
 	cmd.Flags().StringVar(&input.BaseStateFile, "base-state", "", "optional base run-state.json beside it (must agree with --base-run)")
-	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", "/etc/kubernetes/admin.conf", "kubeconfig handed to the playbook run (exported as KUBECONFIG to every child step)")
+	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", ani.DefaultKubeconfigPath, "kubeconfig handed to the playbook run (exported as KUBECONFIG to every child step)")
 	cmd.Flags().StringVar(&input.Output, "output", "/var/lib/ani-installer/components", "runtime root and report output directory")
 	cmd.Flags().StringVar(&input.KKBin, "kk", "", "kk binary that runs the playbook (default: THIS executable, absolute; the plan must have been made by the same binary)")
 	cmd.Flags().StringVar(&input.ProjectAddr, "project-addr", "", "optional local playbook project root containing builtin/")
@@ -97,7 +124,7 @@ func newANIComponentsInstallCommand() *cobra.Command {
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated canonical component IDs to add (required)")
 	cmd.Flags().StringVar(&input.BaseRunFile, "base-run", "", "path to the base install's run.json (identity/invariants source)")
 	cmd.Flags().StringVar(&input.StateFile, "state", "", "optional base install state (run-state.json)")
-	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", "/etc/kubernetes/admin.conf", "kubeconfig for the read-only live preflight")
+	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", ani.DefaultKubeconfigPath, "kubeconfig for the read-only live preflight")
 	cmd.Flags().StringVar(&input.Output, "output", "/var/lib/ani-installer/components", "plan and new run-record output directory")
 	_ = cmd.MarkFlagRequired("only")
 	_ = cmd.MarkFlagRequired("base-run")
@@ -127,7 +154,7 @@ func newANIVerifyCommand() *cobra.Command {
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated component IDs to limit the scope (each must be attested by the record: installed by it, or confirmed ANI-owned by it)")
 	cmd.Flags().BoolVar(&input.AllowPodRecreate, "allow-pod-recreate", false, "acceptance only: allow the one declared, planned pod recreation per target")
 	cmd.Flags().StringVar(&input.ScriptDir, "script-dir", "/etc/kubernetes/ani", "directory holding the packaged component verify scripts")
-	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", "/etc/kubernetes/admin.conf", "kubeconfig for acceptance kubectl calls and smoke scripts")
+	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", ani.DefaultKubeconfigPath, "kubeconfig for acceptance kubectl calls and smoke scripts")
 	cmd.Flags().StringVar(&input.Output, "output", "/var/lib/ani-installer/verify", "report output directory")
 	_ = cmd.MarkFlagRequired("run")
 	_ = cmd.MarkFlagRequired("level")

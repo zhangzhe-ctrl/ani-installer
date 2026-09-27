@@ -1319,6 +1319,12 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,
 			"installer_node": c.InstallerNode,
+			// C07: the run's execution context. It is built here, with the spec,
+			// rather than patched in by each caller, so a role can never render
+			// against a scope some entry point forgot to apply. The first install
+			// owns admin.conf because its own cluster initialisation creates it;
+			// a components run replaces the whole block with its own directories.
+			"run": InstallRunScope(c.Name).SpecMap(),
 			"network": map[string]any{
 				"stack":                networkStack(c.Network.Stack),
 				"management_interface": c.Network.ManagementInterface,

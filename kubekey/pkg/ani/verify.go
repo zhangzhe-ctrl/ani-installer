@@ -269,7 +269,7 @@ func (input *VerifyInput) defaults() error {
 		input.ScriptDir = "/etc/kubernetes/ani"
 	}
 	if strings.TrimSpace(input.Kubeconfig) == "" {
-		input.Kubeconfig = "/etc/kubernetes/admin.conf"
+		input.Kubeconfig = DefaultKubeconfigPath
 	}
 	if strings.TrimSpace(input.Output) == "" {
 		input.Output = "/var/lib/ani-installer/verify"
@@ -790,6 +790,10 @@ func runSmokeScope(ctx context.Context, input VerifyInput, subjectRunID string, 
 			"ANI_VERIFY_KUBECONFIG="+input.Kubeconfig,
 			"ANI_VERIFY_OUTPUT_DIR="+outputDir,
 			"ANI_VERIFY_LEVEL="+VerifyLevelSmoke,
+			// C08: this executable is the conditional-delete entry point the
+			// checker uses for a probe it created. Without it the checker reports
+			// its cleanup as incomplete instead of deleting by name.
+			"ANI_KK_BIN="+selfExecutable(),
 		)
 		out, err := cmd.CombinedOutput()
 		if ctx.Err() != nil {
