@@ -1377,10 +1377,10 @@ func TestMetricsRoleIsWiredAndOffline(t *testing.T) {
 	}
 }
 
-// TestMetricsVerifyExercisesRealApis pins the substance of the C2 acceptance:
-// the script must query the real HTTP APIs, drive a firing/resolved pair, and
-// rebuild pods. A script that only checked readiness would still render and
-// parse, so the claims are asserted on content.
+// TestMetricsVerifyExercisesRealApis keeps the installed smoke script and the
+// formal RunVerify acceptance plan distinct. The isolated RunVerify tests drive
+// the actual protocol/parsing path; this check pins the source routing and the
+// two one-shot business targets so a script shortcut cannot reappear.
 func TestMetricsVerifyExercisesRealApis(t *testing.T) {
 	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "metrics", "templates", "verify.sh")
 	data, err := os.ReadFile(path)
@@ -1388,72 +1388,37 @@ func TestMetricsVerifyExercisesRealApis(t *testing.T) {
 		t.Fatalf("read metrics verify.sh: %v", err)
 	}
 	script := string(data)
-
-	for _, want := range []struct{ needle, why string }{
-		{"/api/v1/query?", "must query the Prometheus HTTP API"},
-		{"/api/v1/query_range?", "must read the pre-rebuild sample back by range query"},
-		{"node_uname_info", "must prove node-exporter reads the machine"},
-		{"kube_node_info", "must prove kube-state-metrics reads the API"},
-		{"container_memory_working_set_bytes", "must check a real cAdvisor container metric"},
-		{"vector(1) == 1", "must drive a real firing transition"},
-		{"vector(0) == 1", "must resolve by evaluating to an empty vector"},
-		{"sendResolved: true", "resolved delivery must be configured"},
-		{"fingerprint", "the resolved notification must be matched on fingerprint"},
-		{"delete pod -l app.kubernetes.io/name=prometheus", "must rebuild the Prometheus pod"},
-		{"delete pod -l app.kubernetes.io/name=alertmanager", "must rebuild the Alertmanager pod"},
-		{"ani_metrics_rebuild_marker", "must write its own sample before the rebuild"},
-		{"silenceID", "must create and read back a real Alertmanager silence"},
-		{"rollout status", "must wait on the workload state rather than sleeping"},
-		{`.metadata.uid`, "must compare object identities across the rebuild"},
-		{"node-exporter ready on", "must fail when node-exporter does not cover every node"},
-	} {
-		if !strings.Contains(script, want.needle) {
-			t.Fatalf("metrics verify.sh does not contain %q: it %s", want.needle, want.why)
-		}
-	}
-
-	// The alert must fire by returning a sample and resolve by returning none,
-	// so the rule expressions must not use `bool`: with bool, vector(0) == 1
-	// would return the sample 0 and keep the alert firing forever. Only the
-	// expr lines are inspected, because the script explains the choice in
-	// comments.
-	for _, line := range strings.Split(script, "\n") {
-		if !strings.Contains(line, "expr:") {
-			continue
-		}
-		if strings.Contains(line, "bool") {
-			t.Fatalf("rule expression uses a bool modifier and could never resolve: %s", strings.TrimSpace(line))
-		}
-	}
-	// Both transitions must be expressed as a comparison against a literal, so
-	// the non-firing case is an empty vector rather than a zero sample.
-	if !strings.Contains(script, `expr: vector(1) == 1`) {
-		t.Fatal("the firing rule must compare vector(1) against 1")
-	}
-	if !strings.Contains(script, `expr: vector(0) == 1`) {
-		t.Fatal("the resolved rule must compare vector(0) against 1")
-	}
-	// Nothing may write alerts straight into Alertmanager instead of letting
-	// Prometheus evaluate them.
-	for _, bad := range []string{"/api/v2/alerts", "/api/v1/alerts"} {
-		if strings.Contains(script, bad) {
-			t.Fatalf("metrics verify.sh posts to %s, which would bypass Prometheus evaluation", bad)
-		}
-	}
-	// The lab image must be the locked offline one, not a live pull.
-	if !strings.Contains(script, `index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`) {
-		t.Fatal("metrics verify.sh does not use the locked offline python image")
-	}
-	// Cleanup has to remove this run's temporary objects.
-	for _, want := range []string{
-		`delete prometheusrule "$RULE_NAME"`,
-		`delete alertmanagerconfig "$AMCFG_NAME"`,
-		`delete deployment "$RECV_DEPLOY"`,
-		`delete pod "$CLIENT_POD"`,
-	} {
+	for _, want := range []string{"/api/v1/query?", "node_uname_info", "kube_node_info", "container_memory_working_set_bytes", `index .ani.images "docker.io/library/python:3.13.11-alpine3.23"`, "kk ani verify --level acceptance"} {
 		if !strings.Contains(script, want) {
-			t.Fatalf("metrics verify.sh does not clean up: %q", want)
+			t.Fatalf("metrics smoke script lost %q", want)
 		}
+	}
+	for _, forbidden := range []string{"delete pod -l", "silence_gc.py", `-l run_id="$RUN_LABEL"`, "/api/v2/alerts"} {
+		if strings.Contains(script, forbidden) {
+			t.Fatalf("metrics smoke script retained unsafe heavy action %q", forbidden)
+		}
+	}
+	plan, ok := acceptancePlans["metrics"]
+	if !ok || len(plan.Steps) != 11 {
+		t.Fatalf("formal metrics plan has %d steps, want 11", len(plan.Steps))
+	}
+	for i, step := range plan.Steps {
+		want := fmt.Sprintf("METRICS-%02d", i+1)
+		if step.ID != want || step.Run == nil {
+			t.Fatalf("step %d is not declared executable: %+v", i+1, step)
+		}
+	}
+	if plan.Steps[7].Target != "prometheus" || plan.Steps[9].Target != "alertmanager" {
+		t.Fatalf("business targets are not assigned to METRICS-08/10")
+	}
+	for _, key := range []string{"prometheus", "alertmanager"} {
+		target := acceptanceTargets[key]
+		if target.Namespace != MetricsNamespace || target.ControllerKind != "StatefulSet" || target.PVCName == "" || target.PodName == "" {
+			t.Fatalf("incomplete %s target: %+v", key, target)
+		}
+	}
+	if !strings.Contains(metricsWritePython, "X-Prometheus-Remote-Write-Version") || !strings.Contains(metricsRangePython, "/api/v1/query_range?") || !strings.Contains(metricsSilenceCreatePython, "/api/v2/silences") || !strings.Contains(metricsSilenceGetPython, "/api/v2/silence/") {
+		t.Fatal("formal plan lost real Prometheus/Alertmanager protocol operations")
 	}
 }
 

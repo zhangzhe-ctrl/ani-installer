@@ -135,6 +135,7 @@
     set -euo pipefail
     install -d -m 0700 "{{ .ani.run.logs_dir }}"
     ANI_VERIFY_LEVEL=smoke \
+    ANI_KK_BIN="{{ .ani.run.kk_bin }}" \
     ANI_VERIFY_OUTPUT_DIR="{{ .ani.run.logs_dir }}" \
     ANI_VERIFY_KUBECONFIG="{{ .ani.run.kubeconfig }}" \
       bash /etc/kubernetes/ani/metrics/verify.sh

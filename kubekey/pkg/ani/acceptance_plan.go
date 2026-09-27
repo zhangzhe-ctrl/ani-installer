@@ -86,6 +86,7 @@ type acceptanceAttempt struct {
 	outputDir string
 	scriptDir string
 	evidence  map[string]string
+	metrics   *metricsAttemptState
 	// wroteToken records that this attempt's data write genuinely happened, so a
 	// read-back cannot be satisfied by a fresh write.
 	wroteToken bool
@@ -131,7 +132,11 @@ func (a *acceptanceAttempt) runStep(step acceptanceStep) VerifyStepResult {
 		result.Detail = fmt.Sprintf("the run was cancelled before this step started: %v", err)
 		return result
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, acceptanceStepBudget())
+	budget := acceptanceStepBudget()
+	if step.ID == "METRICS-05" || step.ID == "METRICS-06" {
+		budget = 30 * time.Minute // the Operator/reloader can take longer than the generic step.
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, budget)
 	defer cancel()
 	owned := *a
 	owned.ctx = ctx

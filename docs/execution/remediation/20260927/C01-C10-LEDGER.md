@@ -666,3 +666,29 @@ commit `bdcd251`（`pkg/ani/acceptance_plan.go` 新增、`verify.go` 改造）�
      禁止重复初始化导致“读回”读的是新写的数据。
 
 本轮门禁（结构 + 测试）一次 rc=0，树指纹 `4607ed0c531b8db4dc4439740e2beedcfd700e5d470ccd59c2c6ff6bfb2f7961`。
+
+### C04 metrics 后继补录（2026-09-27；承接 `251c1fa1ae8af386ca72d84235c658db5e91f0bf`）
+
+上文“C04 未完成部分”是本轮接手时的交接状态；本节仅覆盖其中 **metrics**。Fluent Bit 仍未实施，090732 的 PG 额度仍为 spent；本轮未接触实验集群，现场状态为 `live_not_run`。
+
+正式入口 `RunVerify --level acceptance --only metrics --allow-pod-recreate` 注册了 Prometheus、Alertmanager 两个稳定目标与 11 个有序步骤。两次业务 Pod 删除只能通过 `recreateOnce`、原 UID 的 client-go DeleteOptions 前置条件和各目标独立账本；完整目标声明与旧额度在首次变更前预检，失败后停止后续步骤。`metrics_acceptance.go` 以同一 attempt 指针保存 firing fingerprint、原样本值/时间窗、原 silence ID/内容和创建对象 UID。临时对象使用创建响应的 UID 登记，正常结束按 UID 条件清理并确认该 UID 消失；故障保留证据，不清扫历史对象。
+
+| 台账步 | 生产步骤与实质检查 | 隔离回归（均由生产 `RunVerify` 驱动，外部 kubectl/API 为 Fedora 临时目录与 localhost 模拟） |
+|---|---|---|
+| METRICS-01 | `metrics01`：节点、STS/Deployment/DaemonSet、Service UID 与 Ready | `TestMetricsRunVerifyIsolatedAcceptance/METRICS-01-through-11-original-state-and-UID-cleanup` |
+| METRICS-02 | `metrics02`：原 `up`、`node_uname_info`、`kube_node_info`、cAdvisor 查询并比较节点数/实例 | 同上；`TestMetricsVerifyExercisesRealApis` 固定正式计划与只读 smoke 分流 |
+| METRICS-03 | `metrics03`：本 attempt 的 receiver ConfigMap/Deployment/Service、Pod Ready、创建 UID 登记 | 同上；历史对象留存与 UID 清理断言 |
+| METRICS-04 | `metrics04`：本 attempt AlertmanagerConfig；从 `/api/v2/status` 的已加载配置比较 receiver/attempt | 同上 |
+| METRICS-05 | `metrics05`：本 attempt PrometheusRule `vector(1) == 1`、Prometheus firing 序列、receiver 实收请求/labels/fingerprint | 同上；`wrong-attempt-label` 负例 |
+| METRICS-06 | `metrics06`：同 UID/RV rule 改 `vector(0) == 1`；Prometheus 告警消失、receiver resolved 的同一 fingerprint | 同上；`wrong-fingerprint` 负例 |
+| METRICS-07 | `metrics07`：原 remote-write v1 样本写入，固定值/毫秒时间戳/labels/查询窗并在重建前 instant+range 可查 | 同上；`original-sample-not-confirmed` 保留原样本证据并阻止重建；`original-sample-lost` 负例贯穿重建后读回 |
+| METRICS-08 | `metrics08` → `recreateOnce`：新 Pod UID/Ready、原 STS/PVC/PV/挂载身份、原时间窗原样本 range 读回，无补写 | 同上；`original-sample-lost`、`same-name-replacement-409`、`storage-identity-changed`、`controller-identity-changed` |
+| METRICS-09 | `metrics09`：仅匹配本 attempt 告警的 silence；保存并按原 ID 核对原内容、时间窗 | 同上；`original-silence-not-confirmed` 保留原 ID/内容证据并阻止重建；`silence-content-changed` 负例贯穿重建后读回 |
+| METRICS-10 | `metrics10` → `recreateOnce`：新 Pod UID/Ready、原 STS/PVC/PV/挂载/generated Secret UID、原 silence ID/内容读回 | 同上；`original-silence-lost`、`silence-content-changed`、`second-target-refused-stops-cleanup`、`secret-identity-changed` |
+| METRICS-11 | `metrics11`：仅删除本 attempt 的 silence ID 和创建响应登记的对象 UID；DELETE 后确认旧 UID 消失 | 同上；`cleanup-failure-is-not-pass`、`silence-expiration-must-be-observed`、历史资源未动断言 |
+
+附加回归：`TestMetricsOldQuotaRefusesBeforeTemporaryWrites`（旧额度拒绝且零临时写/业务删除），`TestMetricsCancellationAfterDeleteRequestNeverReplays`（请求发出后取消、账本 unknown、无第二次删除），`TestC03_ForbiddenTimeoutAndCancellationAreDistinct`（请求超时/取消语义），现有 `TestC04_*` 与完整 `pkg/ani` 双形态门禁覆盖 PG/NATS 受影响路径。失败证据目录按 attempt 分开，`TestMetricsFailedAttemptEvidenceSurvivesRetry` 验证早期失败后的下一次尝试不会覆盖原 marker 证据。旧 metrics `verify.sh` 只保留首装/smoke 的就绪和指标查询；旧 `ANI_VERIFY_LEVEL=acceptance` 在变更前指向正式入口并拒绝，按标签删业务 Pod、跨 attempt 预清扫和 `silence_gc.py` 已移除。smoke 探针保留已渲染的安装 run label，使用本轮创建响应 UID 通过 `ani pod-release` 释放。
+
+Fedora 隔离门禁：`scripts/check-code.sh` 初次 rc=1，原因是 `/tmp` 用户配额使 builtin 测试链接失败；未清共享缓存。改用任务自有 `/home/chabking/.cache/ani-metrics-c04-20260927/{tmp,home}` 后完整门禁 rc=0，源码树前后均为 `91bc56eb2247ac5bf98e639bcd1b9f7f3346b8e2d9a7e680c72fa7d8138d38cc`，批准 chart 6/6 校验通过。门禁日志与真实 rc 位于 Fedora `/tmp/ani-metrics-c04-20260927/gate-2.{log,rc,meta}`；这是**隔离代码验收**，不证明现场 cutover。
+
+最终候选在 Fedora 的完整 `scripts/check-code.sh` 门禁 rc=0（`gate-4.{meta,rc,log}`），`scripts/build-code.sh` 同源构建 rc=0（`build-2.{meta,rc,log}`）；两者位于 `/tmp/ani-metrics-c04-20260927/`，各自的源码树前后指纹均为 `1d78272462061a78423599dfe75e5de6a58c8ca021c1dbe0deced58ab2a25bd4`。构建脚本内置门禁也通过；先前 gate-2/gate-3 与 `ani-code-metrics-01` 是源码补强前的中间证据，不作为最终候选。最终同源包在 `/home/chabking/.cache/ani-metrics-c04-20260927/ani-code-metrics-02/`，`sha256sum -c SHA256SUMS` 全部通过，`kk` SHA-256 为 `dd7595ca977c163fd3988ed7ed70f4ca5e20cc595c73fb5addf6dd9866dce1b8`，`SHA256SUMS` SHA-256 为 `3af6d11cc0d34e17869b04107586039f46cc9b515147105f89484696ffd2f716`。候选完整 Git SHA、远端回读和该 SHA 的 CI 以最终交付报告核验；现场继续 `live_not_run`。

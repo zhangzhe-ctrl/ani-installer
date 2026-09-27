@@ -201,7 +201,6 @@ func TestC04_AcceptanceQuotaIsNeverSpentOnAnUnimplementedSpecialist(t *testing.T
 		only []string
 		want string
 	}{
-		{"metrics", []string{"metrics"}, "not implemented for metrics"},
 		{"fluent-bit", []string{"fluent-bit"}, "not implemented for fluent-bit"},
 		{"one good one bad", []string{"postgresql", "loki"}, "not implemented for loki"},
 	}
@@ -240,7 +239,7 @@ func TestC04_AcceptanceCannotPassOnNothingChecked(t *testing.T) {
 	// A record whose whole scope lacks a declared check used to produce zero
 	// results and `overall: pass` with exit 0.
 	baseDir, stateDir := r13Prepare(t)
-	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "metrics", "fluent-bit")
+	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "fluent-bit", "loki")
 	err := RunVerify(context.Background(), VerifyInput{
 		RunFile:          runFile,
 		StateFile:        stateFile,
@@ -259,7 +258,7 @@ func TestC04_AcceptanceCannotPassOnNothingChecked(t *testing.T) {
 
 func TestC04_DefaultAcceptanceRunsDeclaredTargetsAndNamesWhatItSkipped(t *testing.T) {
 	baseDir, _ := r13Prepare(t)
-	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql", "metrics", "fluent-bit")
+	runFile, stateFile := r13RunRecord(t, baseDir, true, PhaseSucceeded, "postgresql", "fluent-bit")
 	out := filepath.Join(baseDir, "verify-out")
 	var stdout bytes.Buffer
 	if err := RunVerify(context.Background(), VerifyInput{
@@ -276,7 +275,7 @@ func TestC04_DefaultAcceptanceRunsDeclaredTargetsAndNamesWhatItSkipped(t *testin
 	if len(report.Results) != 1 || report.Results[0].Component != "postgresql" {
 		t.Fatalf("only the declared check may run: %+v", report.Results)
 	}
-	if strings.Join(report.NotDeclared, ",") != "metrics,fluent-bit" {
+	if strings.Join(report.NotDeclared, ",") != "fluent-bit" {
 		t.Fatalf("the report must name what it did not check, got %v", report.NotDeclared)
 	}
 	if !strings.Contains(stdout.String(), "did NOT check") {

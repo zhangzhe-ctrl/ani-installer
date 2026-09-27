@@ -209,6 +209,20 @@ var acceptanceTargets = map[string]acceptanceTarget{
 		Protocol:       acceptancePostgresSQL,
 		AuxMarkerPath:  "/var/lib/postgresql/data/ani-acceptance-marker",
 	},
+	"prometheus": {
+		LedgerToken: "prometheus", Namespace: MetricsNamespace,
+		ControllerKind: "StatefulSet", ControllerName: "prometheus-ani-metrics-prometheus",
+		PodName:   "prometheus-ani-metrics-prometheus-0",
+		PVCName:   "prometheus-ani-metrics-prometheus-db-prometheus-ani-metrics-prometheus-0",
+		Container: "prometheus", Protocol: "metrics-prometheus",
+	},
+	"alertmanager": {
+		LedgerToken: "alertmanager", Namespace: MetricsNamespace,
+		ControllerKind: "StatefulSet", ControllerName: "alertmanager-ani-metrics-alertmanager",
+		PodName:   "alertmanager-ani-metrics-alertmanager-0",
+		PVCName:   "alertmanager-ani-metrics-alertmanager-db-alertmanager-ani-metrics-alertmanager-0",
+		Container: "alertmanager", Protocol: "metrics-alertmanager",
+	},
 	"nats": {
 		LedgerToken:    "nats",
 		Namespace:      "ani-platform",
@@ -262,6 +276,7 @@ func recreateStep(stepID, stepTitle, targetKey string) acceptanceStep {
 // component with no entry here has no acceptance, and naming it with --only is
 // refused before anything runs.
 var acceptancePlans = map[string]acceptancePlan{
+	"metrics": metricsAcceptancePlan(),
 	"postgresql": {Steps: []acceptanceStep{
 		recreateStep("PG-01", "a committed row survives the one planned postgresql-0 recreation", "postgresql"),
 	}},
@@ -1140,6 +1155,14 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 			outputDir: filepath.Join(input.Output, "acceptance-"+sanitizePathToken(runID)+"-"+component),
 			scriptDir: input.ScriptDir,
 			evidence:  map[string]string{},
+		}
+		if component == "metrics" {
+			attempt.metrics = newMetricsAttemptState(attempt, manifest.ClusterName)
+			// Failed attempts can stop before either Pod quota is spent. Give
+			// each one a separate evidence directory so a later attempt cannot
+			// overwrite its marker, silence or UID ownership record.
+			attempt.outputDir = filepath.Join(attempt.outputDir, attempt.metrics.attempt)
+			attempt.metrics.outputDir = attempt.outputDir
 		}
 		if err := os.MkdirAll(attempt.outputDir, 0o700); err != nil {
 			return nil, errors.Wrapf(err, "create the acceptance output directory %s for %s", attempt.outputDir, component)
