@@ -491,8 +491,15 @@ func TestC03_ReplacementAfterTheLastClientReadIsNotDeleted(t *testing.T) {
 			t.Fatalf("the refusal must name the uid precondition: %+v", report.Results[0])
 		}
 	}
-	if _, err := os.Stat(filepath.Join(stateDir, "deleted")); !os.IsNotExist(err) {
-		t.Fatal("the intruder pod was deleted")
+	// "deleted" is written by the endpoint for every delete it was asked about, so
+	// the assertion is about the outcome, not the file's existence: a refusal is
+	// recorded as REFUSED, and only an honoured delete names the bare pod.
+	if entries, err := os.ReadFile(filepath.Join(stateDir, "deleted")); err == nil {
+		for _, line := range strings.Fields(string(entries)) {
+			if line == "postgresql-0" {
+				t.Fatalf("the intruder pod was deleted: %s", entries)
+			}
+		}
 	}
 	standing, _ := os.ReadFile(filepath.Join(stateDir, "pod-uid"))
 	if strings.TrimSpace(string(standing)) != "uid-INTRUDER-replaced" {
@@ -503,6 +510,22 @@ func TestC03_ReplacementAfterTheLastClientReadIsNotDeleted(t *testing.T) {
 	preconditions, err := os.ReadFile(filepath.Join(stateDir, "delete-uid-preconditions"))
 	if err != nil || !strings.Contains(string(preconditions), "uid-old-postgresql-0") {
 		t.Fatalf("the request did not carry the authorized uid: %v %q", err, preconditions)
+	}
+	// Recorded from the decoded DeleteOptions body of the request the isolated
+	// endpoint received, so this is the wire, not a command line that mentioned a uid.
+	if types := r13DeleteContentTypes(t, stateDir); len(types) == 0 {
+		t.Fatal("no delete request reached the API endpoint at all")
+	} else {
+		for _, ct := range types {
+			if !strings.Contains(ct, "json") {
+				t.Fatalf("the delete body was sent as %q; a precondition the server cannot decode authorises nothing", ct)
+			}
+		}
+	}
+	// And the delete must not have been taken by the shell client as well: the fake
+	// kubectl exits 9 on any `delete pod`, so a regression here is loud.
+	if calls, err := os.ReadFile(filepath.Join(stateDir, "kubectl-calls.log")); err == nil && strings.Contains(string(calls), " delete pod ") {
+		t.Fatalf("a pod delete went back through kubectl argv:\n%s", calls)
 	}
 	// And the failed attempt must not be replayable: its quota is spent/unknown.
 	if entries, _ := os.ReadDir(filepath.Join(baseDir, "acceptance-state")); len(entries) == 0 {

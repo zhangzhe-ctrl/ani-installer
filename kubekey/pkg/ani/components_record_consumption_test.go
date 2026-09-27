@@ -99,9 +99,21 @@ func recordPathFromStdout(t *testing.T, stdout string) string {
 
 func verifyInputFor(t *testing.T, recordPath, level, only, scriptDir, output string) VerifyInput {
 	t.Helper()
+	// C03: a conditional delete is issued by an API client built from this path, so
+	// it must name a real cluster. Pointing at the isolated endpoint keeps these
+	// quota tests honest — they never reach the delete, and if one ever did it would
+	// be answered by the fake rather than by a cluster this round may not touch.
+	kubeconfig := filepath.Join(filepath.Dir(recordPath), "kubeconfig")
+	if server := os.Getenv("ANI_R13_API_SERVER"); server != "" {
+		r13WriteKubeconfig(t, server, kubeconfig)
+	} else {
+		if err := os.WriteFile(kubeconfig, []byte("apiVersion: v1\nkind: Config\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return VerifyInput{
 		RunFile: recordPath, Level: level, ScriptDir: scriptDir, Output: output,
-		Kubeconfig: filepath.Join(filepath.Dir(recordPath), "unused-kubeconfig"),
+		Kubeconfig: kubeconfig,
 		Only:       splitOnly(only),
 	}
 }

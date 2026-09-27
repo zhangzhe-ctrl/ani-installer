@@ -219,8 +219,17 @@ type acceptanceLedger struct {
 
 const (
 	ledgerStateAttempted = "attempted"
-	ledgerStateDone      = "done"
-	ledgerStateUnknown   = "unknown"
+	// ledgerStateDone is the terminal state of an attempt whose change happened.
+	ledgerStateDone = "done"
+	// ledgerStateUnknown is terminal too, but for the opposite reason: the change
+	// was issued and its effect could not be read. Neither may be replayed.
+	ledgerStateUnknown = "unknown"
+	// ledgerStateRefused is the third terminal state C03 needs: the server answered
+	// definitively that it would not delete (uid precondition conflict, Forbidden,
+	// or nothing at the name). Nothing changed, and that is knowable — which is why
+	// it must not be written as a deletion, nor retried against whatever stands
+	// there now.
+	ledgerStateRefused = "refused"
 )
 
 // acceptanceStateDir is the canonical directory for the one-shot ledger. It is
@@ -627,13 +636,22 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 	if input.Level == VerifyLevelSmoke {
 		report.Results = runSmokeScope(ctx, input, loaded.runID, scope)
 	} else {
+		// C03: the recreation is deleted through an API client built from the same
+		// kubeconfig the record was just bound to, so the authorised uid can travel
+		// inside the delete request. Building it here — before the shared lock and
+		// before any one-shot quota is claimed — keeps an input that could never
+		// have worked from consuming an attempt.
+		deleter, clientErr := newPodDeleter(input.Kubeconfig)
+		if clientErr != nil {
+			return clientErr
+		}
 		// Acceptance mutates. Serialize it with the first install and component
 		// execute on the ONE shared product lock.
 		release, lockErr := AcquireInstallFlock(productLockPath())
 		if lockErr != nil {
 			return errors.Wrap(lockErr, "acceptance needs the shared installer lock")
 		}
-		report.Results, err = runAcceptanceScope(ctx, input, runner, scope, loaded.baseRunID, manifest)
+		report.Results, err = runAcceptanceScope(ctx, input, runner, deleter, scope, loaded.baseRunID, manifest)
 		release()
 		if err != nil {
 			return err
@@ -989,7 +1007,7 @@ func smokeKillFunc(cmd *exec.Cmd) error {
 // runAcceptanceScope executes the declared one-shot persistence checks. The
 // FIRST failure stops the scope: remaining mutation checks are recorded
 // not_run and no further Pod recreation is attempted (R13 step 7 / T-R13-04).
-func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRunner, scope []string, runID string, manifest RunManifest) ([]VerifyComponentResult, error) {
+func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRunner, deleter *podDeleter, scope []string, runID string, manifest RunManifest) ([]VerifyComponentResult, error) {
 	stateDir, err := acceptanceStateDir(manifest.ClusterName)
 	if err != nil {
 		return nil, err
@@ -1012,7 +1030,7 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 			})
 			continue
 		}
-		result := runAcceptanceTarget(ctx, runner, component, target, stateDir, runID, registry)
+		result := runAcceptanceTarget(ctx, runner, deleter, component, target, stateDir, runID, registry)
 		results = append(results, result)
 		if result.Status != VerifyStatusPass {
 			failed = true
@@ -1038,7 +1056,7 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 //     Ready condition (not merely Running);
 //  6. read the SAME token back through the protocol and confirm the PVC object
 //     is unchanged.
-func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component string, target acceptanceTarget, stateDir, runID, registry string) VerifyComponentResult {
+func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, deleter *podDeleter, component string, target acceptanceTarget, stateDir, runID, registry string) VerifyComponentResult {
 	result := VerifyComponentResult{Component: component}
 	evidence := map[string]string{
 		"controller": target.ControllerKind + "/" + target.ControllerName,
@@ -1185,25 +1203,33 @@ func runAcceptanceTarget(ctx context.Context, runner kubectlRunner, component st
 		return result
 	}
 
-	// C03: the last client-side recheck is not the authorization — the server is.
-	// Between that read and the DELETE the pod can be replaced under the same
-	// name, and the client would then delete the newcomer. So the old UID travels
-	// IN the delete request as a server-side precondition, and the delete is
-	// refused outright if the server cannot honour that condition:
-	//   - --field-selector makes the API server select the object BY UID, so a
-	//     same-name replacement no longer matches the request;
-	//   - --ignore-not-found=false turns "nothing matched" into an error instead
-	//     of a silent success;
-	//   - an API server that cannot validate the selector fails here, before any
-	//     object is removed — never a UID-unconditional delete.
-	delArgs := []string{"delete", "pod", target.PodName, "-n", target.Namespace,
-		"--field-selector", "metadata.uid=" + oldPodUID,
-		"--ignore-not-found=false",
-		"--wait=true", "--timeout=300s"}
-	if _, err := runner.run(ctx, delArgs...); err != nil {
-		// The delete was issued; its effect is uncertain. Record unknown and stop.
+	// C03: the client-side recheck above is not the authorization — the server is.
+	// Between that read and the request the pod can be replaced under the same name,
+	// and a client-side check alone would then delete the newcomer. So the
+	// authorised uid travels INSIDE the delete as DeleteOptions.Preconditions.UID,
+	// which the API server evaluates as part of the deletion and answers 409 when it
+	// does not hold. Nothing in this function can issue a delete without it.
+	outcome, deleteErr := deleter.deletePodWithUIDPrecondition(ctx, target.Namespace, target.PodName, oldPodUID)
+	evidence["deleteOutcome"] = string(outcome)
+	switch outcome {
+	case deleteDeleted:
+		// The authorised object is gone; wait for the controller's replacement below.
+	case deleteConflict, deleteForbidden, deleteNotFound:
+		// A determinate refusal: the server answered, and this run deleted nothing.
+		// The claim stays spent, because re-issuing a declared change is what
+		// re-planning is for, and re-reading a fresh uid and deleting again is
+		// precisely the substitution the precondition exists to refuse.
 		result.Status = VerifyStatusFailed
-		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "delete-failed"))) + fmt.Sprintf("the UID-preconditioned pod delete (%s) failed; the change is not retried without the precondition and its remote result is unknown: %v", "metadata.uid="+oldPodUID, err)
+		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateRefused, string(outcome)))) + fmt.Sprintf("the uid-preconditioned delete of pod %s/%s was refused (%s: %v); this run deleted nothing and will not retry without the precondition",
+			target.Namespace, target.PodName, outcome, deleteErr)
+		result.Evidence = evidence
+		return result
+	default:
+		// Timeout, cancellation or any other failure: the request went out and its
+		// effect cannot be read, so it is recorded as unknown and never replayed.
+		result.Status = VerifyStatusFailed
+		result.Detail = ledgerWarning(finalizeAcceptanceLedger(stateDir, runID, target, terminalLedger(rec, ledgerStateUnknown, "delete-"+string(outcome)))) + fmt.Sprintf("the uid-preconditioned pod delete failed with an unknown remote outcome (%s: %v); it is not retried without the precondition",
+			outcome, deleteErr)
 		result.Evidence = evidence
 		return result
 	}

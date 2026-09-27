@@ -191,49 +191,14 @@ case "$args" in
   *"get pvc"*"volumeName"*)
     echo "pv-acceptance-0"; exit 0 ;;
   *"delete pod"*)
-    # C03: model the server, not the client. The swap happens when the request is
-    # served — after the client's final GET — and only then is the selector
-    # evaluated, so the replacement is what the server actually sees.
-    if [ -n "${FAKE_REPLACE_AFTER_LAST_GET:-}" ]; then
-      printf 'uid-INTRUDER-replaced\n' > "$state/pod-uid"
-    fi
-    want="$(printf '%s' "$args" | sed -n 's/.*metadata.uid=\([^ ]*\).*/\1/p')"
-    if [ -n "$want" ]; then
-      printf '%s\n' "$want" >> "$state/delete-uid-preconditions"
-      current="$(cat "$state/pod-uid" 2>/dev/null)"
-      if [ "$want" != "$current" ]; then
-        # --ignore-not-found=false turns "nothing matched" into an error, and the
-        # object that stands here now is left exactly where it is.
-        echo "error: no matching resources found" >&2
-        exit 1
-      fi
-    fi
-    if [ -z "${FAKE_STICKY_POD_UID:-}" ]; then
-      printf 'uid-new-%s\n' "$(date +%s%N)" > "$state/pod-uid"
-    fi
-    if [ -n "${FAKE_NEW_PVC_UID:-}" ]; then
-      printf '%s\n' "$FAKE_NEW_PVC_UID" > "$state/pvc-uid"
-    fi
-    printf 'delete\n' >> "$state/deleted"
-    exit 0 ;;
-  *"apply"*"--server-side"*)
-    # C04: a fake apply that accepts any bytes cannot tell a working Job from one
-    # whose pod template was mis-nested at the top level. This keeps the manifest
-    # that actually left the installer and refuses it the way the API server does:
-    # a batch/v1 Job needs spec.template.spec.containers.
-    mf="$(printf '%s' "$args" | sed -n 's/.*-f \([^ ]*\).*/\1/p')"
-    cp "$mf" "$state/applied-job.yaml" 2>/dev/null
-    if ! grep -q 'kind: Job' "$mf"; then echo "fake kubectl: applied object is not a Job" >&2; exit 1; fi
-    if ! grep -q '^spec:' "$mf"; then echo "fake kubectl: Job has no spec" >&2; exit 1; fi
-    if ! grep -q '^  template:' "$mf"; then echo "fake kubectl: error: error validating data: ValidationError(Job.spec): unknown field \"template\" is not in list (no spec.template)" >&2; exit 1; fi
-    if ! grep -q '^      containers:' "$mf"; then echo "fake kubectl: Job spec.template has no containers" >&2; exit 1; fi
-    echo "job.batch/ani-acceptance created"; exit 0 ;;
-  *"wait"*"--for=condition=complete"*)
-    printf 'job waited\n' >> "$state/job-waits"; exit 0 ;;
-  *"logs job/"*)
-    if [ -f "$state/job-logs" ]; then cat "$state/job-logs"; fi; exit 0 ;;
-  *"delete job/"*)
-    printf 'job-deleted ' >> "$state/deleted"; exit 0 ;;
+    # C03: no longer here. The delete is issued by client-go against the isolated
+    # API endpoint (verify_apiserver_r13_test.go), which answers Preconditions the
+    # way the API documents. A shell fake that greps a uid out of argv and then
+    # decides whether to honour it proves the shape of a command line, not that the
+    # authorisation reached a server, so it is deliberately gone: reaching this
+    # branch at all is now a failure.
+    echo "fake kubectl: a pod delete must go through the API client, not kubectl argv ($args)" >&2
+    exit 9 ;;
   *"psql"*"SELECT"*"ani_acceptance"*)
     tok="$(printf '%s' "$args" | sed -n "s/.*WHERE k='\([a-z0-9-]*\)'.*/\1/p")"
     if [ -n "${FAKE_DATA_LOST:-}" ]; then echo ""; exit 0; fi
@@ -300,6 +265,11 @@ func r13Prepare(t *testing.T) (baseDir, stateDir string) {
 		}
 	}
 	r13FakeKubectl(t, binDir, stateDir)
+	// C03: the delete goes through real client-go, so the harness has to hand it a
+	// kubeconfig that resolves to a socket. The isolated endpoint and the fake
+	// kubectl share one state directory, so the identity the reads report and the
+	// object the delete is authorised against cannot quietly be two different things.
+	r13AttachAPIServer(t, baseDir, stateDir)
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 	t.Setenv("ANI_VERIFY_POD_RECREATE_TIMEOUT", "3s")
 	// The fake kubectl child processes read their state from here.
@@ -620,7 +590,7 @@ func TestVerifyAcceptanceStopAndRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read delete log: %v", err)
 	}
-	if strings.Count(strings.TrimSpace(string(deleted)), "delete") != 1 {
+	if n := r13SuccessfulDeletions(string(deleted)); n != 1 {
 		t.Fatalf("exactly one planned recreation may happen, log:\n%s", deleted)
 	}
 

@@ -210,7 +210,7 @@ func r15ExecuteInput(t *testing.T, input ComponentsInstallInput, outDir, planFil
 		PlanFile:    planFile,
 		ConfigFile:  input.ConfigFile,
 		PackageRoot: input.PackageRoot,
-		Kubeconfig:  filepath.Join(baseDir, "kubeconfig"),
+		Kubeconfig:  r15Kubeconfig(t, baseDir),
 		Output:      filepath.Join(outDir, "runtime"),
 		KKBin:       filepath.Join(binDir, "kk"),
 	}

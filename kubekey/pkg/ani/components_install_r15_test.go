@@ -572,7 +572,7 @@ func r15PlanFixtureOverBase(t *testing.T, baseBlock, componentsBlock, only strin
 		Only:        strings.Split(only, ","),
 		BaseRunFile: baseRunFile,
 		Output:      outDir,
-		Kubeconfig:  filepath.Join(baseDir, "kubeconfig"),
+		Kubeconfig:  r15Kubeconfig(t, baseDir),
 	}
 	return input, outDir
 }
