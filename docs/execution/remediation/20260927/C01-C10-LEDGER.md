@@ -540,3 +540,45 @@ kubeconfig 不可加载时不消耗任何额度。原 controller/PVC/PV 授权�
 模板占位符不再截掉整行（否则命令名一起被截掉，66 个多命令块全部无法注入），
 以及纯 builtin 的上下文守卫改为“直接执行、要求非零且零写入”的正向断言——两者都是加强，未放宽解析器或跳过任何块。
 C10 的固定 Chart 准备、lock 与版本/批准 pin 未改动。
+
+## C04 进入实现：旧脚本能力 → 新入口固定步骤清单（2026-09-27）
+
+先按旧脚本逐段列出“原有能力”的读/写、目标、预期与证据，作为实现边界；只覆盖已存在的能力，不加新监控能力。
+
+### metrics（`builtin/core/roles/ani/metrics/templates/verify.sh`）
+
+| 步 | 旧脚本位置 | 读/写 | 目标 | 预期（真实比较） | 证据 |
+|---|---|---|---|---|---|
+| METRICS-01 | [1/8] 417 | 读 | ns `ani-observability` 的 workloads | 每个工作负载就绪 | workloads 输出 |
+| METRICS-02 | [2/8] 469 | 读 | Prometheus svc `:9090` `/api/v1/query` | 真实序列存在（series 非空） | query 结果 |
+| METRICS-03 | [3/8] 545-646 | 写（本轮临时） | 本 attempt 的 receiver Deployment/Service/ConfigMap | receiver Ready 并可导出请求体 | `reqs-*.json` |
+| METRICS-04 | [4/8] 664-719 | 写（本轮临时） | 本 attempt 的 `AlertmanagerConfig` | AM `/api/v2/status` 里出现本 attempt 的 receiver 名（Operator 已加载） | status 抓取 |
+| METRICS-05 | [5/8] 720-796 | 写（本轮临时）+ 读 | 本 attempt 的 `PrometheusRule` `vector(1) == 1` | receiver 收到 `status=firing` 且能取出 fingerprint `F` | `reqs-firing.json` |
+| METRICS-06 | [6/8] 797-842 | 改同一 rule 为 `vector(0) == 1` + 读 | 同一 rule | 收到 `resolved` 且 `resolved_fp == firing_fp`（同一 fingerprint） | `reqs-resolved.json` |
+| METRICS-07 | [7/8] 843-893 前半 | 写（数据）+ 读 | remote-write 写入 `ani_metrics_rebuild_marker{run_id=…}` 唯一值 | 重建前 range 查询命中该值 | write/query 输出 |
+| METRICS-08 | [7/8] 872-893 后半 | **业务变更** | Prometheus StatefulSet 的 pod（旧脚本是 `delete pod -l app.kubernetes.io/name=prometheus`） | 新 UID 且 Ready；PVC `prometheus-ani-metrics-prometheus-db-…-0` UID 不变；STS UID 不变；METRICS-07 那条**原时间范围**样本重建后仍按 range 读回 | `rebuild-range.json` |
+| METRICS-09 | [8/8] 898-927 | 写（本 attempt 的 silence） | Alertmanager `/api/v2/silences`，matcher = alertname+run_id | 返回 `silenceID` 非空 | silence.json |
+| METRICS-10 | [8/8] 931-962 | **业务变更** | Alertmanager StatefulSet 的 pod（旧脚本按标签删） | 新 UID 且 Ready；PVC/STS/generated Secret 三个 UID 均不变；**按原 ID** `/api/v2/silence/<id>` 读回 | silence 读回输出 |
+| METRICS-11 | cleanup 967-977 | 写（仅本轮对象） | 本 attempt 登记的 rule/alertmanagerconfig/receiver deploy,svc,cm 与**本 attempt 的 silence ID** | 只删本轮创建且已登记的；失败不吞 | cleanup 记录 |
+
+旧脚本必须被替换掉的两个动作：410-412 的 `delete … -l run_id="$RUN_LABEL"`（为开始新验收而清掉别轮对象）与 971 的 `silence_gc.py`（按注释前缀批删 ACTIVE silence，包括别轮的）。
+
+### fluent-bit（`…/fluent-bit/templates/verify.sh`）
+
+| 步 | 旧脚本位置 | 读/写 | 目标 | 预期 | 证据 |
+|---|---|---|---|---|---|
+| FLUENT-01 | [1] 313-395 | 读 | DaemonSet `ani-fluent-bit`、configmap | 每节点都有 collector 且只有一份 output | daemonset/collector-pods |
+| FLUENT-02 | [2] 396-706 | 写（本 attempt 探针）+ 读 | 每节点 marker pod + 后端查询 | 全部 marker 在后端可查，且 namespace/pod/container/node 四项元数据逐项相等（Loki stream label / OpenSearch `_source.kubernetes`） | markers-found/metadata.txt |
+| FLUENT-03 | [3] 653-690 | **业务变更（依赖）** | 已选后端的 StatefulSet pod（`app.kubernetes.io/name=loki` 或 `…/opensearch`） | 后端 PVC UID 不变；pod **UID 变了**（A23：名字必然相同，替换事实只在 UID）；重建前写入的 marker 仍可查询 | markers-after-backend-rebuild.txt |
+| FLUENT-04 | [4] 728-877 | **业务变更** | 指定节点上的一个 collector pod（`--field-selector spec.nodeName=<node>`） | 该节点 hostPath `/var/lib/ani-installer/fluent-bit` 的游标/缓冲目录在重建前后由只读 inspector pod 比对；重建后新 marker 与重建前 marker 都能查到 | cursor-before/after.txt |
+| FLUENT-05 | [5] 968-1101 | 读 | 后端配置（Loki `/config` 的 `limits_config.retention_period`、`compactor.retention_enabled`、`delete_request store=filesystem`）；OpenSearch ISM policy | 配置里的保留时长与站点声明一致且过期开关齐备；**到期真删本轮不可观测，按未验证记录** | retention.txt |
+| FLUENT-06 | [6] 1073-1081 | 写（仅本 attempt 探针） | OWNED 清单逐个条件删除 | 见 C08 条 | cleanup.txt |
+
+后端只跑当前已选的那一个（loki 或 opensearch），不部署第二个后端、不升级组件；FLUENT-03 是 fluent-bit 验收的**依赖变更**，必须在报告里显式列出并计入额度，`--only fluent-bit` 不得隐藏它。
+
+### 实现约束（对应上面两表的固定映射）
+
+- 每个 **业务变更** 步骤 = 一个 `recreateTarget`，沿用 `pod_delete.go` 的 UID 前置删除 + `acceptanceLedger` 的“先登记后变更、fsync、共用产品锁”；账本键绑定 base run + 稳定目标身份（namespace/工作负载/实例或节点），别名、子 run、`--output`、新 Pod UID 都不重开额度。
+- PG/NATS 保持原单目标步骤与原账本文件名。
+- 临时资源用 attempt 标识隔离，但保留 Operator 加载所需标签（如 `release: ani-metrics`）与选择条件；清理只针对本 attempt 登记对象/ID。
+- 全部数据判定走原协议（Prometheus range 原时间窗、AM 原 silence ID 与 fingerprint、日志 marker 查询），不以 Pod Ready 或文件存在代替。
