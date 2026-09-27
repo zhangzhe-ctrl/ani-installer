@@ -4,7 +4,7 @@
 
 本节只覆盖 B00–B07 的 kcn+Ceph+基础服务+Multus+Milvus+Metrics Server+CSI Snapshot+KubeVirt/CDI+Volcano+Harbor 全选组合。B01b 外部 LB 未选，Kube-OVN 是另一个主 CNI 方案；B08–B12 未实施，完整 B13 未完成。详情与摘要见 [本阶段状态](evidence/B13-stage-20260928/status.md)。下方 2026-09-27 的首装是**旧底座候选**的历史结果，不能作本轮新增或最终首装证据。
 
-Fedora 上最终代码包为 `/home/chabking/ani-installer-runs/b00-b07/code-b00-b07-4d98b3f`，正式累计材料包为 `/home/chabking/ani-installer-runs/b00-b07/artifact-b00-b07-4d98b3f-r3`，私有完整 site 为 `/home/chabking/ani-installer-runs/b00-b07/site-b00-b07-full.private.yaml`（0600）。代码提交 `4d98b3fdba5e89585e8abee0d2401bfb98e62094`。代码与材料两个 `SHA256SUMS` 均 rc=0；正式包的 `kk ani validate` 与 `kk ani render` 均 rc=0，render 没有开发目录覆盖。它们仅证明静态输入；B00–B07 新增功能和 B13 干净首装均 **not_run**。
+Fedora 上最终代码包为 `/home/chabking/ani-installer-runs/b00-b07/code-b00-b07-harbor-ci-fix`，正式累计材料包为 `/home/chabking/ani-installer-runs/b00-b07/artifact-b00-b07-4d98b3f-r3`，私有完整 site 为 `/home/chabking/ani-installer-runs/b00-b07/site-b00-b07-full.private.yaml`（0600）。代码提交 `1d00b0688bad8ffa4a5c8f370a1662aa4a231b67`。代码与材料两个 `SHA256SUMS` 均 rc=0；正式包的 `kk ani validate` 与 `kk ani render` 均 rc=0，render 没有开发目录覆盖。它们仅证明静态输入；B00–B07 新增功能和 B13 干净首装均 **not_run**。
 
 **现场停点：**三台现有目标的 Ceph 数据盘各 50 GiB、三副本，原始容量 150 GiB；所选 PVC 声明合计 72 GiB，满额需要至少 216 GiB raw，差额至少 66 GiB raw（另需 Ceph 开销和快照余量）。三节点均无有效 NTP 同步源，现有 Ceph 有 MON_CLOCK_SKEW、CSI 认证类型和 PG 告警。容量与离线时间前置未满足，未恢复快照、未清盘、未向 node1 传包或运行安装；不能通过缩小选项/副本或用旧集群补装来冒充本阶段完整首装。只读命令和退出码在 Fedora 私有的 `b13-readonly-preflight-20260928.txt`，容量计算在 `b13-capacity-preflight-20260928.md`。
 
