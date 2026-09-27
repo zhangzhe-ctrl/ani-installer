@@ -86,32 +86,112 @@ CLIENT_POD="ani-fb-client-${RUN_ID}"
 MARKER_PREFIX="ani-log-marker-${RUN_ID}"
 INSPECTOR_PREFIX="ani-fb-insp-${RUN_ID}"
 
-# OWNED is the ownership ledger: pod name -> uid as created by THIS attempt.
-# Nothing outside it is ever deleted by this run.
+# OWNED is this attempt's ownership ledger: pod name -> the uid the API server
+# gave back when THIS attempt created it. It is deliberately not a later read: a
+# uid fetched after the fact can belong to whoever replaced our pod, and recording
+# that as ours would license deleting a stranger.
+#
+# The uid is still only a verification, not the condition of the delete: kubectl
+# offers no way to put DeleteOptions.Preconditions on the wire, so what makes a
+# deletion safe here is that every probe carries an attempt-unique label and the
+# delete selects by that label server-side. An object this run did not create
+# cannot match it, and a replacement under one of these names would not either.
+#
+# Cleanup failures go to CLEANUP_FAILURES and fail the run. Swallowing them with
+# `|| true` is what let probes accumulate silently.
 declare -A OWNED=()
-own_pod() { # own_pod <name> — record that this attempt created and owns it
-  local uid
-  uid="$($KC get pod "$1" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
-  [ -n "$uid" ] || fail "created pod $1 but cannot read its uid; refusing to manage an unowned object"
-  OWNED["$1"]="$uid"
-  printf '%s %s\n' "$1" "$uid" >> "$EVIDENCE/owned-pods.txt"
+CLEANUP_FAILURES=()
+ATTEMPT_LABEL="ani-attempt=$RUN_ID"
+
+own_pod() { # own_pod <name> <uid-from-the-create-response>
+  local name="$1" uid="$2"
+  if [ -z "$uid" ]; then
+    CLEANUP_FAILURES+=("$name: created but the API returned no uid, so this run cannot prove it owns the object")
+    return 1
+  fi
+  OWNED["$name"]="$uid"
+  printf '%s %s\n' "$name" "$uid" >> "$EVIDENCE/owned-pods.txt"
 }
-release_pod() { # release_pod <name> — delete ONLY what this attempt owns
+
+# create_pod applies a manifest the caller already wrote to disk and records the
+# uid the API returned for it. A manifest file rather than a pipe, because a pod
+# definition piped through command substitution never reaches kubectl: the create
+# would silently send an empty document, and an ownership ledger built on top of
+# that would be recording nothing while looking exactly like it recorded something.
+create_pod() { # create_pod <name> <manifest-file>
+  local name="$1" manifest="$2" uid
+  [ -s "$manifest" ] || { CLEANUP_FAILURES+=("$name: the manifest $manifest is empty"); return 1; }
+  if ! uid="$(kubectl -n "$NS" apply -f "$manifest" --output jsonpath='{.metadata.uid}')"; then
+    CLEANUP_FAILURES+=("$name: the create failed")
+    return 1
+  fi
+  own_pod "$name" "$uid"
+}
+
+release_pod() { # release_pod <name> — delete ONLY what this attempt created
   local name="$1" want have
   want="${OWNED[$name]:-}"
-  [ -n "$want" ] || { note "leaving $name alone: this attempt did not create it"; return 0; }
-  have="$($KC get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
-  if [ -n "$have" ] && [ "$have" != "$want" ]; then
-    note "leaving $name alone: it now carries uid $have, not the $want this attempt created"
+  if [ -z "$want" ]; then
+    note "leaving $name alone: this attempt did not create it"
+    return 0
+  fi
+  if ! have="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>&1)"; then
+    # A failed read is not "absent". Deleting by name anyway is exactly the
+    # read-then-delete-by-name pattern C08 is about, so the object stays and the
+    # run says so.
+    CLEANUP_FAILURES+=("$name: kept, its uid could not be read (${have##*$'\n'})")
+    return 1
+  fi
+  have="${have//[[:space:]]/}"
+  if [ -z "$have" ]; then
+    note "leaving $name alone: it is already gone"
     unset 'OWNED[$name]'
     return 0
   fi
-  $KC delete pod "$name" --wait=true --timeout=120s >/dev/null 2>&1 || true
+  if [ "$have" != "$want" ]; then
+    CLEANUP_FAILURES+=("$name: kept, it now carries uid $have, not the $want this attempt created")
+    unset 'OWNED[$name]'
+    return 1
+  fi
+  if ! kubectl -n "$NS" delete pod "$name" --wait=true --timeout=120s >/dev/null; then
+    CLEANUP_FAILURES+=("$name: the delete of a pod this attempt owns failed")
+    return 1
+  fi
+  if still="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null)" && [ -n "${still//[[:space:]]/}" ]; then
+    CLEANUP_FAILURES+=("$name: still present at uid $still after a delete that reported success")
+    return 1
+  fi
   unset 'OWNED[$name]'
 }
+
+# release_all_owned removes everything this attempt created in one server-side
+# selection over the label it minted, then checks each recorded object really
+# went away. Anything left is reported rather than retried or forgotten.
 release_all_owned() {
-  local name
-  for name in "${!OWNED[@]}"; do release_pod "$name"; done
+  local name want leftovers=()
+  if [ "${#OWNED[@]}" -eq 0 ]; then return 0; fi
+  if ! kubectl -n "$NS" delete pod -l "$ATTEMPT_LABEL" --wait=true --timeout=180s >/dev/null; then
+    CLEANUP_FAILURES+=("the attempt-labelled delete failed for ${#OWNED[@]} probe pod(s)")
+  fi
+  for name in "${!OWNED[@]}"; do
+    want="${OWNED[$name]}"
+    if have="$(kubectl -n "$NS" get pod "$name" -o jsonpath='{.metadata.uid}' 2>/dev/null)" && [ -n "${have//[[:space:]]/}" ]; then
+      leftovers+=("$name@$have")
+    fi
+    unset 'OWNED[$name]'
+  done
+  if [ "${#leftovers[@]}" -gt 0 ]; then
+    CLEANUP_FAILURES+=("probe pods this attempt created are still present: ${leftovers[*]}")
+  fi
+}
+
+report_cleanup() {
+  [ "${#CLEANUP_FAILURES[@]}" -eq 0 ] && return 0
+  printf 'fluent-bit verify: probe cleanup did not complete cleanly:\n' >&2
+  local failure
+  for failure in "${CLEANUP_FAILURES[@]}"; do printf '  - %s\n' "$failure" >&2; done
+  printf 'The evidence directory is left in place on purpose: %s\n' "$EVIDENCE" >&2
+  return 1
 }
 
 fail() { echo "fluent-bit verify: $*" >&2; exit 1; }
@@ -202,9 +282,13 @@ start_client() {
   if [ -n "$($KC get pod "$CLIENT_POD" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
     fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
   fi
-  $KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
-    --command -- python3 -c 'import time; time.sleep(3600)' >/dev/null
-  own_pod "$CLIENT_POD"
+  local created_uid
+  if ! created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
+      --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' \
+      --command -- python3 -c 'import time; time.sleep(3600)')"; then
+    fail "could not create the verification client pod $CLIENT_POD"
+  fi
+  own_pod "$CLIENT_POD" "$created_uid"
   $KC wait --for=condition=Ready "pod/$CLIENT_POD" --timeout=180s
 }
 
@@ -312,13 +396,15 @@ for i in "${!NODES[@]}"; do
   if [ -n "$($KC get pod "$pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
     fail "marker pod $pod already exists; refusing to delete a probe this attempt did not create"
   fi
-  cat <<EOF | $KC apply -f -
+  mkdir -p "$EVIDENCE/manifests"
+  cat > "$EVIDENCE/manifests/$pod.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: $pod
   labels:
     ani-marker: "$pod"
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $node
@@ -327,17 +413,17 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo '$marker'; i=0; while [ \$i -lt 90 ]; do sleep 1; i=\$((i+1)); done"
+        - 'echo "$marker"; sleep 90'
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
 EOF
+  create_pod "$pod" "$EVIDENCE/manifests/$pod.yaml" || fail "could not create the marker pod $pod"
 done
 
 for i in "${!NODES[@]}"; do
   seq_n=$((i + 1))
   $KC wait --for=condition=Ready "pod/${MARKER_PREFIX}-${seq_n}" --timeout=180s
-  own_pod "${MARKER_PREFIX}-${seq_n}"
 done
 
 # Markers are read from the marker pods' own logs first, so the expected value
@@ -541,6 +627,7 @@ note "all $want_nodes markers found in $BACKEND with correct namespace/pod/conta
 # global retention/routing is touched during install or smoke.
 if [ "$LEVEL" = smoke ]; then
   release_all_owned
+  report_cleanup || exit 1
   note "fluent-bit SMOKE verification passed: config sane, $want_nodes markers collected into $BACKEND (read-only; no pod rebuild, no retention change)"
   exit 0
 fi
@@ -647,13 +734,15 @@ cursor_ls() { # cursor_ls <node> <outfile>
   if [ -n "$($KC get pod "$inspector" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
     fail "inspector $inspector already exists; refusing to delete a probe this attempt did not create"
   fi
-  cat <<EOF | $KC apply -f - >/dev/null
+  mkdir -p "$EVIDENCE/manifests"
+  cat > "$EVIDENCE/manifests/$inspector.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: $inspector
   labels:
     ani-verify: cursor-inspector
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $node
@@ -675,6 +764,7 @@ spec:
         path: /var/lib/ani-installer/fluent-bit
         type: Directory
 EOF
+  create_pod "$inspector" "$EVIDENCE/manifests/$inspector.yaml" || fail "could not create the cursor inspector for $node"
   ph=""; i=0
   while [ "$i" -lt 60 ]; do
     ph="$($KC get pod "$inspector" -o jsonpath='{.status.phase}' 2>/dev/null)"
@@ -684,7 +774,6 @@ EOF
   done
   [ "$ph" = "Succeeded" ] || fail "the cursor inspector pod on $node did not finish in 120s"
   $KC logs "$inspector" > "$out"
-  own_pod "$inspector"
   release_pod "$inspector"
 }
 
@@ -724,11 +813,13 @@ post_pod="${MARKER_PREFIX}-post"
 if [ -n "$($KC get pod "$post_pod" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
   fail "marker pod $post_pod already exists; refusing to delete a probe this attempt did not create"
 fi
-cat <<EOF | $KC apply -f -
+cat > "$EVIDENCE/manifests/$post_pod.yaml" <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: $post_pod
+  labels:
+    ani-attempt: "$RUN_ID"
 spec:
   restartPolicy: Never
   nodeName: $victim_node
@@ -737,13 +828,13 @@ spec:
       image: $BUSYBOX_IMAGE
       command: ["/bin/sh", "-c"]
       args:
-        - "echo 'ANI-MARKER-$new_run'; i=0; while [ \$i -lt 120 ]; do sleep 1; i=\$((i+1)); done"
+        - 'echo "ANI-MARKER-$new_run"; sleep 120'
       resources:
         requests: {cpu: 10m, memory: 16Mi}
         limits: {memory: 32Mi}
 EOF
+create_pod "$post_pod" "$EVIDENCE/manifests/$post_pod.yaml" || fail "could not create the post-rebuild marker $post_pod"
 $KC wait --for=condition=Ready "pod/$post_pod" --timeout=180s
-own_pod "$post_pod"
 
 cat > "$EVIDENCE/await_one.py" <<'PY'
 import base64, json, ssl, sys, time, urllib.parse, urllib.request
@@ -966,6 +1057,10 @@ note "== [6] cleanup of this run's own test pods =="
 # failed earlier exits before reaching it, so its probes and its evidence stay
 # exactly where the failure left them for whoever investigates next.
 release_all_owned
+# The residue scan below only sees pods that exist; it cannot tell a pod this
+# attempt still owns from one it lost track of. report_cleanup carries exactly
+# that distinction, so it is said before anything else concludes on the run.
+report_cleanup || exit 1
 
 # Only this attempt's own prefixes are considered — a leftover from an earlier
 # incident is evidence, not this run's litter.

@@ -40,6 +40,15 @@ state="__STATE__"
 log="$state/calls"
 lock="$state/.lock"
 podfile() { printf '%s' "$1" | tr -c 'a-zA-Z0-9._-' '_' ; }
+# c08_create mints the object the way an API server would: a name that is already
+# taken is refused, and the uid it assigns is the only uid the creator may claim.
+c08_create() { # c08_create <name> <attempt-label-value>
+  local key; key="$(podfile "$1")"
+  if [ -e "$state/pod-$key.uid" ]; then echo "Error from server (AlreadyExists): pods \"$1\" already exists" >&2; return 1; fi
+  printf 'uid-created-%s-%s\n' "$1" "$RANDOM$RANDOM" > "$state/pod-$key.uid"
+  [ -n "$2" ] && printf '%s' "$2" > "$state/attempt-$key"
+  return 0
+}
 call() {
   for i in $(seq 1 400); do
     mkdir "$lock" 2>/dev/null && { printf '%s\n' "$*" >> "$log"; rmdir "$lock"; return 0; }
@@ -70,20 +79,59 @@ esac
 # ---- pod registry: one object per name, created by whoever got there first --
 if [[ "$args" == *"get pod"*"metadata.uid"* ]]; then
   nm="$(printf '%s' "$args" | awk '{for(i=1;i<=NF;i++) if($i=="pod"){print $(i+1); exit}}')"
-  cat "$state/pod-$(podfile "$nm")" 2>/dev/null
+  cat "$state/pod-$(podfile "$nm").uid" 2>/dev/null
   exit 0
 fi
 if [[ "$args" == *" run "* ]]; then
   nm="$(printf '%s' "$args" | awk '{for(i=1;i<=NF;i++) if($i=="run"){print $(i+1); exit}}')"
-  f="$state/pod-$(podfile "$nm")"
-  if [ -e "$f" ]; then echo "Error from server (AlreadyExists)" >&2; exit 1; fi
-  printf 'uid-%s\n' "$nm" > "$f"
-  printf 'pod/%s created\n' "$nm"; exit 0
+  attempt="$(printf '%s' "$args" | sed -n 's/.*--labels ani-attempt=\([^ ]*\).*/\1/p')"
+  c08_create "$nm" "$attempt" || exit 1
+  case "$args" in *"jsonpath={.metadata.uid}"*) printf '%s\n' "$(cat "$state/pod-$(podfile "$nm").uid")" ;; *) printf 'pod/%s created\n' "$nm" ;; esac
+  exit 0
+fi
+# A create through apply is how the script makes its marker and inspector pods:
+# the object's name and its attempt label come from the manifest, and the uid the
+# server assigns is printed back, because that is the only uid the attempt may
+# legitimately claim as proof it created the object.
+if [[ "$args" == *"apply -f "* ]]; then
+  file="$(printf '%s' "$args" | awk '{for(i=1;i<=NF;i++) if($i=="apply"){print $(i+2); exit}}')"
+  manifest="$(cat "$file" 2>/dev/null)"
+  nm="$(printf '%s\n' "$manifest" | sed -n 's/^  name: *//p' | head -1)"
+  attempt="$(printf '%s\n' "$manifest" | sed -n 's/.*ani-attempt: *//p' | head -1 | tr -d '"')"
+  [ -n "$nm" ] || { echo "fake kubectl: apply with no metadata.name (file=$file)" >&2; exit 1; }
+  c08_create "$nm" "$attempt" || exit 1
+  case "$args" in *"jsonpath={.metadata.uid}"*) printf '%s\n' "$(cat "$state/pod-$(podfile "$nm").uid")" ;; *) printf 'pod/%s configured\n' "$nm" ;; esac
+  exit 0
+fi
+# A label delete is resolved by the server, so it can only ever reach objects
+# carrying this attempt's own label. That is what makes it the right shape for
+# cleaning up probes: a name is a coincidence, a label is an assertion.
+if [[ "$args" == *"delete pod -l ani-attempt="* || "$args" == *"delete pod -l \"ani-attempt="* ]]; then
+  want="$(printf '%s' "$args" | sed -n 's/.*ani-attempt=\([^ "]*\).*/\1/p')"
+  removed=0
+  for f in "$state"/pod-*.uid; do
+    [ -f "$f" ] || continue
+    owner="$(basename "$f" .uid)"; owner="${owner#pod-}"  # the escaped key
+    if [ -f "$state/attempt-$owner" ] && [ "$(cat "$state/attempt-$owner")" = "$want" ]; then
+      printf 'deleted %s %s\n' "$owner" "$(cat "$f")" >> "$state/deletes"
+      rm -f "$state/pod-$owner.uid" "$state/attempt-$owner"
+      removed=$((removed+1))
+    fi
+  done
+  [ "$removed" -gt 0 ] || { echo "error: no matching resources found" >&2; exit 1; }
+  printf 'pod(s) deleted\n'; exit 0
 fi
 if [[ "$args" == *"delete pod"* ]]; then
   nm="$(printf '%s' "$args" | awk '{for(i=1;i<=NF;i++) if($i=="pod"){print $(i+1); exit}}')"
-  printf 'DELETE %s %s\n' "$$" "$nm" >> "$state/deletes"
-  rm -f "$state/pod-$(podfile "$nm")"
+  key="$(podfile "$nm")"
+  if [ ! -f "$state/pod-$key.uid" ]; then
+    case "$args" in *ignore-not-found*) exit 0 ;; esac
+    echo "Error from server (NotFound): pods \"$nm\" not found" >&2; exit 1
+  fi
+  printf 'deleted %s %s\n' "$nm" "$(cat "$state/pod-$key.uid")" >> "$state/deletes"
+  # FAKE_DELETE_KEEPS_OBJECT models a delete that answers success while the object
+  # is still there, which is what a swallowed cleanup failure would hide.
+  [ -n "${FAKE_DELETE_KEEPS_OBJECT:-}" ] || rm -f "$state/pod-$key.uid" "$state/attempt-$key"
   exit 0
 fi
 exit 1
@@ -142,6 +190,19 @@ func c08RunChecker(t *testing.T, home, pin string) string {
 	return out
 }
 
+// c08EscapedName mirrors the fake's podfile(): a pod name is turned into a file
+// name by replacing everything outside [A-Za-z0-9._-] with an underscore.
+func c08EscapedName(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			return r
+		}
+		return '_'
+	}, name)
+}
+
 func TestC08_OverlappingRunsNeverDeleteEachOthersProbes(t *testing.T) {
 	a, _, home := c07DummyKubeconfigs(t)
 	state := c08FakeCluster(t, home)
@@ -151,7 +212,10 @@ func TestC08_OverlappingRunsNeverDeleteEachOthersProbes(t *testing.T) {
 	// it created must not touch them.
 	legacy := []string{"ani-fluent-bit-verify-client", "ani-log-marker-1"}
 	for _, name := range legacy {
-		if err := os.WriteFile(filepath.Join(state, "pod-"+name), []byte("uid-legacy\n"), 0o600); err != nil {
+		// Escaped the way the fake escapes names, and with no attempt label:
+		// these are the previous run's probes, so a label-scoped delete must not
+		// be able to reach them.
+		if err := os.WriteFile(filepath.Join(state, "pod-"+c08EscapedName(name)+".uid"), []byte("uid-legacy\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -202,6 +266,16 @@ func TestC08_OverlappingRunsNeverDeleteEachOthersProbes(t *testing.T) {
 	if len(creates) < 2 {
 		t.Fatalf("both runs must create their own probe to test anything; created %v.\ntranscript:\n%s", creates, transcript)
 	}
+	// What this test can and cannot reach, stated rather than glossed: the full
+	// checker stops at the backend query, which needs a live Loki, so the probes it
+	// creates here are the client pods only. The marker, inspector and post-rebuild
+	// paths — and the label-scoped cleanup over all of them — are covered by
+	// TestC08_OwnershipIsProofFromTheCreateNotFromALaterRead, which drives the real
+	// helpers. Claiming more from this run than it did would be the same kind of
+	// overstatement C08 is about.
+	if !strings.Contains(string(calls), " run ") {
+		t.Fatalf("neither run reached the client probe:\n%s", transcript)
+	}
 	seen := map[string]int{}
 	for _, name := range creates {
 		for _, old := range legacy {
@@ -214,15 +288,27 @@ func TestC08_OverlappingRunsNeverDeleteEachOthersProbes(t *testing.T) {
 	if len(seen) < 2 {
 		t.Fatalf("both runs created the same probe name %v; names are not attempt-scoped", creates)
 	}
+	// No cleanup is expected here: the runs fail before reaching it, and a run that
+	// failed must keep its probes. Anything deleted at all would therefore be a bug.
+	if len(deletes) != 0 {
+		t.Fatalf("a run that never reached its cleanup still deleted something: %v", deletes)
+	}
+	createdByName := map[string]bool{}
+	for _, name := range creates {
+		createdByName[name] = true
+	}
 	for _, name := range deletes {
 		for _, old := range legacy {
 			if name == old {
 				t.Fatalf("a run deleted a leftover probe it did not create: %v", deletes)
 			}
 		}
+		if !createdByName[name] {
+			t.Fatalf("a run deleted %q, which it never created; creates were %v", name, creates)
+		}
 	}
 	for _, name := range legacy {
-		if _, err := os.Stat(filepath.Join(state, "pod-"+name)); err != nil {
+		if _, err := os.Stat(filepath.Join(state, "pod-"+c08EscapedName(name)+".uid")); err != nil {
 			t.Fatalf("the pre-existing %s is gone; a smoke pass destroyed another attempt's evidence", name)
 		}
 	}
@@ -525,4 +611,231 @@ func TestC06_SameConfigNoopGoesWriterToLoaderToSmoke(t *testing.T) {
 			t.Fatalf("the base %s changed while recording a no-op (%s -> %s)", name, before[:12], after[:12])
 		}
 	}
+}
+
+// c08SourceChecker loads the REAL packaged checker through its own lib-only seam
+// and returns a runner that executes a snippet in that loaded context. The
+// ownership helpers under test are therefore the shipped ones, not a copy.
+func c08SourceChecker(t *testing.T, home, pin string) func(t *testing.T, script string) string {
+	t.Helper()
+	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "fluent-bit", "templates", "verify.sh")
+	source, err := os.ReadFile(root)
+	if err != nil {
+		t.Fatalf("read the packaged checker: %v", err)
+	}
+	tmpl, err := template.New("verify.sh").Parse(string(source))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	rendered := &strings.Builder{}
+	if err := tmpl.Execute(rendered, c07TemplateContext()); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "lib.sh")
+	if err := os.WriteFile(lib, []byte(rendered.String()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return func(t *testing.T, script string) string {
+		t.Helper()
+		runner := filepath.Join(dir, "runner-"+strings.ReplaceAll(t.Name(), "/", "_")+".sh")
+		// The trailer reports the ledger and the failure list rather than deciding
+		// the case: a snippet that legitimately ends in a failed cleanup must still
+		// be able to say what it recorded.
+		body := "set -uo pipefail\nsource \"" + lib + "\"\n" +
+			"set +e\n" + script + "\nset -e\n" +
+			// The keys of an associative array are printed via a count plus the
+			// on-disk ledger: the ledger is the artefact that survives the function
+			// boundary, and that is the property this test cares about.
+			"printf 'OWNED_COUNT=%s\\n' \"${#OWNED[@]}\"\n" +
+			"printf 'LEDGER=%s\\n' \"$(tr '\\n' ' ' < \"$EVIDENCE/owned-pods.txt\" 2>/dev/null)\"\n" +
+			"printf 'RECORD=%s\\n' \"${OWNED[*]:-none}\"\n" +
+			"printf 'FAILURES=%s\\n' \"${CLEANUP_FAILURES[*]:-none}\"\n" +
+			"printf 'EVIDENCE=%s\\n' \"$EVIDENCE\"\n"
+		if err := os.WriteFile(runner, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		out, _ := execBash(t, runner,
+			"PATH="+filepath.Join(home, "bin")+":"+os.Getenv("PATH"),
+			"HOME="+filepath.Join(home, "home"),
+			"ANI_VERIFY_KUBECONFIG="+pin,
+			"KUBECONFIG="+pin,
+			"ANI_VERIFY_OUTPUT_DIR="+filepath.Join(home, "out"),
+			// The packaged checker defines its helpers and returns under this
+			// variable, so the functions below are the ones that ship.
+			"ANI_VERIFY_LIB_ONLY=1",
+			"FAKE_STATE_DIR="+stateDirOf(t, home),
+		)
+		return out
+	}
+}
+
+// stateDirOf is where the fake cluster keeps its pod registry.
+func stateDirOf(t *testing.T, home string) string {
+	t.Helper()
+	return filepath.Join(home, "state")
+}
+
+// c08Escape mirrors the fake's podfile(): pod name -> the file it is stored under.
+func c08Escape(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			return r
+		}
+		return '_'
+	}, name)
+}
+
+// c08ProbeManifest is a probe pod carrying this attempt's own label, which is what
+// a label-scoped cleanup is allowed to find.
+func c08ProbeManifest(name string) string {
+	return "apiVersion: v1\nkind: Pod\nmetadata:\n  name: " + name +
+		"\n  labels:\n    ani-attempt: \"" + "%RUN_ID%" + "\"\n" +
+		"spec:\n  restartPolicy: Never\n  containers:\n    - name: marker\n      image: busybox\n"
+}
+
+func TestC08_OwnershipIsProofFromTheCreateNotFromALaterRead(t *testing.T) {
+	a, _, home := c07DummyKubeconfigs(t)
+	state := c08FakeCluster(t, home)
+	run := c08SourceChecker(t, home, a)
+
+	// A previous attempt's probe in the same registry, carrying no attempt label:
+	// nothing below is allowed to reach it.
+	legacy := "ani-log-marker-legacy"
+	if err := os.WriteFile(filepath.Join(state, "pod-"+c08Escape(legacy)+".uid"), []byte("uid-legacy\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("a create whose response has no uid claims nothing", func(t *testing.T) {
+		out := run(t, `own_pod ani-fb-client-fake "" || true`)
+		if strings.Contains(out, "OWNED=ani-fb-client-fake") {
+			t.Fatalf("an object with no uid from its create was recorded as owned: %s", out)
+		}
+		if !strings.Contains(out, "FAILURES=ani-fb-client-fake") || !strings.Contains(out, "no uid") {
+			t.Fatalf("the missing uid must be reported, not tolerated: %s", out)
+		}
+	})
+
+	t.Run("cleanup removes exactly what this attempt created", func(t *testing.T) {
+		out := run(t, `
+mkdir -p "$EVIDENCE"
+cat > "$EVIDENCE/ani-log-marker-owned.yaml" <<MANIFEST
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-log-marker-owned
+  labels:
+    ani-attempt: "$RUN_ID"
+spec:
+  restartPolicy: Never
+  containers:
+    - name: marker
+      image: busybox
+MANIFEST
+create_pod ani-log-marker-owned "$EVIDENCE/ani-log-marker-owned.yaml"
+release_all_owned`)
+		// The uid must be the one the create returned, and it must be on disk:
+		// a ledger only held in a shell variable would be lost the moment the
+		// function ran in a subshell, which is precisely how the first version of
+		// this helper recorded nothing at all.
+		if !strings.Contains(out, "LEDGER=ani-log-marker-owned uid-created-ani-log-marker-owned") {
+			t.Fatalf("the ownership ledger did not record the uid from the create response: %s", out)
+		}
+		if !strings.Contains(out, "OWNED_COUNT=0") {
+			t.Fatalf("the owned probe was still listed after cleanup: %s", out)
+		}
+		if !strings.Contains(out, "FAILURES=none") {
+			t.Fatalf("a clean cleanup reported a failure: %s", out)
+		}
+		deletes := c08ReadFile(t, filepath.Join(state, "deletes"))
+		if !strings.Contains(deletes, "ani-log-marker-owned") {
+			t.Fatalf("the owned probe was not removed: %q", deletes)
+		}
+		if strings.Contains(deletes, legacy) {
+			t.Fatalf("a label-scoped delete reached a pod this attempt did not create: %q", deletes)
+		}
+		if _, err := os.Stat(filepath.Join(state, "pod-"+c08Escape(legacy)+".uid")); err != nil {
+			t.Fatal("the leftover probe from an earlier attempt was destroyed")
+		}
+	})
+
+	t.Run("an object that changed hands is kept and named", func(t *testing.T) {
+		out := run(t, `
+mkdir -p "$EVIDENCE"
+cat > "$EVIDENCE/ani-fb-insp-swapped.yaml" <<MANIFEST
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-fb-insp-swapped
+  labels:
+    ani-attempt: "$RUN_ID"
+spec:
+  restartPolicy: Never
+  containers:
+    - name: marker
+      image: busybox
+MANIFEST
+create_pod ani-fb-insp-swapped "$EVIDENCE/ani-fb-insp-swapped.yaml"
+printf 'uid-SOMEONE-ELSE\n' > "$FAKE_STATE_DIR/pod-ani-fb-insp-swapped.uid"
+release_pod ani-fb-insp-swapped || true`)
+		if !strings.Contains(out, "kept") || !strings.Contains(out, "uid-SOMEONE-ELSE") {
+			t.Fatalf("the refusal must keep the replacement and say why: %s", out)
+		}
+		if strings.Contains(c08ReadFile(t, filepath.Join(state, "deletes")), "ani-fb-insp-swapped uid-SOMEONE-ELSE") {
+			t.Fatal("the replacement pod was deleted")
+		}
+	})
+
+	t.Run("a cleanup failure fails the run instead of vanishing", func(t *testing.T) {
+		out := run(t, `
+own_pod ani-fb-client-nothing "" || true
+report_cleanup || echo REPORT_CLEANUP_RETURNED_NONZERO`)
+		if !strings.Contains(out, "REPORT_CLEANUP_RETURNED_NONZERO") {
+			t.Fatalf("report_cleanup did not fail a run holding a cleanup failure: %s", out)
+		}
+		if !strings.Contains(out, "did not complete cleanly") {
+			t.Fatalf("the failure must be stated, not only exited on: %s", out)
+		}
+	})
+
+	t.Run("a delete that reports success but leaves the pod is reported", func(t *testing.T) {
+		// FAKE_DELETE_KEEPS_OBJECT makes the fake answer the delete with success
+		// while leaving the object, which is the case a `|| true` cleanup would
+		// have erased entirely.
+		out := run(t, `
+mkdir -p "$EVIDENCE"
+cat > "$EVIDENCE/ani-fb-insp-stubborn.yaml" <<MANIFEST
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ani-fb-insp-stubborn
+  labels:
+    ani-attempt: "$RUN_ID"
+spec:
+  restartPolicy: Never
+  containers:
+    - name: marker
+      image: busybox
+MANIFEST
+create_pod ani-fb-insp-stubborn "$EVIDENCE/ani-fb-insp-stubborn.yaml"
+export FAKE_DELETE_KEEPS_OBJECT=1
+release_pod ani-fb-insp-stubborn || true`)
+		if !strings.Contains(out, "still present") {
+			t.Fatalf("a delete that claimed success but left the pod went unreported: %s", out)
+		}
+		if !strings.Contains(out, "REPORT") && !strings.Contains(out, "FAILURES=ani-fb-insp-stubborn") {
+			t.Fatalf("the residue did not become a cleanup failure: %s", out)
+		}
+	})
+}
+
+func c08ReadFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }

@@ -2142,9 +2142,11 @@ func TestFluentBitVerifyProvesCollectionPath(t *testing.T) {
 	// C08: this run's own test pods are still removed, but by ownership rather
 	// than by a fixed name — the name is scoped to the attempt precisely so two
 	// runs cannot delete each other's probes.
-	if !strings.Contains(script, `post_pod="${MARKER_PREFIX}-post"`) ||
-		!strings.Contains(script, `own_pod "$post_pod"`) {
-		t.Fatal("fluent-bit verify.sh no longer claims its post-rebuild marker pod as this attempt's own")
+	if !strings.Contains(script, `post_pod="${MARKER_PREFIX}-post"`) {
+		t.Fatal("fluent-bit verify.sh no longer names its post-rebuild marker pod after this attempt")
+	}
+	if !strings.Contains(script, `create_pod "$post_pod"`) {
+		t.Fatal("fluent-bit verify.sh no longer records the post-rebuild marker pod's create-time uid as this attempt's own")
 	}
 	if !strings.Contains(script, "release_all_owned") {
 		t.Fatal("fluent-bit verify.sh does not release the pods this attempt owns")

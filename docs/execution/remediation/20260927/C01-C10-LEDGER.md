@@ -346,3 +346,98 @@ SQL 写入；删 Pod/PVC；重启；快照；抢锁；额度重置。修复后�
 open 项：metrics／fluent-bit 重型验收未接入受账本约束的正式入口（C04）；
 新执行 role 的 connections 片段仍写进 base 的 canonical `connections.d`（代码注释与本台账均如实声明）；
 C03 的 UID 选择器端到端语义需允许连集群时补测。
+
+---
+
+# 第二轮（2026-09-27，复核提交 153bada2 之后）
+
+本轮范围：关闭复核确认的剩余实现——C03 真实 UID 前置、C08 清理、C07 上下文与片段隔离、C04 重型验收入口。
+
+## C03 的更正：上一轮的“code_fixed”不成立，现在才成立
+
+上一轮把删除改成 `kubectl delete pod <name> -n <ns> --field-selector metadata.uid=<uid> --ignore-not-found=false`，
+并记为“UID 前置已进请求”。两处都不成立，且比“不够强”更糟：
+
+- kubectl 的 delete 在有 name 时若设了 field-selector，Builder 先走 visitBySelector，
+  其中 `len(b.names) != 0` 直接报 `name cannot be provided when a selector is specified`；
+  该错误在 `Do()` 里不被 ContinueOnError 吞掉。也就是说这条命令**根本不会发出请求**：
+  在真集群上 acceptance 永远失败，Pod 也永远没被删。我上一轮的测试之所以绿，是因为
+  fake kubectl 自己用 sed 解释 `metadata.uid` 并扮演“服务端同意”，即测试断言的是命令行形状。
+- 退一步，即便按纯 selector 删除，k8s v1.35 的 delete 走 LIST 再按 name 逐个删，
+  `options := &metav1.DeleteOptions{}` 之后只设 PropagationPolicy，全文无 Preconditions；
+  `--wait` 用的 uid 是删除**响应之后**取来等消失的，不是授权条件。
+- 再看服务端：单个对象 DELETE 的 handler 从请求 body（或空 body 时的 query 解码）取 DeleteOptions
+  后按 name 删；fieldSelector 只在 DeleteCollection 路径被消费。所以即使把
+  `?fieldSelector=metadata.uid=…` 发给具名 DELETE，也是无条件删同名对象。
+
+本轮实现（`kubekey/pkg/ani/pod_delete.go`）：用 go.mod 已直接依赖的 client-go 发具名 Pod DELETE，
+`metav1.NewPreconditionDeleteOptions(uid)` 作为请求 body；不再有绕过前置的路径。
+conflict/forbidden/notFound 记为新的终态账本状态 `refused`（确定未删，不得换 UID 重试），
+timeout/cancel 记 `unknown`（不重放）。API 客户端在取产品锁与申领额度之前构造，
+kubeconfig 不可加载时不消耗任何额度。原 controller/PVC/PV 授权检查、锁与 fsync 账本全部保留。
+
+证据口径（区分请求集成与真实服务端）：测试让真实 client-go 打到本机隔离 HTTP 端点，
+断言方法=DELETE、路径=/api/v1/namespaces/<ns>/pods/<name>、body 解码后的 `preconditions.uid`、
+以及请求 Content-Type；409 由端点按文档语义返回并验证同名新对象未被删。
+本轮无 envtest/真 apiserver 条件，因此这是**请求集成测试**，不声称证明 etcd 侧强制；
+“本机无 kubectl 且未授权连集群”那条限制在上一轮是针对选择器支持，现改名为：真实服务端强制未测。
+
+做这一步时由测试与源码核对新发现并修掉的两件事：
+1) 由 kubeconfig 构造的 client 默认协商 `application/vnd.kubernetes.protobuf`，前置确实在请求里但
+   非 JSON 解码器不可读，故显式钉 `application/json`；
+2) 409 携带 reason `AlreadyExists` 不被 `apierrors.IsConflict` 命中（它只对未知 reason 回退到状态码），
+   所以隔离端点必须回 `Conflict`。
+
+红/绿：把删除换回上一轮的 kubectl argv 形态后，全部 acceptance 用例失败，且 fake 明确报
+“a pod delete must go through the API client, not kubectl argv”；换回 client-go 实现后全绿。
+
+## C08 清理：本轮完成，并修掉一个真实缺陷
+
+`builtin/core/roles/ani/fluent-bit/templates/verify.sh`：
+- 归属 UID 改为取**创建响应**返回值（`create_pod` 从 `kubectl apply --output jsonpath='{.metadata.uid}'` 取），
+  不再创建后重新 GET 把后来同名对象的 UID 认领为本轮所有。
+- 清理改为按**本轮自带 attempt 标签**做服务端选择删除，删后逐个复核记录过的 UID 确已消失。
+- 读 UID 失败不再被 `|| true` 吞掉：失败即保留对象并写入 `CLEANUP_FAILURES`；
+  `report_cleanup` 在有记录时让 run 失败并逐条打印，证据目录保留。
+- 创建改为“清单先落盘成文件、再 `create_pod <name> <file>`”。原先 `cat <<EOF | create_pod` 让函数跑在子 shell 里，
+  `OWNED` 关联数组的赋值根本不回到主 shell——**归属表实际一直是空的**，这是本轮测试直接抓出来的真 bug
+  （另一处同类：heredoc 经命令替换也到不了 kubectl，创建会发空文档）。
+- 顺带把 marker/post pod 的 `while [ \$i … ]` 计数循环换成 `sleep <N>`：反斜杠在严格 YAML 里是非法转义，
+  门禁的清单解析器在我把清单改为落盘文件后开始真正解析它们并报错；改循环而不是放宽解析器。
+
+测试：`TestC08_OwnershipIsProofFromTheCreateNotFromALaterRead` 经包内既有 `ANI_VERIFY_LIB_ONLY` 装配线
+**source 真实 checker**后直接驱动 `create_pod/own_pod/release_pod/release_all_owned/report_cleanup`，覆盖：
+创建响应无 UID 则不认领、只删本轮创建且带本轮标签的对象且不碰遗留探针、
+同名 UID 已变则保留并点名新 UID、删成功但对象仍在必须报告、有清理失败时 run 必须失败。
+`TestC08_OverlappingRunsNeverDeleteEachOthersProbes` 仍做并发整跑校验，并明确写出它能到与不能到的边界
+（真集群才有的后端查询之前停止，故只建到 client 探针；marker/inspector 路径由上面那组覆盖）。
+
+## C07 与连接片段隔离：本轮未实施
+
+现状仍是：8 个 checker 已强制要求 `ANI_VERIFY_KUBECONFIG`（上轮改进，保留），但 role 仍把它
+**硬编码**为 `/etc/kubernetes/admin.conf`；`--kubeconfig` 显式值未贯穿 Go→子 kk→role→Helm/kubectl→checker。
+已核实这一项不能靠环境变量传递：SSH 连接器为远端命令从零构造环境（`pkg/connector/ssh_connector.go` 的
+`varsToEnviron`），只导出 `http_proxy`/`KUBECONFIG`/`KUBERNETES_SERVICE_HOST/PORT`，父 kk 的 `os.Environ()` 不过去。
+正确接法是走本仓真实使用的渲染上下文与 inventory 变量（`pkg/ani/config.go` 构造 `.ani/.kubernetes/.images`，
+`pkg/kkims` 的 `kube_config` 已是 `/etc/kubernetes/<name>.conf` 的现成先例），
+并同一条上下文承载 connections 片段/日志目录，使首装写 base 目录、组件新增写自己的 run 目录并从同一目录聚合
+（今日 `writeConnections` 读 `<runtimeBaseDir>/<cluster>/work/connections.d`，即 base 规范目录）。
+这需要改 inventory/role/checker 三层并配“两份互斥 dummy kubeconfig 跑真实渲染与命令执行链、断言最终命令目标”的回归；
+本轮预算内未能完成，按未完成登记，不登记为 live_not_run，也不改注释结项。
+
+## C04 metrics/fluent-bit 重型验收入口：本轮未实施
+
+已核实的阻塞事实：`acceptanceTargets` 是 **每组件恰好一个** `acceptanceTarget`，一个 `Protocol` 字符串、
+一个 Pod/PVC；而 fluent-bit 的旧重型脚本要重建后端 Pod 与 collector Pod 两处，`metrics` 段还含告警路由/静默与持久化，
+一张“组件→单目标”的表表达不了多工作负载，硬塞等于给整段旧脚本发一张无限变更许可。
+另有装配陷阱：`.ani.components.<name>.enabled` 在真实渲染上下文里**恒为 false**（Go 字段无 yaml tag，
+渲染上下文由 `yaml.Marshal` 产生，键是 `certManager`/`metrics`/`logging`），
+所以任何以它为条件的 role 在实机每次都会跳过——接通时必须用 `.backend`/`.metrics.enabled` 这类真实字段。
+本轮保留：batchv1.Job 构造与本地校验、显式未实现专项的拒绝与非通过汇总、全 pass 才 pass；
+未删除功能、未叫用户手跑绕账本的脚本；多目标账本（每目标至多一次、别名/子 run/output 不得二次开额度）
+与 RunVerify→真实协议函数集成测试待下一轮实现。
+
+## 本轮门禁
+
+`scripts/check-code.sh` 完整一次 rc=0，树指纹 `c641e6b14b1765083bb54effeef8eeea336405ad630787ff178540dc32aa38a4`
+（gate/build/打包三处一致的机制未变）；包含本轮 C03/C08 改动。C10 的固定 Chart 准备与摘要校验保留、未改版本或批准 pin。
