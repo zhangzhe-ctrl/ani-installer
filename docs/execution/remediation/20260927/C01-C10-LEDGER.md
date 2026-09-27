@@ -582,3 +582,87 @@ C10 的固定 Chart 准备、lock 与版本/批准 pin 未改动。
 - PG/NATS 保持原单目标步骤与原账本文件名。
 - 临时资源用 attempt 标识隔离，但保留 Operator 加载所需标签（如 `release: ani-metrics`）与选择条件；清理只针对本 attempt 登记对象/ID。
 - 全部数据判定走原协议（Prometheus range 原时间窗、AM 原 silence ID 与 fingerprint、日志 marker 查询），不以 Pod Ready 或文件存在代替。
+
+## C04 实施进度（2026-09-27 第四轮）
+
+### 先行的两个 C08 脚本返回值修正 — code_fixed
+
+`builtin/core/roles/ani/fluent-bit/templates/verify.sh`（commit `86e5059`）：
+- `create_pod`/`start_client` 不再把 stderr 并入 uid：stdout 才是身份，stderr 落进
+  `$EVIDENCE/create/<pod>.stderr` 只作证据；`own_pod` 用 UUID 形状校验创建响应，
+  形状不对就不认领（原先成功创建带一条警告就会把“警告+UID”写进 OWNED）。
+- `conditional_release` 不再用 `deleted*` / `not_found*` 前缀判成功：必须 rc=0、
+  恰好一行、四个字段、且 namespace/name/uid 与本次请求一致，token 只能精确等于
+  `deleted` 或 `not_found`；`deletedUnexpected`、说错对象、多行答案、
+  “token 对但 rc 非零”全部保留 OWNED 并失败，且绝不重发删除。
+  `deleted` 只表述为“该 UID 的删除被接受”，不声称为已验证对象彻底消失。
+- 新增命名用例：`TestC08_TheReleaseAnswerIsAProtocolNotAString`（正常创建、
+  成功但带 stderr 警告、非 UID 响应不认领、rc=0 正确答案、deleted+非零、
+  deletedUnexpected、错对象、多行、404 与正常删除语义分开）；
+  fake kubectl 改为铸造 UUID 形状 uid 并对 `apply -f` 直接拒绝。
+- 门禁一次 rc=0，树指纹 `223767c194d35967ba0dffa287c6c34afc56c427598e2985e55563c39ffcdd41`。
+
+### C04 结构：多目标与唯一变更入口 — code_fixed
+
+commit `bdcd251`（`pkg/ani/acceptance_plan.go` 新增、`verify.go` 改造）、
+`e070c26`（回归与 fixture）。本轮先落地“有限数据结构 + 唯一变更入口 + 每目标一次额度”：
+
+- `acceptanceStep{ID,Title,Target,Run}` / `acceptancePlan{Steps,Dependencies}` /
+  `acceptanceAttempt{…}`：一条有序步骤列表加一个函数，没有通用工作流、状态库、控制器或外部 DSL。
+- `acceptanceTargets` 改为按**稳定目标身份**建键，`acceptanceStep.Target` 引用它；
+  同一对象被两个组件的 plan 引用时是同一个额度，换组件别名、换 step id、换 `--output` 都不重开。
+- `recreateOnce` 是唯一能改动业务 Pod 的入口，也是本包唯一对工作负载 Pod 调用
+  `deletePodWithUIDPrecondition` 的地方：授权（owner 世代 + Pod 真正使用的存储）→
+  先原子登记并 fsync → 真实协议写 → 一次带 UID 前置的删除 → 等新 UID 且 Ready →
+  稳定身份不变 → 同 token 读回 → 关闭账本。明确拒绝（conflict/forbidden/not_found）
+  与远端未知（timeout/cancel）分开记账，都不重读新 UID、不重发。
+- `preflightPlan` 在任何写入前拒绝：目标声明不完整（PVC 与 hostPath 都有或都没有、
+  hostPath 配在 StatefulSet 上、没有协议、既无 Pod 又无 Node）、一个 plan 内重复目标、
+  未声明依赖、以及额度已被旧记录占用。
+- **实时身份只在步骤内读一次**：若在 preflight 再读一遍，会在授权与删除之间多出一次读，
+  那正是 C03 要拒绝的窗口——fake 用 FAKE_REPLACE_UID_ON_REREAD 抓到了这一点。
+- 结果结构：`VerifyStepResult{ID,Title,Status,Detail,Evidence,Target,QuotaState}`，
+  `VerifyComponentResult.Steps/Dependencies`；`planOverall` 只在全部步骤真 pass 时 pass，
+  空集合/skipped/not_run/unknown 都不是 pass，组件行仍带失败原因。
+- PostgreSQL 与 NATS 保留原单目标行为；`LedgerToken` 缺省回落到 ControllerName，
+  所以旧账本文件名继续生效（`TestC04_TheLegacySingleTargetLedgerFileStillBlocks`）。
+- 覆盖（均经生产 `RunVerify` 入口，只替换外部 API/命令）：
+  `TestC04_TwoBusinessPodsEachSpendOnlyTheirOwnBudget`、
+  `TestC04_ASharedTargetCannotBeReopenedFromAnotherComponent`、
+  `TestC04_AliasAndOutputCannotReopenATarget`、
+  `TestC04_AFailedStepStopsTheNextTargetsChange`、
+  `TestC04_IncompleteDeclarationsAreRefusedBeforeAnythingChanges`、
+  `TestC04_AHostPathTargetIsAuthorisedByItsNodeAndMount`、
+  `TestC04_TheLegacySingleTargetLedgerFileStillBlocks`。
+  fixture 相应改为按 Pod 分文件保存 uid（无则回落共享文件，旧测试不动）、
+  增加 daemon/node/hostPath 读取、owner 推导按序数后缀剥离。
+
+### C04 未完成部分（不登记为完成，也不登记为 live_not_run）
+
+上面的步骤集合现在只是**能力就位**，metrics/fluent-bit 的旧能力还没被搬进来：
+
+- 未做：`acceptancePlans["metrics"]` 与 `acceptancePlans["fluent-bit"]` 尚不存在，
+  因此这两个组件今天用 `--only` 指定仍会被 C04 的既有拒绝挡在门外（不会静默跳过、
+  不会假 pass）。也就是说旧脚本的 [7]/[8]（Prometheus/Alertmanager 重建）与
+  fluent-bit 的 [3]/[4]（后端与 collector 重建）目前**仍是脚本里的直接 kubectl 删除**，
+  本轮没有把它们接进 `recreateOnce`。
+- 下一步的具体动作（按此顺序，可被下一条派发直接接手）：
+  1. 在 `verify.go` 增加 targets `prometheus`、`alertmanager`（namespace
+     `ani-observability`，STS/实例名/PVC 名照上文清单第 METRICS-08/10 行），
+     协议改用既有 `runCheckJob` + 从脚本里**逐字移植**的 python 程序
+     （`write.py`/`range.py`/`silence_create.py`/`silence_get.py`），
+     实现 METRICS-07 写→重建→METRICS-08 原时间窗 range 读回，以及
+     METRICS-09 建 silence→重建→METRICS-10 按原 ID 读回（含 generated Secret 身份）。
+     对应地要给 R13 fake 增加 Job 的 `apply`/`get job`/`logs` 分支。
+  2. 把 `metrics/templates/verify.sh` 的 [7]/[8] 两段（含两处
+     `delete pod -l app.kubernetes.io/name=…`）与 `silence_gc.py`、
+     `-l run_id=` 预清扫**删除**，[1]–[6] 的临时对象清理改为只按本 attempt 名字删；
+     脚本不再有业务删除，因此不引入“跳过开关”。
+  3. fluent-bit 同法：targets `<已选后端>` 与 `collector-on-<node>`
+     （hostPath 的真实值是 `/var/lib/ani-installer/fluent-bit`，
+     由 collector values 里的 `fluent-bit-state` 卷给出），
+     `Dependencies: ["<后端>"]` 显式进报告；[5] 保留只读配置断言并把真删记为未验证。
+  4. 每一步的 attempt/token 由 `acceptanceAttempt` 持有并跨阶段复用，
+     禁止重复初始化导致“读回”读的是新写的数据。
+
+本轮门禁（结构 + 测试）一次 rc=0，树指纹 `4607ed0c531b8db4dc4439740e2beedcfd700e5d470ccd59c2c6ff6bfb2f7961`。
