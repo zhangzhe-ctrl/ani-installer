@@ -58,7 +58,7 @@ func TestB02MilvusProductionSelectionAndRender(t *testing.T) {
 			t.Fatalf("unbound Milvus template: %s", file.Rel)
 		}
 		if rel == "templates/values.yaml" {
-			for _, required := range []string{"port: 443", "useSSL: true", "region: us-east-1", "SSL_CERT_FILE", "AWS_CA_BUNDLE", "name: ani-rgw-ca", "secretKeyRef:"} {
+			for _, required := range []string{"port: 443", "useSSL: true", "region: us-east-1", "SSL_CERT_FILE", "AWS_CA_BUNDLE", "name: ani-rgw-ca", "tlsCACert: /etc/ani-rgw-ca/ca.crt", "secretKeyRef:"} {
 				if !strings.Contains(string(file.Rendered), required) {
 					t.Errorf("Milvus TLS or OBC binding missing %q", required)
 				}

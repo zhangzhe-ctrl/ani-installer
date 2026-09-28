@@ -73,3 +73,11 @@ externalS3:
   rootPath: files
   cloudProvider: aws
   useVirtualHost: false
+# Milvus v2.6.24 defaults minio.ssl.tlsCACert to /path/to/public.crt.
+# That value overwrites SSL_CERT_FILE inside NewMinioClient; bind the mounted
+# CA in Milvus' highest-priority user.yaml as well as the process environment.
+extraConfigFiles:
+  user.yaml: |+
+    minio:
+      ssl:
+        tlsCACert: /etc/ani-rgw-ca/ca.crt
