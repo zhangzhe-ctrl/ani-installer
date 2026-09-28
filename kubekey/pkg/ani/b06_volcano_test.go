@@ -1,6 +1,10 @@
 package ani
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,5 +72,53 @@ func TestB06VolcanoProductionSelectionAndRender(t *testing.T) {
 	}
 	if err := ValidateRenderedArtifacts(files); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The v1.15.2 controller waits for its bundled Flow API informers before it
+// reconciles even a CPU-only Queue. A chart missing these two CRDs leaves the
+// Queue status empty and the real gang check times out.
+func TestB06VolcanoChartCarriesControllerRequiredFlowCRDs(t *testing.T) {
+	chart := filepath.Join("..", "..", "ani", "charts", "volcano", "volcano-1.15.2.tgz")
+	f, err := os.Open(chart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gz.Close()
+	want := map[string]string{
+		"volcano/charts/jobflow/crd/v1/flow.volcano.sh_jobflows.yaml":     "name: jobflows.flow.volcano.sh",
+		"volcano/charts/jobflow/crd/v1/flow.volcano.sh_jobtemplates.yaml": "name: jobtemplates.flow.volcano.sh",
+	}
+	seen := map[string]bool{}
+	for tr := tar.NewReader(gz); ; {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		marker, ok := want[h.Name]
+		if !ok {
+			continue
+		}
+		body, err := io.ReadAll(tr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), "kind: CustomResourceDefinition") || !strings.Contains(string(body), marker) {
+			t.Errorf("%s is not the expected Flow CRD", h.Name)
+		}
+		seen[h.Name] = true
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("chart omits controller-required CRD %s", name)
+		}
 	}
 }

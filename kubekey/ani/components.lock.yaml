@@ -510,9 +510,9 @@ batchB01:
       amd64ManifestDigest: sha256:d3a3e029a27cd9c23aa904e8c881af5f2db01245419f8e1147f08238dd85f764
       use: B01 thick daemon plus host shim installer
 
-# B06 original official volcano-1.15.2.tgz contains an unconditional JobFlow
-# CRD dependency. The selected CPU chart is repackaged from the exact official
-# archive with only that unrelated subchart/dependency removed.
+# B06 uses the exact official Volcano 1.15.2 Chart. Its JobFlow subchart adds
+# only two CRDs; the controller requires their informers even for CPU Queues.
+# No JobFlow objects, controller, image or Trainer coupling are selected.
 batchB06:
   status: source_pins_confirmed / implementation_in_progress / live_not_run
   chart:
@@ -522,9 +522,9 @@ batchB06:
     upstream: https://github.com/volcano-sh/helm-charts/releases/download/volcano-1.15.2/volcano-1.15.2.tgz
     source: https://github.com/volcano-sh/helm-charts/releases/download/volcano-1.15.2/volcano-1.15.2.tgz
     upstreamSha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
-    packaging: Helm 3.20.0 package after removing unconditional charts/jobflow and Chart.yaml dependency
-    packagedSha256: 52dd36580c698353062cf4fe7d59158dd2e8045eb0190712137af3e3a9e5eaac
-    sha256: 52dd36580c698353062cf4fe7d59158dd2e8045eb0190712137af3e3a9e5eaac
+    packaging: unmodified official archive; bundled JobFlow subchart renders only its two controller-required CRDs
+    packagedSha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
+    sha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
     artifactChartPath: charts/volcano/1.15.2.tgz
     release: ani-volcano
     namespace: volcano-system
