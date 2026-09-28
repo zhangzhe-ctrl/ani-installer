@@ -7,6 +7,51 @@ V='{{ .ani.artifact_root }}/bin/virtctl'
 export KUBECONFIG='{{ .ani.run.kubeconfig }}'
 ART='{{ .ani.artifact_root }}'
 LOG='{{ .ani.run.logs_dir }}/b05-kubevirt.log'
+# Smoke reads the installed VM and its persisted guest marker. The first
+# install already exercised the normal stop/start path and recorded its PVC UID.
+# A repeat smoke must not apply resources or restart that running VM.
+if [ "${ANI_VERIFY_LEVEL:-}" = smoke ]; then
+  OUT="${ANI_VERIFY_OUTPUT_DIR:?smoke evidence directory is required}"
+  install -d -m 0700 "$OUT"
+  LINE="$(grep -E '^B05 PASS: DataVolume Succeeded, guest command executed, PVC [0-9a-f-]+ and marker ani-b05-[0-9TZ]+ preserved across stop/start$' "$LOG" | tail -n 1)" || {
+    echo 'B05 first-install stop/start evidence is missing' >&2; exit 1;
+  }
+  if [[ ! "$LINE" =~ PVC[[:space:]]([0-9a-f-]+)[[:space:]]and[[:space:]]marker[[:space:]](ani-b05-[0-9TZ]+)[[:space:]]preserved ]]; then
+    echo 'B05 first-install evidence is malformed' >&2; exit 1
+  fi
+  EXPECTED_PVC_UID="${BASH_REMATCH[1]}"
+  EXPECTED_MARK="${BASH_REMATCH[2]}"
+  k -n kubevirt wait --for=condition=Available kubevirt/kubevirt --timeout=60s
+  k -n cdi rollout status deployment/cdi-deployment --timeout=60s
+  test "$(k -n ani-platform get dv ani-b05-guest -o jsonpath='{.status.phase}')" = Succeeded
+  OWNER='{{ .kubernetes.cluster_name }}'
+  test "$(k -n ani-platform get vm ani-b05-guest -o jsonpath='{.metadata.labels.ani\.io/managed-by}')" = "$OWNER"
+  test "$(k -n ani-platform get dv ani-b05-guest -o jsonpath='{.metadata.labels.ani\.io/managed-by}')" = "$OWNER"
+  test "$(k -n ani-platform get vm ani-b05-guest -o jsonpath='{.status.printableStatus}')" = Running
+  k -n ani-platform wait --for=condition=Ready vmi/ani-b05-guest --timeout=60s
+  VMI_UID="$(k -n ani-platform get vmi ani-b05-guest -o jsonpath='{.metadata.uid}')"
+  PVC_UID="$(k -n ani-platform get pvc ani-b05-guest -o jsonpath='{.metadata.uid}')"
+  test -n "$VMI_UID" && test "$PVC_UID" = "$EXPECTED_PVC_UID" || {
+    echo 'B05 VM or PVC identity changed since the first install' >&2; exit 1;
+  }
+  KEY=/etc/kubernetes/ani/kubevirt/guest-ssh-key
+  KNOWN=/etc/kubernetes/ani/kubevirt/known_hosts
+  test -s "$KEY" && test -s "$KNOWN"
+  GUEST_OUT="$(timeout 40 "$V" ssh --namespace ani-platform --identity-file "$KEY" \
+    --known-hosts "$KNOWN" --local-ssh-opts='-o StrictHostKeyChecking=yes' \
+    --command 'uname -m; id -un; cat /home/cirros/ani-b05-marker' cirros@vm/ani-b05-guest)"
+  printf '%s\n' "$GUEST_OUT" > "$OUT/guest-command.txt"
+  printf '%s\n' "$GUEST_OUT" | grep -qx x86_64
+  printf '%s\n' "$GUEST_OUT" | grep -qx cirros
+  READBACK="$(printf '%s\n' "$GUEST_OUT" | tail -n 1 | tr -d '\r')"
+  test "$READBACK" = "$EXPECTED_MARK" || {
+    echo "B05 guest disk marker changed: $READBACK" >&2; exit 1;
+  }
+  test "$(k -n ani-platform get vmi ani-b05-guest -o jsonpath='{.metadata.uid}')" = "$VMI_UID"
+  test "$(k -n ani-platform get pvc ani-b05-guest -o jsonpath='{.metadata.uid}')" = "$PVC_UID"
+  printf 'B05 smoke PASS: existing VM guest command and marker %s on PVC %s\n' "$EXPECTED_MARK" "$PVC_UID"
+  exit 0
+fi
 mkdir -p "$(dirname "$LOG")"
 exec > >(tee -a "$LOG") 2>&1
 sha256sum "$ART/guest/cirros-0.6.3-x86_64-disk.img"
