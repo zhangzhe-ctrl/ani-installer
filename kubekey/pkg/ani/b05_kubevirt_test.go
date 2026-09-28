@@ -51,9 +51,9 @@ func TestB05KubeVirtSelectionAndProductionRender(t *testing.T) {
 		}
 	}
 	for rel, wants := range map[string][]string{
-		"tasks/main.yaml":                  {"test -c /dev/kvm", "delegate_to: 'node2'"},
+		"tasks/main.yaml":                  {"test -c /dev/kvm", "delegate_to: 'node2'", "wait_for_resource crd/datavolumes.cdi.kubevirt.io", "wait_for_resource deployment/cdi-deployment", "CDI did not create $resource within 180s"},
 		"templates/prereq.sh":              {"Immediate", "sha256sum -c"},
-		"templates/verify.sh":              {"kind: DataVolume", "kind: VirtualMachine", "stop vm/ani-b05-guest", "start vm/ani-b05-guest", "ani-b05-marker", "StrictHostKeyChecking=accept-new"},
+		"templates/verify.sh":              {"kind: DataVolume", "kind: VirtualMachine", "stop ani-b05-guest", "start ani-b05-guest", "wait_vmi_ready", "VMI did not appear after start", "#!/bin/sh", "authorized_keys", "ani-b05-marker", "StrictHostKeyChecking=accept-new"},
 		"templates/kubevirt-operator.yaml": {"/kubevirt/virt-launcher:v1.9.0", "ani.io/managed-by: 'ani-lab'"},
 		"templates/cdi-operator.yaml":      {"/kubevirt/cdi-importer:v1.66.1"},
 	} {

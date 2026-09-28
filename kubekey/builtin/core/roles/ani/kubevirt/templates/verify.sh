@@ -97,14 +97,30 @@ spec:
             name: ani-b05-guest
         - name: cloudinit
           cloudInitNoCloud:
+            # The pinned CirrOS image executes NoCloud user-data as a shell
+            # script; it does not apply full cloud-config YAML modules.
             userData: |
-              #cloud-config
-              ssh_authorized_keys:
-                - $PUB
+              #!/bin/sh
+              set -eu
+              mkdir -p /home/cirros/.ssh
+              printf '%s\n' '$PUB' > /home/cirros/.ssh/authorized_keys
+              chown -R cirros:cirros /home/cirros/.ssh
+              chmod 0700 /home/cirros/.ssh
+              chmod 0600 /home/cirros/.ssh/authorized_keys
 VM
 k apply --server-side -f /etc/kubernetes/ani/kubevirt/vm.yaml
-"$V" start vm/ani-b05-guest -n ani-platform
-k -n ani-platform wait --for=condition=Ready vmi/ani-b05-guest --timeout=360s
+wait_vmi_ready() {
+  local deadline=$((SECONDS + 180))
+  # The VM controller creates the VMI asynchronously after virtctl start.
+  # A named kubectl wait fails immediately with NotFound before that happens.
+  until k -n ani-platform get vmi ani-b05-guest >/dev/null 2>&1; do
+    [ "$SECONDS" -lt "$deadline" ] || { echo 'VMI did not appear after start' >&2; return 1; }
+    sleep 2
+  done
+  k -n ani-platform wait --for=condition=Ready vmi/ani-b05-guest --timeout=360s
+}
+"$V" start ani-b05-guest -n ani-platform
+wait_vmi_ready
 
 KNOWN=/etc/kubernetes/ani/kubevirt/known_hosts
 run_guest() {
@@ -120,15 +136,15 @@ run_guest() {
 run_guest 'uname -m; id -un'
 MARK="ani-b05-$(date -u +%Y%m%dT%H%M%SZ)"
 run_guest "printf '%s\n' '$MARK' > /home/cirros/ani-b05-marker && sync && cat /home/cirros/ani-b05-marker"
-"$V" stop vm/ani-b05-guest -n ani-platform
+"$V" stop ani-b05-guest -n ani-platform
 deadline=$((SECONDS + 180))
 while k -n ani-platform get vmi ani-b05-guest >/dev/null 2>&1; do
   [ "$SECONDS" -lt "$deadline" ] || { echo 'VMI did not stop normally' >&2; exit 1; }
   sleep 4
 done
 test "$(k -n ani-platform get pvc ani-b05-guest -o jsonpath='{.metadata.uid}')" = "$PVC_UID"
-"$V" start vm/ani-b05-guest -n ani-platform
-k -n ani-platform wait --for=condition=Ready vmi/ani-b05-guest --timeout=360s
+"$V" start ani-b05-guest -n ani-platform
+wait_vmi_ready
 READBACK="$(run_guest 'cat /home/cirros/ani-b05-marker' | tail -n 1)"
 test "$READBACK" = "$MARK" || { echo "disk marker mismatch after VM restart: $READBACK" >&2; exit 1; }
 test "$(k -n ani-platform get pvc ani-b05-guest -o jsonpath='{.metadata.uid}')" = "$PVC_UID"

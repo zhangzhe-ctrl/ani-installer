@@ -68,6 +68,15 @@ if [ -n "$("${K[@]}" get "queue/$QUEUE_NAME" --ignore-not-found -o name)" ]; the
   [ "$existing" = "$OWNER" ] || { echo "foreign Queue $QUEUE_NAME owner=$existing" >&2; exit 1; }
 fi
 "${K[@]}" apply --server-side -f "$OUT_DIR/b06-queue.yaml"
+# Queue status is reconciled asynchronously. Admission only accepts a group
+# after the controller marks the Queue Open.
+queue_open=false
+for attempt in $(seq 1 45); do
+  state="$("${K[@]}" get "queue/$QUEUE_NAME" -o jsonpath='{.status.state}')"
+  if [ "$state" = Open ]; then queue_open=true; break; fi
+  sleep 2
+done
+[ "$queue_open" = true ] || { echo "Queue $QUEUE_NAME did not become Open; state=$state" >&2; exit 1; }
 make_group() {
   local group="$1"
   cat > "$OUT_DIR/$group.yaml" <<PG

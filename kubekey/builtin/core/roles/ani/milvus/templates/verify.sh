@@ -14,6 +14,22 @@ ready="$("${KUBECTL[@]}" -n "$NS" get statefulset/ani-milvus-etcd -o jsonpath='{
 [ "$ready" = 1 ] || { echo "dedicated Milvus etcd is not ready" >&2; exit 1; }
 "${KUBECTL[@]}" -n "$NS" wait pvc/ani-milvus --for=jsonpath='{.status.phase}=Bound' --timeout=300s
 "${KUBECTL[@]}" -n "$NS" wait pvc/data-ani-milvus-etcd-0 --for=jsonpath='{.status.phase}=Bound' --timeout=300s
+# Read the running v2.6.24 process, not just Helm values or a CA file on disk.
+pod="$("${KUBECTL[@]}" -n "$NS" get pods -l app.kubernetes.io/instance=ani-milvus,component=standalone -o jsonpath='{.items[0].metadata.name}')"
+test -n "$pod"
+image="$("${KUBECTL[@]}" -n "$NS" get pod "$pod" -o jsonpath='{.spec.containers[?(@.name=="standalone")].image}')"
+[ "$image" = '{{ .ani.registry }}/milvusdb/milvus:v2.6.24' ] || { echo "unexpected Milvus process image: $image" >&2; exit 1; }
+"${KUBECTL[@]}" -n "$NS" get configmap ani-rgw-ca -o jsonpath='{.data.ca\.crt}' > "$OUT_DIR/b02-expected-rgw-ca.crt"
+expected_ca="$(sha256sum "$OUT_DIR/b02-expected-rgw-ca.crt" | awk '{print $1}')"
+actual_ca="$("${KUBECTL[@]}" -n "$NS" exec "$pod" -c standalone -- sha256sum /etc/ani-rgw-ca/ca.crt | awk '{print $1}')"
+[ "$actual_ca" = "$expected_ca" ] || { echo 'Milvus mounted RGW CA differs from the selected ConfigMap' >&2; exit 1; }
+"${KUBECTL[@]}" -n "$NS" exec "$pod" -c standalone -- sh -ec '
+  tr "\000" "\n" < /proc/1/environ | grep -Fx "SSL_CERT_FILE=/etc/ani-rgw-ca/ca.crt"
+  tr "\000" "\n" < /proc/1/environ | grep -Fx "AWS_CA_BUNDLE=/etc/ani-rgw-ca/ca.crt"
+  grep -A4 "^  ssl:" /milvus/configs/user.yaml | grep -Fx "    tlsCACert: /etc/ani-rgw-ca/ca.crt"
+  test -s /etc/ani-rgw-ca/ca.crt
+' > "$OUT_DIR/b02-process-ca.log"
+printf 'ANI-MILVUS-PROCESS-CA-OK pod=%s image=%s ca_sha256=%s\n' "$pod" "$image" "$expected_ca" | tee "$OUT_DIR/b02-process-result.txt"
 job="ani-milvus-vector-$(date +%Y%m%d%H%M%S)-$$"
 cat > "$OUT_DIR/$job.yaml" <<JOB_EOF
 apiVersion: batch/v1

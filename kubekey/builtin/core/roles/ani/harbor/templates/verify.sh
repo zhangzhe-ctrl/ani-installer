@@ -98,36 +98,7 @@ if not digest.startswith("sha256:"): raise SystemExit("Harbor artifact has no SH
 print(digest)
 PY
 )"
-# The private Harbor reference is removed locally before the authenticated
-# pull. Source/bootstrap references and their content blobs are preserved.
-ctr -n k8s.io images rm "$TARGET" > "$EVID/harbor-local-untag.log" 2>&1
-ctr -n k8s.io images pull --hosts-dir "$HOSTS" \
-  --user "$PULL_USER:$PULL_SECRET" "$TARGET" > "$EVID/harbor-pull.log" 2>&1
-LOCAL_DIGEST="$(ctr -n k8s.io images ls | awk -v ref="$TARGET" '$1==ref {print $3}')"
-[ "$LOCAL_DIGEST" = "$DIGEST" ] || { echo "Harbor push/pull digest mismatch: $LOCAL_DIGEST vs $DIGEST" >&2; exit 1; }
-ctr -n k8s.io images tag --force "$SOURCE" "$DENIED" > "$EVID/denied-local-tag.log" 2>&1
-if ctr -n k8s.io images push --hosts-dir "$HOSTS" \
-    --user "$PULL_USER:$PULL_SECRET" "$DENIED" > "$EVID/denied-push.log" 2>&1; then
-  echo 'pull-only robot could push; refusing B07 pass' >&2
-  exit 1
-fi
-grep -Eiq 'denied|forbidden|insufficient_scope|unauthorized' "$EVID/denied-push.log" || {
-  echo 'pull-only push failed for an unclassified reason' >&2; exit 1;
-}
-ctr -n k8s.io images rm "$DENIED" >/dev/null 2>&1
-
-# The Pods use the real CRI on each declared node, an Always pull of the new
-# Harbor ref, and a project-scoped pull-only imagePullSecret.
-k apply --server-side -f "$DIR/runtime-pods.yaml"
-for node in {{ range .ani.nodes }}{{ . }} {{ end }}; do
-  pod="ani-b07-runtime-$node"
-  k -n ani-harbor wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" --timeout=600s
-  imageid="$(k -n ani-harbor get pod "$pod" -o jsonpath='{.status.containerStatuses[0].imageID}')"
-  case "$imageid" in *"$DIGEST"*) ;; *) echo "$pod runtime image digest mismatch: $imageid" >&2; exit 1;; esac
-  k -n ani-harbor logs "$pod" | grep -qx 'ANI_B07_RUNTIME_PULL_OK'
-  printf '%s %s\n' "$pod" "$imageid" >> "$EVID/runtime-imageids.txt"
-done
-
+# Project policy blocks unscanned image pulls; scan before the first pull.
 code="$(admin_curl -o "$EVID/scan-request.json" -w '%{http_code}' \
   -X POST -H 'Content-Type: application/json' \
   "$API/projects/$PROJECT/repositories/busybox/artifacts/1.37.0/scan")"
@@ -158,6 +129,37 @@ import json,sys
 with open(sys.argv[1]) as f: report=json.load(f)
 if not isinstance(report,dict) or not report: raise SystemExit("empty or invalid Harbor vulnerability report")
 PY
+
+# The private Harbor reference is removed locally before the authenticated
+# pull. Source/bootstrap references and their content blobs are preserved.
+ctr -n k8s.io images rm "$TARGET" > "$EVID/harbor-local-untag.log" 2>&1
+ctr -n k8s.io images pull --hosts-dir "$HOSTS" \
+  --user "$PULL_USER:$PULL_SECRET" "$TARGET" > "$EVID/harbor-pull.log" 2>&1
+LOCAL_DIGEST="$(ctr -n k8s.io images ls | awk -v ref="$TARGET" '$1==ref {print $3}')"
+[ "$LOCAL_DIGEST" = "$DIGEST" ] || { echo "Harbor push/pull digest mismatch: $LOCAL_DIGEST vs $DIGEST" >&2; exit 1; }
+ctr -n k8s.io images tag --force "$SOURCE" "$DENIED" > "$EVID/denied-local-tag.log" 2>&1
+if ctr -n k8s.io images push --hosts-dir "$HOSTS" \
+    --user "$PULL_USER:$PULL_SECRET" "$DENIED" > "$EVID/denied-push.log" 2>&1; then
+  echo 'pull-only robot could push; refusing B07 pass' >&2
+  exit 1
+fi
+grep -Eiq 'denied|forbidden|insufficient_scope|unauthorized' "$EVID/denied-push.log" || {
+  echo 'pull-only push failed for an unclassified reason' >&2; exit 1;
+}
+ctr -n k8s.io images rm "$DENIED" >/dev/null 2>&1
+
+# The Pods use the real CRI on each declared node, an Always pull of the new
+# Harbor ref, and a project-scoped pull-only imagePullSecret.
+k apply --server-side -f "$DIR/runtime-pods.yaml"
+for node in {{ range .ani.nodes }}{{ . }} {{ end }}; do
+  pod="ani-b07-runtime-$node"
+  k -n ani-harbor wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" --timeout=600s
+  imageid="$(k -n ani-harbor get pod "$pod" -o jsonpath='{.status.containerStatuses[0].imageID}')"
+  case "$imageid" in *"$DIGEST"*) ;; *) echo "$pod runtime image digest mismatch: $imageid" >&2; exit 1;; esac
+  k -n ani-harbor logs "$pod" | grep -qx 'ANI_B07_RUNTIME_PULL_OK'
+  printf '%s %s\n' "$pod" "$imageid" >> "$EVID/runtime-imageids.txt"
+done
+
 k -n ani-harbor delete pod -l app=ani-b07-runtime-check --wait=true --timeout=180s
 printf 'B07 PASS: project=%s digest=%s scanner=%s report_sha256=%s\n' \
   "$PROJECT" "$DIGEST" 'Harbor-Trivy-offline' "$(sha256sum "$EVID/vulnerabilities.json" | awk '{print $1}')" \

@@ -14,8 +14,10 @@ if KUBECONFIG="$KUBECONFIG_FILE" "$HELM" status ani-volcano -n volcano-system >/
 fi
 KUBECONFIG="$KUBECONFIG_FILE" "$HELM" template ani-volcano "$CHART" -n volcano-system \
   -f /etc/kubernetes/ani/volcano/values.yaml --include-crds > /etc/kubernetes/ani/volcano/rendered.yaml
-if grep -qi jobflow /etc/kubernetes/ani/volcano/rendered.yaml; then
-  echo 'the selected CPU chart still renders JobFlow' >&2; exit 1
+# Volcano's shared controller RBAC names JobFlow APIs even with its separate
+# JobFlow chart dependency removed. Reject actual JobFlow resources or images.
+if grep -Eqi '^[[:space:]]*name: (jobflows|jobtemplates)\.flow\.volcano\.sh[[:space:]]*$|^kind: (JobFlow|JobTemplate)[[:space:]]*$|^[[:space:]]*image:.*jobflow' /etc/kubernetes/ani/volcano/rendered.yaml; then
+  echo 'the selected CPU chart renders JobFlow resources or image' >&2; exit 1
 fi
 awk '$1 == "image:" && $2 != "" {print $2}' /etc/kubernetes/ani/volcano/rendered.yaml | sort -u > /etc/kubernetes/ani/volcano/rendered-images.txt
 cat > /etc/kubernetes/ani/volcano/expected-images.txt <<'IMAGES'

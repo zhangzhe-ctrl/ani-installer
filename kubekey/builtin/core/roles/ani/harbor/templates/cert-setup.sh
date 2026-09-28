@@ -25,7 +25,8 @@ openssl x509 -req -sha256 -days 825 -in "$DIR/server.csr" \
 openssl verify -CAfile "$DIR/ca.crt" -verify_ip "$ADDR" "$DIR/server.crt"
 openssl rand -hex 48 | tr -d '\n' > "$DIR/admin-password"
 openssl rand -hex 48 | tr -d '\n' > "$DIR/db-password"
-openssl rand -hex 48 | tr -d '\n' > "$DIR/registry-password"
+# The pinned Chart bcrypt htpasswd rejects passwords over 72 bytes.
+openssl rand -hex 32 | tr -d '\n' > "$DIR/registry-password"
 chmod 0600 "$DIR"/*.key "$DIR"/*-password
 k create namespace ani-harbor --dry-run=client -o yaml | k apply --server-side -f -
 k -n ani-harbor create secret tls ani-harbor-tls \

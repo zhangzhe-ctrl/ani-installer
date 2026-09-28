@@ -57,6 +57,13 @@ func TestB02MilvusProductionSelectionAndRender(t *testing.T) {
 		if strings.Contains(string(file.Rendered), "<no value>") {
 			t.Fatalf("unbound Milvus template: %s", file.Rel)
 		}
+		if rel == "templates/verify.sh" {
+			for _, required := range []string{"/proc/1/environ", "tlsCACert: /etc/ani-rgw-ca/ca.crt", "b02-process-result.txt", "/milvusdb/milvus:v2.6.24"} {
+				if !strings.Contains(string(file.Rendered), required) {
+					t.Errorf("Milvus process trust check missing %q", required)
+				}
+			}
+		}
 		if rel == "templates/values.yaml" {
 			for _, required := range []string{"port: 443", "useSSL: true", "region: us-east-1", "SSL_CERT_FILE", "AWS_CA_BUNDLE", "name: ani-rgw-ca", "tlsCACert: /etc/ani-rgw-ca/ca.crt", "secretKeyRef:"} {
 				if !strings.Contains(string(file.Rendered), required) {

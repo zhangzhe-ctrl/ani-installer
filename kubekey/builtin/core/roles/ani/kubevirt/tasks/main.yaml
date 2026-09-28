@@ -63,9 +63,25 @@
 - name: ANI KubeVirt | Install CDI runtime
   command: |
     set -euo pipefail
-    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/cdi-cr.yaml
-    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Established --timeout=180s crd/datavolumes.cdi.kubevirt.io
-    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n cdi rollout status deployment/cdi-deployment --timeout=900s
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl apply --server-side -f /etc/kubernetes/ani/kubevirt/cdi-cr.yaml
+    # CDI creates its DataVolume CRD and Deployment asynchronously after the
+    # CDI custom resource is accepted. A named kubectl wait fails immediately
+    # with NotFound until each resource exists, so bound that transition.
+    wait_for_resource() {
+      local resource="$1" deadline=$((SECONDS + 180))
+      until kubectl -n cdi get "$resource" >/dev/null 2>&1; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+          echo "CDI did not create $resource within 180s" >&2
+          return 1
+        fi
+        sleep 2
+      done
+    }
+    wait_for_resource crd/datavolumes.cdi.kubevirt.io
+    kubectl wait --for=condition=Established --timeout=180s crd/datavolumes.cdi.kubevirt.io
+    wait_for_resource deployment/cdi-deployment
+    kubectl -n cdi rollout status deployment/cdi-deployment --timeout=900s
 
 - name: ANI KubeVirt | Ensure package source namespace exists
   command: |

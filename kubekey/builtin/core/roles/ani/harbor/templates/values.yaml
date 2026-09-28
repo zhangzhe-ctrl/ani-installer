@@ -12,6 +12,9 @@ expose:
       http: {port: 80, nodePort: 30002}
       https: {port: 443, nodePort: 30003}
 externalURL: https://{{ (index .ani.components "harbor").external_address }}:30003
+# Singleton Jobservice has an RWO log PVC; Recreate avoids cross-node
+# multi-attach deadlock on a later scoped Harbor update.
+updateStrategy: {type: Recreate}
 existingSecretAdminPassword: ani-harbor-admin
 imagePullPolicy: IfNotPresent
 persistence:

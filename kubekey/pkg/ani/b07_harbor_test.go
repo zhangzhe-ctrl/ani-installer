@@ -1,11 +1,15 @@
 package ani
 
 import (
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestB07HarborProductionSelectionAndRender(t *testing.T) {
@@ -56,22 +60,28 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 		}
 		rendered[f.Rel] = string(f.Rendered)
 	}
-	for _, rel := range []string{"tasks/main.yaml", "templates/values.yaml", "templates/prereq.sh", "templates/cert-setup.sh", "templates/seed.sh", "templates/verify.sh", "templates/connection.md"} {
+	for _, rel := range []string{"tasks/main.yaml", "templates/values.yaml", "templates/prereq.sh", "templates/cert-setup.sh", "templates/seed.sh", "templates/verify.sh", "templates/render-check.sh", "templates/connection.md"} {
 		if rendered["harbor/"+rel] == "" {
 			t.Errorf("missing rendered %s", rel)
 		}
 	}
 	for rel, wants := range map[string][]string{
-		"templates/values.yaml": {"https://192.0.2.11:30003", "skipJavaDBUpdate: true", "offlineScan: true", "ani-harbor-trivy-cache"},
-		"templates/prereq.sh":   {"sha256sum -c", "pre-existing ani-harbor namespace", "30002|30003"},
-		"templates/verify.sh":   {"/api/v2.0", "--hosts-dir", "scan_overview", "report_id", "ani-b07-runtime"},
-		"tasks/main.yaml":       {"registry.credentials.password", "ani/harbor", "systemctl restart containerd"},
+		"templates/cert-setup.sh":   {"openssl rand -hex 32", "registry-password"},
+		"templates/render-check.sh": {"Harbor Chart did not render a bcrypt registry htpasswd", "Harbor Jobservice must render Recreate"},
+		"templates/values.yaml":     {"https://192.0.2.11:30003", "skipJavaDBUpdate: true", "offlineScan: true", "ani-harbor-trivy-cache"},
+		"templates/prereq.sh":       {"sha256sum -c", "pre-existing ani-harbor namespace", "30002|30003"},
+		"templates/verify.sh":       {"/api/v2.0", "--hosts-dir", "scan_overview", "report_id", "ani-b07-runtime"},
+		"tasks/main.yaml":           {"registry.credentials.password", "ani/harbor", "systemctl restart containerd"},
 	} {
 		for _, want := range wants {
 			if !strings.Contains(rendered["harbor/"+rel], want) {
 				t.Errorf("%s omits %q", rel, want)
 			}
 		}
+	}
+	verify := rendered["harbor/templates/verify.sh"]
+	if scan, pull := strings.Index(verify, "$API/projects/$PROJECT/repositories/busybox/artifacts/1.37.0/scan"), strings.Index(verify, `--user "$PULL_USER:$PULL_SECRET" "$TARGET"`); scan < 0 || pull < 0 || scan > pull {
+		t.Error("strict project policy requires real scan completion before authenticated Harbor pull")
 	}
 	if err := ValidateRenderedArtifacts(files); err != nil {
 		t.Fatal(err)
@@ -85,7 +95,7 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 		values := filepath.Join(dir, "values.yaml")
 		db := filepath.Join(dir, "db-password")
 		registry := filepath.Join(dir, "registry-password")
-		for path, content := range map[string]string{values: rendered["harbor/templates/values.yaml"], db: "test-db-secret", registry: "test-registry-secret"} {
+		for path, content := range map[string]string{values: rendered["harbor/templates/values.yaml"], db: "test-db-secret", registry: strings.Repeat("r", 64)} {
 			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -97,6 +107,18 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 			t.Fatalf("official Harbor Chart render: %v\n%s", err, output)
 		}
 		manifest := string(output)
+		match := regexp.MustCompile(`(?m)^\s+REGISTRY_HTPASSWD:\s*"([A-Za-z0-9+/=]+)"\s*$`).FindStringSubmatch(manifest)
+		if len(match) != 2 {
+			t.Fatal("official Harbor Chart omitted registry htpasswd Secret")
+		}
+		htpasswd, err := base64.StdEncoding.DecodeString(match[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.SplitN(string(htpasswd), ":", 2)
+		if len(parts) != 2 || parts[0] != "harbor_registry_user" || bcrypt.CompareHashAndPassword([]byte(parts[1]), []byte(strings.Repeat("r", 64))) != nil {
+			t.Fatal("official Harbor Chart rendered an unusable internal registry htpasswd")
+		}
 		for _, want := range []string{
 			"name: ani-harbor-trivy", "name: \"ani-harbor-database\"", "name: ani-harbor-redis",
 			"claimName: ani-harbor-trivy-cache", "SCANNER_TRIVY_SKIP_UPDATE", "SCANNER_TRIVY_SKIP_JAVA_DB_UPDATE",
@@ -106,6 +128,9 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 			if !strings.Contains(manifest, want) {
 				t.Errorf("Chart render omits %q", want)
 			}
+		}
+		if !strings.Contains(manifest, "strategy:\n    type: Recreate") {
+			t.Error("Harbor chart did not render Recreate for the singleton RWO workload")
 		}
 		if strings.Contains(manifest, "harbor_registry_password") || strings.Contains(manifest, "Harbor12345") {
 			t.Error("Chart defaults leaked into rendered manifest")
