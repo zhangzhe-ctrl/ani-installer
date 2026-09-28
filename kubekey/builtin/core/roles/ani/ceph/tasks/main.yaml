@@ -124,6 +124,15 @@
 - name: ANI Ceph | Wait for CephFilesystem Ready
   command: kubectl -n rook-ceph wait cephfilesystem/ani-fs --for=jsonpath=.status.phase=Ready --timeout=600s
 
+- name: ANI Ceph | Render RGW TLS issuer
+  template:
+    src: rgw-tls.sh
+    dest: /etc/kubernetes/ani/ceph/rgw-tls.sh
+    mode: "0700"
+
+- name: ANI Ceph | Issue and verify owned RGW TLS certificate
+  command: bash /etc/kubernetes/ani/ceph/rgw-tls.sh
+
 - name: ANI Ceph | Render CephObjectStore
   template:
     src: object.yaml

@@ -46,8 +46,7 @@ spec:
               valueFrom:
                 configMapKeyRef: {name: $CLAIM, key: BUCKET_HOST}
             - name: BUCKET_PORT
-              valueFrom:
-                configMapKeyRef: {name: $CLAIM, key: BUCKET_PORT}
+              value: "80"
             - name: BUCKET_NAME
               valueFrom:
                 configMapKeyRef: {name: $CLAIM, key: BUCKET_NAME}

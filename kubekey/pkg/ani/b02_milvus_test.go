@@ -45,7 +45,7 @@ func TestB02MilvusProductionSelectionAndRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"tasks/main.yaml": false, "templates/values.yaml": false, "templates/verify.sh": false, "templates/s3-verify.sh": false, "templates/bucket.yaml": false}
+	want := map[string]bool{"tasks/main.yaml": false, "templates/values.yaml": false, "templates/verify.sh": false, "templates/s3-verify.sh": false, "templates/bucket.yaml": false, "templates/rgw-ca.sh": false}
 	for _, file := range files {
 		if file.Role != "milvus" {
 			continue
@@ -57,10 +57,32 @@ func TestB02MilvusProductionSelectionAndRender(t *testing.T) {
 		if strings.Contains(string(file.Rendered), "<no value>") {
 			t.Fatalf("unbound Milvus template: %s", file.Rel)
 		}
+		if rel == "templates/values.yaml" {
+			for _, required := range []string{"port: 443", "useSSL: true", "region: us-east-1", "SSL_CERT_FILE", "AWS_CA_BUNDLE", "name: ani-rgw-ca", "secretKeyRef:"} {
+				if !strings.Contains(string(file.Rendered), required) {
+					t.Errorf("Milvus TLS or OBC binding missing %q", required)
+				}
+			}
+		}
 	}
 	for name, found := range want {
 		if !found {
 			t.Errorf("selected Milvus did not render %s", name)
 		}
+	}
+	for _, file := range files {
+		if file.Role != "ceph" {
+			continue
+		}
+		if file.Rel == "ceph/templates/object.yaml" {
+			for _, required := range []string{"port: 80", "securePort: 443", "sslCertificateRef: ani-rgw-server-tls"} {
+				if !strings.Contains(string(file.Rendered), required) {
+					t.Errorf("Ceph RGW TLS missing %q", required)
+				}
+			}
+		}
+	}
+	if err := ValidateRenderedArtifacts(files); err != nil {
+		t.Fatal(err)
 	}
 }

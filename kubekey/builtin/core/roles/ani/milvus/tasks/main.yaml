@@ -21,6 +21,15 @@
     KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
       KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
 
+- name: ANI Milvus | Render RGW CA publisher
+  template:
+    src: rgw-ca.sh
+    dest: /etc/kubernetes/ani/milvus/rgw-ca.sh
+    mode: "0700"
+
+- name: ANI Milvus | Publish trusted RGW CA for the selected component
+  command: bash /etc/kubernetes/ani/milvus/rgw-ca.sh
+
 - name: ANI Milvus | Render RGW ownership preflight
   template:
     src: prereq.sh

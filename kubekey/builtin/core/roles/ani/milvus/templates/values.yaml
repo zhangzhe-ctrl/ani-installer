@@ -16,6 +16,10 @@ standalone:
       storageClass: {{ .ani.components.milvus.storage_class }}
       size: {{ .ani.components.milvus.storage_size }}
   extraEnv:
+    - name: SSL_CERT_FILE
+      value: /etc/ani-rgw-ca/ca.crt
+    - name: AWS_CA_BUNDLE
+      value: /etc/ani-rgw-ca/ca.crt
     - name: MINIO_ACCESS_KEY_ID
       valueFrom:
         secretKeyRef:
@@ -49,13 +53,22 @@ woodpecker:
   enabled: false
 tei:
   enabled: false
+volumes:
+  - name: ani-rgw-ca
+    configMap:
+      name: ani-rgw-ca
+volumeMounts:
+  - name: ani-rgw-ca
+    mountPath: /etc/ani-rgw-ca
+    readOnly: true
 externalS3:
   enabled: true
   host: rook-ceph-rgw-ani-store.rook-ceph.svc.cluster.local
-  port: 80
+  port: 443
   accessKey: ""
   secretKey: ""
-  useSSL: false
+  useSSL: true
+  region: us-east-1
   bucketName: ani-milvus-objects
   rootPath: files
   cloudProvider: aws

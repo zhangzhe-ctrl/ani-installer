@@ -48,8 +48,7 @@ spec:
               valueFrom:
                 configMapKeyRef: {name: ani-milvus-objects, key: BUCKET_HOST}
             - name: BUCKET_PORT
-              valueFrom:
-                configMapKeyRef: {name: ani-milvus-objects, key: BUCKET_PORT}
+              value: "80"
             - name: BUCKET_NAME
               valueFrom:
                 configMapKeyRef: {name: ani-milvus-objects, key: BUCKET_NAME}

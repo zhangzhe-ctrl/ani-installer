@@ -34,6 +34,8 @@ spec:
   gateway:
     # The port that RGW pods will listen on (http)
     port: 80
+    securePort: 443
+    sslCertificateRef: ani-rgw-server-tls
     # The number of pods in the rgw deployment
     instances: 1
     placement:
