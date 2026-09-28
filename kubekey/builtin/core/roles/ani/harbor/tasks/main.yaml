@@ -99,6 +99,11 @@
   template:
     src: verify.sh
     dest: /etc/kubernetes/ani/harbor/verify.sh
+- name: ANI Harbor | Render node runtime pull checker
+  template:
+    src: runtime-pods.yaml
+    dest: /etc/kubernetes/ani/harbor/runtime-pods.yaml
+    mode: "0600"
 - name: ANI Harbor | Verify private project, robot scope, digest and offline scan
   command: bash /etc/kubernetes/ani/harbor/verify.sh
 - name: ANI Harbor | Render ANI connection and API facts

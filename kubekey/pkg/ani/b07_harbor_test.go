@@ -60,24 +60,29 @@ func TestB07HarborProductionSelectionAndRender(t *testing.T) {
 		}
 		rendered[f.Rel] = string(f.Rendered)
 	}
-	for _, rel := range []string{"tasks/main.yaml", "templates/values.yaml", "templates/prereq.sh", "templates/cert-setup.sh", "templates/seed.sh", "templates/verify.sh", "templates/render-check.sh", "templates/connection.md"} {
+	for _, rel := range []string{"tasks/main.yaml", "templates/values.yaml", "templates/prereq.sh", "templates/cert-setup.sh", "templates/seed.sh", "templates/verify.sh", "templates/runtime-pods.yaml", "templates/render-check.sh", "templates/connection.md"} {
 		if rendered["harbor/"+rel] == "" {
 			t.Errorf("missing rendered %s", rel)
 		}
 	}
 	for rel, wants := range map[string][]string{
-		"templates/cert-setup.sh":   {"openssl rand -hex 32", "registry-password"},
-		"templates/render-check.sh": {"Harbor Chart did not render a bcrypt registry htpasswd", "Harbor Jobservice must render Recreate"},
-		"templates/values.yaml":     {"https://192.0.2.11:30003", "skipJavaDBUpdate: true", "offlineScan: true", "ani-harbor-trivy-cache"},
-		"templates/prereq.sh":       {"sha256sum -c", "pre-existing ani-harbor namespace", "30002|30003"},
-		"templates/verify.sh":       {"/api/v2.0", "--hosts-dir", "scan_overview", "report_id", "ani-b07-runtime"},
-		"tasks/main.yaml":           {"registry.credentials.password", "ani/harbor", "systemctl restart containerd"},
+		"templates/cert-setup.sh":     {"openssl rand -hex 32", "registry-password"},
+		"templates/render-check.sh":   {"Harbor Chart did not render a bcrypt registry htpasswd", "Harbor Jobservice must render Recreate"},
+		"templates/values.yaml":       {"https://192.0.2.11:30003", "skipJavaDBUpdate: true", "offlineScan: true", "ani-harbor-trivy-cache"},
+		"templates/prereq.sh":         {"sha256sum -c", "pre-existing ani-harbor namespace", "30002|30003"},
+		"templates/verify.sh":         {"/api/v2.0", "--hosts-dir", "scan_overview", "report_id", "ani-b07-runtime"},
+		"tasks/main.yaml":             {"registry.credentials.password", "ani/harbor", "systemctl restart containerd", "src: runtime-pods.yaml", "dest: /etc/kubernetes/ani/harbor/runtime-pods.yaml"},
+		"templates/runtime-pods.yaml": {"ani-b07-runtime", "imagePullPolicy: Always", "ani-harbor-pull"},
 	} {
 		for _, want := range wants {
 			if !strings.Contains(rendered["harbor/"+rel], want) {
 				t.Errorf("%s omits %q", rel, want)
 			}
 		}
+	}
+	tasks := rendered["harbor/tasks/main.yaml"]
+	if render, verifyTask := strings.Index(tasks, "src: runtime-pods.yaml"), strings.Index(tasks, "command: bash /etc/kubernetes/ani/harbor/verify.sh"); render < 0 || verifyTask < 0 || render > verifyTask {
+		t.Error("Harbor runtime pull manifest must be rendered before functional verification")
 	}
 	verify := rendered["harbor/templates/verify.sh"]
 	if scan, pull := strings.Index(verify, "$API/projects/$PROJECT/repositories/busybox/artifacts/1.37.0/scan"), strings.Index(verify, `--user "$PULL_USER:$PULL_SECRET" "$TARGET"`); scan < 0 || pull < 0 || scan > pull {
