@@ -1,5 +1,6 @@
 ---
-# B03 Metrics Server. The kubelet certificate gate runs before the first write.
+# B03 Metrics Server. The foreign-provider gate precedes certificate changes;
+# the trusted kubelet certificate gate precedes the APIService install.
 - name: ANI Metrics Server | Assert this run's execution context
   command: |
     set -euo pipefail
@@ -18,7 +19,48 @@
     src: prereq.sh
     dest: /etc/kubernetes/ani/metrics-server/prereq.sh
 
-- name: ANI Metrics Server | Reject foreign provider or untrusted kubelet certificates
+- name: ANI Metrics Server | Refuse a foreign metrics APIService before certificate changes
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/metrics-server/prereq.sh --provider-only
+
+- name: ANI Metrics Server | Render kubeadm serving TLS bootstrap reconciler
+  template:
+    src: serving-configmap.sh
+    dest: /etc/kubernetes/ani/metrics-server/serving-configmap.sh
+    mode: "0700"
+
+- name: ANI Metrics Server | Enable kubelet serving TLS bootstrap in kubeadm configuration
+  command: bash /etc/kubernetes/ani/metrics-server/serving-configmap.sh
+
+- name: ANI Metrics Server | Create work directory on every declared node
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  command: install -d -m 0700 /etc/kubernetes/ani/metrics-server
+
+- name: ANI Metrics Server | Ship kubelet serving TLS bootstrap reconciler
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  template:
+    src: serving-node.sh
+    dest: /etc/kubernetes/ani/metrics-server/serving-node.sh
+    mode: "0700"
+
+- name: ANI Metrics Server | Enable serving CSR flow on every declared node
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  command: 'bash /etc/kubernetes/ani/metrics-server/serving-node.sh {{ .item }}'
+
+- name: ANI Metrics Server | Render bounded kubelet serving CSR approval
+  template:
+    src: serving-approve.sh
+    dest: /etc/kubernetes/ani/metrics-server/serving-approve.sh
+    mode: "0700"
+
+- name: ANI Metrics Server | Approve only selected node serving CSRs
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/metrics-server/serving-approve.sh
+
+- name: ANI Metrics Server | Reject untrusted kubelet certificates
   command: |
     ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/metrics-server/prereq.sh
 

@@ -18,13 +18,26 @@ if [ -n "$("${KUBECTL[@]}" get apiservice "$api" --ignore-not-found -o name)" ];
     exit 1
   }
 fi
+case "${1:-}" in
+  --provider-only) exit 0 ;;
+  '') ;;
+  *) echo "unexpected B03 preflight mode" >&2; exit 1 ;;
+esac
 for ip in {{ range .ani.node_addresses }}'{{ . }}' {{ end }}; do
   log="$(mktemp)"
-  if ! timeout 15 openssl s_client -connect "$ip:10250" -CAfile "$CA" -verify_ip "$ip" -verify_return_error < /dev/null > "$log" 2>&1 || ! grep -q 'Verify return code: 0 (ok)' "$log"; then
-    echo "kubelet serving certificate for $ip:10250 is not trusted by the cluster CA or lacks the InternalIP SAN; B03 stops before writing resources" >&2
-    tail -12 "$log" >&2
-    rm -f "$log"
-    exit 1
-  fi
+  deadline=$(($(date +%s) + 180))
+  while :; do
+    if timeout 15 openssl s_client -connect "$ip:10250" -CAfile "$CA" -verify_ip "$ip" -verify_return_error < /dev/null > "$log" 2>&1 &&
+       grep -q 'Verify return code: 0 (ok)' "$log"; then
+      break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "kubelet serving certificate for $ip:10250 is not trusted by the cluster CA or lacks the InternalIP SAN; B03 stops before writing resources" >&2
+      tail -12 "$log" >&2
+      rm -f "$log"
+      exit 1
+    fi
+    sleep 2
+  done
   rm -f "$log"
 done

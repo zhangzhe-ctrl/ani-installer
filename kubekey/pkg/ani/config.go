@@ -1443,6 +1443,24 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err != nil {
 		return nil, err
 	}
+	kubernetesConfig := map[string]any{
+		"kube_version": "v1.35.8",
+		"cluster_name": c.Name,
+		"control_plane_endpoint": map[string]any{
+			"type": "local",
+		},
+		"custom_labels": map[string]any{
+			"networking.kubercloud.com/role": "master",
+		},
+	}
+	if c.Components.MetricsServer.Enabled {
+		// Kubeadm persists this in both the node config and kubelet-config
+		// ConfigMap. Kubelet then requests a rotating serving certificate;
+		// B03 validates and approves only this run's node CSRs.
+		kubernetesConfig["kubelet"] = map[string]any{
+			"extra_config": map[string]any{"serverTLSBootstrap": true},
+		}
+	}
 	return map[string]any{
 		"zone": "",
 		// The installer is the bounded time source during a disconnected first
@@ -1461,16 +1479,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"fetch":         false,
 			"artifact_file": artifactPath,
 		},
-		"kubernetes": map[string]any{
-			"kube_version": "v1.35.8",
-			"cluster_name": c.Name,
-			"control_plane_endpoint": map[string]any{
-				"type": "local",
-			},
-			"custom_labels": map[string]any{
-				"networking.kubercloud.com/role": "master",
-			},
-		},
+		"kubernetes": kubernetesConfig,
 		"etcd": map[string]any{
 			"deployment_type": "internal",
 			"etcd_version":    "v3.6.6",
