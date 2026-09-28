@@ -101,10 +101,24 @@
 - name: NTP | Verify ANI isolated source is selected before Ceph
   command: |
     set -euo pipefail
-    chronyc waitsync 90 0.05 0 2
     {{- if eq .inventory_hostname .native.ntp.isolated_master }}
-    chronyc -n tracking | grep -Eq 'Reference ID[[:space:]]*:[[:space:]]*7F7F0101'
+    # chronyc waitsync deliberately returns non-zero for Chrony's local
+    # reference even when it is active. Check that exact local reference and
+    # normal leap status instead, with the same bounded startup period.
+    for ((attempt=1; attempt<=90; attempt++)); do
+      tracking="$(chronyc -n tracking 2>&1 || true)"
+      if printf '%s\n' "$tracking" | grep -Eq '^Reference ID[[:space:]]*:[[:space:]]*7F7F0101' &&
+         printf '%s\n' "$tracking" | grep -Eq '^Leap status[[:space:]]*:[[:space:]]*Normal'; then
+        break
+      fi
+      if [ "$attempt" -eq 90 ]; then
+        printf 'ANI isolated time master did not select its local reference: %s\n' "$tracking" >&2
+        exit 1
+      fi
+      sleep 2
+    done
     {{- else }}
+    chronyc waitsync 90 0.05 0 2
     chronyc -n sources | awk '$1 == "^*" { print $2 }' | grep -Fx '{{ .native.ntp.isolated_master_ip }}'
     {{- end }}
     chronyc -n tracking

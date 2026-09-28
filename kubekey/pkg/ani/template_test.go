@@ -333,8 +333,8 @@ func TestANIIsolatedNTPRoleRendersBoundedMasterAndClients(t *testing.T) {
 				t.Errorf("%s config contains %q", tc.host, forbidden)
 			}
 		}
-		if !strings.Contains(tasks[0].Command, "chronyd -p -f") || !strings.Contains(tasks[4].Command, "chronyc waitsync") {
-			t.Fatalf("%s role lacks config validation or selected-source check", tc.host)
+		if !strings.Contains(tasks[0].Command, "chronyd -p -f") {
+			t.Fatalf("%s role lacks effective Chrony config validation", tc.host)
 		}
 		for _, command := range []string{tasks[0].Command, tasks[4].Command} {
 			check := exec.Command("bash", "-n")
@@ -342,6 +342,54 @@ func TestANIIsolatedNTPRoleRendersBoundedMasterAndClients(t *testing.T) {
 			if out, err := check.CombinedOutput(); err != nil {
 				t.Fatalf("%s rendered shell syntax: %v: %s", tc.host, err, out)
 			}
+		}
+		// Exercise the rendered verification command against Chrony's actual
+		// master/client response shapes. waitsync rejects a local reference,
+		// while a client synchronized to that master must use waitsync.
+		fakeDir := t.TempDir()
+		fakeChronyc := filepath.Join(fakeDir, "chronyc")
+		fakeScript := `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_CHRONYC_LOG"
+if [[ "$1" == "waitsync" ]]; then
+  [[ "$FAKE_MASTER" != "1" ]]
+  exit $?
+fi
+if [[ "$1" == "-n" && "$2" == "tracking" ]]; then
+  if [[ "$FAKE_MASTER" == "1" ]]; then
+    printf 'Reference ID    : 7F7F0101 ()\nLeap status     : Normal\n'
+  else
+    printf 'Reference ID    : C000020B (192.0.2.11)\nLeap status     : Normal\n'
+  fi
+  exit 0
+fi
+if [[ "$1" == "-n" && "$2" == "sources" ]]; then
+  if [[ "$FAKE_MASTER" != "1" ]]; then
+    printf '^* 192.0.2.11 10 6 37 14\n'
+  fi
+  exit 0
+fi
+exit 3
+`
+		if err := os.WriteFile(fakeChronyc, []byte(fakeScript), 0o700); err != nil {
+			t.Fatalf("write fake chronyc: %v", err)
+		}
+		fakeMaster := "0"
+		if tc.host == "node1" {
+			fakeMaster = "1"
+		}
+		callLog := filepath.Join(fakeDir, "calls.log")
+		verify := exec.Command("bash", "-c", tasks[4].Command)
+		verify.Env = append(os.Environ(), "PATH="+fakeDir+":"+os.Getenv("PATH"), "FAKE_MASTER="+fakeMaster, "FAKE_CHRONYC_LOG="+callLog)
+		if out, err := verify.CombinedOutput(); err != nil {
+			t.Fatalf("%s rendered time source verification: %v: %s", tc.host, err, out)
+		}
+		calls, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read fake chronyc calls: %v", err)
+		}
+		usedWaitsync := strings.Contains(string(calls), "waitsync")
+		if usedWaitsync != (tc.host != "node1") {
+			t.Fatalf("%s waitsync use = %t; local reference must use tracking, client must use waitsync", tc.host, usedWaitsync)
 		}
 	}
 }
