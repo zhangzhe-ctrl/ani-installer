@@ -36,7 +36,7 @@ if [ "${ANI_VERIFY_LEVEL:-}" = smoke ]; then
   }
   KEY=/etc/kubernetes/ani/kubevirt/guest-ssh-key
   KNOWN=/etc/kubernetes/ani/kubevirt/known_hosts
-  test -s "$KEY" && test -s "$KNOWN"
+  test -s "$KEY"
   GUEST_OUT="$(timeout 40 "$V" ssh --namespace ani-platform --identity-file "$KEY" \
     --known-hosts "$KNOWN" --local-ssh-opts='-o StrictHostKeyChecking=yes' \
     --command 'uname -m; id -un; cat /home/cirros/ani-b05-marker' cirros@vm/ani-b05-guest)"

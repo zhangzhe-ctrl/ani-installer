@@ -6,12 +6,69 @@ set -euo pipefail
 k() { kubectl --kubeconfig '{{ .ani.run.kubeconfig }}' "$@"; }
 DIR=/etc/kubernetes/ani/harbor
 EVID='{{ .ani.run.logs_dir }}/b07-harbor'
-mkdir -p "$EVID"
-chmod 0700 "$EVID"
 ADDR='{{ (index .ani.components "harbor").external_address }}'
 BASE="https://$ADDR:30003"
 API="$BASE/api/v2.0"
 CA="$DIR/ca.crt"
+# The first install creates the project and robots, pushes and pulls one digest,
+# proves runtime node pulls, and waits for a real offline scan. Smoke only reads
+# that evidence and the live HTTPS API; it never creates another project/robot.
+if [ "${ANI_VERIFY_LEVEL:-}" = smoke ]; then
+  OUT="${ANI_VERIFY_OUTPUT_DIR:?smoke evidence directory is required}"
+  install -d -m 0700 "$OUT"
+  test -s "$EVID/result.txt" && test -s "$EVID/vulnerabilities.json"
+  test -s "$DIR/admin.netrc" && test -s "$CA"
+  read -r PROJECT DIGEST REPORT_SHA < <(python3 - "$EVID" <<'PY'
+import pathlib,re,sys
+p=pathlib.Path(sys.argv[1])
+line=(p/'result.txt').read_text().strip()
+m=re.fullmatch(r'B07 PASS: project=(ani-b07-test) digest=(sha256:[0-9a-f]{64}) scanner=Harbor-Trivy-offline report_sha256=([0-9a-f]{64})',line)
+if not m: raise SystemExit('B07 first-install result is missing or malformed')
+print(*m.groups())
+PY
+  )
+  test "$(sha256sum "$EVID/vulnerabilities.json" | awk '{print $1}')" = "$REPORT_SHA"
+  for deployment in ani-harbor-core ani-harbor-jobservice ani-harbor-nginx ani-harbor-portal ani-harbor-registry; do
+    k -n ani-harbor rollout status "deployment/$deployment" --timeout=60s
+  done
+  for statefulset in ani-harbor-database ani-harbor-redis ani-harbor-trivy; do
+    k -n ani-harbor rollout status "statefulset/$statefulset" --timeout=60s
+  done
+  for spec in \
+    'db/trivy.db 4bf01c98f9af59d4ec9ab6c8f4f22740230830e8be9172970e74dcb8257cd53b' \
+    'db/metadata.json eec14e933a21b2dba78c45d2c0de61a6408e14cee008a07908079e4cd6c905d7' \
+    'java-db/trivy-java.db e99e2d1212f4f1ef8281f95ffa72b667ce3fb8d00db0c4b2ddfcc3283b87612c' \
+    'java-db/metadata.json f730c0616742e306095594ef51359f81cd05e48cff224112a59c8fbd68449e31'; do
+    set -- $spec
+    actual="$(k -n ani-harbor exec statefulset/ani-harbor-trivy -c trivy -- sha256sum "/home/scanner/.cache/trivy/$1" | awk '{print $1}')"
+    test "$actual" = "$2" || { echo "Harbor scanner cache $1 changed" >&2; exit 1; }
+  done
+  curl -fsS --cacert "$CA" --netrc-file "$DIR/admin.netrc" "$API/projects/$PROJECT" > "$OUT/project.json"
+  curl -fsS --cacert "$CA" --netrc-file "$DIR/admin.netrc" "$API/projects/$PROJECT/repositories/busybox/artifacts/1.37.0?with_scan_overview=true" > "$OUT/artifact.json"
+  curl -fsS --cacert "$CA" --netrc-file "$DIR/admin.netrc" "$API/projects/$PROJECT/repositories/busybox/artifacts/1.37.0/additions/vulnerabilities" > "$OUT/vulnerabilities.json"
+  python3 - "$OUT" "$DIGEST" "$EVID" '{{ range .ani.nodes }}{{ . }} {{ end }}' <<'PY'
+import json,pathlib,sys
+out,digest,evid,nodes=pathlib.Path(sys.argv[1]),sys.argv[2],pathlib.Path(sys.argv[3]),sys.argv[4].split()
+project=json.loads((out/'project.json').read_text())
+meta=project.get('metadata',{})
+for key,value in {'public':'false','prevent_vul':'true','severity':'high'}.items():
+ if meta.get(key)!=value: raise SystemExit(f'Harbor project policy changed: {key}')
+artifact=json.loads((out/'artifact.json').read_text())
+if artifact.get('digest')!=digest: raise SystemExit('Harbor live digest differs from first install')
+scan=list((artifact.get('scan_overview') or {}).values())
+if not any(x.get('scan_status')=='Success' and x.get('report_id') for x in scan): raise SystemExit('Harbor scan is not Success with report')
+report=json.loads((out/'vulnerabilities.json').read_text())
+if not isinstance(report,dict) or not report: raise SystemExit('Harbor live vulnerability report is empty')
+lines=(evid/'runtime-imageids.txt').read_text().strip().splitlines()
+if len(lines)!=len(nodes): raise SystemExit('Harbor runtime node evidence count differs')
+for node,line in zip(nodes,lines):
+ if not line.startswith(f'ani-b07-runtime-{node} ') or digest not in line: raise SystemExit(f'Harbor runtime digest evidence differs for {node}')
+PY
+  printf 'B07 smoke PASS: live HTTPS API digest=%s, offline scan report, scanner cache and runtime evidence\n' "$DIGEST"
+  exit 0
+fi
+mkdir -p "$EVID"
+chmod 0700 "$EVID"
 HOSTS=/etc/containerd/certs.d
 command -v python3 >/dev/null
 command -v ctr >/dev/null

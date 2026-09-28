@@ -10,6 +10,53 @@ K=(kubectl --kubeconfig "$KUBECONFIG_FILE")
 NS=ani-platform
 OWNER='{{ .kubernetes.cluster_name }}'
 IMAGE='{{ index .ani.images "docker.io/library/busybox:1.37.0" }}'
+# The first install performs the gang, cancellation and cleanup exercise.
+# Smoke checks that evidence and the current controllers without new Jobs.
+if [ "${ANI_VERIFY_LEVEL:-}" = smoke ]; then
+  EVID='{{ .ani.run.logs_dir }}'
+  test -s "$EVID/b06-result.txt"
+  read -r QUEUE GROUP < <(python3 - "$EVID" <<'PY'
+import json,pathlib,re,sys
+p=pathlib.Path(sys.argv[1])
+line=(p/'b06-result.txt').read_text().strip()
+m=re.fullmatch(r'B06 PASS Queue=(ani-b06-cpu-([0-9-]+)) PodGroup=(ani-b06-gang-\2) first-Pod-unscheduled=true completion=2/2 own-cancel=true accounting-released=true',line)
+if not m: raise SystemExit('B06 first-install result is missing or malformed')
+queue,suffix,group=m.group(1,2,3)
+if json.loads((p/f'ani-b06-a-{suffix}-wait.json').read_text())['spec'].get('nodeName'): raise SystemExit('first gang Pod was scheduled alone')
+for letter,mark in (('a','B06_CPU_DONE_A'),('b','B06_CPU_DONE_B')):
+ name=f'ani-b06-{letter}-{suffix}'
+ pod=json.loads((p/f'{name}-done.json').read_text())
+ if pod['status']['phase']!='Succeeded' or pod['spec']['schedulerName']!='volcano': raise SystemExit(f'{name} did not finish under Volcano')
+ if (p/f'{name}.log').read_text().strip()!=mark: raise SystemExit(f'{name} completion marker differs')
+q=json.loads((p/'b06-queue-after.json').read_text())
+st=q.get('status',{})
+zero=lambda v: re.fullmatch(r'0(?:\.0+)?(?:m|Ki|Mi|Gi)?',str(v)) is not None
+if not all(zero(v) for v in st.get('allocated',{}).values()) or st.get('inqueue',0)!=0 or st.get('pending',0)!=0: raise SystemExit('B06 Queue accounting was not released')
+print(queue,group)
+PY
+  )
+  for deployment in ani-volcano-admission ani-volcano-controllers ani-volcano-scheduler; do
+    "${K[@]}" -n volcano-system rollout status "deployment/$deployment" --timeout=60s
+  done
+  test -z "$("${K[@]}" get "queue/$QUEUE" --ignore-not-found -o name)"
+  test -z "$("${K[@]}" -n "$NS" get "podgroup/$GROUP" --ignore-not-found -o name)"
+  "${K[@]}" -n kube-system get pods -l component=kube-scheduler -o json > "$OUT_DIR/b06-default-scheduler-smoke.json"
+  "${K[@]}" get validatingwebhookconfigurations,mutatingwebhookconfigurations -o json > "$OUT_DIR/b06-webhooks-smoke.json"
+  python3 - "$OUT_DIR" "$OWNER" <<'PY'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]); owner=sys.argv[2]
+pods=json.loads((p/'b06-default-scheduler-smoke.json').read_text())['items']
+if not pods or any(x['status']['phase']!='Running' for x in pods): raise SystemExit('default scheduler unhealthy')
+items=[x for x in json.loads((p/'b06-webhooks-smoke.json').read_text())['items'] if x['metadata']['name'].startswith('volcano-admission-service-')]
+if {x['kind'] for x in items}!={'ValidatingWebhookConfiguration','MutatingWebhookConfiguration'}: raise SystemExit('Volcano admission webhooks missing')
+for item in items:
+ if item['metadata'].get('labels',{}).get('ani.io/managed-by')!=owner: raise SystemExit('foreign Volcano webhook')
+ for hook in item['webhooks']:
+  if not hook['clientConfig'].get('caBundle') or hook.get('failurePolicy','Fail')!='Fail': raise SystemExit('Volcano webhook security changed')
+PY
+  printf 'B06 smoke PASS: first-install gang evidence, own cleanup and live controllers/webhooks/default scheduler\n'
+  exit 0
+fi
 SUFFIX="$(date -u +%Y%m%d%H%M%S)-$$"
 QUEUE_NAME="ani-b06-cpu-$SUFFIX"
 GROUP="ani-b06-gang-$SUFFIX"
