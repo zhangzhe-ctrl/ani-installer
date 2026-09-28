@@ -48,8 +48,8 @@ func TestB03MetricsServerServingTLSIsSelectedAndRendered(t *testing.T) {
 	}
 	want := map[string][]string{
 		"metrics-server/tasks/main.yaml":                {"Refuse a foreign metrics APIService before certificate changes", "Enable kubelet serving TLS bootstrap in kubeadm configuration", "Enable serving CSR flow on every declared node", "Approve only selected node serving CSRs", "Reject untrusted kubelet certificates"},
-		"metrics-server/templates/serving-configmap.sh": {"serverTLSBootstrap: true", "resourceVersion"},
-		"metrics-server/templates/serving-node.sh":      {"serverTLSBootstrap: true", "kubelet-restart-required"},
+		"metrics-server/templates/serving-configmap.sh": {"serverTLSBootstrap: true", "resourceVersion", "kubeadm-kubelet-config-before.yaml"},
+		"metrics-server/templates/serving-node.sh":      {"serverTLSBootstrap: true", "kubelet-restart-required", "node-kubelet-config-before.yaml"},
 		"metrics-server/templates/serving-approve.sh":   {"kubernetes.io/kubelet-serving", "system:nodes", "Subject Alternative Name", "certificate', 'approve"},
 		"metrics-server/templates/prereq.sh":            {"-CAfile", "-verify_ip", "-verify_return_error"},
 		"metrics-server/templates/values.yaml":          {"insecureSkipTLSVerify: false", "--kubelet-certificate-authority="},

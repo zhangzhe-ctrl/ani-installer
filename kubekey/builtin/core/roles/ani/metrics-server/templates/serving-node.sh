@@ -29,7 +29,7 @@ else:
 new=''.join(lines)
 work=Path('/etc/kubernetes/ani/metrics-server')
 work.mkdir(mode=0o700,parents=True,exist_ok=True)
-backup=work/'kubelet-config-before.yaml'
+backup=work/'node-kubelet-config-before.yaml'
 if backup.exists():
     assert backup.read_text()==old, 'kubelet config backup differs from live content'
 else:
