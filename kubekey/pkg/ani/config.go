@@ -1423,8 +1423,18 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		nodeNames = append(nodeNames, n.Name)
 	}
 	nodeAddresses := make([]string, 0, len(c.Nodes))
+	ntpMasterIP := ""
+	ntpClientIPs := make([]string, 0, len(c.Nodes)-1)
 	for _, n := range c.Nodes {
 		nodeAddresses = append(nodeAddresses, n.Address)
+		if n.Name == c.InstallerNode {
+			ntpMasterIP = n.Address
+		} else {
+			ntpClientIPs = append(ntpClientIPs, n.Address)
+		}
+	}
+	if ntpMasterIP == "" {
+		return nil, fmt.Errorf("installer node %q has no management address for isolated time", c.InstallerNode)
 	}
 	// The Kube-OVN gateway and join network are derived/validated once here so
 	// the template renders canonical values and never its historical hardcoded
@@ -1435,6 +1445,18 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	}
 	return map[string]any{
 		"zone": "",
+		// The installer is the bounded time source during a disconnected first
+		// install. The native NTP role applies this to the clean nodes before
+		// Kubernetes and Ceph, and refuses any remaining external source.
+		"native": map[string]any{
+			"ntp": map[string]any{
+				"enabled":             true,
+				"servers":             []string{ntpMasterIP},
+				"isolated_master":     c.InstallerNode,
+				"isolated_master_ip":  ntpMasterIP,
+				"isolated_client_ips": ntpClientIPs,
+			},
+		},
 		"download": map[string]any{
 			"fetch":         false,
 			"artifact_file": artifactPath,
