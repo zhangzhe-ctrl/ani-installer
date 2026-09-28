@@ -38,13 +38,15 @@ assert primary in [os.path.basename(p) for p in files],f'primary CNI {primary} m
 obj=json.load(open('/etc/cni/net.d/'+primary))
 plugins=obj.get('plugins',[obj])
 assert plugins[0].get('type')==plugin,f'{primary} has unexpected delegate {plugins[0].get("type")}'
-assert all(p.get('type')!='multus' for p in plugins),f'{primary} would recurse into Multus'
+assert all(p.get('type') not in ('multus','multus-shim') for p in plugins),f'{primary} would recurse into Multus'
 others=[os.path.basename(p) for p in files if os.path.basename(p)!=primary]
 assert not others or others==['00-multus.conf'],f'ambiguous or foreign CNI configs: {files}'
 if others:
     existing=json.load(open('/etc/cni/net.d/00-multus.conf'))
-    assert existing.get('type')=='multus', '00-multus.conf is not Multus'
-    delegates=existing.get('delegates',[])
-    assert delegates and delegates[0].get('name')==obj.get('name'), 'existing Multus delegates another primary CNI'
+    assert existing.get('type')=='multus-shim', '00-multus.conf is not the pinned Multus thick shim'
+    assert existing.get('name')=='multus-cni-network', 'unexpected Multus network name'
+    assert existing.get('clusterNetwork')=='/host/etc/cni/net.d/'+primary, 'Multus shim delegates another primary CNI'
+    assert not existing.get('delegates'), 'Multus shim contains unexpected delegates'
+    assert existing.get('namespaceIsolation') is True, 'Multus namespace isolation disabled'
 print('primary CNI checked:',primary,'delegate=',plugin,'configs=',files)
 PY
