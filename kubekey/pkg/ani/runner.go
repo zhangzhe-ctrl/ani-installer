@@ -771,27 +771,55 @@ func startRegistryService(ctx context.Context, logger io.Writer) error {
 	return nil
 }
 
+// A clean haul with all 86 locked images took 68 seconds to become ready on
+// the B13 lab (2026-09-28). Keep startup bounded while allowing the registry
+// to finish its own import; the subsequent manifest/blob gate still verifies
+// every selected image and stops on any missing or mismatched content.
+const registryStartupTimeout = 5 * time.Minute
+
 func waitRegistry(ctx context.Context, logger io.Writer, registryAddress string) error {
+	err := waitRegistryHTTP(ctx, registryAddress, registryStartupTimeout, 500*time.Millisecond)
+	if err != nil {
+		_ = runLogged(context.WithoutCancel(ctx), logger, "systemctl", "status", serviceUnitName, "--no-pager", "-l")
+	}
+	return err
+}
+
+// waitRegistryHTTP probes the real registry API. A caller cancellation keeps
+// its own error; only this bounded startup deadline reports a timeout.
+func waitRegistryHTTP(ctx context.Context, registryAddress string, maxWait, pollInterval time.Duration) error {
+	if maxWait <= 0 || pollInterval <= 0 {
+		return errors.New("registry wait duration and poll interval must be positive")
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := fmt.Sprintf("http://%s/v2/", registryAddress)
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+	lastResult := "no response"
+	for {
+		req, err := http.NewRequestWithContext(waitCtx, http.MethodGet, url, nil)
+		if err != nil {
+			return errors.Wrap(err, "construct registry readiness request")
 		}
-		resp, err := client.Get(url)
+		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
+			lastResult = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		} else {
+			lastResult = err.Error()
 		}
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.Errorf("timed out after %s waiting for Hauler registry %s/v2/ (last result: %s)", maxWait, registryAddress, lastResult)
+		case <-time.After(pollInterval):
+		}
 	}
-	_ = runLogged(context.WithoutCancel(ctx), logger, "systemctl", "status", serviceUnitName, "--no-pager", "-l")
-	return errors.New("timed out waiting for Hauler registry /v2/")
 }
 
 // verifyRegistryImages runs the shared content gate (F06) over every image row
