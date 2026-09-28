@@ -93,6 +93,15 @@ var componentInstallSpecs = map[string]componentInstallSpec{
 	"fluent-bit":          {Namespace: "ani-observability", Release: "ani-fluent-bit", Chart: "fluent-bit", ChartVersion: "0.58.2", WorkloadKind: "DaemonSet", WorkloadName: "ani-fluent-bit"},
 }
 
+// These prerequisites are installed and checked inside their owning role,
+// so they are shown in plans but are not separate site switches or --only IDs.
+var roleManagedTechnicalDeps = map[string]bool{
+	"cdi":              true,
+	"dedicated-db":     true,
+	"dedicated-valkey": true,
+	"offline-trivy-db": true,
+}
+
 // ComponentsInstallInput is the input of `kk ani components install`.
 type ComponentsInstallInput struct {
 	ConfigFile  string
@@ -424,6 +433,12 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		}
 		seen[name] = true
 		for _, dep := range spec.InternalDeps {
+			if _, canonical := componentInstallSpecs[dep]; !canonical {
+				if !roleManagedTechnicalDeps[dep] {
+					return fmt.Errorf("component %q has undeclared internal dependency %q", name, dep)
+				}
+				continue
+			}
 			if !enabled[dep] {
 				return fmt.Errorf("component %q requires %q, which the site config has not enabled", name, dep)
 			}
