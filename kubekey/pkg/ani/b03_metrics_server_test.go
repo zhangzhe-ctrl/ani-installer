@@ -39,10 +39,8 @@ func TestB03MetricsServerServingTLSIsSelectedAndRendered(t *testing.T) {
 		t.Fatal(err)
 	}
 	kubernetes := config["kubernetes"].(map[string]any)
-	kubelet := kubernetes["kubelet"].(map[string]any)
-	extra := kubelet["extra_config"].(map[string]any)
-	if extra["serverTLSBootstrap"] != true {
-		t.Fatal("selected B03 did not configure kubeadm kubelet serving CSR bootstrap")
+	if _, ok := kubernetes["kubelet"]; ok {
+		t.Fatal("selected B03 changed initial kubelet configuration before B01/B02 checks")
 	}
 	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), on, "/opt/ani", r08FullTable(t))
 	if err != nil {

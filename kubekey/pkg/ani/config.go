@@ -1453,14 +1453,6 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"networking.kubercloud.com/role": "master",
 		},
 	}
-	if c.Components.MetricsServer.Enabled {
-		// Kubeadm persists this in both the node config and kubelet-config
-		// ConfigMap. Kubelet then requests a rotating serving certificate;
-		// B03 validates and approves only this run's node CSRs.
-		kubernetesConfig["kubelet"] = map[string]any{
-			"extra_config": map[string]any{"serverTLSBootstrap": true},
-		}
-	}
 	return map[string]any{
 		"zone": "",
 		// The installer is the bounded time source during a disconnected first
