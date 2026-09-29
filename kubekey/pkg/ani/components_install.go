@@ -420,7 +420,7 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		if seen[name] {
 			return nil
 		}
-		spec, known := componentInstallSpecs[name]
+		_, known := componentInstallSpecs[name]
 		if !known {
 			for _, deferred := range componentsDeferred {
 				if name == deferred {
