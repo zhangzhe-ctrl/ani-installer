@@ -1470,6 +1470,21 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err := Validate(c); err != nil {
 		return nil, err
 	}
+	objectSpec := map[string]any{"provider": c.ObjectStorageProvider()}
+	if c.ObjectStorage != nil && c.ObjectStorageProvider() == objectProviderRustFS {
+		objectSpec["rustfs"] = map[string]any{
+			"mode": c.ObjectStorage.RustFS.Mode,
+			"storage_class": c.ObjectStorage.RustFS.StorageClass,
+			"storage_size": c.ObjectStorage.RustFS.StorageSize,
+		}
+	}
+	if c.Components.Milvus.Enabled {
+		binding, err := ResolveMilvusS3Binding(c)
+		if err != nil {
+			return nil, err
+		}
+		objectSpec["milvus_s3"] = binding.templateSpec()
+	}
 	if !strings.HasPrefix(artifactPath, "/") {
 		return nil, fmt.Errorf("artifact path %q must be absolute", artifactPath)
 	}
@@ -1603,9 +1618,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 				"externalClass":           c.Storage.ExternalClass,
 				"nodes":                   storageNodesForTemplate(c.Storage),
 			},
-			"objectStorage": map[string]any{
-				"provider": c.ObjectStorageProvider(),
-			},
+			"objectStorage": objectSpec,
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,

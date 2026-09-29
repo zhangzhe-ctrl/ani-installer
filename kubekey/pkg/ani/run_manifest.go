@@ -98,6 +98,7 @@ type RunManifest struct {
 	Components       []string          `json:"components"`
 	StorageClass     string            `json:"storageClass"`
 	Storage          ManifestStorage   `json:"storage"`
+	ObjectStorage    *ManifestObjectStorage `json:"objectStorage,omitempty"`
 	ComponentClasses map[string]string `json:"componentStorageClasses,omitempty"`
 
 	// PackageRoot is recorded so a later step can find the artifact, but this
@@ -134,6 +135,16 @@ type ManifestStorage struct {
 	MakeDefaultStorageClass bool                  `json:"makeDefaultStorageClass"`
 	ExternalClass           string                `json:"externalClass,omitempty"`
 	Nodes                   []ManifestStorageNode `json:"nodes,omitempty"`
+}
+
+// ManifestObjectStorage records the selected object service separately from
+// RBD/CephFS. Older success records omit it and are interpreted narrowly from
+// their recorded Ceph selection when consumed.
+type ManifestObjectStorage struct {
+	Provider       string           `json:"provider"`
+	RustFSClass    string           `json:"rustfsClass,omitempty"`
+	RustFSSize     string           `json:"rustfsSize,omitempty"`
+	MilvusBinding  *MilvusS3Binding `json:"milvusBinding,omitempty"`
 }
 
 // ManifestStorageNode is the per-node device allowlist.
@@ -225,6 +236,18 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 		Provider:                c.Storage.provider(),
 		MakeDefaultStorageClass: c.Storage.MakeDefaultStorageClass,
 		ExternalClass:           strings.TrimSpace(c.Storage.ExternalClass),
+	}
+	manifest.ObjectStorage = &ManifestObjectStorage{Provider: c.ObjectStorageProvider()}
+	if c.ObjectStorageProvider() == objectProviderRustFS {
+		manifest.ObjectStorage.RustFSClass = c.ObjectStorage.RustFS.StorageClass
+		manifest.ObjectStorage.RustFSSize = c.ObjectStorage.RustFS.StorageSize
+	}
+	if c.Components.Milvus.Enabled {
+		binding, err := ResolveMilvusS3Binding(c)
+		if err != nil {
+			return RunManifest{}, err
+		}
+		manifest.ObjectStorage.MilvusBinding = &binding
 	}
 	for _, node := range c.Storage.Nodes {
 		devices := make([]string, 0, len(node.Devices))

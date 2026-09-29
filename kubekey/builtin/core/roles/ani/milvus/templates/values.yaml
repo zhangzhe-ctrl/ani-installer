@@ -17,19 +17,19 @@ standalone:
       size: {{ .ani.components.milvus.storage_size }}
   extraEnv:
     - name: SSL_CERT_FILE
-      value: /etc/ani-rgw-ca/ca.crt
+      value: {{ .ani.objectStorage.milvus_s3.ca_path }}
     - name: AWS_CA_BUNDLE
-      value: /etc/ani-rgw-ca/ca.crt
+      value: {{ .ani.objectStorage.milvus_s3.ca_path }}
     - name: MINIO_ACCESS_KEY_ID
       valueFrom:
         secretKeyRef:
-          name: ani-milvus-objects
-          key: AWS_ACCESS_KEY_ID
+          name: {{ .ani.objectStorage.milvus_s3.secret_name }}
+          key: {{ .ani.objectStorage.milvus_s3.access_key_field }}
     - name: MINIO_SECRET_ACCESS_KEY
       valueFrom:
         secretKeyRef:
-          name: ani-milvus-objects
-          key: AWS_SECRET_ACCESS_KEY
+          name: {{ .ani.objectStorage.milvus_s3.secret_name }}
+          key: {{ .ani.objectStorage.milvus_s3.secret_key_field }}
 etcd:
   enabled: true
   replicaCount: 1
@@ -54,23 +54,23 @@ woodpecker:
 tei:
   enabled: false
 volumes:
-  - name: ani-rgw-ca
+  - name: {{ .ani.objectStorage.milvus_s3.ca_config_map }}
     configMap:
-      name: ani-rgw-ca
+      name: {{ .ani.objectStorage.milvus_s3.ca_config_map }}
 volumeMounts:
-  - name: ani-rgw-ca
-    mountPath: /etc/ani-rgw-ca
+  - name: {{ .ani.objectStorage.milvus_s3.ca_config_map }}
+    mountPath: {{ .ani.objectStorage.milvus_s3.ca_mount_path }}
     readOnly: true
 externalS3:
   enabled: true
-  host: rook-ceph-rgw-ani-store.rook-ceph.svc.cluster.local
-  port: 443
+  host: {{ .ani.objectStorage.milvus_s3.host }}
+  port: {{ .ani.objectStorage.milvus_s3.port }}
   accessKey: ""
   secretKey: ""
   useSSL: true
-  region: us-east-1
-  bucketName: ani-milvus-objects
-  rootPath: files
+  region: {{ .ani.objectStorage.milvus_s3.region }}
+  bucketName: {{ .ani.objectStorage.milvus_s3.bucket }}
+  rootPath: {{ .ani.objectStorage.milvus_s3.root_path }}
   cloudProvider: aws
   useVirtualHost: false
 # Milvus v2.6.24 defaults minio.ssl.tlsCACert to /path/to/public.crt.
@@ -80,4 +80,4 @@ extraConfigFiles:
   user.yaml: |+
     minio:
       ssl:
-        tlsCACert: /etc/ani-rgw-ca/ca.crt
+        tlsCACert: {{ .ani.objectStorage.milvus_s3.ca_path }}

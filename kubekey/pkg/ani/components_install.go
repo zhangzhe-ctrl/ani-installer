@@ -555,6 +555,37 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	if err := check("installerNode", base.Installer.Name, new.Installer.Name); err != nil {
 		return nil, err
 	}
+	baseObject := manifestObjectProvider(base)
+	newObject := manifestObjectProvider(new)
+	if baseObject != newObject {
+		// This is the one supported object-service addition. A base that
+		// already owns RGW or a Milvus binding cannot use it as a migration.
+		if baseObject != objectProviderNone || newObject != objectProviderRustFS || containsString(base.Components, "milvus") {
+			return nil, fmt.Errorf("object storage provider changed from %q to %q; component addition cannot migrate or remove an existing object service", baseObject, newObject)
+		}
+	}
+	if baseObject == objectProviderRustFS && newObject == objectProviderRustFS &&
+		(base.ObjectStorage == nil || new.ObjectStorage == nil ||
+			base.ObjectStorage.RustFSClass != new.ObjectStorage.RustFSClass ||
+			base.ObjectStorage.RustFSSize != new.ObjectStorage.RustFSSize) {
+		return nil, fmt.Errorf("existing RustFS storage class or capacity changed; component addition cannot mutate its PVC contract")
+	}
+	if containsString(base.Components, "milvus") {
+		oldBinding := base.ObjectStorage
+		if oldBinding == nil && baseObject == objectProviderRGW {
+			legacy, _ := ResolveMilvusS3Binding(ClusterConfig{Storage: Storage{Enabled: true, Provider: storageProviderCeph}})
+			oldBinding = &ManifestObjectStorage{Provider: objectProviderRGW, MilvusBinding: &legacy}
+		}
+		if oldBinding == nil || oldBinding.MilvusBinding == nil || new.ObjectStorage == nil || new.ObjectStorage.MilvusBinding == nil {
+			return nil, fmt.Errorf("existing Milvus object binding cannot be proven; refusing component addition")
+		}
+		a, b := oldBinding.MilvusBinding, new.ObjectStorage.MilvusBinding
+		if a.Provider != b.Provider || a.Endpoint != b.Endpoint || a.Bucket != b.Bucket || a.RootPath != b.RootPath ||
+			a.SecretName != b.SecretName || a.CAPath != b.CAPath {
+			return nil, fmt.Errorf("existing Milvus object binding changed; provider, endpoint, bucket, root path, Secret and CA are migration fields")
+		}
+	}
+	invariants["objectStorageProvider"] = baseObject
 	baseNodes := map[string]string{}
 	for _, node := range base.Nodes {
 		baseNodes[node.Name] = node.Address
@@ -573,6 +604,16 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	}
 	invariants["nodes"] = fmt.Sprint(len(baseNodes))
 	return invariants, nil
+}
+
+func manifestObjectProvider(m RunManifest) string {
+	if m.ObjectStorage != nil {
+		return m.ObjectStorage.Provider
+	}
+	if m.Storage.Enabled && m.Storage.Provider == storageProviderCeph {
+		return objectProviderRGW
+	}
+	return objectProviderNone
 }
 
 // captureLiveCluster reads the stable identity and health of the LIVE cluster:
