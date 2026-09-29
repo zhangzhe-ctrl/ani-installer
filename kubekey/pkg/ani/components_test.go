@@ -2697,7 +2697,7 @@ func TestVerifyStopsAfterFirstFailure(t *testing.T) {
 			t.Fatalf("read config: %v", err)
 		}
 		sum := sha256.Sum256(raw)
-		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"}
+		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"}
 		var b strings.Builder
 		fmt.Fprintf(&b, "# config_sha256=%s\n", hex.EncodeToString(sum[:]))
 		for _, name := range names {
