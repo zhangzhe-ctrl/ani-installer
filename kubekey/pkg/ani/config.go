@@ -584,6 +584,9 @@ func validateObjectStorage(c ClusterConfig) error {
 		if !c.Storage.Enabled {
 			return fmt.Errorf("objectStorage.provider=rustfs requires enabled persistent storage")
 		}
+		if installProfile(c.Profile) == "base" {
+			return fmt.Errorf("objectStorage.provider=rustfs requires profile=full so its persistent storage and role can run")
+		}
 		r := c.ObjectStorage.RustFS
 		if r.Mode != "standalone" {
 			return fmt.Errorf("objectStorage.rustfs.mode must be standalone")

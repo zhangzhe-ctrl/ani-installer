@@ -36,6 +36,10 @@ func TestObjectStorageSelectionAndValidation(t *testing.T) {
 		{"RustFS invalid size", func(c *ClusterConfig) {
 			c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "0Gi"}}
 		}, "greater than zero"},
+		{"RustFS base profile cannot deploy storage", func(c *ClusterConfig) {
+			c.Profile = "base"
+			c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "20Gi"}}
+		}, "profile=full"},
 		{"RustFS pending implementation", func(c *ClusterConfig) {
 			c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "20Gi"}}
 			c.Components.CertManager.Enabled = true

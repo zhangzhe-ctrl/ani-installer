@@ -20,6 +20,16 @@ for ref in secret/ani-rustfs-root configmap/ani-rustfs-ca certificate/ani-rustfs
     [ "$owner" = "$OWNER" ] || { echo "foreign $NS/$ref owner=$owner" >&2; exit 1; }
   fi
 done
+if [ -n "$("${KUBECTL[@]}" -n "$NS" get certificate/ani-rustfs-server --ignore-not-found -o name)" ]; then
+  identity="$("${KUBECTL[@]}" -n "$NS" get certificate/ani-rustfs-server -o jsonpath='{.spec.secretName}{" "}{.spec.issuerRef.name}{" "}{.spec.issuerRef.kind}')"
+  [ "$identity" = 'ani-rustfs-tls ani-ca ClusterIssuer' ] || {
+    echo "RustFS server Certificate has incompatible identity: $identity" >&2; exit 1;
+  }
+  sans="$("${KUBECTL[@]}" -n "$NS" get certificate/ani-rustfs-server -o jsonpath='{.spec.dnsNames[*]}{" "}{.spec.ipAddresses[*]}')"
+  [ "$sans" = 'ani-rustfs-svc.ani-platform.svc ani-rustfs-svc.ani-platform.svc.cluster.local 127.0.0.1' ] || {
+    echo "RustFS server Certificate has incompatible SANs: $sans" >&2; exit 1;
+  }
+fi
 "${KUBECTL[@]}" wait clusterissuer/ani-ca --for=condition=Ready --timeout=60s
 "${KUBECTL[@]}" -n cert-manager get secret/ani-root-ca -o jsonpath='{.data.tls\.crt}' | base64 -d > "$tmp/ca.crt"
 test -s "$tmp/ca.crt" || { echo 'the internal CA has no certificate' >&2; exit 1; }
@@ -41,6 +51,9 @@ if [ -n "$("${KUBECTL[@]}" -n "$NS" get secret/ani-rustfs-root --ignore-not-foun
   for key in RUSTFS_ACCESS_KEY RUSTFS_SECRET_KEY; do
     value="$("${KUBECTL[@]}" -n "$NS" get secret/ani-rustfs-root -o "jsonpath={.data.$key}")"
     [ -n "$value" ] || { echo "RustFS root Secret lacks $key" >&2; exit 1; }
+    printf '%s' "$value" | base64 -d > "$tmp/$key"
+    [ "$(wc -c < "$tmp/$key")" -ge 32 ] || { echo "RustFS root Secret has a short $key" >&2; exit 1; }
+    [ "$(cat "$tmp/$key")" != rustfsadmin ] || { echo 'RustFS default credentials are forbidden' >&2; exit 1; }
   done
 else
   if [ -n "$("${KUBECTL[@]}" -n "$NS" get deployment/ani-rustfs --ignore-not-found -o name)" ]; then
