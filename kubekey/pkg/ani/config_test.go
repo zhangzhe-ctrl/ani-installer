@@ -147,6 +147,37 @@ func TestKubeKeyConfigOfflineAndNetworkValues(t *testing.T) {
 	}
 }
 
+func TestKubeKeyConfigUsesInstallerAsIsolatedTimeSource(t *testing.T) {
+	for _, tc := range []struct {
+		installer string
+		masterIP  string
+		clients   []string
+	}{
+		{installer: "node1", masterIP: "192.0.2.11", clients: []string{"192.0.2.12", "192.0.2.13"}},
+		{installer: "node2", masterIP: "192.0.2.12", clients: []string{"192.0.2.11", "192.0.2.13"}},
+	} {
+		c := validConfig()
+		c.InstallerNode = tc.installer
+		if tc.installer == "node2" {
+			c.Nodes[0], c.Nodes[1] = c.Nodes[1], c.Nodes[0]
+		}
+		spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", testImageTable())
+		if err != nil {
+			t.Fatalf("KubeKeyConfig(%s): %v", tc.installer, err)
+		}
+		ntp := spec["native"].(map[string]any)["ntp"].(map[string]any)
+		if ntp["enabled"] != true || ntp["isolated_master"] != tc.installer || ntp["isolated_master_ip"] != tc.masterIP {
+			t.Fatalf("%s NTP source: %#v", tc.installer, ntp)
+		}
+		if got := ntp["servers"]; !reflect.DeepEqual(got, []string{tc.masterIP}) {
+			t.Fatalf("%s upstream servers = %#v", tc.installer, got)
+		}
+		if got := ntp["isolated_client_ips"]; !reflect.DeepEqual(got, tc.clients) {
+			t.Fatalf("%s client allowlist = %#v", tc.installer, got)
+		}
+	}
+}
+
 // testImageTable lists the images the component roles read. It holds the same
 // entries the packaged TSV does, so a role that starts reading a new image
 // fails here rather than rendering an empty field the chart would happily

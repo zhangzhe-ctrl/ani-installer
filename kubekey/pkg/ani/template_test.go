@@ -2,10 +2,13 @@ package ani
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"text/template"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
@@ -281,6 +284,112 @@ func TestCodeAndArtifactBuildScriptsAreSeparate(t *testing.T) {
 	for _, want := range []string{`PROBE="$ROOT/probe.sh"`, `IMAGE_TABLE="$ARTIFACT_ROOT/images/images.tsv"`, `"/var/lib/ani-installer/$CLUSTER_NAME/logs/verify-`} {
 		if !strings.Contains(verify, want) {
 			t.Fatalf("verify script missing %q", want)
+		}
+	}
+}
+
+func TestANIIsolatedNTPRoleRendersBoundedMasterAndClients(t *testing.T) {
+	path := filepath.Join("..", "..", "builtin", "core", "roles", "native", "ntp", "tasks", "main.yaml")
+	for _, tc := range []struct {
+		host       string
+		want       []string
+		mustNotUse []string
+	}{
+		{
+			host: "node1",
+			want: []string{
+				"local stratum 10", "bindaddress 192.0.2.11",
+				"allow 192.0.2.12/32", "allow 192.0.2.13/32",
+			},
+			mustNotUse: []string{"server 192.0.2.11 iburst", "allow 0.0.0.0/0"},
+		},
+		{
+			host:       "node2",
+			want:       []string{"server 192.0.2.11 iburst"},
+			mustNotUse: []string{"local stratum 10", "allow 192.0.2.12/32"},
+		},
+	} {
+		rendered := r05RenderTemplate(t, path, validConfig(), map[string]any{
+			"inventory_hostname": tc.host,
+			"os":                 map[string]any{"release": map[string]any{"ID": "ubuntu", "ID_LIKE": "debian"}},
+		})
+		var tasks []struct {
+			Name    string `yaml:"name"`
+			Command string `yaml:"command"`
+		}
+		if err := yaml.Unmarshal([]byte(rendered), &tasks); err != nil {
+			t.Fatalf("%s role YAML: %v", tc.host, err)
+		}
+		if len(tasks) != 5 || tasks[0].Command == "" || tasks[4].Command == "" {
+			t.Fatalf("%s isolated NTP tasks absent", tc.host)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(tasks[0].Command, want) {
+				t.Errorf("%s config missing %q", tc.host, want)
+			}
+		}
+		for _, forbidden := range tc.mustNotUse {
+			if strings.Contains(tasks[0].Command, forbidden) {
+				t.Errorf("%s config contains %q", tc.host, forbidden)
+			}
+		}
+		if !strings.Contains(tasks[0].Command, "chronyd -p -f") {
+			t.Fatalf("%s role lacks effective Chrony config validation", tc.host)
+		}
+		for _, command := range []string{tasks[0].Command, tasks[4].Command} {
+			check := exec.Command("bash", "-n")
+			check.Stdin = strings.NewReader(command)
+			if out, err := check.CombinedOutput(); err != nil {
+				t.Fatalf("%s rendered shell syntax: %v: %s", tc.host, err, out)
+			}
+		}
+		// Exercise the rendered verification command against Chrony's actual
+		// master/client response shapes. waitsync rejects a local reference,
+		// while a client synchronized to that master must use waitsync.
+		fakeDir := t.TempDir()
+		fakeChronyc := filepath.Join(fakeDir, "chronyc")
+		fakeScript := `#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_CHRONYC_LOG"
+if [[ "$1" == "waitsync" ]]; then
+  [[ "$FAKE_MASTER" != "1" ]]
+  exit $?
+fi
+if [[ "$1" == "-n" && "$2" == "tracking" ]]; then
+  if [[ "$FAKE_MASTER" == "1" ]]; then
+    printf 'Reference ID    : 7F7F0101 ()\nLeap status     : Normal\n'
+  else
+    printf 'Reference ID    : C000020B (192.0.2.11)\nLeap status     : Normal\n'
+  fi
+  exit 0
+fi
+if [[ "$1" == "-n" && "$2" == "sources" ]]; then
+  if [[ "$FAKE_MASTER" != "1" ]]; then
+    printf '^* 192.0.2.11 10 6 37 14\n'
+  fi
+  exit 0
+fi
+exit 3
+`
+		if err := os.WriteFile(fakeChronyc, []byte(fakeScript), 0o700); err != nil {
+			t.Fatalf("write fake chronyc: %v", err)
+		}
+		fakeMaster := "0"
+		if tc.host == "node1" {
+			fakeMaster = "1"
+		}
+		callLog := filepath.Join(fakeDir, "calls.log")
+		verify := exec.Command("bash", "-c", tasks[4].Command)
+		verify.Env = append(os.Environ(), "PATH="+fakeDir+":"+os.Getenv("PATH"), "FAKE_MASTER="+fakeMaster, "FAKE_CHRONYC_LOG="+callLog)
+		if out, err := verify.CombinedOutput(); err != nil {
+			t.Fatalf("%s rendered time source verification: %v: %s", tc.host, err, out)
+		}
+		calls, err := os.ReadFile(callLog)
+		if err != nil {
+			t.Fatalf("read fake chronyc calls: %v", err)
+		}
+		usedWaitsync := strings.Contains(string(calls), "waitsync")
+		if usedWaitsync != (tc.host != "node1") {
+			t.Fatalf("%s waitsync use = %t; local reference must use tracking, client must use waitsync", tc.host, usedWaitsync)
 		}
 	}
 }

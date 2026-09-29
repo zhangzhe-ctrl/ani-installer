@@ -1,0 +1,212 @@
+# Derived from official Multus v4.3.1 thick quickstart; ANI names, labels and pinned image.
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ani-multus
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+rules:
+- apiGroups:
+  - k8s.cni.cncf.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - pods/status
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - resource.k8s.io
+  resources:
+  - resourceclaims
+  - resourceclaims/status
+  - resourceslices
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ''
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ani-multus
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ani-multus
+subjects:
+- kind: ServiceAccount
+  name: ani-multus
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ani-multus
+  namespace: kube-system
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ani-multus-daemon-config
+  namespace: kube-system
+  labels:
+    tier: node
+    app: multus
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+data:
+  daemon-config.json: "{\n  \"chrootDir\": \"/hostroot\",\n  \"cniVersion\": \"0.3.1\"\
+    ,\n  \"logLevel\": \"error\",\n  \"logToStderr\": true,\n  \"cniConfigDir\": \"\
+    /host/etc/cni/net.d\",\n  \"multusAutoconfigDir\": \"/host/etc/cni/net.d\",\n\
+    \  \"multusConfigFile\": \"auto\",\n  \"socketDir\": \"/host/run/multus/\",\n\
+    \  \"namespaceIsolation\": true\n}\n"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ani-multus
+  namespace: kube-system
+  labels:
+    tier: node
+    app: multus
+    name: multus
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+spec:
+  selector:
+    matchLabels:
+      app: ani-multus
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ani-multus
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      - operator: Exists
+        effect: NoExecute
+      serviceAccountName: ani-multus
+      containers:
+      - name: kube-multus
+        image: {{ index .ani.images "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.3.1-thick" }}
+        command:
+        - /usr/src/multus-cni/bin/multus-daemon
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          privileged: true
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - name: cni
+          mountPath: /host/etc/cni/net.d
+        - name: cnibin
+          mountPath: /opt/cni/bin
+        - name: host-run
+          mountPath: /host/run
+        - name: host-var-lib-cni-multus
+          mountPath: /var/lib/cni/multus
+        - name: host-var-lib-kubelet
+          mountPath: /var/lib/kubelet
+          mountPropagation: HostToContainer
+        - name: host-run-k8s-cni-cncf-io
+          mountPath: /run/k8s.cni.cncf.io
+        - name: host-run-netns
+          mountPath: /run/netns
+          mountPropagation: HostToContainer
+        - name: multus-daemon-config
+          mountPath: /etc/cni/net.d/multus.d
+          readOnly: true
+        - name: hostroot
+          mountPath: /hostroot
+          mountPropagation: HostToContainer
+        - mountPath: /etc/cni/multus/net.d
+          name: multus-conf-dir
+        env:
+        - name: MULTUS_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      initContainers:
+      - name: install-multus-binary
+        image: {{ index .ani.images "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.3.1-thick" }}
+        command:
+        - /usr/src/multus-cni/bin/install_multus
+        - -d
+        - /host/opt/cni/bin
+        - -t
+        - thick
+        resources:
+          requests:
+            cpu: 10m
+            memory: 15Mi
+        securityContext:
+          privileged: true
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - name: cnibin
+          mountPath: /host/opt/cni/bin
+          mountPropagation: Bidirectional
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: cni
+        hostPath:
+          path: /etc/cni/net.d
+      - name: cnibin
+        hostPath:
+          path: /opt/cni/bin
+      - name: hostroot
+        hostPath:
+          path: /
+      - name: multus-daemon-config
+        configMap:
+          name: ani-multus-daemon-config
+          items:
+          - key: daemon-config.json
+            path: daemon-config.json
+      - name: host-run
+        hostPath:
+          path: /run
+      - name: host-var-lib-cni-multus
+        hostPath:
+          path: /var/lib/cni/multus
+      - name: host-var-lib-kubelet
+        hostPath:
+          path: /var/lib/kubelet
+      - name: host-run-k8s-cni-cncf-io
+        hostPath:
+          path: /run/k8s.cni.cncf.io
+      - name: host-run-netns
+        hostPath:
+          path: /run/netns/
+      - name: multus-conf-dir
+        hostPath:
+          path: /etc/cni/multus/net.d

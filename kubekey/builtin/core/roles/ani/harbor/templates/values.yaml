@@ -1,0 +1,90 @@
+# Official Harbor Chart 1.19.2, app 2.15.2. HTTPS NodePort only.
+expose:
+  type: nodePort
+  tls:
+    enabled: true
+    certSource: secret
+    secret:
+      secretName: ani-harbor-tls
+  nodePort:
+    name: ani-harbor
+    ports:
+      http: {port: 80, nodePort: 30002}
+      https: {port: 443, nodePort: 30003}
+externalURL: https://{{ (index .ani.components "harbor").external_address }}:30003
+# Singleton Jobservice has an RWO log PVC; Recreate avoids cross-node
+# multi-attach deadlock on a later scoped Harbor update.
+updateStrategy: {type: Recreate}
+existingSecretAdminPassword: ani-harbor-admin
+imagePullPolicy: IfNotPresent
+persistence:
+  enabled: true
+  resourcePolicy: keep
+  persistentVolumeClaim:
+    registry:
+      storageClass: '{{ (index .ani.components "harbor").storage_class }}'
+      accessMode: ReadWriteOnce
+      size: '{{ (index .ani.components "harbor").storage_size }}'
+    jobservice:
+      jobLog:
+        storageClass: '{{ (index .ani.components "harbor").storage_class }}'
+        accessMode: ReadWriteOnce
+        size: 2Gi
+    database:
+      storageClass: '{{ (index .ani.components "harbor").storage_class }}'
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    redis:
+      storageClass: '{{ (index .ani.components "harbor").storage_class }}'
+      accessMode: ReadWriteOnce
+      size: 2Gi
+    trivy:
+      existingClaim: ani-harbor-trivy-cache
+  imageChartStorage:
+    type: filesystem
+nginx:
+  image: {repository: '{{ .ani.registry }}/goharbor/nginx-photon', tag: v2.15.2}
+portal:
+  image: {repository: '{{ .ani.registry }}/goharbor/harbor-portal', tag: v2.15.2}
+core:
+  image: {repository: '{{ .ani.registry }}/goharbor/harbor-core', tag: v2.15.2}
+jobservice:
+  image: {repository: '{{ .ani.registry }}/goharbor/harbor-jobservice', tag: v2.15.2}
+registry:
+  registry:
+    image: {repository: '{{ .ani.registry }}/goharbor/registry-photon', tag: v2.15.2}
+  controller:
+    image: {repository: '{{ .ani.registry }}/goharbor/harbor-registryctl', tag: v2.15.2}
+trivy:
+  enabled: true
+  image: {repository: '{{ .ani.registry }}/goharbor/trivy-adapter-photon', tag: v2.15.2}
+  skipUpdate: true
+  skipJavaDBUpdate: true
+  offlineScan: true
+  insecure: false
+  vulnType: os,library
+  securityCheck: vuln
+  initContainers:
+    - name: verify-offline-db
+      image: {{ index .ani.images "docker.io/library/busybox:1.37.0" }}
+      command:
+        - /bin/sh
+        - -ec
+        - |
+          echo '4bf01c98f9af59d4ec9ab6c8f4f22740230830e8be9172970e74dcb8257cd53b  /home/scanner/.cache/trivy/db/trivy.db' | sha256sum -c -
+          echo 'eec14e933a21b2dba78c45d2c0de61a6408e14cee008a07908079e4cd6c905d7  /home/scanner/.cache/trivy/db/metadata.json' | sha256sum -c -
+          echo 'e99e2d1212f4f1ef8281f95ffa72b667ce3fb8d00db0c4b2ddfcc3283b87612c  /home/scanner/.cache/trivy/java-db/trivy-java.db' | sha256sum -c -
+          echo 'f730c0616742e306095594ef51359f81cd05e48cff224112a59c8fbd68449e31  /home/scanner/.cache/trivy/java-db/metadata.json' | sha256sum -c -
+      volumeMounts:
+        - {name: data, mountPath: /home/scanner/.cache}
+database:
+  type: internal
+  internal:
+    image: {repository: '{{ .ani.registry }}/goharbor/harbor-db', tag: v2.15.2}
+    password: OVERRIDDEN_BY_SET_FILE
+redis:
+  type: internal
+  internal:
+    image: {repository: '{{ .ani.registry }}/goharbor/valkey-photon', tag: v2.15.2}
+metrics:
+  enabled: false

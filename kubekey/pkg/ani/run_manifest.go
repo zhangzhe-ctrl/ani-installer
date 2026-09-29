@@ -75,11 +75,13 @@ const (
 // credential. It is produced from the parsed config, never from raw YAML text,
 // so comments, quoting and key order cannot change it.
 type RunManifest struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	ConfigDigest  string `json:"configDigest"`
-	ClusterName   string `json:"clusterName"`
-	Profile       string `json:"profile"`
-	NetworkStack  string `json:"networkStack"`
+	SchemaVersion  int    `json:"schemaVersion"`
+	ConfigDigest   string `json:"configDigest"`
+	ClusterName    string `json:"clusterName"`
+	Profile        string `json:"profile"`
+	NetworkStack   string `json:"networkStack"`
+	NetworkMultus  bool   `json:"networkMultus,omitempty"`
+	MultusTestCIDR string `json:"multusTestCIDR,omitempty"`
 
 	// RecordKind + RunID + Result + Identity are the F04 identity contract.
 	// A config-validation record leaves Result empty and Identity zeroed;
@@ -91,12 +93,13 @@ type RunManifest struct {
 	Result     string           `json:"result,omitempty"`
 	Identity   ManifestIdentity `json:"identity,omitempty"`
 
-	Installer        ManifestInstaller `json:"installer"`
-	Nodes            []ManifestNode    `json:"nodes"`
-	Components       []string          `json:"components"`
-	StorageClass     string            `json:"storageClass"`
-	Storage          ManifestStorage   `json:"storage"`
-	ComponentClasses map[string]string `json:"componentStorageClasses,omitempty"`
+	Installer        ManifestInstaller      `json:"installer"`
+	Nodes            []ManifestNode         `json:"nodes"`
+	Components       []string               `json:"components"`
+	StorageClass     string                 `json:"storageClass"`
+	Storage          ManifestStorage        `json:"storage"`
+	ObjectStorage    *ManifestObjectStorage `json:"objectStorage,omitempty"`
+	ComponentClasses map[string]string      `json:"componentStorageClasses,omitempty"`
 
 	// PackageRoot is recorded so a later step can find the artifact, but this
 	// build only validates the configuration: materials are R07's job.
@@ -132,6 +135,16 @@ type ManifestStorage struct {
 	MakeDefaultStorageClass bool                  `json:"makeDefaultStorageClass"`
 	ExternalClass           string                `json:"externalClass,omitempty"`
 	Nodes                   []ManifestStorageNode `json:"nodes,omitempty"`
+}
+
+// ManifestObjectStorage records the selected object service separately from
+// RBD/CephFS. Older success records omit it and are interpreted narrowly from
+// their recorded Ceph selection when consumed.
+type ManifestObjectStorage struct {
+	Provider      string           `json:"provider"`
+	RustFSClass   string           `json:"rustfsClass,omitempty"`
+	RustFSSize    string           `json:"rustfsSize,omitempty"`
+	MilvusBinding *MilvusS3Binding `json:"milvusBinding,omitempty"`
 }
 
 // ManifestStorageNode is the per-node device allowlist.
@@ -178,12 +191,14 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 	}
 
 	manifest := RunManifest{
-		SchemaVersion: RunManifestSchemaVersion,
-		RecordKind:    RecordKindConfigValidation,
-		ConfigDigest:  digest,
-		ClusterName:   c.Name,
-		Profile:       installProfile(c.Profile),
-		NetworkStack:  networkStack(c.Network.Stack),
+		SchemaVersion:  RunManifestSchemaVersion,
+		RecordKind:     RecordKindConfigValidation,
+		ConfigDigest:   digest,
+		ClusterName:    c.Name,
+		Profile:        installProfile(c.Profile),
+		NetworkStack:   networkStack(c.Network.Stack),
+		NetworkMultus:  c.Network.Multus.Enabled,
+		MultusTestCIDR: c.Network.Multus.TestCIDR,
 		Installer: ManifestInstaller{
 			Name:         installer.Name,
 			Address:      installer.Address,
@@ -203,12 +218,12 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 
 	// Canonical component IDs, in the fixed order the selection file uses.
 	classes := map[string]string{}
-	for _, row := range c.Components.Selection() {
+	for _, row := range c.EffectiveComponents().Selection() {
 		if !row.Enabled {
 			continue
 		}
 		manifest.Components = append(manifest.Components, row.Name)
-		if component := c.Components.storage(row.Name); component != nil {
+		if component := c.EffectiveComponents().storage(row.Name); component != nil {
 			classes[row.Name] = strings.TrimSpace(component.StorageClass)
 		}
 	}
@@ -221,6 +236,18 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 		Provider:                c.Storage.provider(),
 		MakeDefaultStorageClass: c.Storage.MakeDefaultStorageClass,
 		ExternalClass:           strings.TrimSpace(c.Storage.ExternalClass),
+	}
+	manifest.ObjectStorage = &ManifestObjectStorage{Provider: c.ObjectStorageProvider()}
+	if c.ObjectStorageProvider() == objectProviderRustFS {
+		manifest.ObjectStorage.RustFSClass = c.ObjectStorage.RustFS.StorageClass
+		manifest.ObjectStorage.RustFSSize = c.ObjectStorage.RustFS.StorageSize
+	}
+	if c.Components.Milvus.Enabled {
+		binding, err := ResolveMilvusS3Binding(c)
+		if err != nil {
+			return RunManifest{}, err
+		}
+		manifest.ObjectStorage.MilvusBinding = &binding
 	}
 	for _, node := range c.Storage.Nodes {
 		devices := make([]string, 0, len(node.Devices))

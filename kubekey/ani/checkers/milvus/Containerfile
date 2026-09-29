@@ -1,0 +1,8 @@
+FROM docker.io/library/python:3.13.11-slim-bookworm
+COPY wheelhouse /wheelhouse
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --no-index --find-links=/wheelhouse -r /app/requirements.txt && \
+    python -m pip check && rm -rf /wheelhouse
+COPY verify.py /app/verify.py
+USER 65532:65532
+ENTRYPOINT ["python", "/app/verify.py"]

@@ -8,7 +8,7 @@ metadata:
     R00 只做只读校准与文档记录：未编译、未安装、未制包、未还原快照、未连接目标集群。
     源码基线 2026-09-24 冻结：HEAD 275827f17abeb0d84694d078d0bc2877307cf87e，
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
-  updatedAt: '2026-09-27'
+  updatedAt: '2026-09-29'
 tasks:
 - id: R00
   title: 冻结工作树、校准旧文档和执行环境
@@ -516,65 +516,55 @@ tasks:
   - 收口边界声明：R04 的 GitHub CI 由本推送首跑并闭环（首跑红=对照时间炸弹，修复 a6c09ff 后二跑绿），详见 status-decision.md 收口段；R06–R14 的 live_pending 专项（SSH 断连实机、registry 冷启动、非默认 CIDR/引号变体实机、外部 SC 实机、kubeovn 全链、opensearch 实机）不因 R16 收口而闭合。范围外登记补全（与 status-decision 对齐）：run-state phase 成功轮停留 registry_content_verified；components execute 的 --kk 默认依赖 PATH（建议 os.Args[0] 兜底）。
 - id: B00
   title: 冻结既有底座和基础服务，不顺手升级
-  dependsOn:
-  - R16
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [R16]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
+  notes: ["旧底座证据保留；本轮 pg_trgm 与下游专用 RGW 前置已纳入正式流程，但本轮实机写读未运行。"]
 - id: B01
   title: Multus 接入；默认 VPC LoadBalancer 单独开关
-  dependsOn:
-  - R10
-  - R11
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [R10, R11, B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  conditionalSelection: {externalLoadBalancer: false, alternateKubeOVN: separate_not_run}
+  evidence: [docs/execution/evidence/B01-20260928/material-investigation.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B02
   title: Milvus 单一固定组合
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B02-20260927/milvus-checker-image.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B03
   title: Metrics Server：补齐PodMetrics API
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B04
   title: CSI快照控制器、快照类与恢复
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B05
   title: KubeVirt与CDI：先CPU虚拟机，再导入持久磁盘
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
-  conditionalDependencies:
-    snapshot: B04
-    additionalNetwork: B01
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  conditionalDependencies: {snapshot: B04, additionalNetwork: B01}
+  evidence: [docs/execution/evidence/B05-20260928/local-progress.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B06
   title: Volcano CPU 队列与gang调度
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B06-20260928/local-progress.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B07
   title: Harbor、离线扫描、节点信任与准入接入
-  dependsOn:
-  - B00
-  status: not_started
-  selected: null
-  evidence: []
+  dependsOn: [B00]
+  status: code_material_static_pass_live_not_run
+  selected: true
+  evidence: [docs/execution/evidence/B07-20260928/material-investigation.md, docs/execution/evidence/B13-stage-20260928/status.md]
 - id: B08
   title: Notebooks 控制器与CPU工作区
   dependsOn:
@@ -612,21 +602,16 @@ tasks:
   evidence: []
 - id: B13
   title: 选定组件的整体离线收官
-  dependsOn:
-  - B02
-  - B03
-  - B04
-  - B05
-  - B06
-  - B07
-  - B08
-  - B09
-  - B10
-  - B11
-  - B12
+  dependsOn: [B02, B03, B04, B05, B06, B07, B08, B09, B10, B11, B12]
   status: not_started
   selected: null
-  evidence: []
+  stageScope: B00-B07_only
+  stageDependsOn: [B00, B01, B02, B03, B04, B05, B06, B07]
+  stageStatus: blocked_capacity_and_time_source
+  stageInstall: not_run
+  stageFunctionalChecks: not_run
+  evidence: [docs/execution/evidence/B13-stage-20260928/status.md]
+  notes: ["本阶段不依赖 B08-B12；当前三盘三副本原始容量较所选声明至少缺 66 GiB，且无有效离线时间源，未恢复快照或执行首装；全量 B13 不标 completed。"]
 - id: O01
   title: 可选：Dex / 外部OIDC接入
   dependsOn:
@@ -1044,3 +1029,41 @@ tasks:
   - node1 原证据及产品 run/组件记录已复制到 Fedora 私有仓外目录；13 项清单逐项核验。清单文件摘要与 kk 文件摘要、材料 SHA256SUMS 清单文件摘要分别记录在手册，不能当作整个材料包单文件摘要。
   - Ceph 20.2.4 当前有 AUTH_INSECURE_CLIENT_KEY_TYPE/AUTH_INSECURE_KEYS_ALLOWED/AUTH_INSECURE_KEYS_CREATABLE、MON_CLOCK_SKEW、TOO_MANY_PGS；基础读写通过但安全认证、高可用持续性及扩容不由本次签发。只读判读和后续最小建议见手册，未修改现场。
   - Fedora 原工作树的未提交 Fluent Bit/acceptance 开发稿保留；本条仅更新必要文档，不重构、不重建包、不重跑实机。
+
+- id: KUBEOVN-RUSTFS-OPTIONAL-20260929
+  title: Kube-OVN 新集群路径与可选 RustFS 正式离线交付
+  dependsOn: [B00, B01, B02, B03, B04, B05, B06, B07]
+  status: selected_combo_clean_first_install_and_staged_add_pass_ceph_auth_warn
+  selected: true
+  stages:
+    code: 4003b12bea4011e82b28ffe67c35ceb276a54eb7_ci_success_36546382274_fedora_build_gate_pass
+    materials: cumulative_artifact_reused_sha256sums_pass
+    rgwRegression: kcn_ceph_rgw_isolated_function_pass
+    rustfsMilvusIntegration: real_s3_and_vector_pass
+    diagnostic: kubevirt_name_collision_fixed_and_live_verified_before_restore
+    baselineFirstInstall: pass_run_ani_ani_lab_20260929_095835_none_milvus_off
+    stagedAddition: none_to_rustfs_to_milvus_add_and_smoke_pass
+    stagedNoOp: pass_didInstall_false_uids_unchanged
+    finalFirstInstall: pass_run_ani_ani_lab_20260929_111355_full_rustfs_milvus
+    finalSmoke: pass_all_14_enabled_components
+    finalNoOp: pass_didInstall_false_uids_unchanged
+    finalNetwork: pass_two_cross_node_pairs_pod_service_dns
+    cephHealth: ready_health_warn_four_csi_aes_clients
+    otherCombinations: static_selection_only_not_live_certified
+    b08ToB12: not_entered
+  evidence:
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/integration/rgw/evidence/rgw-evidence.tar.gz
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/integration/diagnostic-4003b12/kubeovn-diagnostic-4003b12-evidence.tar.gz
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/site/formal-add-4003b12/staged-add-evidence.tar.gz
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/site/formal-add-4003b12/staged-add-run-ledger.tar.gz
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/site/final-full-4003b12/full-install-evidence.tar.gz
+  - /home/chabking/ani-installer-runs/kubeovn-rustfs/site/final-full-4003b12/full-install-run-ledger.tar.gz
+  - docs/execution/04-manual-runbook.md
+  notes:
+  - 代码 4003b12 的 Fedora 同源 build-code 自带完整 gate 为 rc=0，GitHub CI run 36546382274 success；代码包 SHA256SUMS 文件摘要 c95a1dc84158152406ff0b4a29ca316ebb35bf6f09861af4c0ace2079ddba304，材料包 SHA256SUMS 文件摘要 441f3bc8c4f081a8e660ce35fc3eaa5d05aaf257d3721f18b2b977692e020640；两包在正式 installerNode 重新逐项校验通过。记录文件摘要不冒充整个目录摘要。
+  - 先在失败集群修复 B05 客体源 Pod/Service 与 VM 同名导致的 CNI IP 冲突，并实测 DataVolume、客体命令与停启后 PVC 标记；后续组件、Kube-OVN 两个跨节点对、RustFS/Milvus 和 RGW 独立回归均有各自终态，再还原 Id2 干净快照。旧 kcn/RGW 数据仅保留于 Id3 冷快照，未迁移对象、未在线切 CNI。
+  - ani-01/02/03（172.16.101.10–12，ESXi VMID 8/9/10）最终从 Id2 ISO 快照还原；三节点无旧 admin.conf、/dev/sdb 无文件系统，离线公网 TCP 阻断、私有 registry/API 可达。正式站点为 kubeovn+Ceph RBD/CephFS+RustFS+Milvus，14 个已选组件；CephObjectStore/RGW/OBC 未创建。
+  - baseline none 首装 rc=0、smoke rc=0；RustFS 与 Milvus 依次真实新增，执行记录 operation=add/didInstall=true，各自 smoke rc=0，应用 S3 Put/Get 与向量 insert/flush/index/load/search 实测 provider=rustfs、new_objects=7。新增后的底座 smoke、Ceph RBD/CephFS 再次写读、重复 no-op 与资源 UID 比对均通过。
+  - 最终全集首装 rc=0（718 total、708 success、10 ignored、0 failed）、install-success 与 run-state 一致；全组件 smoke rc=0、14 项 pass；同版本组件计划和执行 no-op=true/didInstall=false，RustFS/Milvus Deployment、StatefulSet、PVC、Secret UID 不变。网络探针两个跨节点对各 4/4；Harbor HTTPS NodePort 30003 在三节点经内部 CA 校验均 200。
+  - 最终 CephCluster Ready 但 HEALTH_WARN，只有 AUTH_INSECURE_CLIENT_KEY_TYPE、AUTH_INSECURE_KEYS_ALLOWED、AUTH_INSECURE_KEYS_CREATABLE；四个 CSI 客户端使用 aes，节点内核 6.8。RBD/CephFS 写读与快照恢复均通过；未静默轮换密钥、收紧 cipher 或静音告警，不把本轮称为安全认证或 Ceph HEALTH_OK。
+  - 上述原始包与日志留 Fedora 仓外私有目录；本机仅记录脱敏结论。未合并 main、未进入 B08–B12；kcn+RustFS、kubeovn+RGW 仅静态选择回归，不宣称四组合实机认证。

@@ -92,6 +92,13 @@ func TestComponentsSelectionKeepsDocumentedOrder(t *testing.T) {
 		{"loki", "false"},
 		{"opensearch", "false"},
 		{"fluent-bit", "false"},
+		{"rustfs", "false"},
+		{"milvus", "false"},
+		{"metrics-server", "false"},
+		{"snapshot-controller", "false"},
+		{"kubevirt", "false"},
+		{"volcano", "false"},
+		{"harbor", "false"},
 	}
 	if len(rows) != len(want) {
 		t.Fatalf("selection length = %d, want %d", len(rows), len(want))
@@ -392,7 +399,7 @@ func TestWriteComponentSelectionIsStrictlyFormatted(t *testing.T) {
 	}
 	want := "# config_sha256=abc123\n" +
 		"cert-manager\ttrue\npostgresql\tfalse\nvalkey\tfalse\nnats\tfalse\n" +
-		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\n"
+		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\n"
 	if string(data) != want {
 		t.Fatalf("selection file = %q, want %q", string(data), want)
 	}
@@ -572,8 +579,8 @@ components:
 		t.Fatalf("legacy site config must still validate: %v", err)
 	}
 	rows := c.Components.Selection()
-	if len(rows) != 8 {
-		t.Fatalf("selection rows = %d, want 8", len(rows))
+	if len(rows) != 15 {
+		t.Fatalf("selection rows = %d, want 15", len(rows))
 	}
 	for _, row := range rows[:4] {
 		if !row.Enabled {
@@ -582,7 +589,7 @@ components:
 	}
 	for _, row := range rows[4:] {
 		if row.Enabled {
-			t.Fatalf("observability row %s must default to disabled for a legacy config", row.Name)
+			t.Fatalf("optional row %s must default to disabled for a legacy config", row.Name)
 		}
 	}
 	if c.Components.Metrics.Enabled || c.Components.Metrics.StorageClass != DefaultStorageClass {
@@ -962,13 +969,21 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ComponentImageParts() error = %v", err)
 	}
+	binding, err := ResolveMilvusS3Binding(ClusterConfig{Storage: Storage{Enabled: true, Provider: storageProviderCeph}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := map[string]any{
 		"ani": map[string]any{
 			"registry":    "192.0.2.11:5000",
 			"images":      complete,
 			"image_parts": imageParts,
+			"objectStorage": map[string]any{"provider": objectProviderRGW, "milvus_s3": binding.templateSpec()},
 			"components": map[string]any{
-				"nats": map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
+				"nats":   map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
+				"rustfs": map[string]any{"storage_class": "ani-block", "storage_size": "20Gi"},
+				"milvus": map[string]any{"storage_class": "ani-block", "storage_size": "10Gi", "etcd_storage_size": "5Gi"},
+				"harbor": map[string]any{"external_address": "192.0.2.11", "storage_class": "ani-block", "storage_size": "10Gi"},
 				"metrics": map[string]any{
 					"enabled":                   true,
 					"namespace":                 "ani-observability",
@@ -1062,9 +1077,9 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatalf("read verify.sh: %v", err)
 	}
 	script := string(data)
-	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit)"
+	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor)"
 	if !strings.Contains(script, want) {
-		t.Fatalf("verify.sh does not declare the fixed 8-row component list; want %q", want)
+		t.Fatalf("verify.sh does not declare the fixed 15-row component list; want %q", want)
 	}
 	if !strings.Contains(script, `tail -n +2 "$SELECTION_FILE"`) {
 		t.Fatal("verify.sh must skip the config_sha256 header row when reading the selection")
@@ -1073,8 +1088,8 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatal("verify.sh must fail when the selection row count is wrong")
 	}
 	// The row list must match componentsOrder exactly.
-	if len(componentsOrder) != 8 {
-		t.Fatalf("componentsOrder has %d rows, want 8", len(componentsOrder))
+	if len(componentsOrder) != 15 {
+		t.Fatalf("componentsOrder has %d rows, want 15", len(componentsOrder))
 	}
 	for _, name := range componentsOrder {
 		if !strings.Contains(script, name) {
@@ -1087,7 +1102,7 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 // requirement list aligned with the selection: anything the installer can turn
 // on and that installs from a Chart must have its fixed path recorded.
 func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
-	for _, name := range []string{"cert-manager", "nats", "metrics", "loki", "opensearch", "fluent-bit"} {
+	for _, name := range []string{"cert-manager", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "volcano"} {
 		rel, ok := componentChartMaterials[name]
 		if !ok {
 			t.Fatalf("componentChartMaterials has no entry for %s", name)
@@ -1102,7 +1117,7 @@ func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
 // document complete: a role that installs resources must render facts for them.
 func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani")
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit"} {
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"} {
 		fragment := filepath.Join(root, name, "templates", "connection.md")
 		if _, err := os.Stat(fragment); err != nil {
 			t.Fatalf("component %s has no connection facts template: %v", name, err)
@@ -2682,7 +2697,7 @@ func TestVerifyStopsAfterFirstFailure(t *testing.T) {
 			t.Fatalf("read config: %v", err)
 		}
 		sum := sha256.Sum256(raw)
-		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit"}
+		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"}
 		var b strings.Builder
 		fmt.Fprintf(&b, "# config_sha256=%s\n", hex.EncodeToString(sum[:]))
 		for _, name := range names {

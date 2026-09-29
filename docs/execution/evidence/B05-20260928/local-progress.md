@@ -1,0 +1,10 @@
+# B05 local integration checkpoint (2026-09-28)
+
+Identity: Fedora host `fedora`, user `chabking`, isolated worktree `/home/chabking/workspace/ani-installer-b00-b07`, branch `feature/b00-b07-install`, base HEAD `61e79e1c2114160c40bd7df34f7156406bf47c3a`. All edits and commands below ran on Fedora. The original working tree and .20/.21/.22 were not changed.
+
+- Production integration now selects `kubevirt` with internal CDI, vmNode, storage and scratch classes; has a component install spec, both playbook routes, the image key group, official operator/CR templates, KVM/material/ownership preflight, package-backed CirrOS HTTP source, DV import and VM guest/stop/start checker. The role emits connection facts. The build script requires approved virtctl and CirrOS bytes and rehashes the guest before and after placement.
+- Fixed upstream bytes: KubeVirt v1.9.0, CDI v1.66.1, virtctl SHA256 `40ede2ee37c98a1aeed71c9c219616a05247ce2be109e1edddf0477572e8b978`, CirrOS SHA256 `7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a7283a8396e4b75b`. The image family is locked in `components.lock.yaml` and `images.tsv`.
+- `bash -n` on the build script and both B05 role scripts: rc=0. `git diff --check`: rc=0. B05 targeted render/selection and material tests: rc=0.
+- `cd kubekey && go test ./pkg/ani -count=1`: initial full rc=1 solely because `TestComponentsSelectionKeepsDocumentedOrder` expected 12 rows; exact failure saved in `/home/chabking/ani-installer-runs/b00-b07/gates/pkg-ani-b05-20260928.log`. After updating the expected 13-row order, targeted test rc=0 and full rerun rc=0 (`ok ... pkg/ani 208.102s`), log `/home/chabking/ani-installer-runs/b00-b07/gates/pkg-ani-b05-fixed-20260928.log`.
+
+Limits: no cumulative offline artifact, KVM host check, CDI import, guest command or stop/start has run against a cluster. WFFC classes currently fail at preflight; selected main combination needs an Immediate class or implementation work. Source edits are uncommitted. This is local integration evidence, not B05 acceptance or B13 evidence.

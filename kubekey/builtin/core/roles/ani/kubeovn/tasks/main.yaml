@@ -5,19 +5,36 @@
 # templates/kubeovn-install.yaml holds the full upstream manifest set
 # (CRDs + SA + ovn + ovs + workloads + pinger) with ani injections.
 #
-# Host kernel note: install.sh v1.16.6 and the current upstream docs require
-# NO host sysctl tuning (the rp_filter steps seen in older docs/kcn are gone);
-# prerequisites are kernel modules (geneve/openvswitch/ip_tables/iptable_nat)
-# and IPv6 enabled, both assumed present on ani hosts.
+# Host kernel and interface prerequisites must be checked on the selected
+# nodes before applying this CNI. Existing kcn sysctls are not copied here.
+- name: ANI KubeOVN | Assert this run's execution context
+  command: |
+    set -euo pipefail
+    case '{{ .ani.run.kubeconfig }}' in /*) ;; *) echo 'Kube-OVN run kubeconfig is not absolute' >&2; exit 1 ;; esac
+    test -f '{{ .ani.run.kubeconfig }}'
+
 - name: ANI KubeOVN | Create work directory
   command: install -d -m 0755 /etc/kubernetes/ani
+
+- name: ANI KubeOVN | Ship read-only host prerequisite check to each node
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  template:
+    src: host-preflight.sh
+    dest: /etc/kubernetes/ani/kubeovn-host-preflight.sh
+    mode: "0755"
+
+- name: ANI KubeOVN | Check kernel IPv6 and selected management interface on each node
+  loop: '{{ .groups.k8s_cluster | default list | toJson }}'
+  delegate_to: '{{ .item }}'
+  command: bash /etc/kubernetes/ani/kubeovn-host-preflight.sh
 
 # Official pre-step (install.sh v1.16.6): ovn-central only schedules on nodes
 # labeled kube-ovn/role=master (control-plane nodes). Without this the
 # deployment sits Pending and its progress deadline kills the install.
 - name: ANI KubeOVN | Label nodes for ovn-central scheduling
   command: >
-    kubectl label node -lnode-role.kubernetes.io/control-plane
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl label node -lnode-role.kubernetes.io/control-plane
     kube-ovn/role=master --overwrite
 
 - name: ANI KubeOVN | Render install manifest
@@ -26,26 +43,26 @@
     dest: /etc/kubernetes/ani/kubeovn-install.yaml
 
 - name: ANI KubeOVN | Apply install manifest
-  command: kubectl apply --server-side -f /etc/kubernetes/ani/kubeovn-install.yaml
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/kubeovn-install.yaml
 
 # Wait list matches the real v1.16.6 manifest workloads, all in kube-system:
 # Deployment/ovn-central, DaemonSet/ovs-ovn, DaemonSet/kube-ovn-cni,
 # Deployment/kube-ovn-controller, Deployment/kube-ovn-monitor,
 # DaemonSet/kube-ovn-pinger.
 - name: ANI KubeOVN | Wait for ovn-central
-  command: kubectl rollout status deployment/ovn-central -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status deployment/ovn-central -n kube-system --timeout=600s
 
 - name: ANI KubeOVN | Wait for OVS daemonset
-  command: kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout=600s
 
 - name: ANI KubeOVN | Wait for CNI daemonset
-  command: kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=600s
 
 - name: ANI KubeOVN | Wait for controller
-  command: kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=600s
 
 - name: ANI KubeOVN | Wait for monitor
-  command: kubectl rollout status deployment/kube-ovn-monitor -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status deployment/kube-ovn-monitor -n kube-system --timeout=600s
 
 - name: ANI KubeOVN | Wait for pinger daemonset
-  command: kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout=600s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status daemonset/kube-ovn-pinger -n kube-system --timeout=600s

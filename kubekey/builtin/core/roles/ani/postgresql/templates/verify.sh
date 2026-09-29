@@ -82,6 +82,10 @@ spec:
             - -c
             - |
               set -e
+              extension="\$(psql -tA -v ON_ERROR_STOP=1 -c "SELECT extname FROM pg_extension WHERE extname='pg_trgm'")"
+              [ "\$extension" = "pg_trgm" ] || { echo "pg_trgm is not installed"; exit 1; }
+              matched="\$(psql -tA -v ON_ERROR_STOP=1 -c "SELECT similarity('ani', 'ani') = 1")"
+              [ "\$matched" = "t" ] || { echo "pg_trgm similarity check failed"; exit 1; }
               psql -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS ani_verify_kv (k text primary key, v text)"
               psql -v ON_ERROR_STOP=1 -c "DELETE FROM ani_verify_kv WHERE k='$UNIQ'"
               psql -v ON_ERROR_STOP=1 -c "INSERT INTO ani_verify_kv(k,v) VALUES('$UNIQ','$UNIQ-value')"

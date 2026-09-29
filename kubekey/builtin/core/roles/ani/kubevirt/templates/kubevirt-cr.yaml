@@ -1,0 +1,19 @@
+# Adapted from official kubevirt-cr.yaml v1.9.0 SHA256 43106136dbce3312bdbfdeae612aacafc6c12da518d233f90645b4685d84a2af
+apiVersion: kubevirt.io/v1
+kind: KubeVirt
+metadata:
+  name: kubevirt
+  namespace: kubevirt
+  labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
+spec:
+  certificateRotateStrategy: {}
+  configuration:
+    developerConfiguration:
+      featureGates: []
+    virtTemplateDeployment:
+      enabled: false
+    imagePullPolicy: IfNotPresent
+  customizeComponents: {}
+  imagePullPolicy: IfNotPresent
+  workloadUpdateStrategy: {}

@@ -6,6 +6,11 @@ native:
       - "cn.pool.ntp.org"
     # Toggle to enable or disable the NTP service
     enabled: true
+    # Set only by the ANI offline first-install config. Generic KubeKey runs
+    # retain their existing NTP behaviour when isolated_master is empty.
+    isolated_master: ""
+    isolated_master_ip: ""
+    isolated_client_ips: []
   # System timezone configuration
   timezone: Asia/Shanghai
 

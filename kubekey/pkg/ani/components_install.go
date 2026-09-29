@@ -64,28 +64,43 @@ type componentInstallSpec struct {
 	WorkloadKind string // primary workload for manifest components
 	WorkloadName string
 	NeedsStorage bool
-	InternalDeps []string // static technical prerequisites, shown in the plan
+	InternalDeps []string // fixed technical prerequisites; provider-specific deps are resolved below
 }
 
 // componentsDeferred lists the IDs later batches will add; --only rejects
 // them with the deferred message instead of plain "unknown".
 var componentsDeferred = []string{
-	"metrics-server", "snapshot-controller", "milvus", "kubevirt", "cdi",
-	"volcano", "harbor", "notebooks", "trainer", "hub", "kserve", "pipelines",
+	"cdi",
+	"notebooks", "trainer", "hub", "kserve", "pipelines",
 }
 
 // componentInstallSpecs covers every canonical component ID of
-// componentsOrder. Ids outside this map (metrics-server, milvus, ...) are
-// deferred batches: --only rejects them outright.
+// componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
-	"cert-manager": {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
-	"postgresql":   {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
-	"valkey":       {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
-	"nats":         {Namespace: "ani-platform", Release: "nats", Chart: "nats", ChartVersion: "2.14.6", WorkloadKind: "StatefulSet", WorkloadName: "nats", NeedsStorage: true},
-	"metrics":      {Namespace: "ani-observability", Release: "ani-metrics", Chart: "kube-prometheus-stack", ChartVersion: "85.4.0", WorkloadKind: "StatefulSet", WorkloadName: "prometheus-ani-metrics-prometheus", NeedsStorage: true},
-	"loki":         {Namespace: "ani-observability", Release: "ani-loki", Chart: "loki", ChartVersion: "18.13.3", WorkloadKind: "StatefulSet", WorkloadName: "ani-loki", NeedsStorage: true},
-	"opensearch":   {Namespace: "ani-observability", Release: "ani-opensearch-master", Chart: "opensearch", ChartVersion: "3.8.0", WorkloadKind: "StatefulSet", WorkloadName: "ani-opensearch-master", NeedsStorage: true, InternalDeps: []string{"fluent-bit"}},
-	"fluent-bit":   {Namespace: "ani-observability", Release: "ani-fluent-bit", Chart: "fluent-bit", ChartVersion: "0.58.2", WorkloadKind: "DaemonSet", WorkloadName: "ani-fluent-bit"},
+	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
+	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
+	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
+	"nats":                {Namespace: "ani-platform", Release: "nats", Chart: "nats", ChartVersion: "2.14.6", WorkloadKind: "StatefulSet", WorkloadName: "nats", NeedsStorage: true},
+	"rustfs":              {Namespace: "ani-platform", Release: "ani-rustfs", Chart: "rustfs", ChartVersion: "1.0.0", WorkloadKind: "Deployment", WorkloadName: "ani-rustfs", NeedsStorage: true, InternalDeps: []string{"cert-manager"}},
+	"milvus":              {Namespace: "ani-platform", Release: "ani-milvus", Chart: "milvus", ChartVersion: "5.0.25", WorkloadKind: "Deployment", WorkloadName: "ani-milvus-standalone", NeedsStorage: true},
+	"metrics-server":      {Namespace: "kube-system", Release: "ani-metrics-server", Chart: "metrics-server", ChartVersion: "3.14.0", WorkloadKind: "Deployment", WorkloadName: "ani-metrics-server"},
+	"snapshot-controller": {Namespace: "kube-system", WorkloadKind: "Deployment", WorkloadName: "ani-snapshot-controller", NeedsStorage: true},
+	"kubevirt":            {Namespace: "kubevirt", WorkloadKind: "Deployment", WorkloadName: "virt-operator", NeedsStorage: true, InternalDeps: []string{"cdi"}},
+	"harbor":              {Namespace: "ani-harbor", Release: "ani-harbor", Chart: "harbor", ChartVersion: "1.19.2", WorkloadKind: "StatefulSet", WorkloadName: "ani-harbor-trivy", NeedsStorage: true, InternalDeps: []string{"dedicated-db", "dedicated-valkey", "offline-trivy-db"}},
+	"volcano":             {Namespace: "volcano-system", Release: "ani-volcano", Chart: "volcano", ChartVersion: "1.15.2", WorkloadKind: "Deployment", WorkloadName: "ani-volcano-scheduler"},
+	"metrics":             {Namespace: "ani-observability", Release: "ani-metrics", Chart: "kube-prometheus-stack", ChartVersion: "85.4.0", WorkloadKind: "StatefulSet", WorkloadName: "prometheus-ani-metrics-prometheus", NeedsStorage: true},
+	"loki":                {Namespace: "ani-observability", Release: "ani-loki", Chart: "loki", ChartVersion: "18.13.3", WorkloadKind: "StatefulSet", WorkloadName: "ani-loki", NeedsStorage: true},
+	"opensearch":          {Namespace: "ani-observability", Release: "ani-opensearch-master", Chart: "opensearch", ChartVersion: "3.8.0", WorkloadKind: "StatefulSet", WorkloadName: "ani-opensearch-master", NeedsStorage: true, InternalDeps: []string{"fluent-bit"}},
+	"fluent-bit":          {Namespace: "ani-observability", Release: "ani-fluent-bit", Chart: "fluent-bit", ChartVersion: "0.58.2", WorkloadKind: "DaemonSet", WorkloadName: "ani-fluent-bit"},
+}
+
+// These prerequisites are installed and checked inside their owning role,
+// so they are shown in plans but are not separate site switches or --only IDs.
+var roleManagedTechnicalDeps = map[string]bool{
+	"cdi":              true,
+	"dedicated-db":     true,
+	"dedicated-valkey": true,
+	"offline-trivy-db": true,
 }
 
 // ComponentsInstallInput is the input of `kk ani components install`.
@@ -395,7 +410,7 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		return nil, errors.New("--only is required and must name at least one component; a components run never implies a scope")
 	}
 	enabled := map[string]bool{}
-	for _, row := range cluster.Components.Selection() {
+	for _, row := range cluster.EffectiveComponents().Selection() {
 		enabled[row.Name] = row.Enabled
 	}
 	var scope []string
@@ -405,7 +420,7 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		if seen[name] {
 			return nil
 		}
-		spec, known := componentInstallSpecs[name]
+		_, known := componentInstallSpecs[name]
 		if !known {
 			for _, deferred := range componentsDeferred {
 				if name == deferred {
@@ -418,7 +433,13 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 			return fmt.Errorf("component %q is not enabled in the site config; enable it there first — a components run never edits the config silently", name)
 		}
 		seen[name] = true
-		for _, dep := range spec.InternalDeps {
+		for _, dep := range componentDependencies(cluster, name) {
+			if _, canonical := componentInstallSpecs[dep]; !canonical {
+				if !roleManagedTechnicalDeps[dep] {
+					return fmt.Errorf("component %q has undeclared internal dependency %q", name, dep)
+				}
+				continue
+			}
 			if !enabled[dep] {
 				return fmt.Errorf("component %q requires %q, which the site config has not enabled", name, dep)
 			}
@@ -443,6 +464,14 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		}
 	}
 	return scope, nil
+}
+
+func componentDependencies(cluster ClusterConfig, name string) []string {
+	deps := append([]string(nil), componentInstallSpecs[name].InternalDeps...)
+	if name == "milvus" && cluster.ObjectStorageProvider() == objectProviderRustFS {
+		deps = append(deps, "rustfs")
+	}
+	return deps
 }
 
 // loadBaseRunRecord reads the original base install's run.json and enforces
@@ -500,11 +529,13 @@ func notFoundErr(err error) bool {
 // recorded in the plan.
 func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	invariants := map[string]string{
-		"clusterName":   base.ClusterName,
-		"networkStack":  base.NetworkStack,
-		"profile":       base.Profile,
-		"registry":      fmt.Sprintf("%s:%d", base.Installer.RegistryHost, base.Installer.RegistryPort),
-		"installerNode": base.Installer.Name,
+		"clusterName":    base.ClusterName,
+		"networkStack":   base.NetworkStack,
+		"networkMultus":  fmt.Sprint(base.NetworkMultus),
+		"multusTestCIDR": base.MultusTestCIDR,
+		"profile":        base.Profile,
+		"registry":       fmt.Sprintf("%s:%d", base.Installer.RegistryHost, base.Installer.RegistryPort),
+		"installerNode":  base.Installer.Name,
 	}
 	check := func(field, baseValue, newValue string) error {
 		if baseValue != newValue {
@@ -518,6 +549,12 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	if err := check("networkStack", base.NetworkStack, new.NetworkStack); err != nil {
 		return nil, err
 	}
+	if err := check("networkMultus", fmt.Sprint(base.NetworkMultus), fmt.Sprint(new.NetworkMultus)); err != nil {
+		return nil, err
+	}
+	if err := check("multusTestCIDR", base.MultusTestCIDR, new.MultusTestCIDR); err != nil {
+		return nil, err
+	}
 	if err := check("profile", base.Profile, new.Profile); err != nil {
 		return nil, err
 	}
@@ -527,6 +564,37 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	if err := check("installerNode", base.Installer.Name, new.Installer.Name); err != nil {
 		return nil, err
 	}
+	baseObject := manifestObjectProvider(base)
+	newObject := manifestObjectProvider(new)
+	if baseObject != newObject {
+		// This is the one supported object-service addition. A base that
+		// already owns RGW or a Milvus binding cannot use it as a migration.
+		if baseObject != objectProviderNone || newObject != objectProviderRustFS || containsString(base.Components, "milvus") {
+			return nil, fmt.Errorf("object storage provider changed from %q to %q; component addition cannot migrate or remove an existing object service", baseObject, newObject)
+		}
+	}
+	if baseObject == objectProviderRustFS && newObject == objectProviderRustFS &&
+		(base.ObjectStorage == nil || new.ObjectStorage == nil ||
+			base.ObjectStorage.RustFSClass != new.ObjectStorage.RustFSClass ||
+			base.ObjectStorage.RustFSSize != new.ObjectStorage.RustFSSize) {
+		return nil, fmt.Errorf("existing RustFS storage class or capacity changed; component addition cannot mutate its PVC contract")
+	}
+	if containsString(base.Components, "milvus") {
+		oldBinding := base.ObjectStorage
+		if oldBinding == nil && baseObject == objectProviderRGW {
+			legacy, _ := ResolveMilvusS3Binding(ClusterConfig{Storage: Storage{Enabled: true, Provider: storageProviderCeph}})
+			oldBinding = &ManifestObjectStorage{Provider: objectProviderRGW, MilvusBinding: &legacy}
+		}
+		if oldBinding == nil || oldBinding.MilvusBinding == nil || new.ObjectStorage == nil || new.ObjectStorage.MilvusBinding == nil {
+			return nil, fmt.Errorf("existing Milvus object binding cannot be proven; refusing component addition")
+		}
+		a, b := oldBinding.MilvusBinding, new.ObjectStorage.MilvusBinding
+		if a.Provider != b.Provider || a.Endpoint != b.Endpoint || a.Bucket != b.Bucket || a.RootPath != b.RootPath ||
+			a.SecretName != b.SecretName || a.CAPath != b.CAPath {
+			return nil, fmt.Errorf("existing Milvus object binding changed; provider, endpoint, bucket, root path, Secret and CA are migration fields")
+		}
+	}
+	invariants["objectStorageProvider"] = baseObject
 	baseNodes := map[string]string{}
 	for _, node := range base.Nodes {
 		baseNodes[node.Name] = node.Address
@@ -545,6 +613,16 @@ func compareBaseInvariants(base, new RunManifest) (map[string]string, error) {
 	}
 	invariants["nodes"] = fmt.Sprint(len(baseNodes))
 	return invariants, nil
+}
+
+func manifestObjectProvider(m RunManifest) string {
+	if m.ObjectStorage != nil {
+		return m.ObjectStorage.Provider
+	}
+	if m.Storage.Enabled && m.Storage.Provider == storageProviderCeph {
+		return objectProviderRGW
+	}
+	return objectProviderNone
 }
 
 // captureLiveCluster reads the stable identity and health of the LIVE cluster:
@@ -683,7 +761,7 @@ func preflightLiveCluster(ctx context.Context, runner kubectlRunner, cluster Clu
 			continue
 		}
 		class := ""
-		if c := cluster.Components.storage(component); c != nil {
+		if c := cluster.EffectiveComponents().storage(component); c != nil {
 			class = strings.TrimSpace(c.StorageClass)
 		}
 		if class == "" {
@@ -772,6 +850,9 @@ func checkCNIHealth(ctx context.Context, runner kubectlRunner, cluster ClusterCo
 	if err != nil {
 		return err
 	}
+	if cluster.Network.Multus.Enabled {
+		probes = append(probes, cniWorkload{"kube-system", "ani-multus"})
+	}
 	for _, workload := range probes {
 		raw, err := runner.jsonpath(ctx, "daemonset", workload.name, workload.namespace,
 			"{.status.desiredNumberScheduled} {.status.numberReady}")
@@ -810,7 +891,7 @@ func preflightComponentOwnership(ctx context.Context, runner kubectlRunner, clus
 		result := ComponentsPlanComponent{
 			Component:    component,
 			Namespace:    spec.Namespace,
-			InternalDeps: spec.InternalDeps,
+			InternalDeps: componentDependencies(cluster, component),
 		}
 		if spec.Release != "" {
 			rel, err := helmCurrentRelease(ctx, runner, spec.Namespace, spec.Release)
@@ -956,7 +1037,7 @@ func imagesForComponent(cluster ClusterConfig, component string) []ImageKey {
 		switch {
 		case component == "cert-manager" && key.Group == "verification":
 			keys = append(keys, key)
-		case component == "metrics" && key.Group == "metrics":
+		case key.Group == component:
 			keys = append(keys, key)
 		case key.Group == "components" && key.Name == component:
 			keys = append(keys, key)

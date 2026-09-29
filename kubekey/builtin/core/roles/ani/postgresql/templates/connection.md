@@ -5,6 +5,7 @@
 - workload: `statefulset/postgresql` (1 replica)
 - service DNS / port: `postgresql.ani-platform.svc.cluster.local:5432` (ClusterIP)
 - application database and account: database `ani`, role `ani_app` (created by the packaged initdb ConfigMap on first init)
+- extension: `pg_trgm` is installed idempotently in `ani` after PostgreSQL rollout and checked through `ani_app`
 - PVC: `data-postgresql-0`, StorageClass `{{ .ani.components.postgresql.storage_class }}`, request `{{ .ani.components.postgresql.storage_size }}`, access mode ReadWriteOnce
 - retention: no time-based retention; data persists on the PVC until the PVC is deleted
 - secrets (references only, no values):

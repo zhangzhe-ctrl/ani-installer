@@ -59,6 +59,24 @@ tools:
     purpose: 渲染并部署本轮官方固定 Chart；不执行 helm repo update / dependency update
     verifiedCommand: "helm version --short -> v3.20.0+gb2e4314（Fedora 实际执行）"
     status: materials_confirmed / installation_not_verified
+  virtctl:
+    version: v1.9.0
+    gitVersion: v1.9.0
+    source: https://github.com/kubevirt/kubevirt/releases/download/v1.9.0/virtctl-v1.9.0-linux-amd64
+    sourceTarballSha256: 40ede2ee37c98a1aeed71c9c219616a05247ce2be109e1edddf0477572e8b978
+    binarySha256: 40ede2ee37c98a1aeed71c9c219616a05247ce2be109e1edddf0477572e8b978
+    artifactPath: bin/virtctl
+    purpose: B05 VM guest command and normal stop/start; direct official release binary
+    releaseAssetId: "495538543"
+    status: source_digest_confirmed / installation_not_verified
+  rustfs-rc:
+    version: v0.1.36
+    source: https://github.com/rustfs/cli/releases/download/v0.1.36/rustfs-cli-linux-amd64-v0.1.36.tar.gz
+    sourceTarballSha256: 4a8128911ccad4e7b481f26635a4cfd1ec064412210526e57ad2c748d356f3b7
+    binarySha256: 15490337489f5c1bb2d33f77e308be52ac29adaa27069d7c77f0d808b165f786
+    artifactPath: bin/rc
+    purpose: RustFS bucket and least-privilege service account initialization through trusted HTTPS
+    status: source_digest_confirmed / live_admin_api_not_verified
   hauler:
     version: v2.0.3
     gitVersion: v2.0.3
@@ -388,3 +406,350 @@ batch2:
 # 每批真实验证记录（安装未完成前保持 installation_not_verified）
 # ---------------------------------------------------------------------------
 verificationRecords: []
+
+# RustFS standalone material identity was checked on Fedora on 2026-09-29.
+# The official Chart renders Deployment/ani-rustfs, Service/ani-rustfs-svc
+# and PVC/ani-rustfs-data. Live server and admin API remain unverified.
+batchRustFS:
+  status: source_pins_confirmed / live_not_run
+  chart:
+    name: rustfs
+    chartVersion: 1.0.0
+    appVersion: 1.0.0
+    source: https://charts.rustfs.com/rustfs-1.0.0.tgz
+    sha256: f11e9304fd4c3599ac365af9845ab4a2f99fab3edd30d0c8f89eb9428bcfb711
+    artifactChartPath: charts/rustfs/1.0.0.tgz
+    release: ani-rustfs
+    namespace: ani-platform
+  images:
+    - original: docker.io/rustfs/rustfs:1.0.0
+      haulerRef: 127.0.0.1:5000/rustfs/rustfs:1.0.0
+      sourceManifestDigest: sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+      amd64ManifestDigest: sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b
+      use: RustFS standalone server
+
+# B02 source pins verified on Fedora on 2026-09-27. Chart 5.0.25 declares
+# appVersion 2.6.21; the fixed B02 selection overrides its service image to
+# v2.6.24. This is material identity only, not deployment certification.
+batchB02:
+  status: source_pins_confirmed / artifact_not_built / live_not_run
+  chart:
+    name: milvus
+    chartVersion: 5.0.25
+    appVersion: 2.6.21
+    source: https://github.com/zilliztech/milvus-helm/releases/download/milvus-5.0.25/milvus-5.0.25.tgz
+    sha256: cdbe181e93ce3e4b0a384d93c5cbbcd95db495df8ab1742206fbc0af916f462a
+    artifactChartPath: charts/milvus/5.0.25.tgz
+    release: ani-milvus
+    namespace: ani-platform
+  images:
+    - original: docker.io/milvusdb/milvus:v2.6.24
+      haulerRef: 127.0.0.1:5000/milvusdb/milvus:v2.6.24
+      sourceManifestDigest: sha256:c55810ca95c97437cc003f913b835524600fb95a14ce04955a92517c3ccab73f
+      amd64ManifestDigest: sha256:692f183d6b6471f0835dab13d83923defcc7790b8fc31044e25a36af9193a62b
+      use: B02 Standalone Milvus service
+    - original: docker.io/milvusdb/etcd:3.5.25-r1
+      haulerRef: 127.0.0.1:5000/milvusdb/etcd:3.5.25-r1
+      sourceManifestDigest: sha256:fededb2f2d63c4d8bc64cbbaac6896d59370ed9ceed660c5ce789d67ce0dbf1c
+      amd64ManifestDigest: sha256:3145506ab5eb3152effc2f6a32a8011216dc11f648584d63926905cd440b6c60
+      use: B02 dedicated etcd chart subcomponent
+    - original: docker.io/amazon/aws-cli:2.31.30
+      haulerRef: 127.0.0.1:5000/amazon/aws-cli:2.31.30
+      sourceManifestDigest: sha256:77c27e51823293d52691a13e87f6942a4b483e87de3f49d68c25dc271f3528b1
+      amd64ManifestDigest: sha256:8985de534bb334a12972f2e51afcfa958703c297630d21a99a034c8cbc9e39ba
+      use: B00/B02 authenticated S3 write-read Job
+    - original: ani.local/milvus-checker:v1
+      haulerRef: 127.0.0.1:5000/ani/milvus-checker:v1
+      amd64ManifestDigest: sha256:0f197f3d0e30215238dd52bee6b8838b118a2c87fdf8173b8905929fb4de84d5
+      injection:
+        type: docker-archive
+        archiveSha256: sha256:618448ca600dba64ae424e50aa5f1533ae3df731de824c9e5c41a312aac2643f
+        evidence: docs/execution/evidence/B02-20260927/milvus-checker-image.md
+      use: B02 PyMilvus and RGW functional checker built offline on Fedora
+
+# B03 source is the official metrics-server-helm-chart-3.14.0 tag (commit
+# 0716b65); the release asset/Pages endpoint was unavailable from Fedora, so
+# Helm 3.20.0 packaged charts/metrics-server from that exact source archive.
+# The source and the resulting artifact have separate measured digests.
+batchB03:
+  status: source_pins_confirmed / artifact_not_built / live_not_run
+  chart:
+    name: metrics-server
+    chartVersion: 3.14.0
+    appVersion: 0.9.0
+    source: https://codeload.github.com/kubernetes-sigs/metrics-server/tar.gz/refs/tags/metrics-server-helm-chart-3.14.0
+    sourceSha256: 14b0a456ef92b59bb24285b76f890744b289e83c1034f9b0665cc91b74a184b9
+    packaging: helm v3.20.0 package charts/metrics-server from official tag
+    sha256: 0207a15f304a4dcea3593377e26de703483211a67ac46a3cbe03dc2619046d6e
+    artifactChartPath: charts/metrics-server/3.14.0.tgz
+    release: ani-metrics-server
+    namespace: kube-system
+  images:
+    - original: registry.k8s.io/metrics-server/metrics-server:v0.9.0
+      haulerRef: 127.0.0.1:5000/metrics-server/metrics-server:v0.9.0
+      sourceManifestDigest: sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0
+      amd64ManifestDigest: sha256:25d291fde59974547bac6f07fa9d6cf6f5bedd1f19d60c893311c5e741e0a42f
+      use: B03 Metrics Server APIService and PodMetrics provider
+
+# B04 fixed snapshot-controller/CRD materials. The v8.5.0 source tag still
+# refers to controller image v8.4.0 in its example manifest. ANI explicitly
+# selects the published v8.5.0 controller image to match the retained Rook
+# csi-snapshotter v8.5.0 sidecar. Source file hashes are measured on Fedora;
+# modified ANI templates are packaged in the KubeKey artifact, not fetched live.
+batchB04:
+  status: source_pins_confirmed / implementation_in_progress / live_not_run
+  upstreamTag: https://github.com/kubernetes-csi/external-snapshotter/tree/v8.5.0
+  sources:
+    - path: client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+      sha256: 75e6565aac2c0f2949ed13ea884bbaa388cb7be576b558b709cf1168e011828d
+    - path: client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+      sha256: 895a3c1e73b60f06a0deb566dd123d01bdf1b2efc5d5ff5231ff8bbcf42dafc7
+    - path: client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+      sha256: b032116e987fb1d7d93cec7d942833adeb9d95c9bdc7e00c10b280c2fe4a6c33
+    - path: deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+      sha256: 99c4ac480b6c9563be0d85599e29cc7b68b25a82d250b0e789726727551e8d38
+    - path: deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+      sha256: bab025e1fed9199c5d827f64febb572dd8b746928e48d656312a215bede74d92
+    - path: rook/v1.20.7/deploy/examples/csi/rbd/snapshotclass.yaml
+      sha256: 35e8cf7803cf4677581e225e81f8c1bf7362af5b2b26b4432182dccd9f39c9b4
+    - path: rook/v1.20.7/deploy/examples/csi/cephfs/snapshotclass.yaml
+      sha256: e5d3c1d0c2c75a1dfda98e16babfaebe9770c8c9031afcc62effb36c205c70e8
+  images:
+    - original: registry.k8s.io/sig-storage/snapshot-controller:v8.5.0
+      haulerRef: 127.0.0.1:5000/sig-storage/snapshot-controller:v8.5.0
+      sourceManifestDigest: sha256:74ca61ab13e978f03cf0f336a607281d15f04cda0a38a881306365473b28a3d8
+      amd64ManifestDigest: sha256:c6ed5c488dc72a01e7d69caf4d6efe44cb5fecd08fac1a037626171bf90482d1
+      use: B04 cluster-wide snapshot controller; two replicas, leader election
+
+# B01a Multus is selected independently of the primary CNI. The upstream
+# v4.3.1 quickstart manifest still uses snapshot-thick, so the ANI role pins
+# the published versioned thick image and validates the existing delegate.
+batchB01:
+  status: source_pins_confirmed / implementation_in_progress / live_not_run
+  upstreamTag: https://github.com/k8snetworkplumbingwg/multus-cni/tree/v4.3.1
+  sources:
+    - path: deployments/multus-daemonset-thick.yml
+      sha256: 24fb29530b760d28126bba76bd91fac8fd74100b53d9fc65943c223e3a82be30
+    - path: docs/thick-plugin.md
+      sha256: a207f369e6cd89c2ced4c1017800d08bc94e0035b1a433a37540951fb3ae4588
+  images:
+    - original: ghcr.io/k8snetworkplumbingwg/multus-cni:v4.3.1-thick
+      haulerRef: 127.0.0.1:5000/k8snetworkplumbingwg/multus-cni:v4.3.1-thick
+      sourceManifestDigest: sha256:a357a79359b80ddd5f4699117946cacf3b54f5baecf7944535594863e875fc25
+      amd64ManifestDigest: sha256:d3a3e029a27cd9c23aa904e8c881af5f2db01245419f8e1147f08238dd85f764
+      use: B01 thick daemon plus host shim installer
+
+# B06 uses the exact official Volcano 1.15.2 Chart. Its JobFlow subchart adds
+# only two CRDs; the controller requires their informers even for CPU Queues.
+# No JobFlow objects, controller, image or Trainer coupling are selected.
+batchB06:
+  status: source_pins_confirmed / implementation_in_progress / live_not_run
+  chart:
+    name: volcano
+    chartVersion: 1.15.2
+    appVersion: 1.15.2
+    upstream: https://github.com/volcano-sh/helm-charts/releases/download/volcano-1.15.2/volcano-1.15.2.tgz
+    source: https://github.com/volcano-sh/helm-charts/releases/download/volcano-1.15.2/volcano-1.15.2.tgz
+    upstreamSha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
+    packaging: unmodified official archive; bundled JobFlow subchart renders only its two controller-required CRDs
+    packagedSha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
+    sha256: 84b13ab82dd73c95307131ac105566f1dcf96383eed14bf30c4a74b0020b3fdd
+    artifactChartPath: charts/volcano/1.15.2.tgz
+    release: ani-volcano
+    namespace: volcano-system
+  images:
+    - original: docker.io/volcanosh/vc-controller-manager:v1.15.2
+      haulerRef: 127.0.0.1:5000/volcanosh/vc-controller-manager:v1.15.2
+      sourceManifestDigest: sha256:6a6bc2560d51165b6f3d732f0e532a3c44eca2b0a39821ff242223a92f40d5f5
+      amd64ManifestDigest: sha256:d12095f864b0d617cf9b0b7df8c14d662923b041b6b6e90755b28220398309ce
+    - original: docker.io/volcanosh/vc-scheduler:v1.15.2
+      haulerRef: 127.0.0.1:5000/volcanosh/vc-scheduler:v1.15.2
+      sourceManifestDigest: sha256:afab36286a17a77c2f74695d0b50e8f969402f3f6806df4506aff9779813df5e
+      amd64ManifestDigest: sha256:836554c1c3286742fb6fcc721f5d3515e0e3e304a30d9cb733635f555f5ef671
+    - original: docker.io/volcanosh/vc-webhook-manager:v1.15.2
+      haulerRef: 127.0.0.1:5000/volcanosh/vc-webhook-manager:v1.15.2
+      sourceManifestDigest: sha256:2fff65aad011e0cb4cdb3709c7dca34b0ada29f45cc2b7d698173ed8e60d56eb
+      amd64ManifestDigest: sha256:5b2e35b0e3872291bbeb902acbdde7c520c8d9102145333db911bb08cc47606c
+
+# B05 source assets are fixed to official signed-tag release material. The
+# generated role templates replace only offline image references and disable
+# unselected virt-template deployment. No hardware/live claim follows from pins.
+batchB05:
+  status: source_pins_confirmed / role_in_progress / payload_not_landed / live_not_run
+  kubevirtVersion: v1.9.0
+  cdiVersion: v1.66.1
+  sources:
+    - {path: kubevirt-operator.yaml, sha256: f11307caafc3c23ffedf9887d8beb5a4419e2694da242fa68f63d1ec820de2e0}
+    - {path: kubevirt-cr.yaml, sha256: 43106136dbce3312bdbfdeae612aacafc6c12da518d233f90645b4685d84a2af}
+    - {path: cdi-operator.yaml, sha256: c7d92bd1b2ee1a3952a5990000437c08d58109f31c0bd48ab6188ec27a13e224}
+    - {path: cdi-cr.yaml, sha256: a497f90de608c1df26f9ee4095289373f17132d74a2042ca03e00c17c964f8a7}
+    - {path: feature-gates.json, sha256: ba7cbcce1bd5dd2b964f2c68f02838c5390d935ee1da5a462506fd3f900db468}
+  virtctl:
+    source: https://github.com/kubevirt/kubevirt/releases/download/v1.9.0/virtctl-v1.9.0-linux-amd64
+    sha256: 40ede2ee37c98a1aeed71c9c219616a05247ce2be109e1edddf0477572e8b978
+    assetId: "495538543"
+  guest:
+    source: https://download.cirros-cloud.net/0.6.3/cirros-0.6.3-x86_64-disk.img
+    sha256: 7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a7283a8396e4b75b
+    publisherChecksums: https://download.cirros-cloud.net/0.6.3/SHA256SUMS
+    artifactPath: guest/cirros-0.6.3-x86_64-disk.img
+  images:
+    - original: quay.io/kubevirt/virt-operator:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-operator:v1.9.0
+      sourceManifestDigest: sha256:d08b5b5ad1c0d694fad13279e44b44b6fad961aa7508acd53b87ce6ef468cbae
+      amd64ManifestDigest: sha256:bac92f1ee2dca92e8d29e0868d3abafb95623970c799192e0ae09c5c7122b370
+      use: B05 virt-operator
+    - original: quay.io/kubevirt/virt-api:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-api:v1.9.0
+      sourceManifestDigest: sha256:42341b1d52699f4bb87f3996151bafe2e3fe065e9146cc64a15959ddf7bf2c69
+      amd64ManifestDigest: sha256:9eaa0c1a913d701916d31fb2e7177d697e3ce24975225214f22ee6b391bbe9b3
+      use: B05 virt-api
+    - original: quay.io/kubevirt/virt-controller:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-controller:v1.9.0
+      sourceManifestDigest: sha256:7c6034ab39b97c0bb2b31bab2aaf576b616a3d6e59777002d63e2f2bf51e73c2
+      amd64ManifestDigest: sha256:83ef2f9a4fa7769f76bda755b19d5e2142cab7c85aaa5a834f283eb44088c302
+      use: B05 virt-controller
+    - original: quay.io/kubevirt/virt-handler:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-handler:v1.9.0
+      sourceManifestDigest: sha256:df9f2069924a28ba76f47e7f4fbd9a0be3aa13cfa004a59e7a708bbff2a90424
+      amd64ManifestDigest: sha256:e4a80ca9d9693d0d785b1928bd3edafe81a5d00771169723db57c4be2f8cfe06
+      use: B05 virt-handler
+    - original: quay.io/kubevirt/virt-launcher:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-launcher:v1.9.0
+      sourceManifestDigest: sha256:f23102ca00bf12f7962021adfdfdad63c873b01a03001a6d20d5813950254b9c
+      amd64ManifestDigest: sha256:2a47dceaa6ed4176175f58f4f7d927064f55d935fdd56e3999ac4dbe7d3a8e6a
+      use: B05 virt-launcher
+    - original: quay.io/kubevirt/virt-exportproxy:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-exportproxy:v1.9.0
+      sourceManifestDigest: sha256:042443b8f58246623e440af59cd34c0627f843b6094c41794d16c98c8d0049ea
+      amd64ManifestDigest: sha256:afd7933d0a8158bff9752b202722f110f4a1a88bcfb8e7340ccd406567a5cd64
+      use: B05 virt-exportproxy
+    - original: quay.io/kubevirt/virt-exportserver:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-exportserver:v1.9.0
+      sourceManifestDigest: sha256:bf805f79151d689431f3e461ad77355acd04b16fe5bde88b00be772ae1edd06c
+      amd64ManifestDigest: sha256:cbd0cfc0a5d9b56df4477971ac80b96f40bd2c96219e65b193f7ef0b9e4a3386
+      use: B05 virt-exportserver
+    - original: quay.io/kubevirt/virt-synchronization-controller:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/virt-synchronization-controller:v1.9.0
+      sourceManifestDigest: sha256:6163d1108317d2abc4fef3213b4a00acfc8e066625d22882671fcb032859e062
+      amd64ManifestDigest: sha256:842c8b7d15f64b90331ed4e0eca5ba9101d2ba6fe5ba4ae1c9762c8186bab54b
+      use: B05 virt-synchronization-controller
+    - original: quay.io/kubevirt/pr-helper:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/pr-helper:v1.9.0
+      sourceManifestDigest: sha256:4218ea0f78481d27f5876e88c080c867dc49e21761928dc0ee1603f281e6d9e7
+      amd64ManifestDigest: sha256:b6294f0cd53beae81e6aa00249d785886e9202848aec294f005a27702b6cfaea
+      use: B05 pr-helper
+    - original: quay.io/kubevirt/sidecar-shim:v1.9.0
+      haulerRef: 127.0.0.1:5000/kubevirt/sidecar-shim:v1.9.0
+      sourceManifestDigest: sha256:8eb25c016c09366ea4b2bbd524dfbb4872184a9aea67cc34c60ff78a11cb2661
+      amd64ManifestDigest: sha256:8b557fc5f5840ba55e18941c741a32c6b22c5f53863c27b137719337b669c682
+      use: B05 sidecar-shim
+    - original: quay.io/kubevirt/cdi-operator:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-operator:v1.66.1
+      sourceManifestDigest: sha256:470b2997b87c152b2573cdb4a3feb2a7925f60602e16c052de94e8d765b97357
+      amd64ManifestDigest: sha256:c9b02c6180e05495f525d9158a92048f18bac9dd47b7020b01e11cab1538af23
+      use: B05 cdi-operator
+    - original: quay.io/kubevirt/cdi-controller:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-controller:v1.66.1
+      sourceManifestDigest: sha256:0cbf467d04febc5d63b7682524e87be7d775b488cb8b5963706d2ebc3465a72f
+      amd64ManifestDigest: sha256:6e701b16cea88a6761df8ef83b56d369d28a9c6c6f1c472d222994debdb2744f
+      use: B05 cdi-controller
+    - original: quay.io/kubevirt/cdi-importer:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-importer:v1.66.1
+      sourceManifestDigest: sha256:e22b63872cd04da43c62ad8ebb73cac46958b6e759fcc347752ec2ace1df75f4
+      amd64ManifestDigest: sha256:28134acc24521d9bc8c9250fb29a9bfe0278b771139d32ea5b162d8f3af5ee05
+      use: B05 cdi-importer
+    - original: quay.io/kubevirt/cdi-cloner:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-cloner:v1.66.1
+      sourceManifestDigest: sha256:febbe8b265bb6fcf7ab743b780069fbae4a0531119933026de59545ad1bfc7a3
+      amd64ManifestDigest: sha256:7e825919b39450db45829b41f840132fbb76c9e5ac67601fcc8a7c0ae7332a7c
+      use: B05 cdi-cloner
+    - original: quay.io/kubevirt/cdi-apiserver:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-apiserver:v1.66.1
+      sourceManifestDigest: sha256:98b71040e0e8de9397b57b4998641d4d3ea248fc300253b23085838990c4d241
+      amd64ManifestDigest: sha256:8e086971c01ab28f56e2f9d890178c679af3dfd8b179a1f12e6cac936564a42c
+      use: B05 cdi-apiserver
+    - original: quay.io/kubevirt/cdi-uploadserver:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-uploadserver:v1.66.1
+      sourceManifestDigest: sha256:d3a6b735efcc914a0c9679fa8f64ab3dda764f7997d53bcafa6e2944f123420a
+      amd64ManifestDigest: sha256:3050dd110803123a3a9fa3d4b69ed61b2fdc6589ce9396b77db2ec2bdf63e1c5
+      use: B05 cdi-uploadserver
+    - original: quay.io/kubevirt/cdi-uploadproxy:v1.66.1
+      haulerRef: 127.0.0.1:5000/kubevirt/cdi-uploadproxy:v1.66.1
+      sourceManifestDigest: sha256:f2493c0b33140167135110561ff415b8344f33dd53e20b9c8fbdb288e43326c9
+      amd64ManifestDigest: sha256:fb1fc948056b9c35a1bc53fb6a8ddae78c815d9c1df7b13b88e4fd9c8586b5d9
+      use: B05 cdi-uploadproxy
+
+# B07 official Harbor Chart 1.19.2 / app 2.15.2. The databases below are
+# actual extracted OCI layers, not the moving tags or empty cache flags.
+batchB07:
+  status: material_bytes_confirmed / role_in_progress / formal_package_not_built / live_not_run
+  chart:
+    name: harbor
+    chartVersion: 1.19.2
+    appVersion: 2.15.2
+    source: https://helm.goharbor.io/harbor-1.19.2.tgz
+    sha256: 36d8eeb41b4df1aeff18c9af7709110a2fac2194b491d37957822b3359cd5e9a
+    artifactChartPath: charts/harbor/1.19.2.tgz
+    release: ani-harbor
+    namespace: ani-harbor
+  trivyDatabase:
+    ociManifest: sha256:4567b9f40c2dc13ead24d5e314563033a890a06b21fd6cb526e7236bfd0f0a72
+    ociLayer: sha256:81e96e2fa71a2e6a6520f02ab2b371bbf59fa06bdd64cf5ea07d3a4e653a9bf6
+    updatedAt: 2026-09-27T13:06:25.102527619Z
+    nextUpdate: 2026-09-28T13:06:25.102527368Z
+    dbSha256: 4bf01c98f9af59d4ec9ab6c8f4f22740230830e8be9172970e74dcb8257cd53b
+    metadataSha256: eec14e933a21b2dba78c45d2c0de61a6408e14cee008a07908079e4cd6c905d7
+  trivyJavaDatabase:
+    ociManifest: sha256:e5922bfd4ec2aafa93226148b28f8cce4df87557544ed1bbc80a5b24d218d123
+    ociLayer: sha256:75d3ac93f17d38f845b20fdb181bed7e2645f6a67adddb3189ddca4f38920989
+    updatedAt: 2026-09-27T01:08:08.997214067Z
+    nextUpdate: 2026-09-30T01:08:08.997213636Z
+    dbSha256: e99e2d1212f4f1ef8281f95ffa72b667ce3fb8d00db0c4b2ddfcc3283b87612c
+    metadataSha256: f730c0616742e306095594ef51359f81cd05e48cff224112a59c8fbd68449e31
+  images:
+    - original: docker.io/goharbor/nginx-photon:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/nginx-photon:v2.15.2
+      sourceManifestDigest: sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f
+      amd64ManifestDigest: sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f
+      use: B07 Harbor nginx-photon
+    - original: docker.io/goharbor/harbor-portal:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/harbor-portal:v2.15.2
+      sourceManifestDigest: sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d
+      amd64ManifestDigest: sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d
+      use: B07 Harbor harbor-portal
+    - original: docker.io/goharbor/harbor-core:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/harbor-core:v2.15.2
+      sourceManifestDigest: sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7
+      amd64ManifestDigest: sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7
+      use: B07 Harbor harbor-core
+    - original: docker.io/goharbor/harbor-jobservice:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/harbor-jobservice:v2.15.2
+      sourceManifestDigest: sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598
+      amd64ManifestDigest: sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598
+      use: B07 Harbor harbor-jobservice
+    - original: docker.io/goharbor/registry-photon:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/registry-photon:v2.15.2
+      sourceManifestDigest: sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855
+      amd64ManifestDigest: sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855
+      use: B07 Harbor registry-photon
+    - original: docker.io/goharbor/harbor-registryctl:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/harbor-registryctl:v2.15.2
+      sourceManifestDigest: sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362
+      amd64ManifestDigest: sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362
+      use: B07 Harbor harbor-registryctl
+    - original: docker.io/goharbor/trivy-adapter-photon:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/trivy-adapter-photon:v2.15.2
+      sourceManifestDigest: sha256:215c07b71c37fc7fc16e02d9185d936dcb8884a80e810817c2cd058bbd7c4e98
+      amd64ManifestDigest: sha256:215c07b71c37fc7fc16e02d9185d936dcb8884a80e810817c2cd058bbd7c4e98
+      use: B07 Harbor trivy-adapter-photon
+    - original: docker.io/goharbor/harbor-db:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/harbor-db:v2.15.2
+      sourceManifestDigest: sha256:5ebfb345b33d673fa8483ffc997013113b7d14ea56abfa65cfcb621b4acf3039
+      amd64ManifestDigest: sha256:5ebfb345b33d673fa8483ffc997013113b7d14ea56abfa65cfcb621b4acf3039
+      use: B07 Harbor harbor-db
+    - original: docker.io/goharbor/valkey-photon:v2.15.2
+      haulerRef: 127.0.0.1:5000/goharbor/valkey-photon:v2.15.2
+      sourceManifestDigest: sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0
+      amd64ManifestDigest: sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0
+      use: B07 Harbor valkey-photon

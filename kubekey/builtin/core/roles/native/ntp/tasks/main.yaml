@@ -1,4 +1,46 @@
 ---
+- name: NTP | Configure ANI isolated master and clients before Kubernetes
+  command: |
+    set -euo pipefail
+    chronyConfigFile={{ if or (.os.release.ID | eq "ubuntu") (.os.release.ID_LIKE | eq "debian") }}"/etc/chrony/chrony.conf"{{ else }}"/etc/chrony.conf"{{ end }}
+    test -f "$chronyConfigFile"
+    tmp="$(mktemp "${chronyConfigFile}.ani.XXXXXX")"
+    effective="$(mktemp "${chronyConfigFile}.ani-effective.XXXXXX")"
+    trap 'rm -f "$tmp" "$effective"' EXIT
+    # Retain drift and clock discipline settings, but exclude every inherited
+    # upstream source/include and any broad NTP allow rule. No target download
+    # or public clock is needed after this point.
+    sed -E '/^[[:space:]]*(server|pool|peer|refclock|sourcedir|confdir|include|initstepslew|allow|deny|local|bindaddress)[[:space:]]/d' "$chronyConfigFile" > "$tmp"
+    printf '\n# ANI isolated first-install time source\n' >> "$tmp"
+    {{- if eq .inventory_hostname .native.ntp.isolated_master }}
+    printf 'local stratum 10\nbindaddress %s\n' '{{ .native.ntp.isolated_master_ip }}' >> "$tmp"
+    {{- range .native.ntp.isolated_client_ips }}
+    printf 'allow %s/32\n' '{{ . }}' >> "$tmp"
+    {{- end }}
+    {{- else }}
+    printf 'server %s iburst\n' '{{ .native.ntp.isolated_master_ip }}' >> "$tmp"
+    {{- end }}
+    chronyd -p -f "$tmp" > "$effective"
+    {{- if eq .inventory_hostname .native.ntp.isolated_master }}
+    if grep -Eq '^(server|pool|peer|refclock|initstepslew)[[:space:]]' "$effective"; then
+      echo 'external time source remains in the isolated master config' >&2; exit 1
+    fi
+    grep -Fx 'local stratum 10' "$effective" >/dev/null
+    grep -Fx 'bindaddress {{ .native.ntp.isolated_master_ip }}' "$effective" >/dev/null
+    {{- range .native.ntp.isolated_client_ips }}
+    grep -Fx 'allow {{ . }}/32' "$effective" >/dev/null
+    {{- end }}
+    {{- else }}
+    test "$(grep -Ec '^server[[:space:]]' "$effective")" -eq 1
+    grep -Fx 'server {{ .native.ntp.isolated_master_ip }} iburst' "$effective" >/dev/null
+    if grep -Eq '^(pool|peer|refclock|initstepslew|local|allow)[[:space:]]' "$effective"; then
+      echo 'unexpected time source or server mode remains in isolated client config' >&2; exit 1
+    fi
+    {{- end }}
+    test -e "${chronyConfigFile}.ani-before" || cp -p "$chronyConfigFile" "${chronyConfigFile}.ani-before"
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "$chronyConfigFile"
+  when: .native.ntp.isolated_master | empty | not
 - name: NTP | Configure NTP server
   command: |
     # Determine the correct chrony configuration file based on OS type
@@ -39,6 +81,7 @@
   when:
     - .native.ntp.enabled
     - .native.ntp.servers | empty | not
+    - .native.ntp.isolated_master | empty
 
 - name: Timezone | Set system timezone and NTP synchronization
   command: |
@@ -54,3 +97,30 @@
     systemctl restart chronyd.service
     {{- end }}
   when: or (and .native.ntp.enabled (.native.ntp.servers | empty | not)) (.native.timezone | empty | not)
+
+- name: NTP | Verify ANI isolated source is selected before Ceph
+  command: |
+    set -euo pipefail
+    {{- if eq .inventory_hostname .native.ntp.isolated_master }}
+    # chronyc waitsync deliberately returns non-zero for Chrony's local
+    # reference even when it is active. Check that exact local reference and
+    # normal leap status instead, with the same bounded startup period.
+    for ((attempt=1; attempt<=90; attempt++)); do
+      tracking="$(chronyc -n tracking 2>&1 || true)"
+      if printf '%s\n' "$tracking" | grep -Eq '^Reference ID[[:space:]]*:[[:space:]]*7F7F0101' &&
+         printf '%s\n' "$tracking" | grep -Eq '^Leap status[[:space:]]*:[[:space:]]*Normal'; then
+        break
+      fi
+      if [ "$attempt" -eq 90 ]; then
+        printf 'ANI isolated time master did not select its local reference: %s\n' "$tracking" >&2
+        exit 1
+      fi
+      sleep 2
+    done
+    {{- else }}
+    chronyc waitsync 90 0.05 0 2
+    chronyc -n sources | awk '$1 == "^*" { print $2 }' | grep -Fx '{{ .native.ntp.isolated_master_ip }}'
+    {{- end }}
+    chronyc -n tracking
+    chronyc -n sources
+  when: .native.ntp.isolated_master | empty | not

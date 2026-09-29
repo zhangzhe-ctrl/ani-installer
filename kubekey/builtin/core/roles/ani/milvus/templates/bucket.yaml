@@ -1,0 +1,24 @@
+# Rook v1.20.7 creates one bucket and one isolated S3 principal for Milvus.
+# The claim is only applied by the Milvus role, never when Milvus is disabled.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ani-rgw-retain
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+provisioner: rook-ceph.ceph.rook.io/bucket
+parameters:
+  objectStoreName: ani-store
+  objectStoreNamespace: rook-ceph
+reclaimPolicy: Retain
+---
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: ani-milvus-objects
+  namespace: ani-platform
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+spec:
+  bucketName: ani-milvus-objects
+  storageClassName: ani-rgw-retain

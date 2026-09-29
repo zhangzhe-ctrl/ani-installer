@@ -1,0 +1,95 @@
+---
+- name: ANI RustFS | Assert this run's execution context and fixed materials
+  command: |
+    set -euo pipefail
+    for declared in '{{ .ani.run.kubeconfig }}' '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$declared" in /*) ;; *) echo 'RustFS run scope path is not absolute' >&2; exit 1 ;; esac
+    done
+    test -f '{{ .ani.run.kubeconfig }}'
+    test -f '{{ .ani.artifact_root }}/charts/rustfs/1.0.0.tgz'
+    test -x '{{ .ani.artifact_root }}/bin/helm'
+    test -x '{{ .ani.artifact_root }}/bin/rc'
+
+- name: ANI RustFS | Create private working and evidence directories
+  command: |
+    set -euo pipefail
+    install -d -m 0700 /etc/kubernetes/ani/rustfs
+    install -d -m 0700 '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI RustFS | Ensure the component namespace exists
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
+      KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
+
+- name: ANI RustFS | Render root reuse and CA preflight
+  template:
+    src: prepare.sh
+    dest: /etc/kubernetes/ani/rustfs/prepare.sh
+    mode: "0700"
+
+- name: ANI RustFS | Restrict bootstrap script
+  command: chmod 0700 /etc/kubernetes/ani/rustfs/prepare.sh
+
+- name: ANI RustFS | Reuse root identity and publish internal CA
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/rustfs/prepare.sh
+
+- name: ANI RustFS | Render native HTTPS certificate
+  template:
+    src: native-tls.yaml
+    dest: /etc/kubernetes/ani/rustfs/native-tls.yaml
+
+- name: ANI RustFS | Issue native HTTPS certificate from the existing CA
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/rustfs/native-tls.yaml
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform wait certificate/ani-rustfs-server --for=condition=Ready --timeout=300s
+
+- name: ANI RustFS | Render fixed standalone Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/rustfs/values.yaml
+
+- name: ANI RustFS | Restrict Chart values
+  command: chmod 0600 /etc/kubernetes/ani/rustfs/values.yaml
+
+- name: ANI RustFS | Render bounded HTTPS probe correction
+  template:
+    src: post-render.sh
+    dest: /etc/kubernetes/ani/rustfs/post-render.sh
+    mode: "0700"
+
+- name: ANI RustFS | Make the probe correction executable
+  command: chmod 0700 /etc/kubernetes/ani/rustfs/post-render.sh
+
+- name: ANI RustFS | Install official standalone Chart offline
+  command: >-
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' {{ .ani.artifact_root }}/bin/helm install ani-rustfs
+    {{ .ani.artifact_root }}/charts/rustfs/1.0.0.tgz
+    --namespace ani-platform --values /etc/kubernetes/ani/rustfs/values.yaml
+    --post-renderer /etc/kubernetes/ani/rustfs/post-render.sh
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 900s
+
+- name: ANI RustFS | Wait for owned workload and data PVC
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform rollout status deployment/ani-rustfs --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform wait pvc/ani-rustfs-data --for=jsonpath='{.status.phase}=Bound' --timeout=300s
+
+- name: ANI RustFS | Render repeatable HTTPS and ownership checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/rustfs/verify.sh
+    mode: "0700"
+
+- name: ANI RustFS | Check real HTTPS readiness with the trusted CA
+  command: |
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/rustfs/verify.sh
+
+- name: ANI RustFS | Render connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/rustfs.md'

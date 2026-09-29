@@ -1,0 +1,112 @@
+---
+- name: ANI Harbor | Refuse unexpected node trust config before any writes
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: |
+    set -euo pipefail
+    test -f /etc/containerd/config.toml
+    systemctl is-active --quiet containerd
+    test ! -e '/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003/hosts.toml'
+    test ! -e '/usr/local/share/ca-certificates/ani-harbor.crt'
+- name: ANI Harbor | Create private work and evidence directories
+  command: install -d -m 0700 /etc/kubernetes/ani/harbor '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+- name: ANI Harbor | Render package, storage, ownership and NodePort preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/harbor/prereq.sh
+- name: ANI Harbor | Verify exact local chart, scan DB files and empty owner scope
+  command: bash /etc/kubernetes/ani/harbor/prereq.sh
+- name: ANI Harbor | Render fixed HTTPS NodePort Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/harbor/values.yaml
+- name: ANI Harbor | Render offline chart checks
+  template:
+    src: render-check.sh
+    dest: /etc/kubernetes/ani/harbor/render-check.sh
+- name: ANI Harbor | Render PKI and fresh credential setup
+  template:
+    src: cert-setup.sh
+    dest: /etc/kubernetes/ani/harbor/cert-setup.sh
+- name: ANI Harbor | Generate bounded CA, server TLS and dedicated credentials
+  command: bash /etc/kubernetes/ani/harbor/cert-setup.sh
+- name: ANI Harbor | Verify actual Chart render and locked images
+  command: bash /etc/kubernetes/ani/harbor/render-check.sh
+- name: ANI Harbor | Render retained offline scanner PVC
+  template:
+    src: pvc.yaml
+    dest: /etc/kubernetes/ani/harbor/pvc.yaml
+- name: ANI Harbor | Render run-owned scanner seed Pod
+  template:
+    src: seed-pod.yaml
+    dest: /etc/kubernetes/ani/harbor/seed-pod.yaml
+- name: ANI Harbor | Render fixed scanner cache seeding script
+  template:
+    src: seed.sh
+    dest: /etc/kubernetes/ani/harbor/seed.sh
+- name: ANI Harbor | Populate Trivy and Java DB on the dedicated PVC
+  command: bash /etc/kubernetes/ani/harbor/seed.sh
+- name: ANI Harbor | Install official Chart from the cumulative package
+  command: >-
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' {{ .ani.artifact_root }}/bin/helm install ani-harbor
+    {{ .ani.artifact_root }}/charts/harbor/1.19.2.tgz
+    --namespace ani-harbor --values /etc/kubernetes/ani/harbor/values.yaml
+    --set-file database.internal.password=/etc/kubernetes/ani/harbor/db-password
+    --set-file registry.credentials.password=/etc/kubernetes/ani/harbor/registry-password
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 1200s
+- name: ANI Harbor | Check dedicated database, Valkey and scanner workloads
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-harbor rollout status statefulset/ani-harbor-database --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-harbor rollout status statefulset/ani-harbor-redis --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-harbor rollout status statefulset/ani-harbor-trivy --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-harbor rollout status deployment/ani-harbor-core --timeout=600s
+- name: ANI Harbor | Prepare only the selected registry trust path on each node
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: install -d -m 0755 '/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003' /usr/local/share/ca-certificates
+- name: ANI Harbor | Copy the newly generated CA to selected containerd host scope
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  copy:
+    src: /etc/kubernetes/ani/harbor/ca.crt
+    dest: '/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003/ca.crt'
+- name: ANI Harbor | Copy the same CA to node OS trust
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  copy:
+    src: /etc/kubernetes/ani/harbor/ca.crt
+    dest: /usr/local/share/ca-certificates/ani-harbor.crt
+- name: ANI Harbor | Render scoped registry hosts.toml on each node
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  template:
+    src: hosts.toml
+    dest: '/etc/containerd/certs.d/{{ (index .ani.components "harbor").external_address }}:30003/hosts.toml'
+- name: ANI Harbor | Activate the node CA trust on each selected node
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: update-ca-certificates
+- name: ANI Harbor | Reconnect and verify the existing runtime on each selected node
+  loop: "{{ .ani.nodes | toJson }}"
+  delegate_to: "{{ .item }}"
+  command: |
+    set -euo pipefail
+    systemctl restart containerd
+    systemctl is-active --quiet containerd
+    crictl info >/dev/null
+- name: ANI Harbor | Render push, pull, runtime and scan checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/harbor/verify.sh
+- name: ANI Harbor | Render node runtime pull checker
+  template:
+    src: runtime-pods.yaml
+    dest: /etc/kubernetes/ani/harbor/runtime-pods.yaml
+    mode: "0600"
+- name: ANI Harbor | Verify private project, robot scope, digest and offline scan
+  command: bash /etc/kubernetes/ani/harbor/verify.sh
+- name: ANI Harbor | Render ANI connection and API facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/harbor.md'

@@ -1,0 +1,49 @@
+---
+- name: ANI Volcano | Assert run and create work directories
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    install -d -m 0700 /etc/kubernetes/ani/volcano '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Volcano | Render CPU-only chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/volcano/values.yaml
+
+- name: ANI Volcano | Render material and ownership preflight
+  template:
+    src: prereq.sh
+    dest: /etc/kubernetes/ani/volcano/prereq.sh
+
+- name: ANI Volcano | Refuse missing image, JobFlow, chart drift or foreign owner
+  command: ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/volcano/prereq.sh
+
+- name: ANI Volcano | Install CPU scheduler and admission from packaged chart
+  command: >-
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' {{ .ani.artifact_root }}/bin/helm install ani-volcano
+    {{ .ani.artifact_root }}/charts/volcano/1.15.2.tgz
+    --namespace volcano-system --create-namespace
+    --values /etc/kubernetes/ani/volcano/values.yaml
+    --labels ani.io/managed-by={{ .kubernetes.cluster_name }} --wait --timeout 600s
+
+- name: ANI Volcano | Wait for scheduler, controller and webhook deployments
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n volcano-system rollout status deployment/ani-volcano-scheduler --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n volcano-system rollout status deployment/ani-volcano-controllers --timeout=600s
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n volcano-system rollout status deployment/ani-volcano-admission --timeout=600s
+
+- name: ANI Volcano | Render Queue and gang data-plane checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/volcano/verify.sh
+
+- name: ANI Volcano | Check CPU Queue, PodGroup, gang wait, completion and own cancellation
+  command: |
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/volcano/verify.sh
+
+- name: ANI Volcano | Render connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/volcano.md'
