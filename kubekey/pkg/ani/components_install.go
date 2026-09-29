@@ -81,6 +81,7 @@ var componentInstallSpecs = map[string]componentInstallSpec{
 	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
 	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
 	"nats":                {Namespace: "ani-platform", Release: "nats", Chart: "nats", ChartVersion: "2.14.6", WorkloadKind: "StatefulSet", WorkloadName: "nats", NeedsStorage: true},
+	"rustfs":              {Namespace: "ani-platform", Release: "ani-rustfs", Chart: "rustfs", ChartVersion: "1.0.0", WorkloadKind: "Deployment", WorkloadName: "ani-rustfs", NeedsStorage: true, InternalDeps: []string{"cert-manager"}},
 	"milvus":              {Namespace: "ani-platform", Release: "ani-milvus", Chart: "milvus", ChartVersion: "5.0.25", WorkloadKind: "Deployment", WorkloadName: "ani-milvus-standalone", NeedsStorage: true},
 	"metrics-server":      {Namespace: "kube-system", Release: "ani-metrics-server", Chart: "metrics-server", ChartVersion: "3.14.0", WorkloadKind: "Deployment", WorkloadName: "ani-metrics-server"},
 	"snapshot-controller": {Namespace: "kube-system", WorkloadKind: "Deployment", WorkloadName: "ani-snapshot-controller", NeedsStorage: true},
@@ -409,7 +410,7 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		return nil, errors.New("--only is required and must name at least one component; a components run never implies a scope")
 	}
 	enabled := map[string]bool{}
-	for _, row := range cluster.Components.Selection() {
+	for _, row := range cluster.EffectiveComponents().Selection() {
 		enabled[row.Name] = row.Enabled
 	}
 	var scope []string
@@ -432,7 +433,11 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 			return fmt.Errorf("component %q is not enabled in the site config; enable it there first — a components run never edits the config silently", name)
 		}
 		seen[name] = true
-		for _, dep := range spec.InternalDeps {
+		deps := spec.InternalDeps
+		if name == "milvus" && cluster.ObjectStorageProvider() == objectProviderRustFS {
+			deps = append(append([]string(nil), deps...), "rustfs")
+		}
+		for _, dep := range deps {
 			if _, canonical := componentInstallSpecs[dep]; !canonical {
 				if !roleManagedTechnicalDeps[dep] {
 					return fmt.Errorf("component %q has undeclared internal dependency %q", name, dep)

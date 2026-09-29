@@ -594,7 +594,7 @@ func writeConnections(dest, dir string, rows []ComponentRow) error {
 // effective result, or the install demands material a base artifact never
 // ships.
 func effectiveSelection(c ClusterConfig) []ComponentRow {
-	rows := c.Components.Selection()
+	rows := c.EffectiveComponents().Selection()
 	if installProfile(c.Profile) == "base" {
 		for i := range rows {
 			rows[i].Enabled = false

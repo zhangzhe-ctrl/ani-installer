@@ -36,9 +36,9 @@ var (
 	// The first four are the foundation batch; the last four are the
 	// observability batch, whose last three rows are derived from the typed
 	// logging backend rather than written independently.
-	componentsOrder = [14]string{
+	componentsOrder = [15]string{
 		"cert-manager", "postgresql", "valkey", "nats",
-		"metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 	}
 )
 
@@ -157,6 +157,8 @@ type Components struct {
 	PostgreSQL         StorageComponent       `yaml:"postgresql"`
 	Valkey             StorageComponent       `yaml:"valkey"`
 	NATS               StorageComponent       `yaml:"nats"`
+	// RustFS is derived from objectStorage.provider, never a second site switch.
+	RustFS             StorageComponent       `yaml:"-"`
 	Milvus             MilvusComponent        `yaml:"milvus"`
 	MetricsServer      MetricsServerComponent `yaml:"metricsServer"`
 	SnapshotController SnapshotComponent      `yaml:"snapshotController"`
@@ -286,6 +288,7 @@ func (c Components) Selection() []ComponentRow {
 		"postgresql":          c.PostgreSQL.Enabled,
 		"valkey":              c.Valkey.Enabled,
 		"nats":                c.NATS.Enabled,
+		"rustfs":              c.RustFS.Enabled,
 		"milvus":              c.Milvus.Enabled,
 		"metrics-server":      c.MetricsServer.Enabled,
 		"snapshot-controller": c.SnapshotController.Enabled,
@@ -322,6 +325,8 @@ func (c Components) storage(name string) *StorageComponent {
 		return &c.Valkey
 	case "nats":
 		return &c.NATS
+	case "rustfs":
+		return &c.RustFS
 	case "kubevirt":
 		return &StorageComponent{Enabled: c.KubeVirt.Enabled, StorageClass: c.KubeVirt.StorageClass, StorageSize: c.KubeVirt.StorageSize}
 	case "harbor":
@@ -354,7 +359,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -554,6 +559,17 @@ func (c ClusterConfig) ObjectStorageProvider() string {
 	return objectProviderNone
 }
 
+func (c ClusterConfig) EffectiveComponents() Components {
+	components := c.Components
+	if c.ObjectStorageProvider() == objectProviderRustFS && c.ObjectStorage != nil {
+		components.RustFS = StorageComponent{
+			Enabled: true, StorageClass: c.ObjectStorage.RustFS.StorageClass,
+			StorageSize: c.ObjectStorage.RustFS.StorageSize,
+		}
+	}
+	return components
+}
+
 func validateObjectStorage(c ClusterConfig) error {
 	provider := c.ObjectStorageProvider()
 	if c.ObjectStorage != nil && provider == "" {
@@ -567,6 +583,9 @@ func validateObjectStorage(c ClusterConfig) error {
 	case objectProviderRustFS:
 		if !c.Storage.Enabled {
 			return fmt.Errorf("objectStorage.provider=rustfs requires enabled persistent storage")
+		}
+		if !c.Components.CertManager.Enabled {
+			return fmt.Errorf("objectStorage.provider=rustfs requires components.certManager for the internal CA")
 		}
 		r := c.ObjectStorage.RustFS
 		if r.Mode != "standalone" {
@@ -657,6 +676,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 			if base || !c.Components.Milvus.Enabled {
 				continue
 			}
+		case "rustfs":
+			if base || c.ObjectStorageProvider() != objectProviderRustFS {
+				continue
+			}
 		case "metrics":
 			if base || !c.Components.Metrics.Enabled {
 				continue
@@ -730,6 +753,9 @@ func requiredChartPaths(c ClusterConfig) []string {
 	}
 	if c.Components.NATS.Enabled {
 		paths = append(paths, "charts/nats/2.14.6.tgz")
+	}
+	if c.ObjectStorageProvider() == objectProviderRustFS {
+		paths = append(paths, "charts/rustfs/1.0.0.tgz")
 	}
 	if c.Components.Milvus.Enabled {
 		paths = append(paths, "charts/milvus/5.0.25.tgz")
@@ -1060,11 +1086,11 @@ func validateStorage(c ClusterConfig, nodes map[string]struct{}) error {
 		}
 		// With no storage selected the built-in class does not exist, so no
 		// enabled component may quietly rely on it.
-		for _, row := range c.Components.Selection() {
+		for _, row := range c.EffectiveComponents().Selection() {
 			if !row.Enabled {
 				continue
 			}
-			component := c.Components.storage(row.Name)
+			component := c.EffectiveComponents().storage(row.Name)
 			if component != nil && strings.TrimSpace(component.StorageClass) == DefaultStorageClass {
 				return fmt.Errorf("components.%s uses the built-in StorageClass %q, which only exists when storage.enabled is true with provider=%q; enable storage or point the component at an existing class", row.Name, DefaultStorageClass, storageProviderCeph)
 			}
@@ -1272,7 +1298,7 @@ func Validate(c ClusterConfig) error {
 	// config that still enables them is rejected here instead of being silently
 	// skipped by the playbook.
 	if installProfile(c.Profile) == "base" {
-		for _, row := range c.Components.Selection() {
+		for _, row := range c.EffectiveComponents().Selection() {
 			if row.Enabled {
 				return fmt.Errorf("profile=base stops before components, but components.%s is enabled; use profile=full or disable it", row.Name)
 			}
@@ -1388,7 +1414,7 @@ func Validate(c ClusterConfig) error {
 			}
 		}
 	}
-	return c.Components.validate()
+	return c.EffectiveComponents().validate()
 }
 
 // LoadClusterConfig reads the site configuration strictly: unknown keys fail so
@@ -1510,7 +1536,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		return nil, err
 	}
 
-	components := componentSpec(c.Components, c.Name)
+	components := componentSpec(c.EffectiveComponents(), c.Name)
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
 		nodeNames = append(nodeNames, n.Name)
@@ -1848,6 +1874,8 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return c.Components.NATS.Enabled && installProfile(c.Profile) != "base"
 	case "milvus":
 		return c.Components.Milvus.Enabled && installProfile(c.Profile) != "base"
+	case "rustfs":
+		return c.ObjectStorageProvider() == objectProviderRustFS && installProfile(c.Profile) != "base"
 	case "metrics-server":
 		return c.Components.MetricsServer.Enabled && installProfile(c.Profile) != "base"
 	case "snapshot-controller":

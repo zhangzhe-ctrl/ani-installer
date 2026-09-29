@@ -218,12 +218,12 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 
 	// Canonical component IDs, in the fixed order the selection file uses.
 	classes := map[string]string{}
-	for _, row := range c.Components.Selection() {
+	for _, row := range c.EffectiveComponents().Selection() {
 		if !row.Enabled {
 			continue
 		}
 		manifest.Components = append(manifest.Components, row.Name)
-		if component := c.Components.storage(row.Name); component != nil {
+		if component := c.EffectiveComponents().storage(row.Name); component != nil {
 			classes[row.Name] = strings.TrimSpace(component.StorageClass)
 		}
 	}
