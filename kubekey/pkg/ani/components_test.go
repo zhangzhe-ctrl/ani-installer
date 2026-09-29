@@ -981,6 +981,7 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 			"objectStorage": map[string]any{"provider": objectProviderRGW, "milvus_s3": binding.templateSpec()},
 			"components": map[string]any{
 				"nats":   map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
+				"rustfs": map[string]any{"storage_class": "ani-block", "storage_size": "20Gi"},
 				"milvus": map[string]any{"storage_class": "ani-block", "storage_size": "10Gi", "etcd_storage_size": "5Gi"},
 				"harbor": map[string]any{"external_address": "192.0.2.11", "storage_class": "ani-block", "storage_size": "10Gi"},
 				"metrics": map[string]any{
