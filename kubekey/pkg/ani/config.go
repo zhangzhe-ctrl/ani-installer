@@ -359,7 +359,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -606,7 +606,6 @@ func validateObjectStorage(c ClusterConfig) error {
 		if !c.Components.CertManager.Enabled {
 			return fmt.Errorf("objectStorage.provider=rustfs requires components.certManager for the internal CA")
 		}
-		return fmt.Errorf("objectStorage.provider=rustfs is not deployable until the fixed RustFS role and materials are packaged")
 	case objectProviderNone:
 		if c.Components.Milvus.Enabled {
 			return fmt.Errorf("components.milvus requires objectStorage.provider=rgw or rustfs")
