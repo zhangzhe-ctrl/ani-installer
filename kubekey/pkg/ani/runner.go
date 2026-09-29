@@ -611,6 +611,7 @@ func effectiveSelection(c ClusterConfig) []ComponentRow {
 var componentChartMaterials = map[string]string{
 	"cert-manager":   "charts/cert-manager/v1.21.2.tgz",
 	"nats":           "charts/nats/2.14.6.tgz",
+	"rustfs":         "charts/rustfs/1.0.0.tgz",
 	"milvus":         "charts/milvus/5.0.25.tgz",
 	"metrics-server": "charts/metrics-server/3.14.0.tgz",
 	"volcano":        "charts/volcano/1.15.2.tgz",

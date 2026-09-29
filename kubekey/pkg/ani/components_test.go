@@ -399,7 +399,7 @@ func TestWriteComponentSelectionIsStrictlyFormatted(t *testing.T) {
 	}
 	want := "# config_sha256=abc123\n" +
 		"cert-manager\ttrue\npostgresql\tfalse\nvalkey\tfalse\nnats\tfalse\n" +
-		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\n"
+		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\n"
 	if string(data) != want {
 		t.Fatalf("selection file = %q, want %q", string(data), want)
 	}
@@ -579,8 +579,8 @@ components:
 		t.Fatalf("legacy site config must still validate: %v", err)
 	}
 	rows := c.Components.Selection()
-	if len(rows) != 14 {
-		t.Fatalf("selection rows = %d, want 14", len(rows))
+	if len(rows) != 15 {
+		t.Fatalf("selection rows = %d, want 15", len(rows))
 	}
 	for _, row := range rows[:4] {
 		if !row.Enabled {
@@ -1077,9 +1077,9 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatalf("read verify.sh: %v", err)
 	}
 	script := string(data)
-	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit milvus metrics-server snapshot-controller kubevirt volcano harbor)"
+	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor)"
 	if !strings.Contains(script, want) {
-		t.Fatalf("verify.sh does not declare the fixed 14-row component list; want %q", want)
+		t.Fatalf("verify.sh does not declare the fixed 15-row component list; want %q", want)
 	}
 	if !strings.Contains(script, `tail -n +2 "$SELECTION_FILE"`) {
 		t.Fatal("verify.sh must skip the config_sha256 header row when reading the selection")
@@ -1088,8 +1088,8 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatal("verify.sh must fail when the selection row count is wrong")
 	}
 	// The row list must match componentsOrder exactly.
-	if len(componentsOrder) != 14 {
-		t.Fatalf("componentsOrder has %d rows, want 14", len(componentsOrder))
+	if len(componentsOrder) != 15 {
+		t.Fatalf("componentsOrder has %d rows, want 15", len(componentsOrder))
 	}
 	for _, name := range componentsOrder {
 		if !strings.Contains(script, name) {
@@ -1102,7 +1102,7 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 // requirement list aligned with the selection: anything the installer can turn
 // on and that installs from a Chart must have its fixed path recorded.
 func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
-	for _, name := range []string{"cert-manager", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "volcano"} {
+	for _, name := range []string{"cert-manager", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "volcano"} {
 		rel, ok := componentChartMaterials[name]
 		if !ok {
 			t.Fatalf("componentChartMaterials has no entry for %s", name)
@@ -1117,7 +1117,7 @@ func TestComponentChartMaterialsCoverEveryChartBackedComponent(t *testing.T) {
 // document complete: a role that installs resources must render facts for them.
 func TestConnectionsFragmentsExistForEveryBatchComponent(t *testing.T) {
 	root := filepath.Join("..", "..", "builtin", "core", "roles", "ani")
-	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"} {
+	for _, name := range []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"} {
 		fragment := filepath.Join(root, name, "templates", "connection.md")
 		if _, err := os.Stat(fragment); err != nil {
 			t.Fatalf("component %s has no connection facts template: %v", name, err)

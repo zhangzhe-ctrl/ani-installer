@@ -88,8 +88,8 @@ type MetricsServerComponent struct {
 	Enabled bool `yaml:"enabled"`
 }
 
-// MilvusComponent selects Standalone Milvus, its dedicated etcd and one RGW
-// bucket. Both PVCs use the declared class; the bucket is provisioned by Rook.
+// MilvusComponent selects Standalone Milvus, its dedicated etcd and one
+// bucket on the selected object provider. Both PVCs use the declared class.
 type MilvusComponent struct {
 	Enabled         bool   `yaml:"enabled"`
 	StorageClass    string `yaml:"storageClass"`

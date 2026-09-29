@@ -27,7 +27,7 @@ ani_verify_components() { # ani_verify_components <site-config> <selection-file>
   local component_script component_exit first_rc=0 first_failed=""
   local kubeconfig_file="${KUBECONFIG_FILE:-/etc/kubernetes/admin.conf}"
   local -a rows summary=()
-  local -a EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit milvus metrics-server snapshot-controller kubevirt volcano harbor)
+  local -a EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor)
 
   config_sha="$(sha256sum "$config" | awk '{print $1}')"
   IFS= read -r header < "$SELECTION_FILE"
