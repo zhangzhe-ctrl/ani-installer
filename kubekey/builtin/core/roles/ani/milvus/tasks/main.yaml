@@ -55,6 +55,20 @@
   command: |
     KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/milvus/bucket.yaml
 
+- name: ANI Milvus | Render fixed RustFS bucket and application identity initializer
+  when: '{{ eq .ani.objectStorage.provider "rustfs" }}'
+  template:
+    src: rustfs-init.sh
+    dest: /etc/kubernetes/ani/milvus/rustfs-init.sh
+    mode: "0700"
+
+- name: ANI Milvus | Create or verify the restricted RustFS binding
+  when: '{{ eq .ani.objectStorage.provider "rustfs" }}'
+  command: |
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_RUN_LOGS_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/milvus/rustfs-init.sh
+
 - name: ANI Milvus | Render S3 write-read checker
   template:
     src: s3-verify.sh

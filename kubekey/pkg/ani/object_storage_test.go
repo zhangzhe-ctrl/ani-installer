@@ -1,8 +1,12 @@
 package ani
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 )
 
 func TestObjectStorageSelectionAndValidation(t *testing.T) {
@@ -88,6 +92,41 @@ func TestMilvusS3BindingKeepsRGWNamesAndSeparatesRustFS(t *testing.T) {
 	c.ObjectStorage.Provider = objectProviderNone
 	if _, err := ResolveMilvusS3Binding(c); err == nil {
 		t.Fatal("Milvus accepted objectStorage=none")
+	}
+}
+
+func TestRustFSMilvusInitializerRendersAndParses(t *testing.T) {
+	c := validConfig()
+	c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS}
+	binding, err := ResolveMilvusS3Binding(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "milvus", "templates", "rustfs-init.sh")
+	tmpl, err := template.New("rustfs-init.sh").Option("missingkey=error").ParseFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered strings.Builder
+	err = tmpl.Execute(&rendered, map[string]any{
+		"ani": map[string]any{
+			"artifact_root": "/opt/ani-artifact",
+			"objectStorage": map[string]any{"milvus_s3": binding.templateSpec()},
+		},
+		"kubernetes": map[string]any{"cluster_name": "ani-lab"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.String(), "<no value>") || strings.Contains(rendered.String(), "{{") {
+		t.Fatal("RustFS initializer contains an unresolved template value")
+	}
+	out := filepath.Join(t.TempDir(), "rustfs-init.sh")
+	if err := os.WriteFile(out, []byte(rendered.String()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if combined, err := exec.Command("bash", "-n", out).CombinedOutput(); err != nil {
+		t.Fatalf("rendered RustFS initializer has invalid Bash: %v\n%s", err, combined)
 	}
 }
 
