@@ -27,10 +27,12 @@
 - `tasks/main.yaml`：等待列表已按真实清单核对——6 个工作负载全部在
   **kube-system**：Deployment/ovn-central、DaemonSet/ovs-ovn、
   DaemonSet/kube-ovn-cni、Deployment/kube-ovn-controller、
-  Deployment/kube-ovn-monitor、DaemonSet/kube-ovn-pinger。
+  Deployment/kube-ovn-monitor、DaemonSet/kube-ovn-pinger。全部 kubectl
+  命令使用本次 RunScope kubeconfig。
 - 宿主内核：install.sh v1.16.6 与现行官方文档均不再要求 rp_filter/sysctl 调整
-  （旧文档要求已移除），故本 role 未加 sysctl 步骤；前置条件为内核模块
-  （geneve/openvswitch/ip_tables/iptable_nat）与 IPv6 启用。
+  （旧文档要求已移除），故本 role 未加 sysctl 步骤；`host-preflight.sh`
+  在每个目标节点只读检查 IPv6、模块可用性、所选管理网卡及其实际 MTU。
+  数据面、网段与 MTU 是否适合本站点仍须实测，不由脚本打印的事实代替。
 - `ani/components.lock.yaml`：base.kubeovn = v1.16.6（not_verified，尚未真实安装实证）。
 
 ## 离线打包
