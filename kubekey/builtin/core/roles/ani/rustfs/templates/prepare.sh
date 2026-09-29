@@ -14,7 +14,8 @@ trap 'rm -rf "$tmp"' EXIT
 umask 077
 
 for ref in secret/ani-rustfs-root configmap/ani-rustfs-ca certificate/ani-rustfs-server \
-           deployment/ani-rustfs service/ani-rustfs-svc pvc/ani-rustfs-data; do
+           serviceaccount/ani-rustfs configmap/ani-rustfs-config deployment/ani-rustfs \
+           service/ani-rustfs-svc pvc/ani-rustfs-data; do
   if [ -n "$("${KUBECTL[@]}" -n "$NS" get "$ref" --ignore-not-found -o name)" ]; then
     owner="$("${KUBECTL[@]}" -n "$NS" get "$ref" -o jsonpath='{.metadata.labels.ani\.io/managed-by}')"
     [ "$owner" = "$OWNER" ] || { echo "foreign $NS/$ref owner=$owner" >&2; exit 1; }

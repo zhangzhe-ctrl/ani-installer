@@ -1,6 +1,8 @@
 # RustFS official Chart 1.0.0, fixed standalone topology. Native TLS is
 # terminated by RustFS itself; no Ingress, Gateway or anonymous access.
 fullnameOverride: ani-rustfs
+commonLabels:
+  ani.io/managed-by: {{ .kubernetes.cluster_name }}
 replicaCount: 1
 mode:
   standalone:
