@@ -1,5 +1,26 @@
 # 04｜人工操作手册：从一张任务卡到一次可信验收
 
+## 2026-09-29｜Kube-OVN + 可选 RustFS 正式交付结果
+
+**本次实际结果：**代码提交 `4003b12bea4011e82b28ffe67c35ceb276a54eb7` 在 Fedora 的同源 `build-code.sh` 自带完整 gate rc=0，[GitHub CI run 36546382274](https://github.com/zhangzhe-ctrl/ani-installer/actions/runs/36546382274) 为 success。正式代码包 `/home/chabking/ani-installer-runs/kubeovn-rustfs/release/code-4003b12-candidate` 与累计材料包 `/home/chabking/ani-installer-runs/kubeovn-rustfs/release/artifact-c165ae7-candidate-r2` 的 `SHA256SUMS` 文件摘要分别为 `c95a1dc84158152406ff0b4a29ca316ebb35bf6f09861af4c0ace2079ddba304`、`441f3bc8c4f081a8e660ce35fc3eaa5d05aaf257d3721f18b2b977692e020640`；这是清单文件摘要，不代替逐项核验。获准 installerNode `ani-01`（172.16.101.10）上两份清单逐项校验、完整 site `validate/render` 均 rc=0；site 文件在 Fedora 私有目录 `/home/chabking/ani-installer-runs/kubeovn-rustfs/site/site-kubeovn-rustfs-milvus.private.yaml`，其 SHA-256 为 `d916a3840fb5ebfc394dcb0428653c1038ce6c06af4f6e87c7af86916080c20c`，不得入 Git。
+
+正式环境为 ESXi VMID 8/9/10 对应 `ani-01/02/03`（172.16.101.10–12）。先在保留的失败集群完成 KubeVirt 同名源 Pod/VM 的原因定位、现场修复验证和全部后续组件诊断，才把三台从 `iso-install-complete` Id2 干净快照还原。旧 kcn/RGW 集群仅保留在 `pre-kubeovn-rustfs-20260929` Id3 冷快照；没有在线迁移对象、在线切主 CNI 或删除旧桶/池/PVC。三台干净目标无旧 `admin.conf`、`/dev/sdb` 无文件系统；离线规则阻断公网 TCP，私有 registry/API 可达。
+
+| 执行阶段 | 真实结果 |
+| --- | --- |
+| 开发基线 `objectStorage=none`、Milvus 关闭 | 首装 `ani-ani-lab-20260929-095835` rc=0，正式 `install-success`；底座 smoke rc=0 |
+| 正式新增 none→RustFS→Milvus | 两个新增执行记录均 `operation=add,didInstall=true`，各自 smoke rc=0；Milvus 应用身份完成 S3 Put/Get 与 collection→insert→flush→index→load→search，`nearest_id=101`，每轮新对象数 7，provider=rustfs |
+| 新增后回归与重复操作 | 底座全项 smoke、Ceph RBD/CephFS 再次创建卷并写读 rc=0；重复计划与执行 `no-op=true,didInstall=false`，RustFS/Milvus 关键资源 UID 不变 |
+| 全集干净离线首装 | 正式包在重新还原的 `ani-01` 上一次首装 rc=0，run `ani-ani-lab-20260929-111355`，718 total / 708 success / 10 ignored / 0 failed；Kube-OVN、Multus、Ceph RBD/CephFS、RustFS、Milvus 和其余已选 B00–B07 均按完整 site 安装 |
+| 全集基本功能和 noop | 14 个启用组件 smoke 全 pass；RustFS/Milvus 再次真实验证，重复计划与执行 `no-op=true,didInstall=false`，Deployment、StatefulSet、PVC、Secret UID 不变 |
+| 网络与离线 | 最终集群 2 个跨节点对各 4/4 通过 Pod IP、Service IP、DNS；三节点公网 TCP 阻断、私有 registry/API 可达；Harbor HTTPS NodePort 30003 经内部 CA 校验均返回 200 |
+
+**证据位置与身份：**Fedora 仓外私有目录 `/home/chabking/ani-installer-runs/kubeovn-rustfs/` 保存原始配置、日志和材料。阶段新增证据包 `site/formal-add-4003b12/staged-add-evidence.tar.gz` SHA-256 `959d07bb416f83d3b7fdc586d3f6659be035ddd4ff2dbfe6488fe25c8e6615a3`，对应产品记录包 `staged-add-run-ledger.tar.gz` 为 `b3127f50e096e1f51d98f6f46909d946fd009b285c585f074869d59cd9e9f690`。最终全集证据包 `site/final-full-4003b12/full-install-evidence.tar.gz` 为 `948fe7be03a1e48e3894fe4197392fd7400cd85ff3ff3f89be6a78ab44a915bd`，对应产品记录包 `full-install-run-ledger.tar.gz` 为 `e7c25f0fd5c47959564b47af200ea9d1228060091eccededd816e76281470d53`。旧 RGW 独立回归证据 `integration/rgw/evidence/rgw-evidence.tar.gz` 为 `30fd938295fd6b26ef050c4c867a6fba9bf4ff9130ba66cc984d42351ef6f4c4`。这些原包含私有信息，不复制到仓库。
+
+**限制：**最终 CephCluster `Ready` 但 `HEALTH_WARN`，仅有四个 CSI 客户端 AES 密钥与允许旧 cipher 的三项认证告警。节点内核为 6.8；[Rook 的 CephX 说明](https://rook.io/docs/rook/latest/Storage-Configuration/Advanced/cephx-key-rotation/)指出 CSI 的 AES256K 内核挂载需 7.0+，因此未现场轮换密钥、收紧 cipher 或静音告警。RBD/CephFS 创建、写读和快照恢复实测通过，但不宣称 Ceph `HEALTH_OK` 或安全认证。RGW 模板、材料与选项保留；本次 RustFS 分支未创建 CephObjectStore。kcn+RustFS、kubeovn+RGW 只完成静态选择回归，不冒充四组合实机认证；未进入 B08–B12。
+
+当前 `.10–.12` 是已安装的完整集群，**不得重放 `install.sh`**。复核时以 `/var/lib/ani-installer/ani-lab/run.json` 的 `install-success` 记录运行 `kk ani verify --run ... --level smoke`；新增必须另按计划、执行、执行记录 smoke 的顺序走，并拒绝已有使用方的 provider/endpoint/bucket/rootPath 迁移。未来在另一获准干净目标重用本包时，先核对目标身份、site、两份 `SHA256SUMS`、材料锁及离线条件，再从正式包首装；不能借开发目录或公网补料。
+
 ## 2026-09-28｜B00–B07 累计包与 B13 本阶段预检（尚未首装）
 
 本节只覆盖 B00–B07 的 kcn+Ceph+基础服务+Multus+Milvus+Metrics Server+CSI Snapshot+KubeVirt/CDI+Volcano+Harbor 全选组合。B01b 外部 LB 未选，Kube-OVN 是另一个主 CNI 方案；B08–B12 未实施，完整 B13 未完成。详情与摘要见 [本阶段状态](evidence/B13-stage-20260928/status.md)。下方 2026-09-27 的首装是**旧底座候选**的历史结果，不能作本轮新增或最终首装证据。
