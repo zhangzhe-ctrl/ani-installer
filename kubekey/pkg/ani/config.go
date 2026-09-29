@@ -153,10 +153,10 @@ func metricsRunID(c Components, clusterName string) string {
 // Components selects which components this run installs. Every switch is
 // independent and defaults to off.
 type Components struct {
-	CertManager        CertManagerComponent   `yaml:"certManager"`
-	PostgreSQL         StorageComponent       `yaml:"postgresql"`
-	Valkey             StorageComponent       `yaml:"valkey"`
-	NATS               StorageComponent       `yaml:"nats"`
+	CertManager CertManagerComponent `yaml:"certManager"`
+	PostgreSQL  StorageComponent     `yaml:"postgresql"`
+	Valkey      StorageComponent     `yaml:"valkey"`
+	NATS        StorageComponent     `yaml:"nats"`
 	// RustFS is derived from objectStorage.provider, never a second site switch.
 	RustFS             StorageComponent       `yaml:"-"`
 	Milvus             MilvusComponent        `yaml:"milvus"`
