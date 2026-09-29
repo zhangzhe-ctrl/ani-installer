@@ -58,7 +58,9 @@
     gen_pw() {
       pw=""
       while [ "${#pw}" -ne 32 ]; do
-        pw="$(LC_ALL=C head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-32)"
+        # NATS parses the substituted env value as a token; a leading digit
+        # can make an otherwise valid alphanumeric credential fail to parse.
+        pw="n$(LC_ALL=C head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-31)"
       done
       printf '%s' "$pw"
     }
