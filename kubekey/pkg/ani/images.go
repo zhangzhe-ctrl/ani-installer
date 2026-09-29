@@ -197,6 +197,8 @@ func componentImageKeys() []ImageKey {
 		{Group: "milvus", Name: "etcd", Original: "docker.io/milvusdb/etcd:3.5.25-r1"},
 		{Group: "milvus", Name: "s3Client", Original: "docker.io/amazon/aws-cli:2.31.30"},
 		{Group: "milvus", Name: "checker", Original: "ani.local/milvus-checker:v1"},
+		{Group: "rustfs", Name: "server", Original: "docker.io/rustfs/rustfs:1.0.0"},
+		{Group: "rustfs", Name: "init", Original: "docker.io/library/busybox:1.37.0"},
 		{Group: "metrics-server", Name: "server", Original: "registry.k8s.io/metrics-server/metrics-server:v0.9.0"},
 		{Group: "snapshot-controller", Name: "server", Original: "registry.k8s.io/sig-storage/snapshot-controller:v8.5.0"},
 		{Group: "kubevirt", Name: "virt_operator", Original: "quay.io/kubevirt/virt-operator:v1.9.0"},

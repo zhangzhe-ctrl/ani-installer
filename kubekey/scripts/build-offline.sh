@@ -42,6 +42,7 @@ fi
 EXTRA_IMAGE_TARS="${EXTRA_IMAGE_TARS:-}"
 EXTRA_IMAGE_ORIGINALS="${EXTRA_IMAGE_ORIGINALS:-}"
 HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the fixed chart renders}"
+RUSTFS_RC_BIN="${RUSTFS_RC_BIN:-}"
 VIRTCTL_BIN="${VIRTCTL_BIN:-}"
 KUBEVIRT_GUEST="${KUBEVIRT_GUEST:-}"
 TRIVY_DB_FILE="${TRIVY_DB_FILE:-}"
@@ -52,8 +53,10 @@ CHARTS_DIR="${CHARTS_DIR:-$ROOT/ani/charts}"
 COMPONENT_LOCK="${COMPONENT_LOCK:-$ROOT/ani/components.lock.yaml}"
 B05_LOCKED=false
 B07_LOCKED=false
+RUSTFS_LOCKED=false
 if grep -q "^batchB05:" "$COMPONENT_LOCK"; then B05_LOCKED=true; fi
 if grep -q "^batchB07:" "$COMPONENT_LOCK"; then B07_LOCKED=true; fi
+if grep -q '^  rustfs-rc:' "$COMPONENT_LOCK"; then RUSTFS_LOCKED=true; fi
 # Source-side record of the repository ISO digest: this file lives in the repo,
 # outside the artifact, so an attacker who regenerates the artifact's own
 # SHA256SUMS still cannot make a wrong ISO acceptable.
@@ -90,6 +93,7 @@ for original in $EXTRA_IMAGE_ORIGINALS; do
   fi
 done
 required=("$CONFIG" "$IMAGES_TSV" "$HAULER_BIN" "$REPOSITORY_ISO" "$HELM_BIN" "$COMPONENT_LOCK" "$ISO_CHECKSUMS")
+if "$RUSTFS_LOCKED"; then required+=("$RUSTFS_RC_BIN"); fi
 if "$B05_LOCKED"; then required+=("$VIRTCTL_BIN" "$KUBEVIRT_GUEST"); fi
 if "$B07_LOCKED"; then required+=("$TRIVY_DB_FILE" "$TRIVY_DB_METADATA" "$TRIVY_JAVA_DB_FILE" "$TRIVY_JAVA_DB_METADATA"); fi
 if [[ -z "$KUBEKEY_ARTIFACT" ]]; then
@@ -111,6 +115,10 @@ if "$B05_LOCKED" && [[ ! -x "$VIRTCTL_BIN" ]]; then
 fi
 if [[ ! -x "$HELM_BIN" ]]; then
   echo "HELM_BIN must be executable: $HELM_BIN" >&2
+  exit 1
+fi
+if "$RUSTFS_LOCKED" && [[ ! -x "$RUSTFS_RC_BIN" ]]; then
+  echo "RUSTFS_RC_BIN must be executable: $RUSTFS_RC_BIN" >&2
   exit 1
 fi
 if [[ -z "$KUBEKEY_ARTIFACT" && ! -x "$KK_BIN" ]]; then
@@ -349,6 +357,7 @@ echo "[3/6] placing fixed binaries, repository ISO and chart material"
 # re-read. Every shipped binary is lock-approved, so nothing lands in bin/
 # without an approved digest behind it.
 tool_sources=(--source "helm=$HELM_BIN" --source "hauler=$HAULER_BIN")
+if "$RUSTFS_LOCKED"; then tool_sources+=(--source "rustfs-rc=$RUSTFS_RC_BIN"); fi
 if "$B05_LOCKED"; then tool_sources+=(--source "virtctl=$VIRTCTL_BIN"); fi
 materials place-tools --lock "$COMPONENT_LOCK" --artifact-root "$OUTPUT" "${tool_sources[@]}"
 materials place-charts --lock "$COMPONENT_LOCK" --charts-dir "$CHARTS_DIR" --artifact-root "$OUTPUT"
@@ -420,6 +429,7 @@ install -m 0644 "$COMPONENT_LOCK" "$OUTPUT/config/components.lock.yaml"
   echo "config.materials-verification.txt sha256:$(sha256sum "$MATERIALS_LOG" | awk '{print $1}')"
   echo "bin.helm sha256:$(sha256sum "$OUTPUT/bin/helm" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
   echo "bin.hauler sha256:$(sha256sum "$OUTPUT/bin/hauler" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"
+  if "$RUSTFS_LOCKED"; then echo "bin.rc sha256:$(sha256sum "$OUTPUT/bin/rc" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"; fi
   if "$B05_LOCKED"; then echo "bin.virtctl sha256:$(sha256sum "$OUTPUT/bin/virtctl" | awk '{print $1}') (the digest of THIS lock entry, re-read after placement)"; fi
   if "$B05_LOCKED"; then echo "guest.cirros sha256:$(sha256sum "$OUTPUT/guest/cirros-0.6.3-x86_64-disk.img" | awk '{print $1}') (approved by batchB05.guest in source-side lock)"; fi
   if "$B07_LOCKED"; then echo "scanner.db sha256:$DB_SHA scanner.db.metadata sha256:$DB_META_SHA scanner.java-db sha256:$JAVA_SHA scanner.java-db.metadata sha256:$JAVA_META_SHA (approved by batchB07 in source-side lock)"; fi

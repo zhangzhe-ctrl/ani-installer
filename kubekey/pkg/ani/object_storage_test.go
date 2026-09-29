@@ -38,7 +38,11 @@ func TestObjectStorageSelectionAndValidation(t *testing.T) {
 		}, "greater than zero"},
 		{"RustFS pending implementation", func(c *ClusterConfig) {
 			c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "20Gi"}}
+			c.Components.CertManager.Enabled = true
 		}, "not deployable"},
+		{"RustFS without internal CA", func(c *ClusterConfig) {
+			c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "20Gi"}}
+		}, "components.certManager"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := base

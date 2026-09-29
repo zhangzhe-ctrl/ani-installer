@@ -69,6 +69,14 @@ tools:
     purpose: B05 VM guest command and normal stop/start; direct official release binary
     releaseAssetId: "495538543"
     status: source_digest_confirmed / installation_not_verified
+  rustfs-rc:
+    version: v0.1.36
+    source: https://github.com/rustfs/cli/releases/download/v0.1.36/rustfs-cli-linux-amd64-v0.1.36.tar.gz
+    sourceTarballSha256: 4a8128911ccad4e7b481f26635a4cfd1ec064412210526e57ad2c748d356f3b7
+    binarySha256: 15490337489f5c1bb2d33f77e308be52ac29adaa27069d7c77f0d808b165f786
+    artifactPath: bin/rc
+    purpose: RustFS bucket and least-privilege service account initialization through trusted HTTPS
+    status: source_digest_confirmed / live_admin_api_not_verified
   hauler:
     version: v2.0.3
     gitVersion: v2.0.3
@@ -398,6 +406,27 @@ batch2:
 # 每批真实验证记录（安装未完成前保持 installation_not_verified）
 # ---------------------------------------------------------------------------
 verificationRecords: []
+
+# RustFS standalone material identity was checked on Fedora on 2026-09-29.
+# The official Chart renders Deployment/ani-rustfs, Service/ani-rustfs-svc
+# and PVC/ani-rustfs-data. Live server and admin API remain unverified.
+batchRustFS:
+  status: source_pins_confirmed / live_not_run
+  chart:
+    name: rustfs
+    chartVersion: 1.0.0
+    appVersion: 1.0.0
+    source: https://charts.rustfs.com/rustfs-1.0.0.tgz
+    sha256: f11e9304fd4c3599ac365af9845ab4a2f99fab3edd30d0c8f89eb9428bcfb711
+    artifactChartPath: charts/rustfs/1.0.0.tgz
+    release: ani-rustfs
+    namespace: ani-platform
+  images:
+    - original: docker.io/rustfs/rustfs:1.0.0
+      haulerRef: 127.0.0.1:5000/rustfs/rustfs:1.0.0
+      sourceManifestDigest: sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
+      amd64ManifestDigest: sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b
+      use: RustFS standalone server
 
 # B02 source pins verified on Fedora on 2026-09-27. Chart 5.0.25 declares
 # appVersion 2.6.21; the fixed B02 selection overrides its service image to

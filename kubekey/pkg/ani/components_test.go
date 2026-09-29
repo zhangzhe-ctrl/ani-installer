@@ -92,6 +92,7 @@ func TestComponentsSelectionKeepsDocumentedOrder(t *testing.T) {
 		{"loki", "false"},
 		{"opensearch", "false"},
 		{"fluent-bit", "false"},
+		{"rustfs", "false"},
 		{"milvus", "false"},
 		{"metrics-server", "false"},
 		{"snapshot-controller", "false"},

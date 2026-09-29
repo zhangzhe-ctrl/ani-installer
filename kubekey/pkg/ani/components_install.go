@@ -1035,6 +1035,8 @@ func imagesForComponent(cluster ClusterConfig, component string) []ImageKey {
 			keys = append(keys, key)
 		case component == "metrics" && key.Group == "metrics":
 			keys = append(keys, key)
+		case component == "rustfs" && key.Group == "rustfs":
+			keys = append(keys, key)
 		case key.Group == "components" && key.Name == component:
 			keys = append(keys, key)
 		case key.Group == "logs" && key.Backend == component:

@@ -584,9 +584,6 @@ func validateObjectStorage(c ClusterConfig) error {
 		if !c.Storage.Enabled {
 			return fmt.Errorf("objectStorage.provider=rustfs requires enabled persistent storage")
 		}
-		if !c.Components.CertManager.Enabled {
-			return fmt.Errorf("objectStorage.provider=rustfs requires components.certManager for the internal CA")
-		}
 		r := c.ObjectStorage.RustFS
 		if r.Mode != "standalone" {
 			return fmt.Errorf("objectStorage.rustfs.mode must be standalone")
@@ -602,6 +599,9 @@ func validateObjectStorage(c ClusterConfig) error {
 		}
 		if c.Storage.provider() == storageProviderCeph && r.StorageClass != DefaultStorageClass {
 			return fmt.Errorf("objectStorage.rustfs.storageClass must be %q when storage.provider=ceph", DefaultStorageClass)
+		}
+		if !c.Components.CertManager.Enabled {
+			return fmt.Errorf("objectStorage.provider=rustfs requires components.certManager for the internal CA")
 		}
 		return fmt.Errorf("objectStorage.provider=rustfs is not deployable until the fixed RustFS role and materials are packaged")
 	case objectProviderNone:
