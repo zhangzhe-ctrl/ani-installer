@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ani-b05-guest
+  name: ani-b05-guest-source
   namespace: ani-platform
   labels:
-    app: ani-b05-guest
+    app: ani-b05-guest-source
     ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
 spec:
   restartPolicy: Always
@@ -26,11 +26,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ani-b05-guest
+  name: ani-b05-guest-source
   namespace: ani-platform
   labels:
     ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
 spec:
-  selector: {app: ani-b05-guest}
+  selector: {app: ani-b05-guest-source}
   ports:
     - {name: http, port: 8080, targetPort: 8080}

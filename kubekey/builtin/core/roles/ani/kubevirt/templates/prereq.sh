@@ -23,10 +23,10 @@ for crd in kubevirts.kubevirt.io cdis.cdi.kubevirt.io datavolumes.cdi.kubevirt.i
     exit 1
   fi
 done
-for kind in services pods; do
-  existing="$(k -n ani-platform get "$kind" ani-b05-guest --ignore-not-found -o name)"
+for resource in service/ani-b05-guest-source pod/ani-b05-guest-source pod/ani-b05-guest; do
+  existing="$(k -n ani-platform get "$resource" --ignore-not-found -o name)"
   if [ -n "$existing" ]; then
-    echo "pre-existing ani-b05-guest $kind; refusing takeover" >&2
+    echo "pre-existing $resource; refusing takeover or VM pod identity collision" >&2
     exit 1
   fi
 done

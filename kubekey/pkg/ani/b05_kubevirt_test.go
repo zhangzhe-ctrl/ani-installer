@@ -1,9 +1,12 @@
 package ani
 
 import (
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestB05KubeVirtSelectionAndProductionRender(t *testing.T) {
@@ -62,6 +65,35 @@ func TestB05KubeVirtSelectionAndProductionRender(t *testing.T) {
 				t.Errorf("%s omits %q", rel, want)
 			}
 		}
+	}
+	// Kube-OVN treats a KubeVirt launcher's VM identity as its network
+	// identity. A guest image source Pod with that same name can take the
+	// launcher's logical port and IP during a clean install.
+	source := yaml.NewDecoder(strings.NewReader(seen["kubevirt/templates/guest-source.yaml"]))
+	names := map[string]string{}
+	for {
+		var resource struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name string `yaml:"name"`
+			} `yaml:"metadata"`
+		}
+		err := source.Decode(&resource)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("decode B05 guest source: %v", err)
+		}
+		names[resource.Kind] = resource.Metadata.Name
+	}
+	if names["Pod"] == "" || names["Pod"] == "ani-b05-guest" || names["Service"] != names["Pod"] {
+		t.Fatalf("B05 source must have its own matching Pod/Service identity, distinct from the VM: %+v", names)
+	}
+	if !strings.Contains(seen["kubevirt/templates/verify.sh"], "pod/"+names["Pod"]) ||
+		!strings.Contains(seen["kubevirt/templates/verify.sh"], "http://"+names["Service"]+".ani-platform.svc.cluster.local") ||
+		!strings.Contains(seen["kubevirt/templates/prereq.sh"], "pod/"+names["Pod"]) {
+		t.Fatal("B05 importer does not use or protect the distinct source Pod/Service")
 	}
 	if err := ValidateRenderedArtifacts(files); err != nil {
 		t.Fatal(err)

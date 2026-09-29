@@ -55,9 +55,9 @@ fi
 mkdir -p "$(dirname "$LOG")"
 exec > >(tee -a "$LOG") 2>&1
 sha256sum "$ART/guest/cirros-0.6.3-x86_64-disk.img"
-k -n ani-platform wait --for=condition=Ready pod/ani-b05-guest --timeout=180s
-k -n ani-platform cp "$ART/guest/cirros-0.6.3-x86_64-disk.img" ani-b05-guest:/srv/cirros.img -c httpd
-ACTUAL="$(k -n ani-platform exec ani-b05-guest -c httpd -- sha256sum /srv/cirros.img | awk '{print $1}')"
+k -n ani-platform wait --for=condition=Ready pod/ani-b05-guest-source --timeout=180s
+k -n ani-platform cp "$ART/guest/cirros-0.6.3-x86_64-disk.img" ani-b05-guest-source:/srv/cirros.img -c httpd
+ACTUAL="$(k -n ani-platform exec ani-b05-guest-source -c httpd -- sha256sum /srv/cirros.img | awk '{print $1}')"
 test "$ACTUAL" = 7d6355852aeb6dbcd191bcda7cd74f1536cfe5cbf8a10495a7283a8396e4b75b
 
 cat > /etc/kubernetes/ani/kubevirt/dv.yaml <<'DV'
@@ -71,7 +71,7 @@ metadata:
 spec:
   source:
     http:
-      url: http://ani-b05-guest.ani-platform.svc.cluster.local:8080/cirros.img
+      url: http://ani-b05-guest-source.ani-platform.svc.cluster.local:8080/cirros.img
   pvc:
     accessModes: [ReadWriteOnce]
     resources:
