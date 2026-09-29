@@ -203,6 +203,25 @@ type Storage struct {
 	ExternalClass string `yaml:"externalClass"`
 }
 
+// ObjectStorage is optional so an older site can retain its original Ceph/RGW
+// behaviour. An explicit provider=none is different from an absent block.
+type ObjectStorage struct {
+	Provider string        `yaml:"provider"`
+	RustFS   RustFSStorage `yaml:"rustfs"`
+}
+
+type RustFSStorage struct {
+	Mode         string `yaml:"mode"`
+	StorageClass string `yaml:"storageClass"`
+	StorageSize  string `yaml:"storageSize"`
+}
+
+const (
+	objectProviderRGW    = "rgw"
+	objectProviderRustFS = "rustfs"
+	objectProviderNone   = "none"
+)
+
 // provider returns the normalised provider name.
 func (s Storage) provider() string {
 	return strings.TrimSpace(s.Provider)
@@ -521,6 +540,62 @@ type ClusterConfig struct {
 	RegistryConfig Registry     `yaml:"registry"`
 	Components     Components   `yaml:"components"`
 	Storage        Storage      `yaml:"storage"`
+	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
+}
+
+// ObjectStorageProvider resolves the legacy absence once for all consumers.
+func (c ClusterConfig) ObjectStorageProvider() string {
+	if c.ObjectStorage != nil {
+		return strings.TrimSpace(c.ObjectStorage.Provider)
+	}
+	if c.Storage.Enabled && c.Storage.provider() == storageProviderCeph {
+		return objectProviderRGW
+	}
+	return objectProviderNone
+}
+
+func validateObjectStorage(c ClusterConfig) error {
+	provider := c.ObjectStorageProvider()
+	if c.ObjectStorage != nil && provider == "" {
+		return fmt.Errorf("objectStorage.provider is required when objectStorage is present")
+	}
+	switch provider {
+	case objectProviderRGW:
+		if !c.Storage.Enabled || c.Storage.provider() != storageProviderCeph {
+			return fmt.Errorf("objectStorage.provider=rgw requires storage.enabled=true and storage.provider=ceph")
+		}
+	case objectProviderRustFS:
+		if !c.Storage.Enabled {
+			return fmt.Errorf("objectStorage.provider=rustfs requires enabled persistent storage")
+		}
+		r := c.ObjectStorage.RustFS
+		if r.Mode != "standalone" {
+			return fmt.Errorf("objectStorage.rustfs.mode must be standalone")
+		}
+		if strings.TrimSpace(r.StorageClass) == "" {
+			return fmt.Errorf("objectStorage.rustfs.storageClass is required")
+		}
+		if err := parsePositiveQuantity("objectStorage.rustfs.storageSize", r.StorageSize); err != nil {
+			return err
+		}
+		if c.Storage.provider() == storageProviderExternal && r.StorageClass != c.Storage.ExternalClass {
+			return fmt.Errorf("objectStorage.rustfs.storageClass must match storage.externalClass when storage.provider=external")
+		}
+		if c.Storage.provider() == storageProviderCeph && r.StorageClass != DefaultStorageClass {
+			return fmt.Errorf("objectStorage.rustfs.storageClass must be %q when storage.provider=ceph", DefaultStorageClass)
+		}
+		return fmt.Errorf("objectStorage.provider=rustfs is not deployable until the fixed RustFS role and materials are packaged")
+	case objectProviderNone:
+		if c.Components.Milvus.Enabled {
+			return fmt.Errorf("components.milvus requires objectStorage.provider=rgw or rustfs")
+		}
+	default:
+		return fmt.Errorf("objectStorage.provider must be rgw, rustfs or none, got %q", provider)
+	}
+	if c.ObjectStorage != nil && provider != objectProviderRustFS && c.ObjectStorage.RustFS != (RustFSStorage{}) {
+		return fmt.Errorf("objectStorage.rustfs settings require objectStorage.provider=rustfs")
+	}
+	return nil
 }
 
 // installProfile normalizes the configured profile for template use: an empty
@@ -1118,6 +1193,9 @@ func Validate(c ClusterConfig) error {
 	if err := validateStorage(c, names); err != nil {
 		return err
 	}
+	if err := validateObjectStorage(c); err != nil {
+		return err
+	}
 	if c.Components.SnapshotController.Enabled && (!c.Storage.Enabled || c.Storage.provider() != storageProviderCeph) {
 		return fmt.Errorf("components.snapshotController requires storage.enabled=true and storage.provider=ceph for the fixed RBD/CephFS snapshot classes")
 	}
@@ -1524,6 +1602,9 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 				"makeDefaultStorageClass": c.Storage.MakeDefaultStorageClass,
 				"externalClass":           c.Storage.ExternalClass,
 				"nodes":                   storageNodesForTemplate(c.Storage),
+			},
+			"objectStorage": map[string]any{
+				"provider": c.ObjectStorageProvider(),
 			},
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
