@@ -7,7 +7,7 @@
 #
 # Host kernel and interface prerequisites must be checked on the selected
 # nodes before applying this CNI. Existing kcn sysctls are not copied here.
-- name: ANI KubeOVN | Assert this run's kubeconfig
+- name: ANI KubeOVN | Assert this run's execution context
   command: |
     set -euo pipefail
     case '{{ .ani.run.kubeconfig }}' in /*) ;; *) echo 'Kube-OVN run kubeconfig is not absolute' >&2; exit 1 ;; esac
