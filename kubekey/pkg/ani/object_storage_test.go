@@ -87,6 +87,35 @@ func TestMilvusS3BindingKeepsRGWNamesAndSeparatesRustFS(t *testing.T) {
 	}
 }
 
+func TestRustFSComponentClosureUsesObjectStorageSelection(t *testing.T) {
+	c := validConfig()
+	c.Storage = Storage{Enabled: true, Provider: storageProviderCeph}
+	c.ObjectStorage = &ObjectStorage{Provider: objectProviderRustFS, RustFS: RustFSStorage{
+		Mode: "standalone", StorageClass: DefaultStorageClass, StorageSize: "20Gi",
+	}}
+	c.Components.CertManager.Enabled = true
+	c.Components.Milvus.Enabled = true
+	if c.Components.RustFS.Enabled {
+		t.Fatal("RustFS must not become a second site component switch")
+	}
+	if !c.EffectiveComponents().RustFS.Enabled {
+		t.Fatal("the selected RustFS provider did not enable its component")
+	}
+	scope, err := componentsScope(c, []string{"milvus"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"cert-manager", "rustfs", "milvus"}
+	if len(scope) != len(want) {
+		t.Fatalf("Milvus component closure = %v, want %v", scope, want)
+	}
+	for i := range want {
+		if scope[i] != want[i] {
+			t.Fatalf("Milvus component closure = %v, want %v", scope, want)
+		}
+	}
+}
+
 func TestComponentsObjectStorageMigrationGuard(t *testing.T) {
 	c := validConfig()
 	c.Storage = Storage{Enabled: true, Provider: storageProviderCeph}

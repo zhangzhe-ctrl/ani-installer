@@ -64,7 +64,7 @@ type componentInstallSpec struct {
 	WorkloadKind string // primary workload for manifest components
 	WorkloadName string
 	NeedsStorage bool
-	InternalDeps []string // static technical prerequisites, shown in the plan
+	InternalDeps []string // fixed technical prerequisites; provider-specific deps are resolved below
 }
 
 // componentsDeferred lists the IDs later batches will add; --only rejects
@@ -433,11 +433,7 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 			return fmt.Errorf("component %q is not enabled in the site config; enable it there first — a components run never edits the config silently", name)
 		}
 		seen[name] = true
-		deps := spec.InternalDeps
-		if name == "milvus" && cluster.ObjectStorageProvider() == objectProviderRustFS {
-			deps = append(append([]string(nil), deps...), "rustfs")
-		}
-		for _, dep := range deps {
+		for _, dep := range componentDependencies(cluster, name) {
 			if _, canonical := componentInstallSpecs[dep]; !canonical {
 				if !roleManagedTechnicalDeps[dep] {
 					return fmt.Errorf("component %q has undeclared internal dependency %q", name, dep)
@@ -468,6 +464,14 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 		}
 	}
 	return scope, nil
+}
+
+func componentDependencies(cluster ClusterConfig, name string) []string {
+	deps := append([]string(nil), componentInstallSpecs[name].InternalDeps...)
+	if name == "milvus" && cluster.ObjectStorageProvider() == objectProviderRustFS {
+		deps = append(deps, "rustfs")
+	}
+	return deps
 }
 
 // loadBaseRunRecord reads the original base install's run.json and enforces
@@ -757,7 +761,7 @@ func preflightLiveCluster(ctx context.Context, runner kubectlRunner, cluster Clu
 			continue
 		}
 		class := ""
-		if c := cluster.Components.storage(component); c != nil {
+		if c := cluster.EffectiveComponents().storage(component); c != nil {
 			class = strings.TrimSpace(c.StorageClass)
 		}
 		if class == "" {
@@ -887,7 +891,7 @@ func preflightComponentOwnership(ctx context.Context, runner kubectlRunner, clus
 		result := ComponentsPlanComponent{
 			Component:    component,
 			Namespace:    spec.Namespace,
-			InternalDeps: spec.InternalDeps,
+			InternalDeps: componentDependencies(cluster, component),
 		}
 		if spec.Release != "" {
 			rel, err := helmCurrentRelease(ctx, runner, spec.Namespace, spec.Release)
