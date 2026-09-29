@@ -968,11 +968,16 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ComponentImageParts() error = %v", err)
 	}
+	binding, err := ResolveMilvusS3Binding(ClusterConfig{Storage: Storage{Enabled: true, Provider: storageProviderCeph}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := map[string]any{
 		"ani": map[string]any{
 			"registry":    "192.0.2.11:5000",
 			"images":      complete,
 			"image_parts": imageParts,
+			"objectStorage": map[string]any{"provider": objectProviderRGW, "milvus_s3": binding.templateSpec()},
 			"components": map[string]any{
 				"nats":   map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
 				"milvus": map[string]any{"storage_class": "ani-block", "storage_size": "10Gi", "etcd_storage_size": "5Gi"},
