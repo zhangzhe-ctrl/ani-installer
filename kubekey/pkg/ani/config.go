@@ -359,7 +359,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or

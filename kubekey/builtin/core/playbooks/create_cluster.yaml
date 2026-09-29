@@ -140,6 +140,8 @@
       when: '{{ and (index .ani.components "valkey").enabled (ne .ani.profile "base") }}'
     - role: ani/nats
       when: '{{ and (index .ani.components "nats").enabled (ne .ani.profile "base") }}'
+    - role: ani/rustfs
+      when: '{{ and (index .ani.components "rustfs").enabled (ne .ani.profile "base") }}'
     - role: ani/milvus
       when: '{{ and (index .ani.components "milvus").enabled (ne .ani.profile "base") }}'
     - role: ani/metrics-server

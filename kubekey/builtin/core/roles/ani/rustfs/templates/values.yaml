@@ -1,0 +1,71 @@
+# RustFS official Chart 1.0.0, fixed standalone topology. Native TLS is
+# terminated by RustFS itself; no Ingress, Gateway or anonymous access.
+fullnameOverride: ani-rustfs
+replicaCount: 1
+mode:
+  standalone:
+    enabled: true
+  distributed:
+    enabled: false
+image:
+  rustfs:
+    repository: {{ .ani.registry }}/{{ .ani.image_parts.rustfs.server.repository }}
+    tag: {{ .ani.image_parts.rustfs.server.tag }}
+    pullPolicy: IfNotPresent
+  initImage:
+    repository: {{ .ani.registry }}/{{ .ani.image_parts.rustfs.init.repository }}
+    tag: {{ .ani.image_parts.rustfs.init.tag }}
+    pullPolicy: IfNotPresent
+secret:
+  existingSecret: ani-rustfs-root
+config:
+  rustfs:
+    region: us-east-1
+    obs_log_directory: ""
+    obs_environment: production
+extraEnv:
+  - name: RUSTFS_TLS_PATH
+    value: /opt/tls
+extraVolumes:
+  - name: native-tls
+    secret:
+      secretName: ani-rustfs-tls
+      defaultMode: 0440
+      items:
+        - key: tls.crt
+          path: rustfs_cert.pem
+        - key: tls.key
+          path: rustfs_key.pem
+extraVolumeMounts:
+  - name: native-tls
+    mountPath: /opt/tls
+    readOnly: true
+podSecurityContext:
+  fsGroup: 10001
+  runAsUser: 10001
+  runAsGroup: 10001
+containerSecurityContext:
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+serviceAccount:
+  automount: false
+service:
+  type: ClusterIP
+ingress:
+  enabled: false
+gatewayApi:
+  enabled: false
+mtls:
+  enabled: false
+storageclass:
+  name: {{ .ani.components.rustfs.storage_class }}
+  dataStorageSize: {{ .ani.components.rustfs.storage_size }}
+# The fixed Chart hardcodes HTTP in rustfs.probes with mtls.enabled=false.
+# post-render.sh changes exactly those two schemes to HTTPS and fails on drift.
+livenessProbe:
+  enabled: true
+readinessProbe:
+  enabled: true

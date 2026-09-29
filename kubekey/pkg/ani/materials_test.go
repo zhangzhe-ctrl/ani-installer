@@ -68,15 +68,19 @@ func TestMaterialsLockParsesShippedFile(t *testing.T) {
 	for _, tool := range lock.Tools {
 		byName[tool.Name] = tool
 	}
-	if len(lock.Tools) != 3 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" || byName["virtctl"].Name != "virtctl" {
-		t.Fatalf("the shipped lock must approve exactly helm, hauler, and virtctl, got %d tools: %v", len(lock.Tools), lock.Tools)
+	if len(lock.Tools) != 4 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" || byName["virtctl"].Name != "virtctl" || byName["rustfs-rc"].Name != "rustfs-rc" {
+		t.Fatalf("the shipped lock must approve helm, hauler, virtctl, and rustfs-rc, got %d tools: %v", len(lock.Tools), lock.Tools)
 	}
 	for name, tool := range byName {
 		if !digestPattern.MatchString("sha256:" + tool.BinarySHA256) {
 			t.Fatalf("tool %s has a non-sha256 binarySha256 %q", name, tool.BinarySHA256)
 		}
-		if tool.ArtifactPath != "bin/"+name {
-			t.Fatalf("tool %s is approved for %q, want bin/%s", name, tool.ArtifactPath, name)
+		wantPath := "bin/" + name
+		if name == "rustfs-rc" {
+			wantPath = "bin/rc"
+		}
+		if tool.ArtifactPath != wantPath {
+			t.Fatalf("tool %s is approved for %q, want %s", name, tool.ArtifactPath, wantPath)
 		}
 		if !strings.HasPrefix(tool.Source, "https://") {
 			t.Fatalf("tool %s source %q is not an authenticated https origin", name, tool.Source)
@@ -104,6 +108,9 @@ func TestMaterialsLockParsesShippedFile(t *testing.T) {
 	tool, ok := lock.ToolByArtifactPath("bin/helm")
 	if !ok || tool.BinarySHA256 == "" {
 		t.Fatalf("bin/helm is not in the lock: %+v", tool)
+	}
+	if chart, ok := lock.ChartByArtifactPath("charts/rustfs/1.0.0.tgz"); !ok || chart.SHA256 != "f11e9304fd4c3599ac365af9845ab4a2f99fab3edd30d0c8f89eb9428bcfb711" {
+		t.Fatalf("the official RustFS Chart identity is missing: %+v", chart)
 	}
 	seen := map[string]bool{}
 	for _, image := range lock.Images {

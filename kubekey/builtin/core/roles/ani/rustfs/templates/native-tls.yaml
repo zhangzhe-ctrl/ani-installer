@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ani-rustfs-server
+  namespace: ani-platform
+  labels:
+    ani.io/managed-by: {{ .kubernetes.cluster_name }}
+spec:
+  secretName: ani-rustfs-tls
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never
+  usages:
+    - server auth
+  dnsNames:
+    - ani-rustfs-svc.ani-platform.svc
+    - ani-rustfs-svc.ani-platform.svc.cluster.local
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    name: ani-ca
+    kind: ClusterIssuer

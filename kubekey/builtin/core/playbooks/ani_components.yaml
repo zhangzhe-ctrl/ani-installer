@@ -36,6 +36,8 @@
       when: '{{ and (index .ani.components "valkey").enabled (index .ani.components_run.scope "valkey") }}'
     - role: ani/nats
       when: '{{ and (index .ani.components "nats").enabled (index .ani.components_run.scope "nats") }}'
+    - role: ani/rustfs
+      when: '{{ and (index .ani.components "rustfs").enabled (index .ani.components_run.scope "rustfs") }}'
     - role: ani/milvus
       when: '{{ and (index .ani.components "milvus").enabled (index .ani.components_run.scope "milvus") }}'
     - role: ani/metrics-server

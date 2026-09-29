@@ -1033,9 +1033,7 @@ func imagesForComponent(cluster ClusterConfig, component string) []ImageKey {
 		switch {
 		case component == "cert-manager" && key.Group == "verification":
 			keys = append(keys, key)
-		case component == "metrics" && key.Group == "metrics":
-			keys = append(keys, key)
-		case component == "rustfs" && key.Group == "rustfs":
+		case key.Group == component:
 			keys = append(keys, key)
 		case key.Group == "components" && key.Name == component:
 			keys = append(keys, key)
