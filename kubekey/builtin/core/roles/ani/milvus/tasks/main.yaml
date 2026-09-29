@@ -1,6 +1,6 @@
 ---
 # B02 fixed Standalone Milvus 2.6.24 on Chart 5.0.25, dedicated etcd,
-# embedded RocksMQ and Rook RGW. This role is opt-in through components.milvus.
+# embedded RocksMQ and the selected RGW or RustFS S3 binding.
 - name: ANI Milvus | Assert this run's execution context
   command: |
     set -euo pipefail
@@ -22,30 +22,36 @@
       KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
 
 - name: ANI Milvus | Render RGW CA publisher
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   template:
     src: rgw-ca.sh
     dest: /etc/kubernetes/ani/milvus/rgw-ca.sh
     mode: "0700"
 
 - name: ANI Milvus | Publish trusted RGW CA for the selected component
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   command: bash /etc/kubernetes/ani/milvus/rgw-ca.sh
 
 - name: ANI Milvus | Render RGW ownership preflight
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   template:
     src: prereq.sh
     dest: /etc/kubernetes/ani/milvus/prereq.sh
 
 - name: ANI Milvus | Check RGW, bucket class and claim ownership before writes
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   command: |
     set -euo pipefail
     ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' bash /etc/kubernetes/ani/milvus/prereq.sh
 
 - name: ANI Milvus | Render retained RGW bucket class and dedicated claim
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   template:
     src: bucket.yaml
     dest: /etc/kubernetes/ani/milvus/bucket.yaml
 
 - name: ANI Milvus | Apply RGW bucket class and claim
+  when: '{{ eq .ani.objectStorage.provider "rgw" }}'
   command: |
     KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/milvus/bucket.yaml
 
@@ -86,6 +92,11 @@
     KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl -n ani-platform rollout status statefulset/ani-milvus-etcd --timeout=600s
 
 - name: ANI Milvus | Render vector function checker
+  template:
+    src: vector-verify.py
+    dest: /etc/kubernetes/ani/milvus/vector-verify.py
+
+- name: ANI Milvus | Render vector job runner
   template:
     src: verify.sh
     dest: /etc/kubernetes/ani/milvus/verify.sh
