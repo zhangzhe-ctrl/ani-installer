@@ -62,7 +62,7 @@ func (b MilvusS3Binding) templateSpec() map[string]any {
 		"secret_name": b.SecretName, "access_key_field": b.AccessKeyField,
 		"secret_key_field": b.SecretKeyField, "ca_namespace": b.CANamespace,
 		"ca_config_map": b.CAConfigMap, "ca_mount_path": b.CAMountPath,
-		"ca_path": b.CAPath,
+		"ca_path":    b.CAPath,
 		"addressing": b.Addressing,
 	}
 }

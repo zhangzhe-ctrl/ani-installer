@@ -1473,9 +1473,9 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	objectSpec := map[string]any{"provider": c.ObjectStorageProvider()}
 	if c.ObjectStorage != nil && c.ObjectStorageProvider() == objectProviderRustFS {
 		objectSpec["rustfs"] = map[string]any{
-			"mode": c.ObjectStorage.RustFS.Mode,
+			"mode":          c.ObjectStorage.RustFS.Mode,
 			"storage_class": c.ObjectStorage.RustFS.StorageClass,
-			"storage_size": c.ObjectStorage.RustFS.StorageSize,
+			"storage_size":  c.ObjectStorage.RustFS.StorageSize,
 		}
 	}
 	if c.Components.Milvus.Enabled {
@@ -1618,7 +1618,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 				"externalClass":           c.Storage.ExternalClass,
 				"nodes":                   storageNodesForTemplate(c.Storage),
 			},
-			"objectStorage": objectSpec,
+			"objectStorage":  objectSpec,
 			"artifact_root":  artifactRoot,
 			"nodes":          nodeNames,
 			"node_addresses": nodeAddresses,

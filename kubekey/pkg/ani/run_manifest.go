@@ -93,13 +93,13 @@ type RunManifest struct {
 	Result     string           `json:"result,omitempty"`
 	Identity   ManifestIdentity `json:"identity,omitempty"`
 
-	Installer        ManifestInstaller `json:"installer"`
-	Nodes            []ManifestNode    `json:"nodes"`
-	Components       []string          `json:"components"`
-	StorageClass     string            `json:"storageClass"`
-	Storage          ManifestStorage   `json:"storage"`
+	Installer        ManifestInstaller      `json:"installer"`
+	Nodes            []ManifestNode         `json:"nodes"`
+	Components       []string               `json:"components"`
+	StorageClass     string                 `json:"storageClass"`
+	Storage          ManifestStorage        `json:"storage"`
 	ObjectStorage    *ManifestObjectStorage `json:"objectStorage,omitempty"`
-	ComponentClasses map[string]string `json:"componentStorageClasses,omitempty"`
+	ComponentClasses map[string]string      `json:"componentStorageClasses,omitempty"`
 
 	// PackageRoot is recorded so a later step can find the artifact, but this
 	// build only validates the configuration: materials are R07's job.
@@ -141,10 +141,10 @@ type ManifestStorage struct {
 // RBD/CephFS. Older success records omit it and are interpreted narrowly from
 // their recorded Ceph selection when consumed.
 type ManifestObjectStorage struct {
-	Provider       string           `json:"provider"`
-	RustFSClass    string           `json:"rustfsClass,omitempty"`
-	RustFSSize     string           `json:"rustfsSize,omitempty"`
-	MilvusBinding  *MilvusS3Binding `json:"milvusBinding,omitempty"`
+	Provider      string           `json:"provider"`
+	RustFSClass   string           `json:"rustfsClass,omitempty"`
+	RustFSSize    string           `json:"rustfsSize,omitempty"`
+	MilvusBinding *MilvusS3Binding `json:"milvusBinding,omitempty"`
 }
 
 // ManifestStorageNode is the per-node device allowlist.
