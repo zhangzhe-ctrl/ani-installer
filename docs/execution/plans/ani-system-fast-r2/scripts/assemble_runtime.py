@@ -69,7 +69,9 @@ def assemble(root, kubectl, site_input, output):
     pull = (access / 'harbor-task-pull-auth.json').read_text()
     for namespace in ('ani-system', 'ani-aigw', 'ani-business-envoy', 'ani-business-aigw'):
         add(site['image_pull_secret'], {'.dockerconfigjson': pull}, namespace, 'kubernetes.io/dockerconfigjson')
-    system_ca = ssl.get_default_verify_paths().cafile
+    system_ca = next((path for path in (ssl.get_default_verify_paths().cafile,
+        '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', '/etc/ssl/certs/ca-certificates.crt')
+        if path and Path(path).is_file()), None)
     if not system_ca: raise ValueError('system public CA bundle unavailable')
     seed.update({'secrets': objects, 's3_ca_pem': s3_ca,
         'site_ca_pem': Path(system_ca).read_text() + '\n' + cluster_ca + '\n' + s3_ca + '\n' + (access / 'registry-ca/ca.crt').read_text()})
