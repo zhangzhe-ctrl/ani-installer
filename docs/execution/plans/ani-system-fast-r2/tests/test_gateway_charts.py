@@ -25,7 +25,8 @@ class GatewayChartTest(unittest.TestCase):
         site = {key + '_url': 'https://' + key + '.example.invalid'
                 for key in ('console', 'boss', 'api', 'inference')}
         site['websocket_url'] = 'wss://session.example.invalid'
-        site.update({'s3_public_endpoint': 'https://s3.example.invalid', 'entry_node_port': 30443, 'inference_node_port': 30444})
+        site.update({'s3_public_endpoint': 'https://s3.example.invalid', 'entry_node_port': 30443, 'inference_node_port': 30444,
+                     'image_pull_secret': 'ani-fast-pull'})
         with tempfile.TemporaryDirectory(prefix='ani-chart-test-') as directory:
             output = Path(directory) / 'manifests'
             render_gateways.render(Path(os.environ['ANI_CHART_TEST_BUNDLE']), lock,

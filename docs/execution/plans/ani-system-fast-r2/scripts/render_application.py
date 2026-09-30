@@ -99,7 +99,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
                 'prometheus_url', 'prometheus_namespace', 'loki_url', 'storage_class', 'kubernetes_service_ip',
-                'entry_node_port', 'inference_node_port')
+                'entry_node_port', 'inference_node_port', 'image_pull_secret')
     for key in required:
         if not site.get(key) or '__' in str(site[key]):
             raise ValueError('missing site parameter: ' + key)
@@ -147,10 +147,13 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                 if resource_name == resource and pointer.startswith(('/spec/', '/data/')):
                     set_pointer(doc, pointer, target)
             doc = clean(doc)
+            if kind == 'ServiceAccount':
+                doc['imagePullSecrets'] = [{'name': site['image_pull_secret']}]
             selected = 'prepare'
             if kind == 'Deployment':
                 selected = 'core' if name in CORE else 'apps'
                 pod = doc['spec']['template']['spec']
+                pod['imagePullSecrets'] = [{'name': site['image_pull_secret']}]
                 pod.pop('nodeName', None)
                 pod.get('nodeSelector', {}).pop('kubernetes.io/hostname', None)
                 for container in pod['containers'] + pod.get('initContainers', []):
@@ -169,6 +172,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                             values[item['name']] = site['prometheus_url']
                         if item['name'] == 'INSTANCE_OBSERVABILITY_LOKI_URL': values[item['name']] = site['loki_url']
                         if item['name'] == 'INFERENCE_AI_GATEWAY_PUBLIC_BASE_URL': values[item['name']] = site['inference_url']
+                        if item['name'] == 'INFERENCE_AI_GATEWAY_ALLOW_HTTP': values[item['name']] = 'false'
                         if item['name'].startswith(('AUTH_OIDC_', 'VCLUSTER_', 'VLLM_')): values[item['name']] = None
                         if item['name'] in ('K8S_CLUSTER_PROVIDER_MODE', 'K8S_CLUSTER_PROXY_MODE'): values[item['name']] = 'local'
                         if item['name'] == 'GPU_INVENTORY_PROVIDER': values[item['name']] = 'not_configured'

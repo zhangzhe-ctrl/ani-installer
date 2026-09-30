@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | 隔离分支、基线与资料 | pass | 原树只读，新树从 origin/main 建立 |
 | P1 输入校验 | pass | 24 linux/amd64 镜像、3 Chart；实际锁单独保存 |
-| P1 Harbor 导入/回读 | not_run | 集群已可访问，Harbor 项目/CA/本任务权限继续核对 |
+| P1 Harbor 导入/回读 | pass | 24 个实际 manifest digest 保留并从本任务私有项目回读；原包不变 |
 | P2 配置 | in_progress | 候选渲染工具；现场参数、稳定私有凭据尚未完成 |
 | P3 空库、首管与核心入口 | not_run | PG 只读核对完成；未执行初始化 SQL |
 | P4 installer 接入源码 | candidate | 默认关闭开关、一个 role、同一分步脚本；Go 局部检查通过 |
@@ -70,3 +70,10 @@
 - 9bb9d583481a0b00a284056ecd114bfb972d2bff 的 SQL 边界检查 3 项通过，72 份初始化/迁移 SQL 已准备到 private/sql-candidate-2，未执行。首次准备失败与限定事务适配修复保留在 logs/sql-prepare-1.log/.rc、sql-prepare-2.log/.rc、stage10-sql-tests.log/.rc。
 - 首次私有种子、JWT、首管 bcrypt 及节点/Harbor 访问材料均在 Fedora 本任务 private 下保留，恢复时复用，不重新生成或轮换；不在 Git、日志、聊天中记录凭据内容。原镜像包不变，actual-images.lock.json 仍为 registryImport=not_run。
 - 草稿 PR：https://github.com/zhangzhe-ctrl/ani-installer/pull/4；未合并。恢复先确认本机/远端 SHA、进程与既有实验协调入口，再继续 Harbor 项目权限及导入回读、实际站点配置、专用库初始化、分步部署和入口核验。完整 gate/build、人工登录与裸机首装仍 not_run；不能据局部检查宣称应用交付完成。
+
+## 恢复与 P1 导入完成
+
+- 用户恢复 Goal，并确认无人争用 .10。未新建 Fedora 实验锁；实际写操作复用 .10 已有 /var/lib/ani-installer/ani-install.lock，SSH stdin EOF/命令退出释放，有界 timeout，不留无限后台锁。
+- af182066dcb6b51d04da83344b4e21f4f5f96bd3：创建私有 Harbor 项目 ani-system-fast-20260930（project_id=6），专用 pull robot 仅限该项目，凭据留 private/access；不修改共享鉴权、TLS、扫描配置。
+- 原 ani_images.py push --execute（Skopeo dir）24 个镜像成功，保留 digest，并逐一 inspect --raw 回读核对，rc=0。日志 logs/p1-harbor-import.log/.rc、materials/harbor-import/*.push.log/*.inspect.log；actual-images.lock.json 已按真实回读结果更新 registryImport=verified。输入归档原件未修改。
+- 站点候选固定 console/boss/api/session/s3.ani.test:30443 和 inference.ani.test:30444；这些地址尚未部署/验收，后续需要客户 DNS/hosts 与 CA。专用拉取 Secret 纳入静态服务、Chart、Envoy 和本任务 ServiceAccount；不把 Harbor admin 凭据交给业务服务。

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "authority": "verified-user-download",
-  "registryImport": "not_run",
+  "registryImport": "verified",
   "images": [
     {
       "id": "ai-gateway-controller",
@@ -19,7 +19,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ai-gateway-controller@sha256:947c4e49e5d0f4d87fe99f849bc9e92ffd536d0e846efe12257ba0ed9dfdc5b2",
       "replacementApproved": true
     },
     {
@@ -38,7 +38,7 @@
           "source": "runtime-only"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ai-gateway-extproc@sha256:aee7b7d6534b72acadb0a2592110df6efb48d38e6e019a72dd4c5e9afe7764bc",
       "replacementApproved": true
     },
     {
@@ -57,7 +57,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ani-auth-service@sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee",
       "replacementApproved": true
     },
     {
@@ -79,7 +79,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ani-boss-console@sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c",
       "replacementApproved": true
     },
     {
@@ -100,7 +100,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ani-console@sha256:a71ae4e39eca8042d250947b7667723995ba3b59d17798c57c9c864a16cc3448",
       "replacementApproved": true
     },
     {
@@ -121,7 +121,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ani-gateway@sha256:239b0686ccab4aa2c3d247956e592b42bb828f6a224dafd812567e796a5d786b",
       "replacementApproved": true
     },
     {
@@ -140,7 +140,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/ani-session-gateway@sha256:a4af790a73efa60b03efe52e5b9eeadff7d66fd3348f69b673f3d8bbfe598653",
       "replacementApproved": true
     },
     {
@@ -169,7 +169,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/dex@sha256:59d8b5540fcf4e876b70fb5438321c594b84a5b4a255540e9bb41834fd797770",
       "replacementApproved": true
     },
     {
@@ -188,7 +188,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/envoy-authz-adapter@sha256:c4dd4efecb2d6ec793b6af099703a8803e9f24bbbffd19917dd0f5dfc3ccad06",
       "replacementApproved": true
     },
     {
@@ -213,7 +213,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/envoy-gateway@sha256:b055b426588bfe1599eba0e3824711a5f8d8d307d9509302bd28f44dc2ab7adf",
       "replacementApproved": true
     },
     {
@@ -238,7 +238,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/envoy-proxy@sha256:4982955af5bf7d18aff3655584e5b59dd51942fa39104056fa29de1db3b7e6ce",
       "replacementApproved": true
     },
     {
@@ -259,7 +259,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/inference-gateway-publisher@sha256:71616dcadf64353dbf75265b5b1428a0ae2607f6bdad65d2666d424d013d786f",
       "replacementApproved": true
     },
     {
@@ -280,7 +280,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/inference-service@sha256:bac1248ff48b36c5b8b1d83732aa0383a3c64abc11e713b05e7f5ae1e3be196e",
       "replacementApproved": true
     },
     {
@@ -301,7 +301,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/kb-service@sha256:6c307468e71079e96f542ac7a7a6f59b800d2a0f40437b1182c786d283f3d657",
       "replacementApproved": true
     },
     {
@@ -320,7 +320,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/metering-service@sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9",
       "replacementApproved": true
     },
     {
@@ -339,7 +339,7 @@
           "source": "dynamic-config"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
       "replacementApproved": true
     },
     {
@@ -358,7 +358,7 @@
           "source": "dynamic-config"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/model-import-worker-dynamic@sha256:02ac1c66116ffd21995ed044f8fc50ff704f9901edaac1434fd708b52756688e",
       "replacementApproved": true
     },
     {
@@ -377,7 +377,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/model-import-worker-service@sha256:54c182b2365b84fe063a10768bcc3de5cb3493c250860bb49ff0e077d1b08bca",
       "replacementApproved": true
     },
     {
@@ -396,7 +396,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/model-service@sha256:363832ff066f42c49f52488101cc7786938269f4d19d4a2d6fab6bd6cfd6f14c",
       "replacementApproved": true
     },
     {
@@ -415,7 +415,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/platform-settings-service@sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b",
       "replacementApproved": true
     },
     {
@@ -434,7 +434,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/rag-engine@sha256:8352df85222251855009800a6c713669ca8957e248afcd58c4566fd1e1c8d0ca",
       "replacementApproved": true
     },
     {
@@ -459,7 +459,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/reconcile-worker@sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c",
       "replacementApproved": true
     },
     {
@@ -478,7 +478,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/task-service@sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644",
       "replacementApproved": true
     },
     {
@@ -497,7 +497,7 @@
           "source": "spec"
         }
       ],
-      "targetDigestRef": null,
+      "targetDigestRef": "172.16.101.10:30003/ani-system-fast-20260930/tenant-service@sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f",
       "replacementApproved": true
     }
   ],
@@ -538,5 +538,6 @@
       "sha256": "f5b3de0850e95e3ff9142ed0a12660468e067d9f8da941cd811f1168f5fd4ea9",
       "digestBasis": "downloaded-file-sha256-not-publisher-signature"
     }
-  ]
+  ],
+  "importEvidence": "logs/p1-harbor-import.log and materials/harbor-import/*.inspect.log"
 }

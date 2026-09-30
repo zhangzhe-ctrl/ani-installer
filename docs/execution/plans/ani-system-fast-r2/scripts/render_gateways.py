@@ -69,6 +69,8 @@ def render(bundle, lock, helm, reference, site, runtime, output):
         if doc['kind'] == 'CustomResourceDefinition':
             crds.append(doc);continue
         pod = doc.get('spec', {}).get('template', {}).get('spec', {})
+        if pod:
+            pod['imagePullSecrets'] = [{'name': site['image_pull_secret']}]
         for container in pod.get('containers', []) + pod.get('initContainers', []):
             old = container['image']
             if 'envoyproxy/gateway:' in old: container['image'] = images['envoy-gateway']
@@ -84,6 +86,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
         doc = clean(yaml.safe_load(path.read_text()))
         if doc['kind'] == 'EnvoyProxy':
             doc['spec']['provider']['kubernetes']['envoyDeployment']['container']['image'] = images['envoy-proxy']
+            doc['spec']['provider']['kubernetes']['envoyDeployment'].setdefault('pod', {})['imagePullSecrets'] = [{'name': site['image_pull_secret']}]
             service = doc['spec']['provider']['kubernetes']['envoyService']
             service['labels'] = {'ani.io/app-task': 'ani-system-fast-20260930'}
             service['externalTrafficPolicy'] = 'Cluster'
@@ -108,6 +111,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
                 continue
             if doc['kind'] == 'Deployment':
                 pod = doc['spec']['template']['spec'];pod.pop('nodeName', None)
+                pod['imagePullSecrets'] = [{'name': site['image_pull_secret']}]
                 pod.get('nodeSelector', {}).pop('kubernetes.io/hostname', None)
                 for container in pod['containers']: container['image'] = images['envoy-authz-adapter']
             if doc['kind'] == 'NetworkPolicy':
