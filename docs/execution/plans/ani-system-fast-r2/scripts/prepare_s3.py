@@ -17,6 +17,7 @@ import selectors
 import subprocess
 import time
 from urllib.parse import urlencode
+import xml.etree.ElementTree as ET
 
 NAME = 'ani-system-fast-20260930'
 HOST = 'ani-rustfs-svc.ani-platform.svc'
@@ -82,7 +83,14 @@ def prepare(root, kubectl):
         if status == 200 and not policy_marker.exists():
             raise RuntimeError('S3 policy exists without task creation record; no takeover')
         if status != 200:
-            if status not in (400, 404): raise RuntimeError('S3 policy lookup failed; HTTP ' + str(status))
+            missing_policy = False
+            if status == 500:
+                try:
+                    error = ET.fromstring(payload)
+                    missing_policy = error.findtext('Code') == 'InternalError' and error.findtext('Message') == 'policy does not exist'
+                except ET.ParseError: pass
+            if status not in (400, 404) and not missing_policy:
+                raise RuntimeError('S3 policy lookup failed; HTTP ' + str(status))
             status, _ = request('PUT', 'add-canned-policy?' + urlencode({'name': NAME}), policy)
             if status != 200: raise RuntimeError('dedicated S3 policy creation failed; HTTP ' + str(status))
             policy_marker.write_text(digest + '\n')
