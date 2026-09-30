@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import ssl
 from urllib.parse import quote
 import yaml
 
@@ -68,8 +69,10 @@ def assemble(root, kubectl, site_input, output):
     pull = (access / 'harbor-task-pull-auth.json').read_text()
     for namespace in ('ani-system', 'ani-aigw', 'ani-business-envoy', 'ani-business-aigw'):
         add(site['image_pull_secret'], {'.dockerconfigjson': pull}, namespace, 'kubernetes.io/dockerconfigjson')
+    system_ca = ssl.get_default_verify_paths().cafile
+    if not system_ca: raise ValueError('system public CA bundle unavailable')
     seed.update({'secrets': objects, 's3_ca_pem': s3_ca,
-        'site_ca_pem': Path('/etc/pki/tls/certs/ca-bundle.crt').read_text() + '\n' + cluster_ca + '\n' + s3_ca + '\n' + (access / 'registry-ca/ca.crt').read_text()})
+        'site_ca_pem': Path(system_ca).read_text() + '\n' + cluster_ca + '\n' + s3_ca + '\n' + (access / 'registry-ca/ca.crt').read_text()})
     output.write_text(json.dumps(seed, indent=2) + '\n'); output.chmod(0o600)
     site_output = output.with_suffix('.site.yaml')
     site_output.write_text(yaml.safe_dump(site)); site_output.chmod(0o600)
