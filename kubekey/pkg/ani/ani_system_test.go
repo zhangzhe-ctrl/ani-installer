@@ -1,9 +1,21 @@
 package ani
 
 import (
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestANISystemDisabledPreservesLegacyConfigIdentity(t *testing.T) {
+	data, err := json.Marshal(validConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "ANISystem") {
+		t.Fatal("default-disabled application field changes the existing normalized config identity")
+	}
+}
 
 func TestANISystemSelection(t *testing.T) {
 	for _, enabled := range []bool{false, true} {

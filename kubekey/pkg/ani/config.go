@@ -553,7 +553,7 @@ type ClusterConfig struct {
 	Components     Components     `yaml:"components"`
 	Storage        Storage        `yaml:"storage"`
 	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
-	ANISystem      ANISystem      `yaml:"aniSystem"`
+	ANISystem      ANISystem      `yaml:"aniSystem,omitempty" json:"ANISystem,omitzero"`
 }
 
 // ObjectStorageProvider resolves the legacy absence once for all consumers.
