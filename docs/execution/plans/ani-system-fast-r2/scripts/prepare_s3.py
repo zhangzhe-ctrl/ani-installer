@@ -12,7 +12,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import socket
+import re
+import selectors
 import subprocess
 import time
 from urllib.parse import urlencode
@@ -33,18 +34,20 @@ def prepare(root, kubectl):
               'aws-sigv4 = "aws:amz:us-east-1:s3"\n')
     log = (root / 'logs/s3-port-forward.log').open('a')
     forward = subprocess.Popen([str(kubectl), '-n', 'ani-platform', 'port-forward',
-        'service/ani-rustfs-svc', '19000:9000', '--address', '127.0.0.1'], stdout=log, stderr=log)
+        'service/ani-rustfs-svc', ':9000', '--address', '127.0.0.1'], stdout=subprocess.PIPE, stderr=log)
     try:
-        for _ in range(30):
-            if forward.poll() is not None: raise RuntimeError('S3 port-forward failed')
-            try:
-                with socket.create_connection(('127.0.0.1', 19000), timeout=1): break
-            except OSError: time.sleep(1)
-        else: raise RuntimeError('S3 port-forward did not become available')
+        with selectors.DefaultSelector() as selector:
+            selector.register(forward.stdout, selectors.EVENT_READ)
+            if not selector.select(timeout=30): raise RuntimeError('S3 port-forward did not become available')
+            line = forward.stdout.readline().decode()
+            log.write(line); log.flush()
+            match = re.fullmatch(r'Forwarding from 127\.0\.0\.1:(\d+) -> 9000\s*', line)
+            if not match: raise RuntimeError('S3 port-forward failed before its own listener was ready')
+            port = match[1]
         def request(method, path, body=None):
             cmd = ['curl', '--silent', '--show-error', '--connect-timeout', '10', '--max-time', '60',
                 '--cacert', str(private / 'access/rustfs-ca.pem'), '--config', '-',
-                '--connect-to', HOST + ':9000:127.0.0.1:19000', '-X', method,
+                '--connect-to', HOST + ':9000:127.0.0.1:' + port, '-X', method,
                 'https://' + HOST + ':9000/rustfs/admin/v3/' + path,
                 '--write-out', '\n%{http_code}']
             # Keep even the dedicated user password in a private body file.
