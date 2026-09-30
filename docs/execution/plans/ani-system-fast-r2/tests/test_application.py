@@ -8,6 +8,16 @@ spec.loader.exec_module(application)
 
 
 class ApplicationTest(unittest.TestCase):
+    def test_crd_default_conversion_does_not_hide_real_changes(self):
+        original = {'group': 'gateway.networking.k8s.io', 'versions': [{'name': 'v1'}]}
+        defaulted = {**original, 'conversion': {'strategy': 'None'}}
+        webhook = {**original, 'conversion': {'strategy': 'Webhook'}}
+        changed_version = {**defaulted, 'versions': [{'name': 'v2'}]}
+        self.assertEqual(application.crd_spec_digest(original), application.crd_spec_digest(defaulted))
+        self.assertNotEqual(application.crd_spec_digest(original), application.crd_spec_digest(webhook))
+        self.assertNotEqual(application.crd_spec_digest(original), application.crd_spec_digest(changed_version))
+        self.assertNotIn('conversion', original)
+
     def test_runtime_mapping_requires_verified_target(self):
         with self.assertRaisesRegex(ValueError, 'verified registry digest'):
             application.image_mappings({'registryImport': 'verified', 'images': [{'id': 'model-import-worker-dynamic', 'targetDigestRef': None}]})

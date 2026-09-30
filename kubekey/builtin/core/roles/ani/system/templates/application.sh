@@ -100,7 +100,7 @@ install_crds() {
     [[ "$file" =~ ^[a-z0-9._-]+\.yaml$ && "$expected" =~ ^[a-f0-9]{64}$ ]] || return 1
     existing="$("${K[@]}" get crd "$name" --ignore-not-found -o name)"
     if [[ -n "$existing" ]]; then
-      got="$("${K[@]}" get crd "$name" -o json | python3 -c 'import sys,json,hashlib; print(hashlib.sha256(json.dumps(json.load(sys.stdin)["spec"],sort_keys=True,separators=(",",":")).encode()).hexdigest())')"
+      got="$("${K[@]}" get crd "$name" -o json | python3 -c 'import sys,json,hashlib; spec=json.load(sys.stdin)["spec"]; spec.setdefault("conversion",{"strategy":"None"}); print(hashlib.sha256(json.dumps(spec,sort_keys=True,separators=(",",":")).encode()).hexdigest())')"
       [[ "$got" == "$expected" ]] || { echo "shared CRD schema conflict: $name (no write)" >&2; return 1; }
       echo "compatible shared CRD reused without writes: $name"
     else

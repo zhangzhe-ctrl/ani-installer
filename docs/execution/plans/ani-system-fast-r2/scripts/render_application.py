@@ -27,6 +27,14 @@ APPS = {
 DIGEST_REF = re.compile(r'[^\s@]+@sha256:[a-f0-9]{64}\Z')
 
 
+def crd_spec_digest(spec):
+    spec = copy.deepcopy(spec)
+    # The API defaults absent conversion to None. Preserve any real strategy,
+    # webhook, versions or schema differences; they remain conflicts.
+    spec.setdefault('conversion', {'strategy': 'None'})
+    return hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def set_pointer(doc, pointer, value):
     parts = pointer.lstrip('/').split('/')
     current = doc
@@ -276,7 +284,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     for doc in groups['crds']:
         name = doc['metadata']['name'];file = name + '.yaml'
         (crds / file).write_text(yaml.safe_dump(doc, sort_keys=False))
-        digest = hashlib.sha256(json.dumps(doc['spec'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        digest = crd_spec_digest(doc['spec'])
         specs.append('\t'.join([file, name, digest]))
     (crds / 'specs.tsv').write_text('\n'.join(specs) + '\n')
     # SQL is added after the selected schema has been verified; freeze checksums last.

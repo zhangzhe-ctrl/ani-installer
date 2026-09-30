@@ -139,6 +139,8 @@ WITH CHECK (tenant_id IS NULL OR tenant_id = NULLIF(current_setting('app.current
     (output / name).write_text('BEGIN;\nSET LOCAL ROLE ani_fast_migrator;\n' + body + '\nRESET ROLE;\n' +
         f"INSERT INTO ani_fast_migrations(file,sha256) VALUES({literal(name)},{literal(digest)});\nCOMMIT;\n")
     inventory.append(name + '\t' + digest)
+    evidence.append({'file': name, 'sourceKind': 'task-owned-login-fix',
+                     'adaptedBodySha256': digest, 'trigger': 'actual refresh_tokens INSERT rejected by RLS'})
     admin = runtime['admin']
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', admin['username']) or not re.fullmatch(r'\$2[aby]\$12\$.{53}', admin['password_hash']):
         raise ValueError('admin username and bcrypt cost-12 hash are required')
