@@ -27,7 +27,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
     eg_config = {
         'gateway': {'controllerName': 'ani.io/ani-system-fast-gateway'},
         'provider': {'type': 'Kubernetes', 'kubernetes': {
-            'watch': {'type': 'Namespaces', 'namespaces': ['ani-aigw']},
+            'watch': {'type': 'Namespaces', 'namespaces': ['ani-aigw', 'ani-business-envoy', 'ani-system', 'ani-platform']},
             'shutdownManager': {'image': images['envoy-gateway']}}},
         'logging': {'level': {'default': 'info'}},
         'extensionApis': {'enableBackend': True, 'enableEnvoyPatchPolicy': True},
