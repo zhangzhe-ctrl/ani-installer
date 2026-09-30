@@ -98,7 +98,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             raise ValueError('missing reference folder: ' + folder)
     required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
-                'prometheus_url', 'loki_url', 'storage_class', 'kubernetes_service_ip')
+                'prometheus_url', 'prometheus_namespace', 'loki_url', 'storage_class', 'kubernetes_service_ip')
     for key in required:
         if not site.get(key) or '__' in str(site[key]):
             raise ValueError('missing site parameter: ' + key)
@@ -192,6 +192,10 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                     if any(p['port'] == 8080 for p in rule.get('ports', [])):
                         rule['from'] = [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ani-business-envoy'}},
                                          'podSelector': {'matchLabels': {'gateway.envoyproxy.io/owning-gateway-name': 'ani-entry'}}}]
+            if kind == 'NetworkPolicy' and name == 'model-service-prometheus-health-ingress':
+                doc['spec']['ingress'][0]['from'] = [
+                    {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': site['prometheus_namespace']}},
+                     'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'prometheus'}}}]
             if kind == 'Service' and name in ('ani-console', 'ani-boss-console', 'ani-gateway', 'ani-session-gateway-websocket'):
                 doc['spec']['type'] = 'ClusterIP'
                 doc['spec'].pop('externalTrafficPolicy', None)

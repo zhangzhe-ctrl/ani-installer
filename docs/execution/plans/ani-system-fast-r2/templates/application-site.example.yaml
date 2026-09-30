@@ -12,6 +12,7 @@ s3_endpoint: __HTTPS_INTERNAL_ENDPOINT__
 s3_public_endpoint: __HTTPS_BROWSER_REACHABLE_ENDPOINT__
 milvus_endpoint: __EXISTING_MILVUS_ENDPOINT__
 prometheus_url: __EXISTING_PROMETHEUS_URL__
+prometheus_namespace: __EXISTING_PROMETHEUS_NAMESPACE__
 loki_url: __EXISTING_LOKI_URL__
 storage_class: __EXISTING_STORAGE_CLASS__
 # Fixed per-Deployment adaptations only, confirmed by actual startup.

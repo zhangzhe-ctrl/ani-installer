@@ -62,6 +62,7 @@ class GatewayChartTest(unittest.TestCase):
             site.update({'s3_endpoint': 'https://s3.example.invalid', 's3_public_endpoint': 'https://s3.example.invalid',
                 'milvus_endpoint': 'milvus.ani-platform.svc:19530', 'prometheus_url': 'http://prometheus.ani-platform.svc',
                 'loki_url': 'http://loki.ani-platform.svc', 'storage_class': 'test-storage',
+                'prometheus_namespace': 'ani-observability',
                 'target_nodes': ['172.16.101.10', '172.16.101.11', '172.16.101.12'],
                 'kubernetes_service_ip': '10.96.0.1',
                 'deployment_env': {'ani-gateway': {
