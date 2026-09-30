@@ -98,7 +98,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             raise ValueError('missing reference folder: ' + folder)
     required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
-                'prometheus_url', 'loki_url', 'storage_class')
+                'prometheus_url', 'loki_url', 'storage_class', 'kubernetes_service_ip')
     for key in required:
         if not site.get(key) or '__' in str(site[key]):
             raise ValueError('missing site parameter: ' + key)
@@ -126,7 +126,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             name, ns = meta['name'], meta.get('namespace', '')
             if kind == 'ServiceAccount' and name == 'default':
                 continue  # Kubernetes creates this; it is not application-owned material.
-            if any(marker in json.dumps(doc) for marker in ('sprint13-prometheus', 'ani-dcgm-exporter', 'ani-fluent-bit')):
+            if any(marker in name for marker in ('sprint13-prometheus', 'ani-dcgm-exporter', 'ani-fluent-bit')):
                 continue
             if ns and ns not in ('ani-system', 'cert-manager'):
                 continue
@@ -161,6 +161,8 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                         if item['name'] == 'OBJECT_STORE_BUCKET_PREFIX': values[item['name']] = 'ani-fast-'
                         if item['name'] == 'VECTOR_STORE_COLLECTION_PREFIX': values[item['name']] = 'ani_fast_'
                         if item['name'] == 'INSTANCE_OBSERVABILITY_PROMETHEUS_URL': values[item['name']] = site['prometheus_url']
+                        if item['name'] in ('METERING_PROMETHEUS_URL', 'PLATFORM_SERVICE_HEALTH_PROMETHEUS_URL'):
+                            values[item['name']] = site['prometheus_url']
                         if item['name'] == 'INSTANCE_OBSERVABILITY_LOKI_URL': values[item['name']] = site['loki_url']
                         if item['name'].startswith(('AUTH_OIDC_', 'VCLUSTER_', 'VLLM_')): values[item['name']] = None
                         if item['name'] in ('K8S_CLUSTER_PROVIDER_MODE', 'K8S_CLUSTER_PROXY_MODE'): values[item['name']] = 'local'
@@ -175,6 +177,20 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                                            'AWS_CA_BUNDLE': '/etc/ani-site-ca/ca.crt'})
                     container.setdefault('volumeMounts', []).append({'name': 'ani-site-ca', 'mountPath': '/etc/ani-site-ca', 'readOnly': True})
                 pod.setdefault('volumes', []).append({'name': 'ani-site-ca', 'configMap': {'name': 'ani-site-ca'}})
+            if kind == 'NetworkPolicy' and name == 'ani-session-gateway':
+                for rule in doc['spec'].get('egress', []):
+                    ports = {p['port'] for p in rule.get('ports', [])}
+                    if 6379 in ports:
+                        rule['to'] = [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ani-platform'}},
+                                       'podSelector': {'matchLabels': {'app': 'valkey'}}}]
+                    if 443 in ports:
+                        rule['to'] = [{'ipBlock': {'cidr': site['kubernetes_service_ip'] + '/32'}}]
+                    if 6443 in ports:
+                        rule['to'] = [{'ipBlock': {'cidr': address + '/32'}} for address in site['target_nodes']]
+                for rule in doc['spec'].get('ingress', []):
+                    if any(p['port'] == 8080 for p in rule.get('ports', [])):
+                        rule['from'] = [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ani-business-envoy'}},
+                                         'podSelector': {'matchLabels': {'gateway.envoyproxy.io/owning-gateway-name': 'ani-entry'}}}]
             if kind == 'Service' and name in ('ani-console', 'ani-boss-console', 'ani-gateway', 'ani-session-gateway-websocket'):
                 doc['spec']['type'] = 'ClusterIP'
                 doc['spec'].pop('externalTrafficPolicy', None)

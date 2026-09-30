@@ -62,7 +62,14 @@ class GatewayChartTest(unittest.TestCase):
             site.update({'s3_endpoint': 'https://s3.example.invalid', 's3_public_endpoint': 'https://s3.example.invalid',
                 'milvus_endpoint': 'milvus.ani-platform.svc:19530', 'prometheus_url': 'http://prometheus.ani-platform.svc',
                 'loki_url': 'http://loki.ani-platform.svc', 'storage_class': 'test-storage',
-                'target_nodes': ['172.16.101.10', '172.16.101.11', '172.16.101.12']})
+                'target_nodes': ['172.16.101.10', '172.16.101.11', '172.16.101.12'],
+                'kubernetes_service_ip': '10.96.0.1',
+                'deployment_env': {'ani-gateway': {
+                    'KAIWU_CONSOLE_PUBLIC_URL': '', 'KAIWU_BOSS_PUBLIC_URL': '',
+                    'KAIWU_CONSOLE_SECRET': 'test-only-integration-secret',
+                    'KAIWU_BOSS_SECRET': 'test-only-integration-secret',
+                    'HARBOR_ENDPOINT': 'https://fixture.invalid', 'HARBOR_USERNAME': 'test-only-user',
+                    'HARBOR_PASSWORD': 'test-only-password'}}})
             application_output = Path(directory) / 'application'
             render_application.render(reference, site, lock, {'secrets': secrets, 'site_ca_pem': 'test-only-ca'},
                                       application_output, output)

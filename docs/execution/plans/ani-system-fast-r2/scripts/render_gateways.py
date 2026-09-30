@@ -100,6 +100,12 @@ def render(bundle, lock, helm, reference, site, runtime, output):
                 pod = doc['spec']['template']['spec'];pod.pop('nodeName', None)
                 pod.get('nodeSelector', {}).pop('kubernetes.io/hostname', None)
                 for container in pod['containers']: container['image'] = images['envoy-authz-adapter']
+            if doc['kind'] == 'NetworkPolicy':
+                for rule in doc['spec'].get('ingress', []):
+                    for peer in rule.get('from', []):
+                        labels = peer.get('namespaceSelector', {}).get('matchLabels', {})
+                        if labels.get('kubernetes.io/metadata.name') == 'envoy-gateway-system':
+                            labels['kubernetes.io/metadata.name'] = 'ani-business-envoy'
             routes.append(doc)
     hosts = [urlparse(site[key]).hostname for key in ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url')]
     if any(not host for host in hosts): raise ValueError('public entry hostnames are required')
