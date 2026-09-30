@@ -67,7 +67,9 @@ def prepare(root, kubectl):
         if status == 200 and not marker.exists():
             raise RuntimeError('S3 identity exists without task creation record; no takeover')
         if status != 200:
-            if status not in (400, 404) or b'NoSuchUser' not in payload:
+            missing_user = (b'NoSuchUser' in payload or
+                (b'NoSuchResource' in payload and own['access_key'].encode() in payload and b'does not exist' in payload))
+            if status not in (400, 404) or not missing_user:
                 raise RuntimeError('S3 user lookup failed; HTTP ' + str(status))
             status, _ = request('PUT', 'add-user?' + query, {'secretKey': own['secret_key'], 'status': 'enabled'})
             if status != 200: raise RuntimeError('dedicated S3 user creation failed; HTTP ' + str(status))
@@ -80,6 +82,7 @@ def prepare(root, kubectl):
         if status == 200 and not policy_marker.exists():
             raise RuntimeError('S3 policy exists without task creation record; no takeover')
         if status != 200:
+            if status not in (400, 404): raise RuntimeError('S3 policy lookup failed; HTTP ' + str(status))
             status, _ = request('PUT', 'add-canned-policy?' + urlencode({'name': NAME}), policy)
             if status != 200: raise RuntimeError('dedicated S3 policy creation failed; HTTP ' + str(status))
             policy_marker.write_text(digest + '\n')
