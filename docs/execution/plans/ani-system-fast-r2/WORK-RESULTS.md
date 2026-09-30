@@ -1,13 +1,13 @@
 # ANI-system r2 工作结果
 
-本轮正在执行；此记录不含秘密。
+本轮应用已在既有集群部署，必要入口检查、完整 gate/build 和交付制包完成。此记录不含秘密。部署与重试命令、入口及凭据取得方式见 [DELIVERY.md](DELIVERY.md)。下方逐轮记录保留当时状态，当前结果以本表和末尾记录为准。
 
 - 本机分支：feature/ani-system-fast-20260930。
 - 本机 worktree：/home/chabking/workspace/ani-installer-ani-system-fast-20260930。
 - 固定 origin/main 基线：78d8418307b6156954feb10aee8d6972d2ff1bbd（原树 main 干净）。
 - 用户输入：/home/chabking/下载/ani-system-fast-r2；只按 README 选择性复制，reference 原件仓外保存。
-- Fedora 镜像输入：/home/chabking/ani-installer-runs/ani-system-fast/incoming/ani-images-download.zip；归档及镜像字节校验通过，导入尚未执行。
-- 目标限定 172.16.101.10/.11/.12；实际集群身份、协调锁待核对。
+- Fedora 镜像输入：/home/chabking/ani-installer-runs/ani-system-fast/incoming/ani-images-download.zip；归档及镜像字节校验通过，24 个镜像已导入本任务 Harbor 项目并回读 digest。
+- 目标限定 172.16.101.10/.11/.12（ani-01/02/03）；用户确认无人争用 .10，写操作复用该节点既有 ani-install.lock，无 Fedora 新锁。
 - 全部非编辑/Git/传输执行通过 ssh fedora；不改动共享凭据、旧材料锁或旧 run。
 
 | 阶段 | 状态 | 证据与限制 |
@@ -15,13 +15,16 @@
 | 隔离分支、基线与资料 | pass | 原树只读，新树从 origin/main 建立 |
 | P1 输入校验 | pass | 24 linux/amd64 镜像、3 Chart；实际锁单独保存 |
 | P1 Harbor 导入/回读 | pass | 24 个实际 manifest digest 保留并从本任务私有项目回读；原包不变 |
-| P2 配置 | in_progress | 候选渲染工具；现场参数、稳定私有凭据尚未完成 |
-| P3 空库、首管与核心入口 | partial | 专用库 72 条迁移及首管关联已核对；核心入口待启动验证 |
-| P4 installer 接入源码 | candidate | 默认关闭开关、一个 role、同一分步脚本；Go 局部检查通过 |
-| P4 应用启动 | not_run | 未向集群写入资源 |
-| P5 Ready/API/前端 | not_run | 无现场成功证据 |
-| 完整 gate/build | not_run | 候选尚未完成现场联调/冻结；不提前重复制包 |
-| 推送/PR | draft | 按用户指定改用 SSH 443 推送成功；草稿 PR #4，未合并 |
+| P2 配置 | pass | 固定现场参数；JWT、mint、Session、专用 S3 与运行账号复用首次种子；18 份私有 Secret |
+| P3 专用库、首管与核心入口 | pass | 73 条迁移账本；admin/platform-admin；真实平台密码登录 200、access/refresh token 返回 |
+| P4 installer 接入源码 | pass | 2cbed2f；默认关闭开关、一个 role、同一分步脚本；完整 gate/build rc=0，交付脚本 wait rc=0 |
+| P4 应用启动 | pass | 20 个声明的 Deployment 和 2 个生成的业务 Envoy Deployment 均 Ready；2 个 HTTPS Gateway Programmed |
+| P5 Ready/API/前端 | pass | Console/BOSS/API/Session 健康入口 200；受保护 API 匿名 401/登录后 200；专用 S3 PUT/HEAD 200 |
+| 分步重试 | pass | crds/init/wait rc=0；共享 CRD 兼容复用无写入，73 条迁移全部跳过，首管及凭据未重置 |
+| 完整 gate/build | pass | 2cbed2f 的 build-code.sh rc=0；包含完整 gate，测试/构建/制包源码指纹一致；首次失败保留 |
+| 应用包/代码包 | pass | 内部清单及归档解包回验均通过；摘要与敏感性见末尾及 delivery-manifest.json |
+| 推送/PR | pr_open | 用户指定 SSH 443 路径已验证，PR #4 已创建；当前提交与检查以 PR 为准，未合并 |
+| GitHub CI | see_PR | 与 Fedora gate 分开；状态以 PR 当前 head 检查为准，不据 Fedora 结果冒称 GitHub CI 通过 |
 | 人工登录 | manual_not_run | 不能代称用户登录通过 |
 | 裸机从零首装 | not_run | 本轮不重置现有集群 |
 | 完整业务验收 | not_verified | 用户后续验证 |
@@ -85,3 +88,33 @@
 - p3-init-1 rc=0 但复核账本只有 1 条：kubectl exec -i 查询吞掉了 migrations.tsv。1d1a48fbf8ba1f9136a908b551593d5b478a1173 修复 query stdin，p3-init-2 在第 35 份 SQL 的角色 membership REVOKE 处 rc=3，整份事务回滚；已成功的 34 份保留。
 - 27535a190f83ef422c862a05e3134ec5a40b0394 仅去掉第 35 份 SQL 中已由专用 bootstrap 排除的冗余角色 membership REVOKE，保留所有库内 GRANT/REVOKE；不扩大迁移角色 ADMIN 权限。局部 SQL 3 项检查通过，p3-init-3 rc=0。p3-init-verification.log/.rc=0 确认账本 72 条、local:admin|platform-admin、ani|ani_app、ani_fast_20260930|ani_fast_migrator。未重置首管、未清库。
 - 应用候选当前 private/application-candidate-3（更新 CRD approval 元数据）；旧 candidate-1/2、SQL candidate-1/2/3 和各轮首错日志保留。CRD 首次失败为缺 api-approved.kubernetes.io 注解；c435a662d93f3f1fa5849578e34d8ed8cb13b613 恢复必要注解，不接管已有 CRD。
+
+## P3 登录修复与 P4～P5 现场结果
+
+- 业务 Envoy 控制器首次启动后因 watch namespace 未包括自身 namespace，读取自身 Secret/EndpointSlice 被 RBAC 拒绝。1788da9 将本任务控制器的 Chart watch 范围限定为 ani-aigw、ani-business-envoy、ani-system、ani-platform；Chart 创建其自身读取角色与绑定。仅重启本任务 envoy-gateway Deployment（logs/p4-envoy-restart.log），未操作 kcn 控制器或强抢共享 CRD。
+- 实际 Auth 平台密码登录最初返回 400，PG 首错是 refresh_tokens RLS 拒绝新增行。旧表只有 RESTRICTIVE policy，没有 PERMISSIVE 正向许可。648d028 增加专用库内 998_auth_refresh_rls.sql，只对 ani_fast_app 允许 tenant_id IS NULL 或 app.current_tenant_id 的同租户行，WITH CHECK 同条件；保留原限制策略，不关闭 RLS、不授予业务登录 BYPASSRLS。
+- logs/p3-init-4.log/.rc=0，新增固定修复后账本共 73 条。已有 local:admin（请求用户名为 admin）、platform-admin 关联、bcrypt cost 12 保留。logs/p3-public-login-verification.json：实际 HTTPS `POST /api/v1/auth/platform/password/login` 200，accessToken/refreshToken 均存在。凭据、响应 token 和原始诊断保存在 private，未入 Git。
+- df306ee4e99e54cde281a09a02a3e2e569a135b7：Fedora Python 28 项检查 pass（logs/stage23-python.log/.rc）。包含实际三个 Chart、完整所选脱敏应用适配、SQL 边界和共享 CRD conversion=None 默认化；Webhook/版本/schema 差异仍拒绝。最终运行候选 private/application-candidate-6 与 sql-candidate-5，旧候选不覆盖。
+- logs/p5-crds-retry.log/.rc=0：已安装共享 CRD schema 兼容复用，无写入；logs/p5-init-retry.log/.rc=0：73 条迁移全部按摘要跳过，无重新生成凭据或重置首管；logs/p5-wait-retry.log/.rc=0：20 个声明 Deployment rollout Ready。另核对 2 个生成的 Envoy Deployment Ready、两个 Gateway Programmed=True。
+- logs/p5-entry-checks.json：通过正确 hostname/SNI、现有 CA 和 .10 NodePort 检查 Console/BOSS 根路径、API/Session /healthz，均 HTTP 200/curl rc=0。S3 匿名根路径 403；推理根路径 404（无已发布真实模型），二者是预期结果，不代表业务推理成功。
+- logs/p5-authenticated-api-check.json：`GET /api/v1/admin/tenants` 匿名 401、真实登录 token 200。logs/p5-s3-own-policy-check.json：专用账号通过公开 TLS 入口创建本任务空桶 ani-fast-bootstrap（PUT 200），HEAD 200；原 RustFS 根账号、Milvus 限桶账号及其他桶未修改。
+- 旧镜像启动日志会输出带 userinfo 的 NATS URL。原始诊断只留本任务 private；对外结果脱敏，不复制此日志到交付公开证据，也不因此轮换共享 NATS 凭据或重编镜像。
+- 仍需人工：客户端 DNS/hosts、信任公共 CA、浏览器以 admin 登录。真实模型/embedding、动态模型任务、KB/RAG 完整业务、外部开物集成未配置/未验收；没有虚假模型。动态租户第一次使用时，需将项目限定的 ani-fast-pull 拉取 Secret 与 ani-inference-fetcher ServiceAccount 配到该租户 namespace。裸机首装 not_run。
+
+## 候选冻结与交付构建
+
+- 源码冻结 SHA：df306ee4e99e54cde281a09a02a3e2e569a135b7。Fedora detached HEAD 一致、受跟踪源码干净；局部回归与分步重试通过后开始一次 `bash kubekey/scripts/build-code.sh`，该入口含完整 gate，不另跑 gate。
+- 完整命令/rc/首错在 logs/final-build-command.txt、final-build.log、final-build.rc。11 份底座 Chart 从已有 artifact-c165ae7-candidate-r2 按原 components.lock.yaml 摘要核验后复用到本任务 cache；ANI_CHARTS_OFFLINE=1，不修改旧锁、不重拉材料、不清共享缓存。
+- 首次完整构建 rc=1，未产生代码包：`TestRoleTasksUseTheContextKeysTheInstallerProvides` 的既有白名单尚不认识新应用专用 .ani.system 上下文。ff8a1f7 把该范围加入生成器存在性检查，并在开关选择测试中核对实际 enabled/package_root 值；不跳过 role 或删测试。Fedora gofmt 发现同一已改测试文件的三行旧格式漂移，2cbed2f 仅应用审阅过的格式 diff。最终冻结 SHA 更新为 2cbed2f392aa5c6184f2d2177c14b54337ab4f6b；产品脚本/渲染工具与已部署的 df306ee 一致。
+- logs/stage25-go.log/.rc=0：新增上下文 guard 与三个 ANISystem 检查通过，gofmt diff 为空。随后同一 2cbed2f detached SHA、受跟踪源码干净，执行 `build-code.sh` 复验，logs/final-build-2.log/.rc=0：无标签/builtin 编译、vet、两种应用测试、连接器/CLI 测试、全部现有行为套件和发布 shell 语法均通过。不是另跑一次 gate；完整 build 内含 gate。
+- 测试、构建、制包前后源码树指纹始终为 b366bffb032bc770c88a17741584eef575f0e701cc322b41aa941b54a57a5568。代码包 release/code-2cbed2f；其中 ani-system.sh 与共享 application.sh 字节相同。
+- release/application-2cbed2f 来自已验证 candidate-6，包含 73 份已记账初始化文件、实际镜像锁、CRD、清单和 SOURCE.json，文件 0600/目录 0700。应用包含 Secret，仅受限传输；节点密码、kubeconfig、Harbor admin 访问文件及原始诊断不在交付包。
+- 两个归档均解到本任务 tmp/delivery-archive-check 并完整核对内部 SHA256SUMS，通过。根交付校验 logs/delivery-release-check.log；公开材料只有实际镜像映射、公共 CA、身份清单与脱敏 JSON 证据。
+- 用最终代码包内脚本执行 `--stage wait`（含 preflight），logs/delivery-built-entry-wait.log/.rc=0，20 个声明 Deployment 再次 Ready；既有 .10 锁已释放。logs/delivery-migration-count.txt 回读 73。制包未重放 install.sh 或全量重新部署。
+
+| 归档 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| ani-system-fast-20260930-application-2cbed2f.tar.gz | 1847555 | 27604f773db49702bb3c800ea70c9337751bf8b4823bc6e64da9904234331eb6 |
+| ani-system-fast-20260930-code-2cbed2f.tar.gz | 51265855 | ad6fce3bc92d278439cd8e5efec01f8a506e52c784cb33322dcee9d393979304 |
+
+Fedora 交付根为 /home/chabking/ani-installer-runs/ani-system-fast-20260930/release；本机接收目录 /home/chabking/ani-installer-delivery/ani-system-fast-20260930。原镜像 ZIP 保持 incoming 原路径不变。收尾结果/交付说明为纯文档更新，不重编代码包。人工与已知问题统一列于 DELIVERY.md 与本记录 P5 段，不另外建立任务体系。

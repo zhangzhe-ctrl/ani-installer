@@ -6,7 +6,7 @@
 
 用户已批准其实际下载的 ANI 镜像版本。旧 `capturedRuntimeIdentityUnconfirmed` 或 `not_matched_needs_review` 表示未与参考运行环境匹配，本轮记为“用户批准采用实际下载身份”，不是要求重拉旧版或再次批准。`verify` 检查包内实际摘要，不比较旧镜像请求表；相同 tag 不能替代实际内容摘要。
 
-本轮没有上传实际镜像给本方案作者，所以以下文件名为之前工具的输出约定；如用户有其它实际格式或路径，先识别再使用对应现有工具。
+本轮实际输入为 Fedora incoming/ani-images-download.zip，已识别为 Skopeo dir 集合并完成核验/导入。最终交付、现场重试和入口见 [DELIVERY.md](../DELIVERY.md)，真实结果见 [WORK-RESULTS.md](../WORK-RESULTS.md)。以下工具仍用于新现场准备匹配材料，不代表可照搬本现场凭据。
 
 ## 2. 核包与解包
 
@@ -54,9 +54,9 @@ python3 "$TASK_DIR/scripts/ani_images.py" push \
 
 校验通过不是发布者签名验证，也不是ANI启动通过。实际镜像的配置/API/迁移兼容性仍在P2～P5按最小范围核实。
 
-## 5. 应用候选入口（尚未现场验收）
+## 5. 应用入口
 
-`render_application.py` 在 Fedora 读取仓外脱敏参考、已回读 Harbor 的实际应用锁、有限站点输入和私有 runtime JSON；输出本任务独立应用材料。它拒绝未导入的 digest、错误 Session key 长度、残余旧依赖与未提供的 Secret key。当前仍需完成业务网关/AI Gateway 渲染、所选 SQL/schema 和现场参数才能产出完整应用包；不能把候选工具当作完成的部署包。
+`render_application.py` 在 Fedora 读取仓外脱敏参考、已回读 Harbor 的实际应用锁、有限站点输入和私有 runtime JSON；输出独立应用材料。它拒绝未导入的 digest、错误 Session key 长度、残余旧依赖与未提供的 Secret key。本轮已组合业务网关、73 条 SQL/schema 及现场参数部署并完成必要入口检查；生成清单含 Secret，必须保持私有。新现场仍需单独准备匹配材料。
 
 实际应用安装与重试使用代码包的 `ani-system.sh`（源码唯一入口为 `kubekey/builtin/core/roles/ani/system/templates/application.sh`）。参数为 `--package APP_PACKAGE --kubeconfig FILE --stage preflight|crds|prepare|controllers|init|core|apps|gateway|wait|all`。运行前必须在已核对的既有实验锁内执行，不能创建另一把锁、直接重放首装或覆盖别人资源。脚本会比较目标节点地址、可选 cluster UID，并拒绝接管同名非本任务资源；初始化失败会停止后续步骤，按数据库迁移摘要记录跳过已成功文件。
 
