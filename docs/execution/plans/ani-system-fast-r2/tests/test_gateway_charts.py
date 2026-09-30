@@ -1,5 +1,6 @@
 """Offline contract check against downloaded Charts; never a release package."""
 import json
+import base64
 import os
 from pathlib import Path
 import sys
@@ -10,6 +11,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
 import render_gateways
+import render_application
 
 
 @unittest.skipUnless(os.environ.get('ANI_CHART_TEST_BUNDLE'), 'Fedora downloaded Chart input required')
@@ -46,6 +48,28 @@ class GatewayChartTest(unittest.TestCase):
                 self.assertEqual(gateway['spec']['listeners'][0]['protocol'], 'HTTPS')
             self.assertEqual(len([doc for doc in routes if doc['kind'] == 'HTTPRoute']), 4)
             self.assertFalse(any(doc['kind'] == 'ServiceAccount' and doc['metadata']['name'] == 'default' for doc in routes))
+            reference = Path(os.environ['ANI_CHART_TEST_REFERENCE'])
+            contracts = json.loads((reference / 'secrets/contracts.json').read_text())
+            secrets = []
+            for contract in contracts:
+                if contract['namespace'] != 'ani-system' or contract['type'] != 'Opaque':
+                    continue
+                data = {key: base64.b64encode(b'isolated-test-value').decode() for key in contract['keys']}
+                if contract['name'] == 'ani-session-gateway-secrets':
+                    data['ticket-encryption-key'] = base64.b64encode(b'x' * 32).decode()
+                secrets.append({'apiVersion': 'v1', 'kind': 'Secret',
+                    'metadata': {'name': contract['name'], 'namespace': 'ani-system'}, 'data': data})
+            site.update({'s3_endpoint': 'https://s3.example.invalid', 's3_public_endpoint': 'https://s3.example.invalid',
+                'milvus_endpoint': 'milvus.ani-platform.svc:19530', 'prometheus_url': 'http://prometheus.ani-platform.svc',
+                'loki_url': 'http://loki.ani-platform.svc', 'storage_class': 'test-storage',
+                'target_nodes': ['172.16.101.10', '172.16.101.11', '172.16.101.12']})
+            application_output = Path(directory) / 'application'
+            render_application.render(reference, site, lock, {'secrets': secrets, 'site_ca_pem': 'test-only-ca'},
+                                      application_output, output)
+            app_docs = [doc for stage in ('prepare', 'core', 'apps', 'gateway')
+                        for doc in yaml.safe_load_all((application_output / (stage + '.yaml')).read_text()) if doc]
+            deployments = {doc['metadata']['name'] for doc in app_docs if doc['kind'] == 'Deployment'}
+            self.assertTrue(render_application.CORE | render_application.APPS <= deployments)
 
 
 if __name__ == '__main__':
