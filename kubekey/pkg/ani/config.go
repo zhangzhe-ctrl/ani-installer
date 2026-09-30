@@ -533,7 +533,7 @@ func containsString(values []string, needle string) bool {
 // ANISystem selects the separate, pre-rendered legacy application package.
 // Its images and initialization material do not change the foundation lock.
 type ANISystem struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled     bool   `yaml:"enabled"`
 	PackageRoot string `yaml:"packageRoot"`
 }
 
@@ -553,7 +553,7 @@ type ClusterConfig struct {
 	Components     Components     `yaml:"components"`
 	Storage        Storage        `yaml:"storage"`
 	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
-	ANISystem ANISystem `yaml:"aniSystem"`
+	ANISystem      ANISystem      `yaml:"aniSystem"`
 }
 
 // ObjectStorageProvider resolves the legacy absence once for all consumers.
@@ -1650,7 +1650,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"nodelocaldns": map[string]any{"enabled": false},
 		},
 		"ani": map[string]any{
-			"system": map[string]any{"enabled": c.ANISystem.Enabled, "package_root": c.ANISystem.PackageRoot},
+			"system":      map[string]any{"enabled": c.ANISystem.Enabled, "package_root": c.ANISystem.PackageRoot},
 			"registry":    registry,
 			"images":      imageRefs,
 			"image_parts": imageParts,
