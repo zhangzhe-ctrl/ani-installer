@@ -21,7 +21,7 @@
 | P4 应用启动 | not_run | 未向集群写入资源 |
 | P5 Ready/API/前端 | not_run | 无现场成功证据 |
 | 完整 gate/build | not_run | 候选尚未完成现场联调/冻结；不提前重复制包 |
-| 推送/PR | in_progress | 按用户指定改用 SSH 443 推送成功；PR 尚未创建 |
+| 推送/PR | draft | 按用户指定改用 SSH 443 推送成功；草稿 PR #4，未合并 |
 | 人工登录 | manual_not_run | 不能代称用户登录通过 |
 | 裸机从零首装 | not_run | 本轮不重置现有集群 |
 | 完整业务验收 | not_verified | 用户后续验证 |
@@ -61,3 +61,12 @@
 - 只读证据：logs/cluster-access.log/.rc、cluster-nodes.txt、cluster-inventory.txt、cluster-crds.txt、postgres-inventory.log；实际 cluster UID 保存在 materials/cluster-uid.txt。
 
 本轮私有证据根：/home/chabking/ani-installer-runs/ani-system-fast-20260930/；输入校验 logs/p1-input.log；局部 tests logs/stage1-python.log、stage1-python.rc。
+
+## 用户要求的安全暂停（2026-09-30）
+
+- 已按用户关机要求暂停；没有本任务后台执行进程，没有持有实验锁。未执行 Harbor 导入、集群资源写入或业务库初始化；集群只读访问与 PG 清单检查已结束。
+- 本机源码提交：9bb9d583481a0b00a284056ecd114bfb972d2bff；本机任务树 /home/chabking/workspace/ani-installer-ani-system-fast-20260930。Fedora 执行树 /home/chabking/workspace/ani-installer-ani-system-fast-20260930-exec-2 停留在同一完整 SHA、受跟踪源码干净。本次暂停记录为后续纯文档提交，不需要重跑构建。
+- ab0e5613c0b89bddab09b83b8f45b12bb2eef4e6 的 Fedora 局部检查：Python 24 项、Go 3 项、Bash 语法均通过，bcrypt 工具 gofmt diff 为空。新增 TLS S3 入口和 NodePort 冲突检查仍仅为候选，未部署。
+- 9bb9d583481a0b00a284056ecd114bfb972d2bff 的 SQL 边界检查 3 项通过，72 份初始化/迁移 SQL 已准备到 private/sql-candidate-2，未执行。首次准备失败与限定事务适配修复保留在 logs/sql-prepare-1.log/.rc、sql-prepare-2.log/.rc、stage10-sql-tests.log/.rc。
+- 首次私有种子、JWT、首管 bcrypt 及节点/Harbor 访问材料均在 Fedora 本任务 private 下保留，恢复时复用，不重新生成或轮换；不在 Git、日志、聊天中记录凭据内容。原镜像包不变，actual-images.lock.json 仍为 registryImport=not_run。
+- 草稿 PR：https://github.com/zhangzhe-ctrl/ani-installer/pull/4；未合并。恢复先确认本机/远端 SHA、进程与既有实验协调入口，再继续 Harbor 项目权限及导入回读、实际站点配置、专用库初始化、分步部署和入口核验。完整 gate/build、人工登录与裸机首装仍 not_run；不能据局部检查宣称应用交付完成。
