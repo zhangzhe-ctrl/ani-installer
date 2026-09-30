@@ -1,0 +1,479 @@
+{
+  "formatVersion": 1,
+  "description": "从用户部署参考包提取；仅材料请求，不证明镜像可取得或部署已通过。",
+  "referenceArchive": "ani-system-reference-20260929.tar.gz",
+  "referenceSHA256": "d4a7389710dcfc6359b7728d5bd38bf025c8a36868954308acde638f58b0ad3c",
+  "platform": "linux/amd64",
+  "images": [
+    {
+      "id": "ani-auth-service",
+      "sourceRef": "docker.changqingyun.cn/ani/ani-auth-service@sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/ani-auth-service:fixlogin2-20260928"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/ani-auth-service@sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-auth-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-auth-service:fixlogin2-20260928",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ani-boss-console",
+      "sourceRef": "docker.changqingyun.cn/ani/ani-boss-console@sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/ani-boss-console:202609171009"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/ani-boss-console@sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-boss-console",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-boss-console:202609171009",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ani-console",
+      "sourceRef": "docker.changqingyun.cn/ani/ani-console@sha256:dc2dc5b3a7cd1bb01c3c551ca1bc84bf75cbedaadc47707cbb652d7c61d69a3a",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/ani-console:202609291455"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/ani-console@sha256:dc2dc5b3a7cd1bb01c3c551ca1bc84bf75cbedaadc47707cbb652d7c61d69a3a"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-console",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-console:202609291455",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "dex",
+      "sourceRef": "docker.changqingyun.cn/mirror/dexidp/dex@sha256:3e35d5d0f7dbd33fbadc36a71ff58cf4097ab98d73d22f6cb9a6471a32e028af",
+      "specRefs": [
+        "ghcr.io/dexidp/dex:v2.40.0"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/mirror/dexidp/dex@sha256:3e35d5d0f7dbd33fbadc36a71ff58cf4097ab98d73d22f6cb9a6471a32e028af"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-dex",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "ghcr.io/dexidp/dex:v2.40.0",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ani-gateway",
+      "sourceRef": "docker.changqingyun.cn/ani/ani-gateway:kb-20260930-listfilter",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/ani-gateway:kb-20260930-listfilter"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:77967b58723b098ec73843bf4d1afb3365073a32dc17297f11375e2d829e2708"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-gateway:kb-20260930-listfilter",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "metering-service",
+      "sourceRef": "docker.changqingyun.cn/ani/metering-service@sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/metering-service:dev-20260924-metering-events"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/metering-service@sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-metering-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/metering-service:dev-20260924-metering-events",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "reconcile-worker",
+      "sourceRef": "docker.changqingyun.cn/ani/reconcile-worker@sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/reconcile-worker:dev-20260928-quota-readrepair"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/reconcile-worker@sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-reconcile-worker-a",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/reconcile-worker:dev-20260928-quota-readrepair",
+          "source": "spec"
+        },
+        {
+          "resource": "ani-system/Deployment/ani-reconcile-worker-b",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/reconcile-worker:dev-20260928-quota-readrepair",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ani-session-gateway",
+      "sourceRef": "docker.changqingyun.cn/ani/ani-session-gateway@sha256:552101eaa1cb6e1b8d7ad0670451b32f896ec4a39260d19092b0e3bed34ad5cd",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/ani-session-gateway:d0353b80383b"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/ani-session-gateway@sha256:552101eaa1cb6e1b8d7ad0670451b32f896ec4a39260d19092b0e3bed34ad5cd"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/ani-session-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-session-gateway:d0353b80383b",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "inference-gateway-publisher",
+      "sourceRef": "docker.changqingyun.cn/ani/inference-gateway-publisher:kb-20260929-internalresolve",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/inference-gateway-publisher:kb-20260929-internalresolve"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:772bec749ef8ee53ff267034afb9706d1bc5f2861363cc0a1f4a0f16d1e23015"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/inference-gateway-publisher",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/inference-gateway-publisher:kb-20260929-internalresolve",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "inference-service",
+      "sourceRef": "docker.changqingyun.cn/ani/inference-service:dev-20260929-merge-6c16deee-sse",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/inference-service:dev-20260929-merge-6c16deee-sse"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:8da9fea7532f4ed5091ba85e5299780c054dc98590034fca274d611ca45ebf39"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/inference-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/inference-service:dev-20260929-merge-6c16deee-sse",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "kb-service",
+      "sourceRef": "docker.changqingyun.cn/ani/kb-service:kb-20260930-listfilter",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/kb-service:kb-20260930-listfilter"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:2768b0b9afc9ed0a5067e2a977babb30ee7531d78b0d8becb5045be8790fe5d4"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/kb-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/kb-service:kb-20260930-listfilter",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "model-import-worker-service",
+      "sourceRef": "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf"
+      ],
+      "identityBasis": "spec-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/model-import-worker",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "model-service",
+      "sourceRef": "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9"
+      ],
+      "identityBasis": "spec-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/model-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "platform-settings-service",
+      "sourceRef": "docker.changqingyun.cn/ani/platform-settings-service@sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/platform-settings-service:emailfix-20260928"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/platform-settings-service@sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/platform-settings-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/platform-settings-service:emailfix-20260928",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "rag-engine",
+      "sourceRef": "docker.changqingyun.cn/ani/rag-engine@sha256:00034731d820c246a7a69e5513f12bd3683e63a42f19012bd44485fc6dd57094",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/rag-engine:dev-20260929-upstream-ac800701-flex"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/rag-engine@sha256:00034731d820c246a7a69e5513f12bd3683e63a42f19012bd44485fc6dd57094"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/rag-engine",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/rag-engine:dev-20260929-upstream-ac800701-flex",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "task-service",
+      "sourceRef": "docker.changqingyun.cn/ani/task-service@sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/task-service:dev-20260924-metering-events"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/task-service@sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/task-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/task-service:dev-20260924-metering-events",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "tenant-service",
+      "sourceRef": "docker.changqingyun.cn/ani/tenant-service@sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/tenant-service:dev-20260923-direct-quota"
+      ],
+      "capturedRuntimeIDs": [
+        "docker.changqingyun.cn/ani/tenant-service@sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f"
+      ],
+      "identityBasis": "captured-repository-digest",
+      "origins": [
+        {
+          "resource": "ani-system/Deployment/tenant-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/tenant-service:dev-20260923-direct-quota",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "model-fetcher",
+      "sourceRef": "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501"
+      ],
+      "capturedRuntimeIDs": [],
+      "identityBasis": "spec-digest",
+      "origins": [
+        {
+          "resource": "ani-system/ConfigMap/ani-inference-materialization",
+          "path": "/data/model_fetcher_image_ref",
+          "reference": "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+          "source": "dynamic-config"
+        }
+      ]
+    },
+    {
+      "id": "model-import-worker-dynamic",
+      "sourceRef": "docker.changqingyun.cn/ani/model-import-worker@sha256:52f347e56ff11ae78cd95ec92be5c1629daa00fab1cf068acad7dc2220b34e55",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/model-import-worker@sha256:52f347e56ff11ae78cd95ec92be5c1629daa00fab1cf068acad7dc2220b34e55"
+      ],
+      "capturedRuntimeIDs": [],
+      "identityBasis": "spec-digest",
+      "origins": [
+        {
+          "resource": "ani-system/ConfigMap/ani-inference-materialization",
+          "path": "/data/model_import_worker_image_ref",
+          "reference": "docker.changqingyun.cn/ani/model-import-worker@sha256:52f347e56ff11ae78cd95ec92be5c1629daa00fab1cf068acad7dc2220b34e55",
+          "source": "dynamic-config"
+        }
+      ]
+    },
+    {
+      "id": "envoy-authz-adapter",
+      "sourceRef": "docker.changqingyun.cn/ani/envoy-authz-adapter:public-model-body-20260909",
+      "specRefs": [
+        "docker.changqingyun.cn/ani/envoy-authz-adapter:public-model-body-20260909"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:c46372f47866cd94101cace2203f3fbbf2ae031ea78f441e6a6736e4255cdd12"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-aigw/Deployment/envoy-authz-adapter",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/envoy-authz-adapter:public-model-body-20260909",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "envoy-proxy",
+      "sourceRef": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+      "specRefs": [
+        "docker.io/envoyproxy/envoy:distroless-v1.36.3"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:5341c12c06faac28b80f11658e3792c5f63f43c2e13ca3bf5bce9dbf0ce78c35"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "ani-aigw/EnvoyProxy/ani-aigw",
+          "path": "/spec/provider/kubernetes/envoyDeployment/container/image",
+          "reference": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+          "source": "spec"
+        },
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-ani-aigw-ani-aigw-28474462",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ai-gateway-controller",
+      "sourceRef": "docker.io/envoyproxy/ai-gateway-controller:v1.0.0",
+      "specRefs": [
+        "docker.io/envoyproxy/ai-gateway-controller:v1.0.0"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:9e876ec3567b2f4b298e6739056d888dad0cab4bd7d2a9ca7619636b965b8a31"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "envoy-ai-gateway-system/Deployment/ai-gateway-controller",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/ai-gateway-controller:v1.0.0",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "envoy-gateway",
+      "sourceRef": "docker.io/envoyproxy/gateway:v1.8.1",
+      "specRefs": [
+        "docker.io/envoyproxy/gateway:v1.8.1"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:d3966c081c34fe27d39901f9b313166665c23904be5bc1f5953364c978d425f2"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-ani-aigw-ani-aigw-28474462",
+          "path": "/spec/template/spec/containers/1/image",
+          "reference": "docker.io/envoyproxy/gateway:v1.8.1",
+          "source": "spec"
+        },
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/gateway:v1.8.1",
+          "source": "spec"
+        }
+      ]
+    },
+    {
+      "id": "ai-gateway-extproc",
+      "sourceRef": "docker.io/envoyproxy/ai-gateway-extproc:v1.0.0",
+      "specRefs": [
+        "docker.io/envoyproxy/ai-gateway-extproc:v1.0.0"
+      ],
+      "capturedRuntimeIDs": [
+        "sha256:0f962f47504bb1bc1fb12fdaca47152d61dfce1023b9a41aae612b5aab026aa1"
+      ],
+      "identityBasis": "tag-resolve-at-export",
+      "origins": [
+        {
+          "resource": "envoy-gateway-system/Pod/envoy-ani-aigw-ani-aigw-28474462-6b4976dcbd-4zzmb",
+          "path": "/containers/image",
+          "reference": "docker.io/envoyproxy/ai-gateway-extproc:v1.0.0",
+          "source": "runtime-only"
+        }
+      ]
+    }
+  ]
+}
