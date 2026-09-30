@@ -1,0 +1,42 @@
+Goal：完成旧ANI的P1～P5快速部署及installer末尾接入。本轮使用用户已下载的镜像，在172.16.101.10/.11/.12现有集群安装应用；允许少量有记录的人工处理。重构后旧ANI会退役，不建设长期应用管理平台，不重装底座。
+
+【1 先建独立分支和worktree】
+任务包解压在本机~/Downloads/ani-system-fast-r2/，或用户实际下载位置。先读本包README.md、PLAN.md和适用AGENTS；本goal覆盖旧资料中冲突的版本、目标与执行要求。
+本机定位zhangzhe-ctrl/ani-installer，先看git status和git worktree list。核对origin/main并记录本轮基线；不将其他功能未合并分支或脏树当基线。必须新建feature/ani-system-fast-20260930及旁路worktree（建议原仓库同级ani-installer-ani-system-fast-20260930），进入新worktree工作；名字已占用则新加后缀，不能接管别的任务。不要在原工作树git switch，不reset/clean/stash、不搬其他未提交修改、不重写历史。
+只把本包方案、工具和所需文本复制到新树docs/execution/plans/ani-system-fast-r2/；reference中的归档原件放仓外，README列出的选择性复制范围为准。不要为放任务包修改并行功能工作树。
+ANI源码只读参照已提交版本，不默认重编镜像；真需改ANI源码时另建它自己的分支/worktree，不修改并行工作树。一个主agent负责集成。
+
+【2 本机写与交，Fedora验与跑】
+本机仅阅读/编辑源码、测试代码、文档，以及Git提交推送和必要传输。渲染、格式化/生成、测试、编译、镜像校验导入、制包、SQL和集群命令全部通过ssh fedora执行。fedora=chabking@172.16.101.31，使用已有sshconfig，不读/复制私钥，不关闭主机校验。
+Fedora从已有仓库另建专属执行worktree：/home/chabking/workspace/ani-installer-ani-system-fast-20260930-exec；占用则新加后缀。按本机每个阶段提交的完整SHA以detached HEAD执行，不切换其他Fedora开发树，不在Fedora手改产品源码或commit/push。无GitHub网络时由本机传git bundle，远端fetch同一提交；不全仓覆盖、不反复访问不通网络。
+每轮开测前确认远端SHA和受跟踪源码无意外改动；原任务未结束不切SHA。远端发现问题回本机修，生成工具diff回本机审阅提交后复验。
+输入可复用/home/chabking/ani-installer-runs/ani-system-fast/incoming/；本轮输出隔离到/home/chabking/ani-installer-runs/ani-system-fast-20260930/的materials/private/logs/release。不覆盖并行任务或旧包，不清理共享缓存。
+
+【3 P1：实际下载镜像是本轮版本依据】
+用户已下载ANI镜像包，部分版本与旧探测不符，用户已明确批准以实际下载内容为准。不要要求再次批准同一差异，不重拉旧digest，不为匹配参考环境重编服务。
+先在incoming和已有已知路径定位用户包；只有无法定位才一次询问路径。核验归档及实际manifest/config/layer和架构，读取包内真实版本，建立“服务/动态用途→实际digest→内网引用”映射。旧清单、runtime ID和源码SHA仅参考；记录版本替换，不冒称与旧环境同构。版本变化许可不等于允许损坏文件、缺层、错误架构或伪造摘要；原包只读保留，新应用锁另存。
+实际镜像的参数/API/数据库兼容性通过必要启动验证；优先小范围配置适配，不扩大历史整改。只有已证实该镜像无法满足必要功能才报告具体替代建议，不自行换版本。
+按实际包格式处理；若是原工具的Skopeo dir集合，用scripts/ani_images.py verify/push，不能docker load或hauler load外层包。导入现有可写Harbor的本任务项目并回读digest；不push到只读Hauler。图中所有静态、动态worker/fetcher、extproc和init镜像均使用实际映射，不能靠服务名随便合并两个不同用途版本。
+Chart优先复用已带材料，若和用户镜像确有不兼容则定点适配；不默认降回旧镜像。缺少必要Chart/工具/镜像时集中列补料项，已有材料复用，等待期间继续可做任务。
+
+【4 P2～P3：先模板、空库和核心入口】
+完整原部署参考归档在本包reference中，可传Fedora仓外并读取；已有相同原件直接复用。不再到旧参考集群采集，不直接apply整份脱敏包。
+固定一套namespace/Service和有限站点参数；删status/UID/旧clusterIP/PV节点绑定与实验对象，检查ConfigMap内层YAML/JSON。Dex修复被脱敏破坏的boolean/list；按实际镜像决定认证配置，不默认关闭鉴权。
+共享JWT签验/issuer、内部mint凭据、Session ticket、mTLS及依赖连接参数必须一致，首次生成后复用，不复制旧业务凭据。Session等字段长度/格式以本次镜像实际合同为准。
+使用现有PG/Valkey/NATS/RustFS或RGW/Milvus/监控日志，不改坏底座。S3的ANI adapter名按实际版本（参考为minio），配置HTTPS/CA、浏览器可达公开地址和ANI专用权限，不复用Milvus限桶密钥。
+先建本任务专用空业务库并明确迁移/运行账号。PG角色实例级共享：底座ani_app与旧迁移同名角色用途不同，不能修改共享owner、口令或权限来凑通过，业务服务不使用超级用户。已有同名库/对象查归属，不自动清空。
+选一条匹配实际镜像的Atlas/KB初始化顺序，避免重复执行历史脚本；首管按实际用户/角色/bcrypt语义创建，已有不重置。失败定位到具体SQL，允许固定小脚本/人工SQL；严重漂移只提出固定schema和seed的最小备选，不修完全部迁移体系，不搬旧数据。
+先让Auth/Gateway和必要认证依赖连新库、缓存、NATS启动，检查登录入口；人工未登录就写待人工，不能编造成功，也不因此停止其他可完成工作。
+
+【5 P4：其余应用与最薄installer接入】
+完成核心服务、Session、模型/推理/worker、KB/RAG、Console/BOSS及本版本必需业务Envoy/AI Gateway/authz。Dex按需，动态镜像纳入。不复制旧s05/s06/s07/reconcile-ha等测试依赖，不加vCluster/GPU/Kata/LWS/B08～B12或虚假模型。
+必要网关CRD/控制器、Secret/CA/RBAC先准备，再初始化、后端worker、路由与前端。业务Envoy独立于kcn专属实例；共享CRD只能兼容复用，不能强抢所有权或影响并行项目。
+仅加默认关闭ani-system开关、一个role和同一份可分步执行的应用脚本。原首装末尾调用；当前.10～.12通过相同应用脚本补装/重试，不重放install.sh。不改通用components execute扩锁，不篡改旧材料锁/run或伪造install-success。
+配置错误只修本任务应用，必要时重启其Deployment并记录；先联调可用再固化模板，不每改字段全量制包。保留客户首装接入和匹配应用材料的交付方式，但本轮不为了证明裸机流程重置现有集群。
+
+【6 现场并行边界、检查与结束】
+本轮目标固定.10～.12，Fedora负责控制；先只读确认身份、kubeconfig、已有应用与其他任务占用，再执行本任务新增应用资源/专用库初始化和必要重启。使用现有实验锁/协调方式，不造第二套锁。worktree隔离不等于集群隔离：资源同名或共享变更冲突时只暂停冲突项，不能抢占别人的应用/端口/CRD/数据库角色。
+不操作100.64.128.1或其他集群，不恢复VM快照、不清盘/清库/删已有PVC、不切CNI、不轮换共享凭据、不关闭TLS/鉴权/扫描保护。确需破坏性动作另行明确确认，不能从本轮应用安装推导授权。
+必要检查限于材料和参数、初始化结果、所选必要服务Ready、API/Console/BOSS入口；人工登录和业务验收单列。允许DNS/hosts/CA、首管、S3策略及个别配置人工处理，统一记WORK-RESULTS.md，不为每项另开任务体系。
+本次改动先局部回归，候选冻结后一次现有完整gate/build；build含gate就不另跑，纯文档不重编包。日志记录真实命令/rc/首错，SSH断开先查原任务，不重复启动或高频全量抓日志。
+本机按明确文件提交推送并创建本任务PR，不合并main；提交/CI成功不是提前停点。交付应用包/实际镜像映射、部署与重试命令、入口与凭据取得方式、分项结果/人工事项/已知问题。裸机首装未执行如实not_run，不影响本轮现有集群应用交付；必需服务失败不能写全通过。达标后停止，不扩展业务重构或承诺后台继续。

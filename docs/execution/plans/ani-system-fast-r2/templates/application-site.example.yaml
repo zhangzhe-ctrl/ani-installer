@@ -1,0 +1,22 @@
+# Fedora preparation input; this does not change the kk foundation schema.
+# Fill from the read-only cluster inventory and the actual image contracts.
+target_nodes: [172.16.101.10, 172.16.101.11, 172.16.101.12]
+cluster_uid: __READ_BACK_KUBE_SYSTEM_UID__
+kubernetes_service_ip: __READ_BACK_KUBERNETES_SERVICE_IP__
+console_url: __CONSOLE_ORIGIN__
+boss_url: __BOSS_ORIGIN__
+api_url: __API_ORIGIN__
+websocket_url: __SESSION_PUBLIC_URL__
+inference_url: __INFERENCE_HTTPS_ORIGIN__
+entry_node_port: 30443 # Confirm unused or owned by this task before any write.
+inference_node_port: 30444
+s3_endpoint: __HTTPS_INTERNAL_ENDPOINT__
+s3_public_endpoint: __HTTPS_BROWSER_REACHABLE_ENDPOINT__
+milvus_endpoint: __EXISTING_MILVUS_ENDPOINT__
+prometheus_url: __EXISTING_PROMETHEUS_URL__
+prometheus_namespace: __EXISTING_PROMETHEUS_NAMESPACE__
+loki_url: __EXISTING_LOKI_URL__
+storage_class: __EXISTING_STORAGE_CLASS__
+# Fixed per-Deployment adaptations only, confirmed by actual startup.
+deployment_env: {}
+configmap_data: {}

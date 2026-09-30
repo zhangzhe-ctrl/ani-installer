@@ -1,0 +1,20 @@
+---
+- name: ANI System | Require the application package and declared kubeconfig
+  command: >-
+    test -d '{{ .ani.system.package_root }}'
+    && test -f '{{ .ani.run.kubeconfig }}'
+
+- name: ANI System | Prepare the application entrypoint
+  command: install -d -m 0700 /etc/kubernetes/ani/system
+
+- name: ANI System | Copy the shared application script
+  template:
+    src: application.sh
+    dest: /etc/kubernetes/ani/system/application.sh
+
+- name: ANI System | Install the separate application package
+  command: >-
+    bash /etc/kubernetes/ani/system/application.sh
+    --package '{{ .ani.system.package_root }}'
+    --kubeconfig '{{ .ani.run.kubeconfig }}'
+    --stage all

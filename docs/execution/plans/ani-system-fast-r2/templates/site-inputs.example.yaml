@@ -1,0 +1,18 @@
+# 仅为待填输入表：不是当前kk schema，不可直接kubectl apply。
+# 字段按实际镜像与实现映射，不建立新的通用配置DSL。
+target_nodes: [172.16.101.10, 172.16.101.11, 172.16.101.12]
+execution_host: fedora
+application_namespace: ani-system
+kubeconfig_file: __FEDORA_VERIFIED_PRIVATE_PATH__
+image_authority: user_downloaded_bundle
+bundle_path: __FEDORA_ACTUAL_INPUT__
+image_map_file: __FEDORA_VERIFIED_IMAGE_MAP__
+application_database: __DEDICATED_EMPTY_DB__
+runtime_secrets_file: __PRIVATE_PATH_NOT_GIT__
+public_urls:
+  console: __ACTUAL_USER_REACHABLE_URL__
+  boss: __ACTUAL_USER_REACHABLE_URL__
+  api: __ACTUAL_USER_REACHABLE_URL__
+  websocket: __MATCH_ACTUAL_ORIGIN__
+  object_store: __BROWSER_REACHABLE_ENDPOINT__
+model_providers: not_configured

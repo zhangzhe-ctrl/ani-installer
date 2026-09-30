@@ -1,0 +1,32 @@
+target_nodes: [172.16.101.10, 172.16.101.11, 172.16.101.12]
+console_url: https://console.ani.test:30443
+boss_url: https://boss.ani.test:30443
+api_url: https://api.ani.test:30443
+websocket_url: wss://session.ani.test:30443/api/v1/realtime
+inference_url: https://inference.ani.test:30444
+s3_endpoint: https://ani-rustfs-svc.ani-platform.svc:9000
+s3_public_endpoint: https://s3.ani.test:30443
+milvus_endpoint: ani-milvus.ani-platform.svc:19530
+prometheus_url: http://ani-metrics-prometheus.ani-observability.svc:9090
+prometheus_namespace: ani-observability
+loki_url: http://ani-loki.ani-observability.svc:3100
+storage_class: ani-block
+entry_node_port: 30443
+inference_node_port: 30444
+image_pull_secret: ani-fast-pull
+# The preparation command fills kubernetes_service_ip and cluster_uid from
+# the confirmed cluster; credentials stay in the private runtime JSON.
+deployment_env:
+  ani-gateway:
+    KAIWU_CONSOLE_PUBLIC_URL: ''
+    KAIWU_BOSS_PUBLIC_URL: ''
+    INSTANCE_OBSERVABILITY_EXEC_BASE_URL: wss://api.ani.test:30443/api/v1
+    HARBOR_ENDPOINT: https://172.16.101.10:30003
+    HARBOR_USERNAME:
+      secretKeyRef: {name: ani-fast-registry-runtime, key: username}
+    HARBOR_PASSWORD:
+      secretKeyRef: {name: ani-fast-registry-runtime, key: password}
+    KAIWU_CONSOLE_SECRET:
+      secretKeyRef: {name: ani-fast-kaiwu-runtime, key: console_secret}
+    KAIWU_BOSS_SECRET:
+      secretKeyRef: {name: ani-fast-kaiwu-runtime, key: boss_secret}

@@ -530,6 +530,13 @@ func containsString(values []string, needle string) bool {
 	return false
 }
 
+// ANISystem selects the separate, pre-rendered legacy application package.
+// Its images and initialization material do not change the foundation lock.
+type ANISystem struct {
+	Enabled     bool   `yaml:"enabled"`
+	PackageRoot string `yaml:"packageRoot"`
+}
+
 type ClusterConfig struct {
 	Name string `yaml:"name"`
 	// Profile bounds how far the install chain runs:
@@ -546,6 +553,7 @@ type ClusterConfig struct {
 	Components     Components     `yaml:"components"`
 	Storage        Storage        `yaml:"storage"`
 	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
+	ANISystem      ANISystem      `yaml:"aniSystem,omitempty" json:"ANISystem,omitzero"`
 }
 
 // ObjectStorageProvider resolves the legacy absence once for all consumers.
@@ -1187,6 +1195,14 @@ func storageNodesForTemplate(s Storage) []map[string]any {
 }
 
 func Validate(c ClusterConfig) error {
+	if c.ANISystem.Enabled {
+		if installProfile(c.Profile) == "base" {
+			return fmt.Errorf("aniSystem requires profile=full")
+		}
+		if !filepath.IsAbs(c.ANISystem.PackageRoot) || strings.ContainsAny(c.ANISystem.PackageRoot, "'\"\n\r") {
+			return fmt.Errorf("aniSystem.packageRoot must be an absolute path without quotes or newlines")
+		}
+	}
 	if strings.TrimSpace(c.Name) == "" {
 		return fmt.Errorf("name is required")
 	}
@@ -1634,6 +1650,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"nodelocaldns": map[string]any{"enabled": false},
 		},
 		"ani": map[string]any{
+			"system":      map[string]any{"enabled": c.ANISystem.Enabled, "package_root": c.ANISystem.PackageRoot},
 			"registry":    registry,
 			"images":      imageRefs,
 			"image_parts": imageParts,
@@ -1855,6 +1872,8 @@ func LocalImageReferences(table ImageTable, registry string) (map[string]string,
 // never drift from what a real install runs.
 func aniRoleEnabled(role string, c ClusterConfig) bool {
 	switch role {
+	case "system":
+		return c.ANISystem.Enabled && installProfile(c.Profile) != "base"
 	case "kcn", "envoy", "smoke":
 		// The playbook gates these three on the network stack ONLY: a base
 		// profile still installs the kcn CNI, its dedicated Envoy and the smoke

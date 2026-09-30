@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "charts": [
+    {
+      "id": "envoy-gateway",
+      "name": "gateway-helm",
+      "source": "oci://docker.io/envoyproxy/gateway-helm",
+      "version": "v1.8.1"
+    },
+    {
+      "id": "ai-gateway-crds",
+      "name": "ai-gateway-crds-helm",
+      "source": "oci://docker.io/envoyproxy/ai-gateway-crds-helm",
+      "version": "v1.0.0"
+    },
+    {
+      "id": "ai-gateway",
+      "name": "ai-gateway-helm",
+      "source": "oci://docker.io/envoyproxy/ai-gateway-helm",
+      "version": "v1.0.0"
+    }
+  ]
+}
