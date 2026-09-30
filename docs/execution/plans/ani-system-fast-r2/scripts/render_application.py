@@ -164,6 +164,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                         if item['name'] in ('METERING_PROMETHEUS_URL', 'PLATFORM_SERVICE_HEALTH_PROMETHEUS_URL'):
                             values[item['name']] = site['prometheus_url']
                         if item['name'] == 'INSTANCE_OBSERVABILITY_LOKI_URL': values[item['name']] = site['loki_url']
+                        if item['name'] == 'INFERENCE_AI_GATEWAY_PUBLIC_BASE_URL': values[item['name']] = site['inference_url']
                         if item['name'].startswith(('AUTH_OIDC_', 'VCLUSTER_', 'VLLM_')): values[item['name']] = None
                         if item['name'] in ('K8S_CLUSTER_PROVIDER_MODE', 'K8S_CLUSTER_PROXY_MODE'): values[item['name']] = 'local'
                         if item['name'] == 'GPU_INVENTORY_PROVIDER': values[item['name']] = 'not_configured'
