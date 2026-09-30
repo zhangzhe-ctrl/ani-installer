@@ -196,6 +196,11 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                 doc['spec']['ingress'][0]['from'] = [
                     {'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': site['prometheus_namespace']}},
                      'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'prometheus'}}}]
+            if kind == 'NetworkPolicy' and name == 'inference-gateway-publisher':
+                for rule in doc['spec'].get('egress', []):
+                    if any(p['port'] == 5432 for p in rule.get('ports', [])):
+                        rule['to'] = [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'ani-platform'}},
+                                       'podSelector': {'matchLabels': {'app': 'postgresql'}}}]
             if kind == 'Service' and name in ('ani-console', 'ani-boss-console', 'ani-gateway', 'ani-session-gateway-websocket'):
                 doc['spec']['type'] = 'ClusterIP'
                 doc['spec'].pop('externalTrafficPolicy', None)
