@@ -16,7 +16,7 @@
 | P1 输入校验 | pass | 24 linux/amd64 镜像、3 Chart；实际锁单独保存 |
 | P1 Harbor 导入/回读 | pass | 24 个实际 manifest digest 保留并从本任务私有项目回读；原包不变 |
 | P2 配置 | in_progress | 候选渲染工具；现场参数、稳定私有凭据尚未完成 |
-| P3 空库、首管与核心入口 | not_run | PG 只读核对完成；未执行初始化 SQL |
+| P3 空库、首管与核心入口 | partial | 专用库 72 条迁移及首管关联已核对；核心入口待启动验证 |
 | P4 installer 接入源码 | candidate | 默认关闭开关、一个 role、同一分步脚本；Go 局部检查通过 |
 | P4 应用启动 | not_run | 未向集群写入资源 |
 | P5 Ready/API/前端 | not_run | 无现场成功证据 |
@@ -77,3 +77,11 @@
 - af182066dcb6b51d04da83344b4e21f4f5f96bd3：创建私有 Harbor 项目 ani-system-fast-20260930（project_id=6），专用 pull robot 仅限该项目，凭据留 private/access；不修改共享鉴权、TLS、扫描配置。
 - 原 ani_images.py push --execute（Skopeo dir）24 个镜像成功，保留 digest，并逐一 inspect --raw 回读核对，rc=0。日志 logs/p1-harbor-import.log/.rc、materials/harbor-import/*.push.log/*.inspect.log；actual-images.lock.json 已按真实回读结果更新 registryImport=verified。输入归档原件未修改。
 - 站点候选固定 console/boss/api/session/s3.ani.test:30443 和 inference.ani.test:30444；这些地址尚未部署/验收，后续需要客户 DNS/hosts 与 CA。专用拉取 Secret 纳入静态服务、Chart、Envoy 和本任务 ServiceAccount；不把 Harbor admin 凭据交给业务服务。
+
+## P2 私有配置与 P3 初始化
+
+- 75ee6d17711e8a2b7752814dcbcc20be2824bf16：Fedora 27 项局部 Python 检查通过（stage13-python.log/.rc）。私有 runtime 使用已保存种子与只读取得的底座连接材料；首次生成 18 份 Secret 清单，private/runtime.json 与 runtime.site.yaml 为 0600，重试复用。Fedora 系统 CA 默认链接缺失，已使用其实际 extracted PEM bundle，不降低 TLS 验证。
+- S3 首次请求连接到被占用的固定本地端口，TLS rc=60、无写入；改为确认本任务 kubectl 临时监听后再连接，保留其他监听。RustFS 1.0.0 的缺用户错误为 404/NoSuchResource，缺策略错误为 500/InternalError + policy does not exist，分别做准确限定适配。3b9e3bcdd657e1ddf01c4497740fcd66cecb61eb 的 stage17-s3.log/.rc=0：新专用用户与 ani-fast-* 桶权限策略准备成功，不复用 Milvus 限桶账号，不更改 root 口令/现有策略。参考 API：https://docs.rustfs.com/en/security-compliance/iam/policies 。
+- p3-init-1 rc=0 但复核账本只有 1 条：kubectl exec -i 查询吞掉了 migrations.tsv。1d1a48fbf8ba1f9136a908b551593d5b478a1173 修复 query stdin，p3-init-2 在第 35 份 SQL 的角色 membership REVOKE 处 rc=3，整份事务回滚；已成功的 34 份保留。
+- 27535a190f83ef422c862a05e3134ec5a40b0394 仅去掉第 35 份 SQL 中已由专用 bootstrap 排除的冗余角色 membership REVOKE，保留所有库内 GRANT/REVOKE；不扩大迁移角色 ADMIN 权限。局部 SQL 3 项检查通过，p3-init-3 rc=0。p3-init-verification.log/.rc=0 确认账本 72 条、local:admin|platform-admin、ani|ani_app、ani_fast_20260930|ani_fast_migrator。未重置首管、未清库。
+- 应用候选当前 private/application-candidate-3（更新 CRD approval 元数据）；旧 candidate-1/2、SQL candidate-1/2/3 和各轮首错日志保留。CRD 首次失败为缺 api-approved.kubernetes.io 注解；c435a662d93f3f1fa5849578e34d8ed8cb13b613 恢复必要注解，不接管已有 CRD。
