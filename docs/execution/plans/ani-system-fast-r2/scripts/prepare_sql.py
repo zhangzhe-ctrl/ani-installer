@@ -15,6 +15,14 @@ DB = 'ani_fast_20260930'
 ROLES = {'ani_app': 'ani_fast_app', 'ani_app_user': 'ani_fast_app_user',
          'ani_migrator': 'ani_fast_migrator', 'ani_outbox_publisher': 'ani_fast_outbox_publisher',
          'ani_metering_user': 'ani_fast_metering_user'}
+TRANSACTION_WRAPPERS = {
+    '20260821_001_tenant_admin_invitation.sql', '20260825_001_tenant_admin_invitation_pending_unique.sql',
+    '20260828_001_instance_resource_rls_fix.sql', '20260828_001_inference_access_policy.sql',
+    '20260829_002_async_outbox_rls_permissive.sql', '20260831_001_async_tasks_rls_fix.sql',
+    '20260831_001_inference_gateway_publication.sql', '20260831_002_inference_access_policy_key_effects.sql',
+    '20260901_001_gpu_chain_remaining_rls_fix.sql', '20260901_001_inference_access_policy_idempotency.sql',
+    '20260911_001_gpu_device_surface.sql',
+}
 
 
 def literal(value):
@@ -33,6 +41,10 @@ def adapt(name, text):
         text = text[text.index(marker):]
     elif name == '20260828000100_database_roles_hardening.sql':
         text = '-- Task-owned roles and memberships were established in bootstrap.sql.\nSELECT 1;\n'
+    if name in TRANSACTION_WRAPPERS:
+        if len(re.findall(r'^\s*BEGIN;', text, re.M)) != 1 or len(re.findall(r'^\s*COMMIT;', text, re.M)) != 1:
+            raise ValueError('known outer transaction boundary changed: ' + name)
+        text = re.sub(r'^\s*(?:BEGIN|COMMIT);\s*$', '', text, flags=re.M)
     for old, new in ROLES.items():
         text = re.sub(r'\b' + old + r'\b', new, text)
     text = re.sub(r'(FOR ROLE) ani\b', r'\1 ani_fast_migrator', text)
@@ -78,7 +90,7 @@ IF EXISTS (SELECT 1 FROM pg_database WHERE datname='{DB}' AND
  RAISE EXCEPTION 'database ownership conflict: {DB}';
 END IF;
 END $guard$;
-SELECT 'CREATE DATABASE {DB} OWNER ani_fast_migrator' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='{DB}')\gexec
+SELECT 'CREATE DATABASE {DB} OWNER ani_fast_migrator' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='{DB}')\\gexec
 COMMENT ON DATABASE {DB} IS {literal(TASK)};
 GRANT ani_fast_app TO ani_fast_app_user, ani_fast_gateway_user;
 GRANT ani_metering_writer TO ani_fast_metering_user, ani_fast_gateway_user;
@@ -95,14 +107,15 @@ RESET ROLE;
         raise ValueError('expected committed shared schema and the nine actual KB migrations')
     inventory, evidence = [], []
     for index, path in enumerate(files, 1):
-        raw = path.read_text();body = adapt(path.name, raw)
+        source_bytes = path.read_bytes();raw = source_bytes.decode();body = adapt(path.name, raw)
         name = f'{index:03d}_' + path.name
         digest = hashlib.sha256(body.encode()).hexdigest()
         wrapper = ('BEGIN;\nSET LOCAL ROLE ani_fast_migrator;\n' + body + '\nRESET ROLE;\n' +
                    f"INSERT INTO ani_fast_migrations(file,sha256) VALUES({literal(name)},{literal(digest)});\nCOMMIT;\n")
         (output / name).write_text(wrapper)
         inventory.append(name + '\t' + digest)
-        evidence.append({'file': name, 'sourceFile': path.name, 'sourceSha256': hashlib.sha256(raw.encode()).hexdigest(),
+        evidence.append({'file': name, 'sourceFile': path.name, 'sourceSha256': hashlib.sha256(source_bytes).hexdigest(),
+                         'outerTransactionAdapted': path.name in TRANSACTION_WRAPPERS,
                          'adaptedBodySha256': digest, 'sourceKind': 'actual-kb-image' if path.parent == kb else 'committed-ani'})
     admin = runtime['admin']
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', admin['username']) or not re.fullmatch(r'\$2[aby]\$12\$.{53}', admin['password_hash']):
