@@ -12,7 +12,7 @@ func TestANISystemSelection(t *testing.T) {
 		if err := Validate(c); err != nil {
 			t.Fatal(err)
 		}
-		spec, err := KubeKeyConfig(c, ImageTable{})
+		spec, err := KubeKeyConfig(c, "/opt/ani/artifact.tgz", "/opt/ani/artifact", ImageTable{})
 		if err != nil {
 			t.Fatal(err)
 		}
