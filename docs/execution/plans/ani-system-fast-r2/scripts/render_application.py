@@ -7,6 +7,7 @@ No cluster writes, source builds, downloads or secret generation happen here.
 import argparse
 import base64
 import copy
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -51,6 +52,8 @@ def clean(doc):
 
 
 def image_mappings(image_map):
+    if image_map.get('registryImport') != 'verified':
+        raise ValueError('registry import and digest readback must be verified')
     origins, refs = {}, {}
     rows = image_map['images']
     for row in rows:
@@ -101,7 +104,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     ticket = next(d for d in secrets if d['metadata']['name'] == 'ani-session-gateway-secrets')
     if len(base64.b64decode(ticket['data']['ticket-encryption-key'], validate=True)) != 32:
         raise ValueError('Session ticket key must contain exactly 32 raw bytes')
-    groups = {key: [] for key in ('prepare', 'core', 'apps', 'gateway')}
+    groups = {key: [] for key in ('crds', 'prepare', 'controllers', 'core', 'apps', 'gateway')}
     for ns in ('ani-system', 'ani-aigw', 'ani-business-envoy', 'ani-business-aigw'):
         groups['prepare'].append(clean({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': ns}}))
     groups['prepare'].extend(clean(d) for d in secrets)
@@ -131,6 +134,8 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             if kind == 'Deployment':
                 selected = 'core' if name in CORE else 'apps'
                 pod = doc['spec']['template']['spec']
+                pod.pop('nodeName', None)
+                pod.get('nodeSelector', {}).pop('kubernetes.io/hostname', None)
                 for container in pod['containers'] + pod.get('initContainers', []):
                     old = container['image']
                     container['image'] = refs.get(old, old)
@@ -147,7 +152,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                         if item['name'].startswith(('AUTH_OIDC_', 'VCLUSTER_', 'VLLM_')): values[item['name']] = None
                         if item['name'] in ('K8S_CLUSTER_PROVIDER_MODE', 'K8S_CLUSTER_PROXY_MODE'): values[item['name']] = 'local'
                         if item['name'] == 'GPU_INVENTORY_PROVIDER': values[item['name']] = 'not_configured'
-                        if item['name'] in ('CORE_SERVICE_TOKEN', 'ANI_CORE_API_TOKEN'):
+                        if name in ('kb-service', 'rag-engine') and item['name'] in ('CORE_SERVICE_TOKEN', 'ANI_CORE_API_TOKEN'):
                             values[item['name']] = None  # actual KB/RAG use request-scoped auth
                         if item['name'] == 'ANI_DEV_TENANT_ID': values[item['name']] = None
                     values.update(site.get('deployment_env', {}).get(name, {}))
@@ -179,7 +184,9 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     if not gateway_material or not gateway_material.is_dir():
         raise ValueError('verified business gateway/AI Gateway manifests are required')
     for path in sorted(gateway_material.glob('*.yaml')):
-        groups['gateway'].extend(clean(doc) for doc in yaml.safe_load_all(path.read_text()) if doc)
+        if path.stem not in ('crds', 'controllers', 'gateway'):
+            raise ValueError('unknown gateway material stage: ' + path.name)
+        groups[path.stem].extend(clean(doc) for doc in yaml.safe_load_all(path.read_text()) if doc)
     groups['prepare'].append(clean({'apiVersion': 'v1', 'kind': 'ConfigMap',
         'metadata': {'name': 'ani-site-ca', 'namespace': 'ani-system'},
         'data': {'ca.crt': runtime['site_ca_pem']}}))
@@ -216,6 +223,14 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     (output / 'expected-nodes.txt').write_text('\n'.join(site['target_nodes']) + '\n')
     (output / 'expected-cluster-uid.txt').write_text(site.get('cluster_uid', '') + '\n')
     (output / 'actual-images.lock.json').write_text(json.dumps(image_map, indent=2) + '\n')
+    crds = output / 'crds';crds.mkdir()
+    specs = []
+    for doc in groups['crds']:
+        name = doc['metadata']['name'];file = name + '.yaml'
+        (crds / file).write_text(yaml.safe_dump(doc, sort_keys=False))
+        digest = hashlib.sha256(json.dumps(doc['spec'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        specs.append('\t'.join([file, name, digest]))
+    (crds / 'specs.tsv').write_text('\n'.join(specs) + '\n')
     # SQL is added after the selected schema has been verified; freeze checksums last.
     print('Rendered private application manifests; SQL/checksums still required: ' + str(output))
 

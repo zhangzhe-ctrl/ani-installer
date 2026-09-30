@@ -10,7 +10,7 @@ spec.loader.exec_module(application)
 class ApplicationTest(unittest.TestCase):
     def test_runtime_mapping_requires_verified_target(self):
         with self.assertRaisesRegex(ValueError, 'verified registry digest'):
-            application.image_mappings({'images': [{'id': 'model-import-worker-dynamic', 'targetDigestRef': None}]})
+            application.image_mappings({'registryImport': 'verified', 'images': [{'id': 'model-import-worker-dynamic', 'targetDigestRef': None}]})
 
     def test_dynamic_worker_uses_stay_distinct(self):
         rows = []
@@ -19,7 +19,7 @@ class ApplicationTest(unittest.TestCase):
                          'targetDigestRef': 'registry.example/ani/worker-' + use + '@sha256:' + str(number) * 64,
                          'uses': [{'resource': 'ani-system/ConfigMap/materialization',
                                    'path': '/data/' + use, 'reference': 'worker@sha256:' + str(number) * 64}]})
-        origins, _ = application.image_mappings({'images': rows})
+        origins, _ = application.image_mappings({'registryImport': 'verified', 'images': rows})
         self.assertNotEqual(origins[('ani-system/ConfigMap/materialization', '/data/service')],
                             origins[('ani-system/ConfigMap/materialization', '/data/dynamic')])
 

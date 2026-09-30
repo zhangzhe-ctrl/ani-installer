@@ -53,3 +53,19 @@ python3 "$TASK_DIR/scripts/ani_images.py" push \
 `ani_images.py` 是上一包的原样工具，保留export/verify/push能力；本轮只需verify/push。`materials/*.request.json` 只保存旧请求，不能当实际镜像锁，不自动运行export。用户若采用Docker/OCI等其它格式，按实际内容使用现有导入工具，不强行让这个helper处理未知格式。
 
 校验通过不是发布者签名验证，也不是ANI启动通过。实际镜像的配置/API/迁移兼容性仍在P2～P5按最小范围核实。
+
+## 5. 应用候选入口（尚未现场验收）
+
+`render_application.py` 在 Fedora 读取仓外脱敏参考、已回读 Harbor 的实际应用锁、有限站点输入和私有 runtime JSON；输出本任务独立应用材料。它拒绝未导入的 digest、错误 Session key 长度、残余旧依赖与未提供的 Secret key。当前仍需完成业务网关/AI Gateway 渲染、所选 SQL/schema 和现场参数才能产出完整应用包；不能把候选工具当作完成的部署包。
+
+实际应用安装与重试使用代码包的 `ani-system.sh`（源码唯一入口为 `kubekey/builtin/core/roles/ani/system/templates/application.sh`）。参数为 `--package APP_PACKAGE --kubeconfig FILE --stage preflight|prepare|init|core|apps|gateway|wait|all`。运行前必须在已核对的既有实验锁内执行，不能创建另一把锁、直接重放首装或覆盖别人资源。脚本会比较目标节点地址、可选 cluster UID，并拒绝接管同名非本任务资源；初始化失败会停止后续步骤，按数据库迁移摘要记录跳过已成功文件。
+
+未来首装 site 仅新增：
+
+```yaml
+aniSystem:
+  enabled: false # 默认关闭；在准备好独立应用包后明确开启
+  packageRoot: /absolute/path/to/ani-application-package
+```
+
+启用后 `kk ani install` 的同一 create_cluster playbook 在底座组件末尾调用一个 `ani/system` role。关闭时不渲染/执行应用 role；不扩展通用 components execute，不修改旧材料锁。此条接入尚未通过真实首装，裸机首装记 not_run。

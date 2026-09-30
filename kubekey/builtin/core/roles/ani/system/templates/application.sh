@@ -8,11 +8,11 @@ while [[ $# -gt 0 ]]; do
     --package) package="${2:?}"; shift 2 ;;
     --kubeconfig) kubeconfig="${2:?}"; shift 2 ;;
     --stage) stage="${2:?}"; shift 2 ;;
-    *) echo "usage: ani-system.sh --package DIR --kubeconfig FILE --stage {preflight|prepare|init|core|apps|gateway|wait|all}" >&2; exit 2 ;;
+    *) echo "usage: ani-system.sh --package DIR --kubeconfig FILE --stage {preflight|crds|prepare|controllers|init|core|apps|gateway|wait|all}" >&2; exit 2 ;;
   esac
 done
 [[ -d "$package" && -f "$kubeconfig" ]] || { echo 'application package and kubeconfig are required' >&2; exit 2; }
-case "$stage" in preflight|prepare|init|core|apps|gateway|wait|all) ;; *) echo 'unknown application stage' >&2; exit 2 ;; esac
+case "$stage" in preflight|crds|prepare|controllers|init|core|apps|gateway|wait|all) ;; *) echo 'unknown application stage' >&2; exit 2 ;; esac
 package="$(cd "$package" && pwd)"
 export KUBECONFIG="$kubeconfig"
 K=(kubectl --request-timeout=30s)
@@ -79,15 +79,35 @@ wait_for_apps() {
   done < "$package/workloads.tsv"
 }
 
+install_crds() {
+  local file name expected got existing
+  [[ -s "$package/crds/specs.tsv" ]] || { echo 'verified CRD material is missing' >&2; return 1; }
+  while IFS=$'\t' read -r file name expected; do
+    [[ "$file" =~ ^[a-z0-9._-]+\.yaml$ && "$expected" =~ ^[a-f0-9]{64}$ ]] || return 1
+    existing="$("${K[@]}" get crd "$name" --ignore-not-found -o name)"
+    if [[ -n "$existing" ]]; then
+      got="$("${K[@]}" get crd "$name" -o json | python3 -c 'import sys,json,hashlib; print(hashlib.sha256(json.dumps(json.load(sys.stdin)["spec"],sort_keys=True,separators=(",",":")).encode()).hexdigest())')"
+      [[ "$got" == "$expected" ]] || { echo "shared CRD schema conflict: $name (no write)" >&2; return 1; }
+      echo "compatible shared CRD reused without writes: $name"
+    else
+      "${K[@]}" apply --server-side --field-manager=ani-system-fast -f "$package/crds/$file"
+    fi
+    "${K[@]}" wait --for=condition=Established "crd/$name" --timeout=120s
+  done < "$package/crds/specs.tsv"
+}
+
 preflight
 case "$stage" in
   preflight) ;;
+  crds) install_crds ;;
   prepare) apply_stage prepare ;;
   init) initialize ;;
-  core|apps|gateway) apply_stage "$stage" ;;
+  controllers|core|apps|gateway) apply_stage "$stage" ;;
   wait) wait_for_apps ;;
   all)
+    install_crds
     apply_stage prepare
+    apply_stage controllers
     initialize
     apply_stage core
     apply_stage apps
