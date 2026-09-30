@@ -1175,6 +1175,10 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		// KubeKeyConfig actually emits .ani.run with the fields roles read, so
 		// this entry cannot drift into a key nobody builds.
 		"run": true,
+		// The opt-in application tail has its own scope, outside components.
+		// The generator check below proves it exists; TestANISystemSelection
+		// also checks the enabled value and package path passed to the role.
+		"system": true,
 	}
 
 	// The premise of the allow-list is that the installer builds these keys, so
@@ -1188,7 +1192,7 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		t.Fatalf("build the config spec the roles are validated against: %v", err)
 	}
 	aniBlock, _ := generated["ani"].(map[string]any)
-	for _, key := range []string{"components", "images", "storage", "registry", "network", "run"} {
+	for _, key := range []string{"components", "images", "storage", "registry", "network", "run", "system"} {
 		if _, present := aniBlock[key]; !present {
 			t.Fatalf("the installer does not build .ani.%s at all, yet roles are allowed to read it", key)
 		}

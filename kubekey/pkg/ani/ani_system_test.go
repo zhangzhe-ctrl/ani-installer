@@ -28,6 +28,10 @@ func TestANISystemSelection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		application, ok := spec["ani"].(map[string]any)["system"].(map[string]any)
+		if !ok || application["enabled"] != enabled || application["package_root"] != c.ANISystem.PackageRoot {
+			t.Fatalf("application role context differs from the configured enabled=%t and package path", enabled)
+		}
 		selection, _, err := ANIPlaybookSelection(filepath.Join("..", "..", "builtin", "core", "playbooks", "create_cluster.yaml"), spec)
 		if err != nil {
 			t.Fatal(err)
