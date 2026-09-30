@@ -66,13 +66,16 @@ initialize() {
   # The existing base administrator is used only for database initialization.
   # Application containers consume separate non-superuser connection strings.
   local pg=("${K[@]}" -n ani-platform exec -i postgresql-0 -c postgresql --)
+  # Queries must not inherit the migrations.tsv stream: kubectl exec -i can
+  # consume its remaining lines even when psql -c does not read stdin.
+  local pg_query=("${K[@]}" -n ani-platform exec postgresql-0 -c postgresql --)
   local psql_cmd='export PGPASSWORD="$(cat /etc/postgres-admin/postgres-password)"; exec psql -X -v ON_ERROR_STOP=1 -U postgres'
   "${pg[@]}" sh -ec "$psql_cmd -d postgres" < "$package/sql/bootstrap.sql"
   "${pg[@]}" sh -ec "$psql_cmd -d ani_fast_20260930" < "$package/sql/ledger.sql"
   local file digest recorded
   while IFS=$'\t' read -r file digest; do
     [[ "$file" =~ ^[0-9A-Za-z_-]+\.sql$ && "$digest" =~ ^[a-f0-9]{64}$ ]] || { echo 'invalid migration list' >&2; return 1; }
-    recorded="$("${pg[@]}" sh -ec "$psql_cmd -At -d ani_fast_20260930 -c \"SELECT sha256 FROM ani_fast_migrations WHERE file='$file'\"")"
+    recorded="$("${pg_query[@]}" sh -ec "$psql_cmd -At -d ani_fast_20260930 -c \"SELECT sha256 FROM ani_fast_migrations WHERE file='$file'\"")"
     if [[ -n "$recorded" ]]; then
       [[ "$recorded" == "$digest" ]] || { echo "migration identity mismatch: $file" >&2; return 1; }
       echo "already initialized: $file"
