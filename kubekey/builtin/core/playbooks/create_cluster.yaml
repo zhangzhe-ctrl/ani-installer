@@ -172,5 +172,8 @@
       when: '{{ and (index .ani.components "opensearch").enabled (eq .ani.components.logging.backend "opensearch") (ne .ani.profile "base") }}'
     - role: ani/fluent-bit
       when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") (ne .ani.profile "base") }}'
+    # Legacy application delivery is opt-in and runs after the foundation.
+    - role: ani/system
+      when: '{{ and .ani.system.enabled (ne .ani.profile "base") }}'
 
 - import_playbook: hook/post_install.yaml

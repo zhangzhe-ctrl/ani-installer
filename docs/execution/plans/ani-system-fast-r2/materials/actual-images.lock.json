@@ -1,0 +1,542 @@
+{
+  "formatVersion": 1,
+  "authority": "verified-user-download",
+  "registryImport": "not_run",
+  "images": [
+    {
+      "id": "ai-gateway-controller",
+      "downloadRequest": "docker.io/envoyproxy/ai-gateway-controller:v1.0.0",
+      "actualRef": "docker.io/envoyproxy/ai-gateway-controller@sha256:947c4e49e5d0f4d87fe99f849bc9e92ffd536d0e846efe12257ba0ed9dfdc5b2",
+      "manifestDigest": "sha256:947c4e49e5d0f4d87fe99f849bc9e92ffd536d0e846efe12257ba0ed9dfdc5b2",
+      "configDigest": "sha256:9e876ec3567b2f4b298e6739056d888dad0cab4bd7d2a9ca7619636b965b8a31",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "envoy-ai-gateway-system/Deployment/ai-gateway-controller",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/ai-gateway-controller:v1.0.0",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ai-gateway-extproc",
+      "downloadRequest": "docker.io/envoyproxy/ai-gateway-extproc:v1.0.0",
+      "actualRef": "docker.io/envoyproxy/ai-gateway-extproc@sha256:aee7b7d6534b72acadb0a2592110df6efb48d38e6e019a72dd4c5e9afe7764bc",
+      "manifestDigest": "sha256:aee7b7d6534b72acadb0a2592110df6efb48d38e6e019a72dd4c5e9afe7764bc",
+      "configDigest": "sha256:0f962f47504bb1bc1fb12fdaca47152d61dfce1023b9a41aae612b5aab026aa1",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "envoy-gateway-system/Pod/envoy-ani-aigw-ani-aigw-28474462-6b4976dcbd-4zzmb",
+          "path": "/containers/image",
+          "reference": "docker.io/envoyproxy/ai-gateway-extproc:v1.0.0",
+          "source": "runtime-only"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ani-auth-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/ani-auth-service@sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee",
+      "actualRef": "docker.changqingyun.cn/ani/ani-auth-service@sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee",
+      "manifestDigest": "sha256:c3f58f151f76825bf51a4803268d49892f2b7f4653ebce5afe21504936908eee",
+      "configDigest": "sha256:41d9c934499de8a991bcb4b5244622eb2331ef6b34ddcabeea2c331c852e6d43",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-auth-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-auth-service:fixlogin2-20260928",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ani-boss-console",
+      "downloadRequest": "docker.changqingyun.cn/ani/ani-boss-console@sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c",
+      "actualRef": "docker.changqingyun.cn/ani/ani-boss-console@sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c",
+      "manifestDigest": "sha256:91c7a4e45e771de3cb3336c319b98398076aa414b8a65b8b538bfbe45343d93c",
+      "configDigest": "sha256:5b0d6f07f6ac6cf644695861670896b6ebadb038dfc1a3f410ba1f3777559205",
+      "platform": "linux/amd64",
+      "labels": {
+        "io.buildah.version": "1.43.2",
+        "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-boss-console",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-boss-console:202609171009",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ani-console",
+      "downloadRequest": "docker.changqingyun.cn/ani/ani-console@sha256:dc2dc5b3a7cd1bb01c3c551ca1bc84bf75cbedaadc47707cbb652d7c61d69a3a",
+      "actualRef": "docker.changqingyun.cn/ani/ani-console@sha256:a71ae4e39eca8042d250947b7667723995ba3b59d17798c57c9c864a16cc3448",
+      "manifestDigest": "sha256:a71ae4e39eca8042d250947b7667723995ba3b59d17798c57c9c864a16cc3448",
+      "configDigest": "sha256:6f0ab794270c147b246434fbe239e8ca7bc12025eee2e0fe615b451e3124369b",
+      "platform": "linux/amd64",
+      "labels": {
+        "maintainer": "NGINX Docker Maintainers <docker-maint@nginx.com>"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-console",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-console:202609291455",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ani-gateway",
+      "downloadRequest": "docker.changqingyun.cn/ani/ani-gateway:kb-20260930-listfilter",
+      "actualRef": "docker.changqingyun.cn/ani/ani-gateway@sha256:239b0686ccab4aa2c3d247956e592b42bb828f6a224dafd812567e796a5d786b",
+      "manifestDigest": "sha256:239b0686ccab4aa2c3d247956e592b42bb828f6a224dafd812567e796a5d786b",
+      "configDigest": "sha256:77967b58723b098ec73843bf4d1afb3365073a32dc17297f11375e2d829e2708",
+      "platform": "linux/amd64",
+      "labels": {
+        "io.buildah.version": "1.33.7"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-gateway:kb-20260930-listfilter",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "ani-session-gateway",
+      "downloadRequest": "docker.changqingyun.cn/ani/ani-session-gateway@sha256:552101eaa1cb6e1b8d7ad0670451b32f896ec4a39260d19092b0e3bed34ad5cd",
+      "actualRef": "docker.changqingyun.cn/ani/ani-session-gateway@sha256:a4af790a73efa60b03efe52e5b9eeadff7d66fd3348f69b673f3d8bbfe598653",
+      "manifestDigest": "sha256:a4af790a73efa60b03efe52e5b9eeadff7d66fd3348f69b673f3d8bbfe598653",
+      "configDigest": "sha256:4fa4368553f1c2aa7a67c28a8b9732aaffed3756fbc66d66d5a987e67720494a",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-session-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/ani-session-gateway:d0353b80383b",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "dex",
+      "downloadRequest": "docker.changqingyun.cn/mirror/dexidp/dex@sha256:3e35d5d0f7dbd33fbadc36a71ff58cf4097ab98d73d22f6cb9a6471a32e028af",
+      "actualRef": "docker.changqingyun.cn/mirror/dexidp/dex@sha256:59d8b5540fcf4e876b70fb5438321c594b84a5b4a255540e9bb41834fd797770",
+      "manifestDigest": "sha256:59d8b5540fcf4e876b70fb5438321c594b84a5b4a255540e9bb41834fd797770",
+      "configDigest": "sha256:3d928ddbf5ef525a01d779542880546ab73cad4be5680c6911b7288896d70ada",
+      "platform": "linux/amd64",
+      "labels": {
+        "org.opencontainers.image.created": "2024-06-03T19:52:54.067Z",
+        "org.opencontainers.image.description": "OpenID Connect (OIDC) identity and OAuth 2.0 provider with pluggable connectors",
+        "org.opencontainers.image.documentation": "https://dexidp.io/docs/",
+        "org.opencontainers.image.licenses": "Apache-2.0",
+        "org.opencontainers.image.revision": "23efe9200ccd9e0a69242bf61cd221462370d1f4",
+        "org.opencontainers.image.source": "https://github.com/dexidp/dex",
+        "org.opencontainers.image.title": "dex",
+        "org.opencontainers.image.url": "https://github.com/dexidp/dex",
+        "org.opencontainers.image.version": "v2.40.0"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-dex",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "ghcr.io/dexidp/dex:v2.40.0",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "envoy-authz-adapter",
+      "downloadRequest": "docker.changqingyun.cn/ani/envoy-authz-adapter:public-model-body-20260909",
+      "actualRef": "docker.changqingyun.cn/ani/envoy-authz-adapter@sha256:c4dd4efecb2d6ec793b6af099703a8803e9f24bbbffd19917dd0f5dfc3ccad06",
+      "manifestDigest": "sha256:c4dd4efecb2d6ec793b6af099703a8803e9f24bbbffd19917dd0f5dfc3ccad06",
+      "configDigest": "sha256:c46372f47866cd94101cace2203f3fbbf2ae031ea78f441e6a6736e4255cdd12",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-aigw/Deployment/envoy-authz-adapter",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/envoy-authz-adapter:public-model-body-20260909",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "envoy-gateway",
+      "downloadRequest": "docker.io/envoyproxy/gateway:v1.8.1",
+      "actualRef": "docker.io/envoyproxy/gateway@sha256:b055b426588bfe1599eba0e3824711a5f8d8d307d9509302bd28f44dc2ab7adf",
+      "manifestDigest": "sha256:b055b426588bfe1599eba0e3824711a5f8d8d307d9509302bd28f44dc2ab7adf",
+      "configDigest": "sha256:d3966c081c34fe27d39901f9b313166665c23904be5bc1f5953364c978d425f2",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-ani-aigw-ani-aigw-28474462",
+          "path": "/spec/template/spec/containers/1/image",
+          "reference": "docker.io/envoyproxy/gateway:v1.8.1",
+          "source": "spec"
+        },
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-gateway",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/gateway:v1.8.1",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "envoy-proxy",
+      "downloadRequest": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+      "actualRef": "docker.io/envoyproxy/envoy@sha256:4982955af5bf7d18aff3655584e5b59dd51942fa39104056fa29de1db3b7e6ce",
+      "manifestDigest": "sha256:4982955af5bf7d18aff3655584e5b59dd51942fa39104056fa29de1db3b7e6ce",
+      "configDigest": "sha256:5341c12c06faac28b80f11658e3792c5f63f43c2e13ca3bf5bce9dbf0ce78c35",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-aigw/EnvoyProxy/ani-aigw",
+          "path": "/spec/provider/kubernetes/envoyDeployment/container/image",
+          "reference": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+          "source": "spec"
+        },
+        {
+          "resource": "envoy-gateway-system/Deployment/envoy-ani-aigw-ani-aigw-28474462",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.io/envoyproxy/envoy:distroless-v1.36.3",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "inference-gateway-publisher",
+      "downloadRequest": "docker.changqingyun.cn/ani/inference-gateway-publisher:kb-20260929-internalresolve",
+      "actualRef": "docker.changqingyun.cn/ani/inference-gateway-publisher@sha256:71616dcadf64353dbf75265b5b1428a0ae2607f6bdad65d2666d424d013d786f",
+      "manifestDigest": "sha256:71616dcadf64353dbf75265b5b1428a0ae2607f6bdad65d2666d424d013d786f",
+      "configDigest": "sha256:772bec749ef8ee53ff267034afb9706d1bc5f2861363cc0a1f4a0f16d1e23015",
+      "platform": "linux/amd64",
+      "labels": {
+        "io.buildah.version": "1.33.7"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/inference-gateway-publisher",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/inference-gateway-publisher:kb-20260929-internalresolve",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "inference-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/inference-service:dev-20260929-merge-6c16deee-sse",
+      "actualRef": "docker.changqingyun.cn/ani/inference-service@sha256:bac1248ff48b36c5b8b1d83732aa0383a3c64abc11e713b05e7f5ae1e3be196e",
+      "manifestDigest": "sha256:bac1248ff48b36c5b8b1d83732aa0383a3c64abc11e713b05e7f5ae1e3be196e",
+      "configDigest": "sha256:8da9fea7532f4ed5091ba85e5299780c054dc98590034fca274d611ca45ebf39",
+      "platform": "linux/amd64",
+      "labels": {
+        "io.buildah.version": "1.33.7"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/inference-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/inference-service:dev-20260929-merge-6c16deee-sse",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "kb-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/kb-service:kb-20260930-listfilter",
+      "actualRef": "docker.changqingyun.cn/ani/kb-service@sha256:6c307468e71079e96f542ac7a7a6f59b800d2a0f40437b1182c786d283f3d657",
+      "manifestDigest": "sha256:6c307468e71079e96f542ac7a7a6f59b800d2a0f40437b1182c786d283f3d657",
+      "configDigest": "sha256:2768b0b9afc9ed0a5067e2a977babb30ee7531d78b0d8becb5045be8790fe5d4",
+      "platform": "linux/amd64",
+      "labels": {
+        "io.buildah.version": "1.33.7"
+      },
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/kb-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/kb-service:kb-20260930-listfilter",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "metering-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/metering-service@sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9",
+      "actualRef": "docker.changqingyun.cn/ani/metering-service@sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9",
+      "manifestDigest": "sha256:b17b3f6bd00678899437d08b76d754049c9ed0c675dbdfe25aab3c38a88f93d9",
+      "configDigest": "sha256:50deba6000c3433ebdb102b5aa062f371217ece165da559fdfaeb1ed502226ed",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-metering-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/metering-service:dev-20260924-metering-events",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "model-fetcher",
+      "downloadRequest": "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+      "actualRef": "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+      "manifestDigest": "sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+      "configDigest": "sha256:290e89eb13cab9191da9ee03abc5d6536a38d2c8cc15fc980425fdefdf39b802",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/ConfigMap/ani-inference-materialization",
+          "path": "/data/model_fetcher_image_ref",
+          "reference": "docker.changqingyun.cn/ani/model-fetcher@sha256:a95c9397943a475d31978232c1a7b807394c0d927fc9bb74cb39e80c43d5c501",
+          "source": "dynamic-config"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "model-import-worker-dynamic",
+      "downloadRequest": "docker.changqingyun.cn/ani/model-import-worker@sha256:52f347e56ff11ae78cd95ec92be5c1629daa00fab1cf068acad7dc2220b34e55",
+      "actualRef": "docker.changqingyun.cn/ani/model-import-worker@sha256:02ac1c66116ffd21995ed044f8fc50ff704f9901edaac1434fd708b52756688e",
+      "manifestDigest": "sha256:02ac1c66116ffd21995ed044f8fc50ff704f9901edaac1434fd708b52756688e",
+      "configDigest": "sha256:51a9b6b887e19a5a24004ab1601f9ab8ce264bd5fe35cf31ba496856541507f0",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/ConfigMap/ani-inference-materialization",
+          "path": "/data/model_import_worker_image_ref",
+          "reference": "docker.changqingyun.cn/ani/model-import-worker@sha256:52f347e56ff11ae78cd95ec92be5c1629daa00fab1cf068acad7dc2220b34e55",
+          "source": "dynamic-config"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "model-import-worker-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf",
+      "actualRef": "docker.changqingyun.cn/ani/model-import-worker@sha256:54c182b2365b84fe063a10768bcc3de5cb3493c250860bb49ff0e077d1b08bca",
+      "manifestDigest": "sha256:54c182b2365b84fe063a10768bcc3de5cb3493c250860bb49ff0e077d1b08bca",
+      "configDigest": "sha256:776ec44ffa20ee4988de53df62812ed81a430ab9291a718f262817fca9d09ee4",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/model-import-worker",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/model-import-worker@sha256:49c1738a6a22668c626c0c93dd57a73c05050e89de01eb31295698cb09568fdf",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "model-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9",
+      "actualRef": "docker.changqingyun.cn/ani/model-service@sha256:363832ff066f42c49f52488101cc7786938269f4d19d4a2d6fab6bd6cfd6f14c",
+      "manifestDigest": "sha256:363832ff066f42c49f52488101cc7786938269f4d19d4a2d6fab6bd6cfd6f14c",
+      "configDigest": "sha256:51012149f4a92d0f77bf6fbbe96ccc533c1535f2d1b3f713ba6279b896300b22",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/model-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/model-service@sha256:5ddab025c4a5de6e8027db6607a16ee32e6593782bb0b3f64a540159a68799f9",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "platform-settings-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/platform-settings-service@sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b",
+      "actualRef": "docker.changqingyun.cn/ani/platform-settings-service@sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b",
+      "manifestDigest": "sha256:3fea78936e4e4bfac9bc375e8367c41cf6944bd1dfaf783cebd849333fa71e6b",
+      "configDigest": "sha256:aee4e5ae5df9ef1dae59e5938d5af79d0113ea8909d2ce15dd6aa6787e4f6ec3",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/platform-settings-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/platform-settings-service:emailfix-20260928",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "rag-engine",
+      "downloadRequest": "docker.changqingyun.cn/ani/rag-engine@sha256:00034731d820c246a7a69e5513f12bd3683e63a42f19012bd44485fc6dd57094",
+      "actualRef": "docker.changqingyun.cn/ani/rag-engine@sha256:8352df85222251855009800a6c713669ca8957e248afcd58c4566fd1e1c8d0ca",
+      "manifestDigest": "sha256:8352df85222251855009800a6c713669ca8957e248afcd58c4566fd1e1c8d0ca",
+      "configDigest": "sha256:c32e675e79f3971805f165a3f5be28ba15d2933b5316bb0ccd73bfe2eb5bfb81",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/rag-engine",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/rag-engine:dev-20260929-upstream-ac800701-flex",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "reconcile-worker",
+      "downloadRequest": "docker.changqingyun.cn/ani/reconcile-worker@sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c",
+      "actualRef": "docker.changqingyun.cn/ani/reconcile-worker@sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c",
+      "manifestDigest": "sha256:6d93e837100c16fc7f270f173192a1f0779140b469041ff09ac6439ca70ece3c",
+      "configDigest": "sha256:29cd22c9da73397adf6f7f96a1502c752822e193a4cca8f67a9b8592359afb44",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/ani-reconcile-worker-a",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/reconcile-worker:dev-20260928-quota-readrepair",
+          "source": "spec"
+        },
+        {
+          "resource": "ani-system/Deployment/ani-reconcile-worker-b",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/reconcile-worker:dev-20260928-quota-readrepair",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "task-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/task-service@sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644",
+      "actualRef": "docker.changqingyun.cn/ani/task-service@sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644",
+      "manifestDigest": "sha256:7dcd361d8eb8c4943c7407275ea8c54aac5536f3b1b9b0789b18b8744b890644",
+      "configDigest": "sha256:fb87bc926f688cd530e9f0ae22126fa89c54174d4b3b27056cb3a94ff3476041",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/task-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/task-service:dev-20260924-metering-events",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    },
+    {
+      "id": "tenant-service",
+      "downloadRequest": "docker.changqingyun.cn/ani/tenant-service@sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f",
+      "actualRef": "docker.changqingyun.cn/ani/tenant-service@sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f",
+      "manifestDigest": "sha256:506b30d245da9603c1c9e6ca92b1e487089103c8023b16462f265a5efa0ccb4f",
+      "configDigest": "sha256:b4146210d835366e2a24b23f1cab748a92564d0473cbd21a34f32f1c49b2b528",
+      "platform": "linux/amd64",
+      "labels": {},
+      "uses": [
+        {
+          "resource": "ani-system/Deployment/tenant-service",
+          "path": "/spec/template/spec/containers/0/image",
+          "reference": "docker.changqingyun.cn/ani/tenant-service:dev-20260923-direct-quota",
+          "source": "spec"
+        }
+      ],
+      "targetDigestRef": null,
+      "replacementApproved": true
+    }
+  ],
+  "charts": [
+    {
+      "id": "envoy-gateway",
+      "request": {
+        "id": "envoy-gateway",
+        "name": "gateway-helm",
+        "source": "oci://docker.m.daocloud.io/envoyproxy/gateway-helm",
+        "version": "v1.8.1"
+      },
+      "file": "gateway-helm-v1.8.1.tgz",
+      "sha256": "59a8cadd97f55dc40f70fe331eefb32de0853558615941eccafcb789678c80cd",
+      "digestBasis": "downloaded-file-sha256-not-publisher-signature"
+    },
+    {
+      "id": "ai-gateway-crds",
+      "request": {
+        "id": "ai-gateway-crds",
+        "name": "ai-gateway-crds-helm",
+        "source": "oci://docker.m.daocloud.io/envoyproxy/ai-gateway-crds-helm",
+        "version": "v1.0.0"
+      },
+      "file": "ai-gateway-crds-helm-v1.0.0.tgz",
+      "sha256": "cc0740bf63147cdb015b0133f78e0403837bb44a31df2df116d6a3d63df224c4",
+      "digestBasis": "downloaded-file-sha256-not-publisher-signature"
+    },
+    {
+      "id": "ai-gateway",
+      "request": {
+        "id": "ai-gateway",
+        "name": "ai-gateway-helm",
+        "source": "oci://docker.m.daocloud.io/envoyproxy/ai-gateway-helm",
+        "version": "v1.0.0"
+      },
+      "file": "ai-gateway-helm-v1.0.0.tgz",
+      "sha256": "f5b3de0850e95e3ff9142ed0a12660468e067d9f8da941cd811f1168f5fd4ea9",
+      "digestBasis": "downloaded-file-sha256-not-publisher-signature"
+    }
+  ]
+}

@@ -62,6 +62,7 @@ echo "[3/4] copying the code release"
 install -m 0755 "$KK" "$OUTPUT/kk"
 install -m 0755 "$ROOT/scripts/install.sh" "$OUTPUT/install.sh"
 install -m 0755 "$ROOT/scripts/verify.sh" "$OUTPUT/verify.sh"
+install -m 0755 "$ROOT/builtin/core/roles/ani/system/templates/application.sh" "$OUTPUT/ani-system.sh"
 install -m 0755 "$ROOT/builtin/core/roles/ani/smoke/templates/probe.sh" "$OUTPUT/probe.sh"
 # R11: the stack-independent generic network smoke checker ships beside probe.sh.
 install -m 0755 "$ROOT/builtin/core/roles/ani/smoke/templates/network-probe.sh" "$OUTPUT/network-probe.sh"
