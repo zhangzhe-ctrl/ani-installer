@@ -29,6 +29,17 @@ preflight() {
   if [[ -s "$package/expected-cluster-uid.txt" ]]; then
     [[ "$("${K[@]}" get namespace kube-system -o jsonpath='{.metadata.uid}')" == "$(cat "$package/expected-cluster-uid.txt")" ]] || { echo 'target cluster UID mismatch' >&2; return 1; }
   fi
+  [[ -s "$package/expected-node-ports.txt" ]] || { echo 'missing declared application NodePorts' >&2; return 1; }
+  "${K[@]}" get services -A -o json | python3 -c '
+import json,sys
+from pathlib import Path
+ports={int(x) for x in Path(sys.argv[1]).read_text().splitlines()}
+for service in json.load(sys.stdin)["items"]:
+    meta=service["metadata"]
+    if meta.get("labels",{}).get("ani.io/app-task")==sys.argv[2]: continue
+    if any(p.get("nodePort") in ports for p in service["spec"].get("ports",[])):
+        raise SystemExit("application NodePort conflict: "+meta["namespace"]+"/"+meta["name"])
+' "$package/expected-node-ports.txt" "$task"
 }
 
 check_ownership() {

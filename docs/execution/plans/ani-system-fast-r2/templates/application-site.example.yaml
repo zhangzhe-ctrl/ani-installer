@@ -8,6 +8,8 @@ boss_url: __BOSS_ORIGIN__
 api_url: __API_ORIGIN__
 websocket_url: __SESSION_PUBLIC_URL__
 inference_url: __INFERENCE_HTTPS_ORIGIN__
+entry_node_port: 30443 # Confirm unused or owned by this task before any write.
+inference_node_port: 30444
 s3_endpoint: __HTTPS_INTERNAL_ENDPOINT__
 s3_public_endpoint: __HTTPS_BROWSER_REACHABLE_ENDPOINT__
 milvus_endpoint: __EXISTING_MILVUS_ENDPOINT__

@@ -2,6 +2,7 @@
 """Render the supplied Charts for the isolated business gateway on Fedora."""
 import argparse
 import hashlib
+import copy
 import json
 from pathlib import Path
 import subprocess
@@ -83,6 +84,15 @@ def render(bundle, lock, helm, reference, site, runtime, output):
         doc = clean(yaml.safe_load(path.read_text()))
         if doc['kind'] == 'EnvoyProxy':
             doc['spec']['provider']['kubernetes']['envoyDeployment']['container']['image'] = images['envoy-proxy']
+            service = doc['spec']['provider']['kubernetes']['envoyService']
+            service['labels'] = {'ani.io/app-task': 'ani-system-fast-20260930'}
+            service['externalTrafficPolicy'] = 'Cluster'
+            service['patch'] = {'type': 'StrategicMerge', 'value': {'spec': {
+                'ports': [{'port': 443, 'nodePort': int(site['inference_node_port'])}]}}}
+            entry_proxy = copy.deepcopy(doc)
+            entry_proxy['metadata']['name'] = 'ani-entry'
+            entry_proxy['spec']['provider']['kubernetes']['envoyService']['patch']['value']['spec']['ports'][0]['nodePort'] = int(site['entry_node_port'])
+            routes.append(entry_proxy)
         if doc['kind'] == 'Gateway':
             doc['spec']['listeners'] = [{'name': 'https', 'protocol': 'HTTPS', 'port': 443,
                 'hostname': urlparse(site['inference_url']).hostname,
@@ -107,7 +117,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
                         if labels.get('kubernetes.io/metadata.name') == 'envoy-gateway-system':
                             labels['kubernetes.io/metadata.name'] = 'ani-business-envoy'
             routes.append(doc)
-    hosts = [urlparse(site[key]).hostname for key in ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url')]
+    hosts = [urlparse(site[key]).hostname for key in ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url', 's3_public_endpoint')]
     if any(not host for host in hosts): raise ValueError('public entry hostnames are required')
     routes.append(clean({'apiVersion': 'cert-manager.io/v1', 'kind': 'Certificate',
         'metadata': {'name': 'ani-entry-tls', 'namespace': 'ani-aigw'},
@@ -116,7 +126,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
     entry = {'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'Gateway',
              'metadata': {'name': 'ani-entry', 'namespace': 'ani-aigw'},
              'spec': {'gatewayClassName': 'ani-aigw',
-                      'infrastructure': {'parametersRef': {'group': 'gateway.envoyproxy.io', 'kind': 'EnvoyProxy', 'name': 'ani-aigw'}},
+                      'infrastructure': {'parametersRef': {'group': 'gateway.envoyproxy.io', 'kind': 'EnvoyProxy', 'name': 'ani-entry'}},
                       'listeners': [{'name': 'https', 'port': 443, 'protocol': 'HTTPS',
                           'tls': {'mode': 'Terminate', 'certificateRefs': [{'kind': 'Secret', 'name': 'ani-entry-tls'}]},
                           'allowedRoutes': {'namespaces': {'from': 'Same'}}}]}}
@@ -133,6 +143,27 @@ def render(bundle, lock, helm, reference, site, runtime, output):
         'metadata': {'name': 'ani-entry-backends', 'namespace': 'ani-system'},
         'spec': {'from': [{'group': 'gateway.networking.k8s.io', 'kind': 'HTTPRoute', 'namespace': 'ani-aigw'}],
                  'to': [{'group': '', 'kind': 'Service', 'name': service} for _, service, _ in backends]}}))
+    # Dedicated browser S3 entry: preserve the existing RustFS certificate and credentials.
+    routes.extend(clean(doc) for doc in [
+        {'apiVersion': 'v1', 'kind': 'Service', 'metadata': {'name': 'ani-fast-s3', 'namespace': 'ani-platform'},
+         'spec': {'selector': {'app.kubernetes.io/instance': 'ani-rustfs', 'app.kubernetes.io/name': 'rustfs'},
+                  'ports': [{'name': 'https', 'port': 9000, 'targetPort': 9000, 'appProtocol': 'https'}]}},
+        {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': {'name': 'ani-fast-s3-ca', 'namespace': 'ani-platform'},
+         'data': {'ca.crt': runtime['s3_ca_pem']}},
+        {'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'BackendTLSPolicy',
+         'metadata': {'name': 'ani-fast-s3', 'namespace': 'ani-platform'},
+         'spec': {'targetRefs': [{'group': '', 'kind': 'Service', 'name': 'ani-fast-s3', 'sectionName': 'https'}],
+                  'validation': {'hostname': 'ani-rustfs-svc.ani-platform.svc',
+                                 'caCertificateRefs': [{'group': '', 'kind': 'ConfigMap', 'name': 'ani-fast-s3-ca'}]}}},
+        {'apiVersion': 'gateway.networking.k8s.io/v1beta1', 'kind': 'ReferenceGrant',
+         'metadata': {'name': 'ani-fast-s3', 'namespace': 'ani-platform'},
+         'spec': {'from': [{'group': 'gateway.networking.k8s.io', 'kind': 'HTTPRoute', 'namespace': 'ani-aigw'}],
+                  'to': [{'group': '', 'kind': 'Service', 'name': 'ani-fast-s3'}]}},
+        {'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'HTTPRoute',
+         'metadata': {'name': 'ani-fast-s3', 'namespace': 'ani-aigw'},
+         'spec': {'parentRefs': [{'name': 'ani-entry'}], 'hostnames': [urlparse(site['s3_public_endpoint']).hostname],
+                  'rules': [{'backendRefs': [{'name': 'ani-fast-s3', 'namespace': 'ani-platform', 'port': 9000}]}]}}
+    ])
     (output / 'gateway.yaml').write_text(yaml.safe_dump_all(routes, sort_keys=False))
     print('Business gateways and TLS entry routes rendered; cluster compatibility remains unverified: ' + str(output))
 

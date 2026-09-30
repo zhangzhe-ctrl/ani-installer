@@ -25,11 +25,12 @@ class GatewayChartTest(unittest.TestCase):
         site = {key + '_url': 'https://' + key + '.example.invalid'
                 for key in ('console', 'boss', 'api', 'inference')}
         site['websocket_url'] = 'wss://session.example.invalid'
+        site.update({'s3_public_endpoint': 'https://s3.example.invalid', 'entry_node_port': 30443, 'inference_node_port': 30444})
         with tempfile.TemporaryDirectory(prefix='ani-chart-test-') as directory:
             output = Path(directory) / 'manifests'
             render_gateways.render(Path(os.environ['ANI_CHART_TEST_BUNDLE']), lock,
                 Path(os.environ['ANI_CHART_TEST_HELM']), Path(os.environ['ANI_CHART_TEST_REFERENCE']),
-                site, {'mcp_session_seed': 'test-only-seed-never-for-deployment'}, output)
+                site, {'mcp_session_seed': 'test-only-seed-never-for-deployment', 's3_ca_pem': 'test-only-ca'}, output)
             controllers = list(yaml.safe_load_all((output / 'controllers.yaml').read_text()))
             webhook = next(doc for doc in controllers if doc['kind'] == 'MutatingWebhookConfiguration')
             self.assertIn('cert-manager.io/inject-ca-from', webhook['metadata']['annotations'])
@@ -46,7 +47,7 @@ class GatewayChartTest(unittest.TestCase):
             self.assertEqual({doc['metadata']['name'] for doc in gateways}, {'ani-aigw', 'ani-entry'})
             for gateway in gateways:
                 self.assertEqual(gateway['spec']['listeners'][0]['protocol'], 'HTTPS')
-            self.assertEqual(len([doc for doc in routes if doc['kind'] == 'HTTPRoute']), 4)
+            self.assertEqual(len([doc for doc in routes if doc['kind'] == 'HTTPRoute']), 5)
             self.assertFalse(any(doc['kind'] == 'ServiceAccount' and doc['metadata']['name'] == 'default' for doc in routes))
             reference = Path(os.environ['ANI_CHART_TEST_REFERENCE'])
             contracts = json.loads((reference / 'secrets/contracts.json').read_text())

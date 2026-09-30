@@ -98,7 +98,8 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             raise ValueError('missing reference folder: ' + folder)
     required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
-                'prometheus_url', 'prometheus_namespace', 'loki_url', 'storage_class', 'kubernetes_service_ip')
+                'prometheus_url', 'prometheus_namespace', 'loki_url', 'storage_class', 'kubernetes_service_ip',
+                'entry_node_port', 'inference_node_port')
     for key in required:
         if not site.get(key) or '__' in str(site[key]):
             raise ValueError('missing site parameter: ' + key)
@@ -111,6 +112,9 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             raise ValueError('public entry must use TLS without URL credentials: ' + key)
     if site.get('target_nodes') != ['172.16.101.10', '172.16.101.11', '172.16.101.12']:
         raise ValueError('this application selection targets .10/.11/.12')
+    ports = [int(site[key]) for key in ('entry_node_port', 'inference_node_port')]
+    if len(set(ports)) != 2 or any(p < 30000 or p > 32767 for p in ports):
+        raise ValueError('two distinct NodePorts in 30000..32767 are required')
     secrets = runtime['secrets']
     ticket = next(d for d in secrets if d['metadata']['name'] == 'ani-session-gateway-secrets')
     if len(base64.b64decode(ticket['data']['ticket-encryption-key'], validate=True)) != 32:
@@ -259,6 +263,7 @@ def render(reference, site, image_map, runtime, output, gateway_material):
     (output / 'inventory.tsv').write_text('\n'.join(inventory) + '\n')
     (output / 'workloads.tsv').write_text('\n'.join(workloads) + '\n')
     (output / 'expected-nodes.txt').write_text('\n'.join(site['target_nodes']) + '\n')
+    (output / 'expected-node-ports.txt').write_text('\n'.join(map(str, ports)) + '\n')
     (output / 'expected-cluster-uid.txt').write_text(site.get('cluster_uid', '') + '\n')
     (output / 'actual-images.lock.json').write_text(json.dumps(image_map, indent=2) + '\n')
     crds = output / 'crds';crds.mkdir()
