@@ -126,6 +126,19 @@ RESET ROLE;
         evidence.append({'file': name, 'sourceFile': path.name, 'sourceSha256': hashlib.sha256(source_bytes).hexdigest(),
                          'outerTransactionAdapted': path.name in TRANSACTION_WRAPPERS,
                          'adaptedBodySha256': digest, 'sourceKind': 'actual-kb-image' if path.parent == kb else 'committed-ani'})
+    # Actual password-login failed at INSERT refresh_tokens: the legacy table
+    # has only a RESTRICTIVE policy, which supplies no positive allowance.
+    # Add one scoped PERMISSIVE policy; preserve the existing restriction and
+    # tenant predicate. Never grant BYPASSRLS to the authentication login.
+    body = """CREATE POLICY ani_fast_refresh_token_access ON refresh_tokens
+AS PERMISSIVE FOR ALL TO ani_fast_app
+USING (tenant_id IS NULL OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid)
+WITH CHECK (tenant_id IS NULL OR tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);
+"""
+    name = '998_auth_refresh_rls.sql'; digest = hashlib.sha256(body.encode()).hexdigest()
+    (output / name).write_text('BEGIN;\nSET LOCAL ROLE ani_fast_migrator;\n' + body + '\nRESET ROLE;\n' +
+        f"INSERT INTO ani_fast_migrations(file,sha256) VALUES({literal(name)},{literal(digest)});\nCOMMIT;\n")
+    inventory.append(name + '\t' + digest)
     admin = runtime['admin']
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', admin['username']) or not re.fullmatch(r'\$2[aby]\$12\$.{53}', admin['password_hash']):
         raise ValueError('admin username and bcrypt cost-12 hash are required')
