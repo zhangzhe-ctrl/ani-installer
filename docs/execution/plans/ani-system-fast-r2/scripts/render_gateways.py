@@ -15,6 +15,9 @@ from render_application import clean, image_mappings
 
 def render(bundle, lock, helm, reference, site, runtime, output):
     image_mappings(lock)  # Require completed import/readback first.
+    for folder in ('gateway/ani-aigw', 'workloads/ani-aigw', 'rbac/ani-aigw'):
+        if not (reference / folder).is_dir():
+            raise ValueError('missing reference folder: ' + folder)
     images = {row['id']: row['targetDigestRef'] for row in lock['images']}
     for required in ('envoy-gateway', 'envoy-proxy', 'ai-gateway-controller', 'ai-gateway-extproc', 'envoy-authz-adapter'):
         if required not in images: raise ValueError('missing business gateway image: ' + required)

@@ -93,6 +93,9 @@ def update_env(container, values):
 
 def render(reference, site, image_map, runtime, output, gateway_material):
     origins, refs = image_mappings(image_map)
+    for folder in ('config/ani-system', 'workloads/ani-system', 'certificates', 'rbac'):
+        if not (reference / folder).is_dir():
+            raise ValueError('missing reference folder: ' + folder)
     required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
                 'prometheus_url', 'loki_url', 'storage_class')
