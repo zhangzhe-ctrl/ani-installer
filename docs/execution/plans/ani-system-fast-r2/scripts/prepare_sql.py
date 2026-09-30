@@ -41,6 +41,13 @@ def adapt(name, text):
         text = text[text.index(marker):]
     elif name == '20260828000100_database_roles_hardening.sql':
         text = '-- Task-owned roles and memberships were established in bootstrap.sql.\nSELECT 1;\n'
+    elif name == '20260828000200_app_role_privileges.sql':
+        # Bootstrap never grants the task app group to the metering login.
+        # Preserve all database grants, omit this redundant instance membership
+        # revoke, and refuse source drift rather than granting role ADMIN rights.
+        statement = 'REVOKE ani_app FROM ani_metering_user;'
+        if text.count(statement) != 1: raise ValueError('known role membership boundary changed')
+        text = text.replace(statement, '-- Task bootstrap already excludes metering login from the app group.')
     if name in TRANSACTION_WRAPPERS:
         if len(re.findall(r'^\s*BEGIN;', text, re.M)) != 1 or len(re.findall(r'^\s*COMMIT;', text, re.M)) != 1:
             raise ValueError('known outer transaction boundary changed: ' + name)
@@ -54,6 +61,8 @@ def adapt(name, text):
     active = '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('--'))
     if re.search(r'\b(?:CREATE|ALTER) ROLE\b|\b(?:BEGIN|COMMIT)\s*;', active, re.I):
         raise ValueError('unexpected instance role mutation or transaction in ' + name)
+    if re.search(r'\b(?:GRANT|REVOKE)\s+ani_(?:fast_\w+|metering_writer)\s+(?:TO|FROM)\b', active, re.I):
+        raise ValueError('unexpected instance role membership in ' + name)
     if re.search(r'\b(?:ani_app|ani_app_user|ani_migrator|ani_outbox_publisher|ani_metering_user)\b', active):
         raise ValueError('shared legacy role left in ' + name)
     return text
