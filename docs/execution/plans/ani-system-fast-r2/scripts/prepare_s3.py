@@ -53,6 +53,7 @@ def prepare(root, kubectl):
                 body_file.write_text(json.dumps(body)); body_file.chmod(0o600)
                 cmd += ['-H', 'Content-Type: application/json', '--data-binary', '@' + str(body_file)]
             result = subprocess.run(cmd, input=config.encode(), capture_output=True)
+            (root / 'logs/s3-admin-curl.stderr').write_bytes(result.stderr)
             if result.returncode: raise RuntimeError('signed S3 admin request failed; rc=' + str(result.returncode))
             payload, status = result.stdout.rsplit(b'\n', 1)
             (private / 's3-last-response.json').write_bytes(payload)
