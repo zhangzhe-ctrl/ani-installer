@@ -33,6 +33,9 @@ class GatewayChartTest(unittest.TestCase):
                 Path(os.environ['ANI_CHART_TEST_HELM']), Path(os.environ['ANI_CHART_TEST_REFERENCE']),
                 site, {'mcp_session_seed': 'test-only-seed-never-for-deployment', 's3_ca_pem': 'test-only-ca'}, output)
             controllers = list(yaml.safe_load_all((output / 'controllers.yaml').read_text()))
+            for crd in yaml.safe_load_all((output / 'crds.yaml').read_text()):
+                if crd['spec']['group'] == 'gateway.networking.k8s.io':
+                    self.assertIn('api-approved.kubernetes.io', crd['metadata']['annotations'])
             webhook = next(doc for doc in controllers if doc['kind'] == 'MutatingWebhookConfiguration')
             self.assertIn('cert-manager.io/inject-ca-from', webhook['metadata']['annotations'])
             expected = {row['targetDigestRef'] for row in lock['images']}

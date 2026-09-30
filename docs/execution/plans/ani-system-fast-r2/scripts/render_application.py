@@ -40,7 +40,8 @@ def clean(doc):
     doc = copy.deepcopy(doc)
     doc.pop('status', None)
     meta = doc['metadata']
-    ca_annotations = {k: v for k, v in meta.get('annotations', {}).items() if k.startswith('cert-manager.io/')}
+    ca_annotations = {k: v for k, v in meta.get('annotations', {}).items()
+                      if k.startswith('cert-manager.io/') or k == 'api-approved.kubernetes.io'}
     for key in ('uid', 'resourceVersion', 'managedFields', 'creationTimestamp',
                 'ownerReferences', 'finalizers', 'generation', 'annotations'):
         meta.pop(key, None)

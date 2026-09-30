@@ -63,7 +63,7 @@ def render(bundle, lock, helm, reference, site, runtime, output):
     for raw in docs:
         # Keep cainjector's required annotations; remove Helm release ownership.
         annotations = {k: v for k, v in raw.get('metadata', {}).get('annotations', {}).items()
-                       if k.startswith('cert-manager.io/')}
+                       if k.startswith('cert-manager.io/') or k == 'api-approved.kubernetes.io'}
         doc = clean(raw)
         if annotations: doc['metadata']['annotations'] = annotations
         if doc['kind'] == 'CustomResourceDefinition':
