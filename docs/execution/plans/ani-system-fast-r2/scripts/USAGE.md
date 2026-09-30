@@ -58,7 +58,9 @@ python3 "$TASK_DIR/scripts/ani_images.py" push \
 
 `render_application.py` 在 Fedora 读取仓外脱敏参考、已回读 Harbor 的实际应用锁、有限站点输入和私有 runtime JSON；输出本任务独立应用材料。它拒绝未导入的 digest、错误 Session key 长度、残余旧依赖与未提供的 Secret key。当前仍需完成业务网关/AI Gateway 渲染、所选 SQL/schema 和现场参数才能产出完整应用包；不能把候选工具当作完成的部署包。
 
-实际应用安装与重试使用代码包的 `ani-system.sh`（源码唯一入口为 `kubekey/builtin/core/roles/ani/system/templates/application.sh`）。参数为 `--package APP_PACKAGE --kubeconfig FILE --stage preflight|prepare|init|core|apps|gateway|wait|all`。运行前必须在已核对的既有实验锁内执行，不能创建另一把锁、直接重放首装或覆盖别人资源。脚本会比较目标节点地址、可选 cluster UID，并拒绝接管同名非本任务资源；初始化失败会停止后续步骤，按数据库迁移摘要记录跳过已成功文件。
+实际应用安装与重试使用代码包的 `ani-system.sh`（源码唯一入口为 `kubekey/builtin/core/roles/ani/system/templates/application.sh`）。参数为 `--package APP_PACKAGE --kubeconfig FILE --stage preflight|crds|prepare|controllers|init|core|apps|gateway|wait|all`。运行前必须在已核对的既有实验锁内执行，不能创建另一把锁、直接重放首装或覆盖别人资源。脚本会比较目标节点地址、可选 cluster UID，并拒绝接管同名非本任务资源；初始化失败会停止后续步骤，按数据库迁移摘要记录跳过已成功文件。
+
+`render_gateways.py` 使用包内三个 Chart 和实际锁，在 Fedora 离线渲染独立业务控制器、CRD、TLS 入口与 authz。输入还包括仓外 `--reference`、站点 `--site` 和私有 `--runtime`；runtime 的 `mcp_session_seed` 首次生成后复用。共享 CRD 先只读比较 schema，冲突时停止该项，不抢夺已有控制器的所有权。应用入口通过 TLS Gateway 发布；具体公开地址、Envoy Service 端口和 DNS/CA 必须以现场结果确认。
 
 未来首装 site 仅新增：
 

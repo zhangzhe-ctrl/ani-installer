@@ -39,6 +39,13 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual(result['metadata']['labels']['ani.io/app-task'], application.TASK)
         self.assertEqual(doc['metadata']['uid'], 'old')
 
+    def test_ca_injection_annotation_survives_release_cleanup(self):
+        doc = {'kind': 'MutatingWebhookConfiguration', 'metadata': {'name': 'webhook',
+               'annotations': {'cert-manager.io/inject-ca-from': 'ns/certificate',
+                               'meta.helm.sh/release-name': 'old'}}}
+        self.assertEqual(application.clean(doc)['metadata']['annotations'],
+                         {'cert-manager.io/inject-ca-from': 'ns/certificate'})
+
 
 if __name__ == '__main__':
     unittest.main()

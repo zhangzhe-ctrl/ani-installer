@@ -11,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 
 import yaml
 
@@ -39,9 +40,11 @@ def clean(doc):
     doc = copy.deepcopy(doc)
     doc.pop('status', None)
     meta = doc['metadata']
+    ca_annotations = {k: v for k, v in meta.get('annotations', {}).items() if k.startswith('cert-manager.io/')}
     for key in ('uid', 'resourceVersion', 'managedFields', 'creationTimestamp',
                 'ownerReferences', 'finalizers', 'generation', 'annotations'):
         meta.pop(key, None)
+    if ca_annotations: meta['annotations'] = ca_annotations
     meta.setdefault('labels', {})['ani.io/app-task'] = TASK
     if doc['kind'] == 'Service':
         for key in ('clusterIP', 'clusterIPs', 'healthCheckNodePort'):
@@ -90,7 +93,7 @@ def update_env(container, values):
 
 def render(reference, site, image_map, runtime, output, gateway_material):
     origins, refs = image_mappings(image_map)
-    required = ('console_url', 'boss_url', 'api_url', 'websocket_url',
+    required = ('console_url', 'boss_url', 'api_url', 'websocket_url', 'inference_url',
                 's3_endpoint', 's3_public_endpoint', 'milvus_endpoint',
                 'prometheus_url', 'loki_url', 'storage_class')
     for key in required:
@@ -98,6 +101,11 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             raise ValueError('missing site parameter: ' + key)
     if not site['s3_endpoint'].startswith('https://') or not site['s3_public_endpoint'].startswith('https://'):
         raise ValueError('S3 internal and public endpoints must use HTTPS')
+    for key in ('console_url', 'boss_url', 'api_url', 'inference_url', 'websocket_url'):
+        parsed = urlparse(site[key])
+        expected = 'wss' if key == 'websocket_url' else 'https'
+        if parsed.scheme != expected or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError('public entry must use TLS without URL credentials: ' + key)
     if site.get('target_nodes') != ['172.16.101.10', '172.16.101.11', '172.16.101.12']:
         raise ValueError('this application selection targets .10/.11/.12')
     secrets = runtime['secrets']
@@ -113,6 +121,8 @@ def render(reference, site, image_map, runtime, output, gateway_material):
             doc = yaml.safe_load(path.read_text())
             kind, meta = doc['kind'], doc['metadata']
             name, ns = meta['name'], meta.get('namespace', '')
+            if kind == 'ServiceAccount' and name == 'default':
+                continue  # Kubernetes creates this; it is not application-owned material.
             if any(marker in json.dumps(doc) for marker in ('sprint13-prometheus', 'ani-dcgm-exporter', 'ani-fluent-bit')):
                 continue
             if ns and ns not in ('ani-system', 'cert-manager'):
@@ -163,9 +173,8 @@ def render(reference, site, image_map, runtime, output, gateway_material):
                     container.setdefault('volumeMounts', []).append({'name': 'ani-site-ca', 'mountPath': '/etc/ani-site-ca', 'readOnly': True})
                 pod.setdefault('volumes', []).append({'name': 'ani-site-ca', 'configMap': {'name': 'ani-site-ca'}})
             if kind == 'Service' and name in ('ani-console', 'ani-boss-console', 'ani-gateway', 'ani-session-gateway-websocket'):
-                for port in doc['spec']['ports']:
-                    number = site.get('node_ports', {}).get(name, {}).get(port['name'])
-                    if number: port['nodePort'] = int(number)
+                doc['spec']['type'] = 'ClusterIP'
+                doc['spec'].pop('externalTrafficPolicy', None)
             if kind == 'ConfigMap':
                 if name == 'ani-session-gateway':
                     doc['data']['ALLOWED_ORIGINS'] = ','.join([site['console_url'], site['boss_url']])

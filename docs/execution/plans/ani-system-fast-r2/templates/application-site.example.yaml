@@ -6,13 +6,13 @@ console_url: __CONSOLE_ORIGIN__
 boss_url: __BOSS_ORIGIN__
 api_url: __API_ORIGIN__
 websocket_url: __SESSION_PUBLIC_URL__
+inference_url: __INFERENCE_HTTPS_ORIGIN__
 s3_endpoint: __HTTPS_INTERNAL_ENDPOINT__
 s3_public_endpoint: __HTTPS_BROWSER_REACHABLE_ENDPOINT__
 milvus_endpoint: __EXISTING_MILVUS_ENDPOINT__
 prometheus_url: __EXISTING_PROMETHEUS_URL__
 loki_url: __EXISTING_LOKI_URL__
 storage_class: __EXISTING_STORAGE_CLASS__
-node_ports: {}
 # Fixed per-Deployment adaptations only, confirmed by actual startup.
 deployment_env: {}
 configmap_data: {}
