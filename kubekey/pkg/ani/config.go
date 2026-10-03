@@ -546,6 +546,7 @@ type ClusterConfig struct {
 	Components     Components     `yaml:"components"`
 	Storage        Storage        `yaml:"storage"`
 	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
+	Kubeflow       *KubeflowConfig `yaml:"kubeflow" json:",omitempty"`
 }
 
 // ObjectStorageProvider resolves the legacy absence once for all consumers.
@@ -561,6 +562,9 @@ func (c ClusterConfig) ObjectStorageProvider() string {
 
 func (c ClusterConfig) EffectiveComponents() Components {
 	components := c.Components
+	if c.KubeflowEnabled() {
+		components.CertManager.Enabled = true
+	}
 	if c.ObjectStorageProvider() == objectProviderRustFS && c.ObjectStorage != nil {
 		components.RustFS = StorageComponent{
 			Enabled: true, StorageClass: c.ObjectStorage.RustFS.StorageClass,
@@ -603,7 +607,7 @@ func validateObjectStorage(c ClusterConfig) error {
 		if c.Storage.provider() == storageProviderCeph && r.StorageClass != DefaultStorageClass {
 			return fmt.Errorf("objectStorage.rustfs.storageClass must be %q when storage.provider=ceph", DefaultStorageClass)
 		}
-		if !c.Components.CertManager.Enabled {
+		if !c.EffectiveComponents().CertManager.Enabled {
 			return fmt.Errorf("objectStorage.provider=rustfs requires components.certManager for the internal CA")
 		}
 	case objectProviderNone:
@@ -732,7 +736,7 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 				}
 			}
 		case "verification":
-			if base || !c.Components.CertManager.Enabled {
+			if base || !c.EffectiveComponents().CertManager.Enabled {
 				continue
 			}
 		}
@@ -750,7 +754,7 @@ func requiredChartPaths(c ClusterConfig) []string {
 		return nil
 	}
 	var paths []string
-	if c.Components.CertManager.Enabled {
+	if c.EffectiveComponents().CertManager.Enabled {
 		paths = append(paths, "charts/cert-manager/v1.21.2.tgz")
 	}
 	if c.Components.NATS.Enabled {
@@ -1224,6 +1228,9 @@ func Validate(c ClusterConfig) error {
 	if err := validateObjectStorage(c); err != nil {
 		return err
 	}
+	if err := validateKubeflow(c); err != nil {
+		return err
+	}
 	if c.Components.SnapshotController.Enabled && (!c.Storage.Enabled || c.Storage.provider() != storageProviderCeph) {
 		return fmt.Errorf("components.snapshotController requires storage.enabled=true and storage.provider=ceph for the fixed RBD/CephFS snapshot classes")
 	}
@@ -1638,6 +1645,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"images":      imageRefs,
 			"image_parts": imageParts,
 			"components":  components,
+			"kubeflow":    kubeflowSpec(c),
 			"profile":     installProfile(c.Profile),
 			"storage": map[string]any{
 				"enabled":                 c.Storage.Enabled,
@@ -1867,7 +1875,9 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 	case "ceph":
 		return c.Storage.Enabled && c.Storage.provider() == storageProviderCeph && installProfile(c.Profile) != "base"
 	case "cert-manager":
-		return c.Components.CertManager.Enabled && installProfile(c.Profile) != "base"
+		return c.EffectiveComponents().CertManager.Enabled && installProfile(c.Profile) != "base"
+	case "kubeflow":
+		return c.KubeflowEnabled()
 	case "postgresql":
 		return c.Components.PostgreSQL.Enabled && installProfile(c.Profile) != "base"
 	case "valkey":

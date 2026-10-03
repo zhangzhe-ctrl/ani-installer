@@ -1,0 +1,138 @@
+{
+  "schema": "ani.kubeflow.source-images.v1",
+  "source_commit": "51f312a0a7d342d765eb199c19afa4e8f2adabf7",
+  "status": "SOURCE_IDENTITIES_COLLECTED",
+  "blob_materialization": "NOT_RUN",
+  "registry_readback": "NOT_RUN",
+  "runtime_pull": "NOT_RUN",
+  "images": [
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-api-server:2.16.0",
+      "source_manifest_digest": "sha256:5f9d674f75dbd9c056ad31a1d8c5432e1bdc1f0597dfefe6f58d00af983fbe22",
+      "amd64_manifest_digest": "sha256:5f9d674f75dbd9c056ad31a1d8c5432e1bdc1f0597dfefe6f58d00af983fbe22",
+      "platform": "linux/amd64",
+      "source_evidence": "56be62b15cac3a0d.source.json",
+      "platform_evidence": "56be62b15cac3a0d.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-cache-deployer:2.16.0",
+      "source_manifest_digest": "sha256:6334fc0842b2a54df84c446e32e2292b50430a7410d6cedcde91057b0e3c8699",
+      "amd64_manifest_digest": "sha256:6334fc0842b2a54df84c446e32e2292b50430a7410d6cedcde91057b0e3c8699",
+      "platform": "linux/amd64",
+      "source_evidence": "482356c1ce0ee561.source.json",
+      "platform_evidence": "482356c1ce0ee561.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-cache-server:2.16.0",
+      "source_manifest_digest": "sha256:edeba636f4adb4cef5a68991023e31108005e3c600db11a3d35cb5c44fefce83",
+      "amd64_manifest_digest": "sha256:edeba636f4adb4cef5a68991023e31108005e3c600db11a3d35cb5c44fefce83",
+      "platform": "linux/amd64",
+      "source_evidence": "636e51297d31986c.source.json",
+      "platform_evidence": "636e51297d31986c.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0",
+      "source_manifest_digest": "sha256:ae854892d51ac29bbab8a1cddd9a5beadd2e84b27b1a6bfbdf1871c9438e8763",
+      "amd64_manifest_digest": "sha256:ae854892d51ac29bbab8a1cddd9a5beadd2e84b27b1a6bfbdf1871c9438e8763",
+      "platform": "linux/amd64",
+      "source_evidence": "915fc8feb6bc50b7.source.json",
+      "platform_evidence": "915fc8feb6bc50b7.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-metadata-writer:2.16.0",
+      "source_manifest_digest": "sha256:0aabb7e4af425a622b502ff9a32add14e147f0408e127a129b118053b80d270f",
+      "amd64_manifest_digest": "sha256:0aabb7e4af425a622b502ff9a32add14e147f0408e127a129b118053b80d270f",
+      "platform": "linux/amd64",
+      "source_evidence": "84b09a1d8031e3de.source.json",
+      "platform_evidence": "84b09a1d8031e3de.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-persistence-agent:2.16.0",
+      "source_manifest_digest": "sha256:7d44250d37fd8026740d1640cb91313580c05c875bd72ccbd66bc0ed44e3ed2b",
+      "amd64_manifest_digest": "sha256:7d44250d37fd8026740d1640cb91313580c05c875bd72ccbd66bc0ed44e3ed2b",
+      "platform": "linux/amd64",
+      "source_evidence": "e094b78be95e020d.source.json",
+      "platform_evidence": "e094b78be95e020d.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0",
+      "source_manifest_digest": "sha256:87851f90101b078defee70e19d0ff1b1fd485dcc99fb66298193c2545c4b0fc5",
+      "amd64_manifest_digest": "sha256:87851f90101b078defee70e19d0ff1b1fd485dcc99fb66298193c2545c4b0fc5",
+      "platform": "linux/amd64",
+      "source_evidence": "77310ca1211556d4.source.json",
+      "platform_evidence": "77310ca1211556d4.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-driver:2.16.0",
+      "source_manifest_digest": "sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd",
+      "amd64_manifest_digest": "sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd",
+      "platform": "linux/amd64",
+      "source_evidence": "890d1c76e979dcc4.source.json",
+      "platform_evidence": "890d1c76e979dcc4.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kfp-launcher:2.16.0",
+      "source_manifest_digest": "sha256:6b2d6c5733d957c9f7831cafe12aebcf9ef8ec503f57b74ed2ab00d5db113d29",
+      "amd64_manifest_digest": "sha256:6b2d6c5733d957c9f7831cafe12aebcf9ef8ec503f57b74ed2ab00d5db113d29",
+      "platform": "linux/amd64",
+      "source_evidence": "a2de233df44e0e96.source.json",
+      "platform_evidence": "a2de233df44e0e96.amd64.json"
+    },
+    {
+      "original_ref": "gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0",
+      "source_manifest_digest": "sha256:51404ef4419c1426da80f3e14a83dcb55f65bb5a971371d36d14cec1e50af830",
+      "amd64_manifest_digest": "sha256:51404ef4419c1426da80f3e14a83dcb55f65bb5a971371d36d14cec1e50af830",
+      "platform": "linux/amd64",
+      "source_evidence": "9632fcec0dc21491.source.json",
+      "platform_evidence": "9632fcec0dc21491.amd64.json"
+    },
+    {
+      "original_ref": "quay.io/argoproj/workflow-controller:v3.7.3",
+      "source_manifest_digest": "sha256:86544f45dfb5eec10a101dd46e4078edc527ca548ed754bcf520ab4a1c80ba31",
+      "amd64_manifest_digest": "sha256:5c8f5b6e5a2134dafdeadf758f230e4cc08db78f813e52d928e8f4f4541f243d",
+      "platform": "linux/amd64",
+      "source_evidence": "e3a41ba2a161a8dc.source.json",
+      "platform_evidence": "e3a41ba2a161a8dc.amd64.json"
+    },
+    {
+      "original_ref": "quay.io/argoproj/argoexec:v3.7.3",
+      "source_manifest_digest": "sha256:d299769f4681ba47fa5e4e00f1c4d31eee782659c43625ea1bdf1cff08ca34dd",
+      "amd64_manifest_digest": "sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a",
+      "platform": "linux/amd64",
+      "source_evidence": "229cfa9a68982c6c.source.json",
+      "platform_evidence": "229cfa9a68982c6c.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0",
+      "source_manifest_digest": "sha256:47b4373af5e26a8ed2afadb7a3efe6372a2a1ebd62120509114de7fc29d60873",
+      "amd64_manifest_digest": "sha256:aa5949fc4ccbbed2537fa05f08ca330bc83b40aef930d2a0d44970922f197a73",
+      "platform": "linux/amd64",
+      "source_evidence": "40fb79d762708ed3.source.json",
+      "platform_evidence": "40fb79d762708ed3.amd64.json"
+    },
+    {
+      "original_ref": "registry.k8s.io/jobset/jobset:v0.10.1",
+      "source_manifest_digest": "sha256:6976d1db4923177577e8ee3fe42abb173315a9bcf1b811f0ed94dd2073bd42bf",
+      "amd64_manifest_digest": "sha256:a018e2ca9b2a73645e108930a1a1795392fe8b765e4c81f5240f640b854436c4",
+      "platform": "linux/amd64",
+      "source_evidence": "48b74fb13e586863.source.json",
+      "platform_evidence": "48b74fb13e586863.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/library/mysql:8.4.11",
+      "source_manifest_digest": "sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242",
+      "amd64_manifest_digest": "sha256:80f4933e3835f9dc4d35a28ec500d7986cb4414e6c6821c5461239cb7beb8995",
+      "platform": "linux/amd64",
+      "source_evidence": "ec64f34c7311b611.source.json",
+      "platform_evidence": "ec64f34c7311b611.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/library/nginx:1.30.5",
+      "source_manifest_digest": "sha256:b972f831f200b19ef0767938224f9711e74cd783718738cd7405d5cabf75c442",
+      "amd64_manifest_digest": "sha256:3d2f995522ddb52c3a4eb8008b8fa26f184f7146851df1da831f88885ac40aae",
+      "platform": "linux/amd64",
+      "source_evidence": "3de81d4e8cb306fa.source.json",
+      "platform_evidence": "3de81d4e8cb306fa.amd64.json"
+    }
+  ]
+}

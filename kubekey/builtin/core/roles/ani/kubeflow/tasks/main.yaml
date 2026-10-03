@@ -1,0 +1,46 @@
+---
+- name: ANI Kubeflow | Assert fixed execution context and offline material
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    for directory in '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'; do
+      case "$directory" in /*) ;; *) echo 'missing absolute run scope' >&2; exit 1 ;; esac
+    done
+    test -f '{{ .ani.artifact_root }}/manifests/kubeflow/{{ .ani.kubeflow.release }}/overlay.lock.json'
+    test -f '{{ .ani.artifact_root }}/manifests/kubeflow/{{ .ani.kubeflow.release }}/resources.json'
+    test -x '{{ .ani.artifact_root }}/bin/rc'
+    install -d -m 0700 /etc/kubernetes/ani/kubeflow '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI Kubeflow | Render this run's configuration
+  template:
+    src: site.json
+    dest: /etc/kubernetes/ani/kubeflow/site.json
+
+- name: ANI Kubeflow | Render installer
+  template:
+    src: install.sh
+    dest: /etc/kubernetes/ani/kubeflow/install.sh
+
+- name: ANI Kubeflow | Render checker
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/kubeflow/verify.sh
+
+- name: ANI Kubeflow | Install the reviewed offline overlay in dependency order
+  command: |
+    set -euo pipefail
+    chmod 0600 /etc/kubernetes/ani/kubeflow/site.json
+    chmod 0700 /etc/kubernetes/ani/kubeflow/install.sh /etc/kubernetes/ani/kubeflow/verify.sh
+    bash /etc/kubernetes/ani/kubeflow/install.sh
+
+- name: ANI Kubeflow | Verify current control plane
+  command: |
+    set -euo pipefail
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}' \
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}' \
+      bash /etc/kubernetes/ani/kubeflow/verify.sh
+
+- name: ANI Kubeflow | Render secret-free connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/kubeflow.md'

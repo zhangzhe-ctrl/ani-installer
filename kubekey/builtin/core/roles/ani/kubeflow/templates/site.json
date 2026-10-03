@@ -1,0 +1,17 @@
+{
+  "release": "{{ .ani.kubeflow.release }}",
+  "kubeconfig": "{{ .ani.run.kubeconfig }}",
+  "logs_dir": "{{ .ani.run.logs_dir }}",
+  "connections_dir": "{{ .ani.run.connections_dir }}",
+  "artifact_root": "{{ .ani.artifact_root }}",
+  "registry": "{{ .ani.registry }}",
+  "entry_address": "{{ .ani.kubeflow.entry_address }}",
+  "http_port": {{ .ani.kubeflow.http_port }},
+  "grpc_port": {{ .ani.kubeflow.grpc_port }},
+  "database_class": "{{ .ani.kubeflow.database_class }}",
+  "database_size": "{{ .ani.kubeflow.database_size }}",
+  "workspace_class": "{{ .ani.kubeflow.workspace_class }}",
+  "workspace_max_size": "{{ .ani.kubeflow.workspace_max_size }}",
+  "workspace_max_claims": {{ .ani.kubeflow.workspace_max_claims }},
+  "tenants": {{ toJson .ani.kubeflow.tenants }}
+}

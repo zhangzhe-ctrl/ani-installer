@@ -173,4 +173,8 @@
     - role: ani/fluent-bit
       when: '{{ and (index .ani.components "logging").enabled (ne .ani.components.logging.backend "none") (ne .ani.profile "base") }}'
 
+    # First-install selection only. Deliberately absent from ani_components.
+    - role: ani/kubeflow
+      when: '{{ and .ani.kubeflow.enabled (ne .ani.profile "base") }}'
+
 - import_playbook: hook/post_install.yaml

@@ -595,6 +595,9 @@ func writeConnections(dest, dir string, rows []ComponentRow) error {
 // ships.
 func effectiveSelection(c ClusterConfig) []ComponentRow {
 	rows := c.EffectiveComponents().Selection()
+	if c.KubeflowEnabled() {
+		rows = append(rows, ComponentRow{Name: "kubeflow", Enabled: true})
+	}
 	if installProfile(c.Profile) == "base" {
 		for i := range rows {
 			rows[i].Enabled = false

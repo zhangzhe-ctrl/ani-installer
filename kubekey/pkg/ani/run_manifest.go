@@ -99,6 +99,7 @@ type RunManifest struct {
 	StorageClass     string                 `json:"storageClass"`
 	Storage          ManifestStorage        `json:"storage"`
 	ObjectStorage    *ManifestObjectStorage `json:"objectStorage,omitempty"`
+	Kubeflow         *KubeflowConfig        `json:"kubeflow,omitempty"`
 	ComponentClasses map[string]string      `json:"componentStorageClasses,omitempty"`
 
 	// PackageRoot is recorded so a later step can find the artifact, but this
@@ -161,6 +162,9 @@ func ConfigDigest(c ClusterConfig) (string, error) {
 	clean := c
 	clean.SSH.Password = ""
 	clean.SSH.PrivateKey = ""
+	if !clean.KubeflowEnabled() {
+		clean.Kubeflow = nil
+	}
 	// encoding/json on a struct is field-order deterministic; the parsed struct
 	// has already absorbed quoting, comments and key order.
 	canonical, err := json.Marshal(clean)
@@ -218,7 +222,7 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 
 	// Canonical component IDs, in the fixed order the selection file uses.
 	classes := map[string]string{}
-	for _, row := range c.EffectiveComponents().Selection() {
+	for _, row := range effectiveSelection(c) {
 		if !row.Enabled {
 			continue
 		}
@@ -260,6 +264,11 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 		})
 	}
 	manifest.StorageClass = effectiveStorageClass(c)
+	if c.KubeflowEnabled() {
+		manifest.Kubeflow = c.Kubeflow
+		classes["kubeflow"] = c.Kubeflow.Database.StorageClass
+		manifest.ComponentClasses = classes
+	}
 	return manifest, nil
 }
 
