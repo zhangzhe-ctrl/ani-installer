@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import Cluster
-from install import checked_policy
+from install import checked_policy, materialize
 from storage import same_policy, same_identity
 
 
@@ -221,6 +221,24 @@ class ScopedStorageReadback(unittest.TestCase):
                              ("accountStatus", "off"), ("impliedPolicy", True), ("policy", "not-json")):
             actual = dict(info, **{key: invalid})
             self.assertFalse(same_identity(actual, "task-key", "root-key", self.policy()))
+
+
+class MySQLDependencyReadiness(unittest.TestCase):
+    def test_materialized_mysql_waits_for_authenticated_final_tcp_server(self):
+        root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"
+        references = json.loads((root / "source-images.json").read_text())
+        values = materialize(root / "overlay", {"images": {name: "offline/" + name for name in references},
+                            "database_class": "ani-block", "database_size": "20Gi"})
+        database = next(v for v in values if v["kind"] == "Deployment" and v["metadata"]["name"] == "mysql")
+        container = database["spec"]["template"]["spec"]["containers"][0]
+        for key in ("startupProbe", "readinessProbe"):
+            probe = container[key]
+            query = probe["exec"]["command"][-1]
+            self.assertIn("--protocol=TCP -h127.0.0.1", query)
+            self.assertIn('MYSQL_PWD="$MYSQL_ROOT_PASSWORD"', query)
+            self.assertIn('SELECT 1', query)
+            self.assertLessEqual(probe["failureThreshold"] * probe["periodSeconds"], 500)
+        self.assertEqual(database["spec"]["template"]["spec"]["volumes"][0]["persistentVolumeClaim"]["claimName"], "mysql-pv-claim")
 
 
 if __name__ == "__main__":

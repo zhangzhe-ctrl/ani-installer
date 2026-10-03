@@ -57,6 +57,17 @@ def materialize(root, site):
     resources = json.loads(text)
     if len(resources) != lock["resource_count"]:
         raise ValueError("overlay resource count differs")
+    for value in resources:
+        if value["kind"] == "Deployment" and value["metadata"]["name"] == "mysql":
+            # Docker's first initialization uses a temporary socket-only
+            # server before installing the credentials/schema. A Running Pod
+            # or successful socket query cannot admit downstream consumers.
+            database = value["spec"]["template"]["spec"]["containers"][0]
+            query = ["sh", "-ec", 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=TCP -h127.0.0.1 -uroot --connect-timeout=3 --batch --skip-column-names -e "SELECT 1"']
+            database["startupProbe"] = {"exec": {"command": query}, "periodSeconds": 5,
+                                        "timeoutSeconds": 5, "failureThreshold": 100}
+            database["readinessProbe"] = {"exec": {"command": query}, "periodSeconds": 5,
+                                          "timeoutSeconds": 5, "failureThreshold": 3}
     return resources
 
 
@@ -216,7 +227,7 @@ def install(cluster, root, report):
         cluster.wait(value, lambda v: v.get("status", {}).get("phase") == "Bound")
     # Authenticate against MySQL, not just Deployment Ready or a TCP socket.
     result = cluster.call(["-n", "kubeflow", "exec", "deployment/mysql", "--", "sh", "-ec",
-                           'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql -uroot --batch --skip-column-names -e "SELECT 1"'], sensitive=True)
+                           'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=TCP -h127.0.0.1 -uroot --connect-timeout=3 --batch --skip-column-names -e "SELECT 1"'], sensitive=True)
     if result.strip() != "1":
         raise RuntimeError("MySQL authenticated protocol check differs")
     report["completedPhases"].append("ISOLATED_STORAGE_DATABASE_AUTHENTICATED")
