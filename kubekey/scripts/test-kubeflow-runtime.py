@@ -338,5 +338,37 @@ class EntryConfigurationReplay(unittest.TestCase):
             self.update(extra_data=True)
 
 
+class APIWorkflowConfigurationReplay(unittest.TestCase):
+    def update(self, manager="ani-kubeflow"):
+        class ExistingAPI(Cluster):
+            def read(self, value):
+                live = copy.deepcopy(value)
+                live["metadata"].update(uid="api-create-uid", resourceVersion="37",
+                    labels={"ani.io/managed-by": "ani-lab", "retained-label": "keep"},
+                    annotations={"retained-annotation": "keep"},
+                    managedFields=[{"manager": manager, "fieldsV1": {"f:spec": {}}},
+                                   {"manager": "kube-controller-manager", "subresource": "status", "fieldsV1": {"f:status": {}}}])
+                live["spec"]["template"]["spec"]["containers"][0]["env"][0]["value"] = "{}"
+                return live
+
+            def call(self, args, value, **kwargs):
+                metadata = value["metadata"]
+                if args[0] != "replace" or "--force-conflicts" in args or metadata["uid"] != "api-create-uid" or metadata["resourceVersion"] != "37" or metadata["annotations"]["retained-annotation"] != "keep":
+                    raise AssertionError("compiler configuration update must retain identity/version and metadata")
+                return json.dumps(value)
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = ExistingAPI({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            cluster.apply([{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "ml-pipeline", "namespace": "kubeflow"},
+                "spec": {"template": {"spec": {"containers": [{"name": "api", "env": [{"name": "COMPILED_PIPELINE_SPEC_PATCH", "value": '{"podSpecPatch":"{}"}'}]}]}}}}])
+            self.assertEqual(cluster.writes[0]["uid"], "api-create-uid")
+
+    def test_owned_api_config_update_preserves_uid_version_and_controller_status_ownership(self):
+        self.update()
+
+    def test_foreign_api_spec_manager_is_rejected_before_any_request(self):
+        with self.assertRaisesRegex(RuntimeError, "foreign API deployment spec manager"):
+            self.update(manager="foreign-operator")
+
+
 if __name__ == "__main__":
     unittest.main()

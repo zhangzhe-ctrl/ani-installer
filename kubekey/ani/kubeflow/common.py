@@ -164,6 +164,23 @@ class Cluster:
                 if "immutable" in old:
                     obj["immutable"] = old["immutable"]
                 replace_owned = True
+            if old and obj["kind"] == "Deployment" and obj["metadata"].get("namespace") == "kubeflow" and obj["metadata"]["name"] == "ml-pipeline":
+                def workflow_patch(value):
+                    return next((e.get("value") for c in value.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+                                 for e in c.get("env", []) if e["name"] == "COMPILED_PIPELINE_SPEC_PATCH"), None)
+                if workflow_patch(obj) is not None and workflow_patch(obj) != workflow_patch(old):
+                    # The initial create Update owns this value. A reviewed
+                    # compiler configuration change may replace only our API
+                    # Deployment's spec, with its actual UID/version conditions.
+                    spec_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:spec" in m.get("fieldsV1", {})}
+                    if spec_managers != {manager}:
+                        raise RuntimeError("foreign API deployment spec manager; refusing mutation: " + identity(obj))
+                    metadata = {**old["metadata"], **obj["metadata"]}
+                    metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
+                    metadata["annotations"] = {**old["metadata"].get("annotations", {}), **obj["metadata"].get("annotations", {})}
+                    metadata.pop("managedFields", None)
+                    obj["metadata"] = metadata
+                    replace_owned = True
             verb = ["apply", "--server-side", "--field-manager=" + manager, "--validate=strict"] if old else ["create", "--field-manager=ani-kubeflow", "--validate=strict"]
             if replace_owned:
                 verb = ["replace", "--field-manager=ani-kubeflow", "--validate=strict"]
