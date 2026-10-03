@@ -16,6 +16,7 @@
 1. 首次角色源码 `5052e81`：确认 77 次写入；CRD Established；等待控制器 600 秒后 FAIL，进程退出码 1。开发 registry 为 HTTP 5001，运行时尝试 HTTPS 导致 ErrImagePull。首次 shell 未落退出码文件，采用实际执行工具返回的进程退出码，不采用 tail 状态。
 2. 同源重入：确认 15 次写入，退出码 1；空占位证书 Secret 与控制器生成的数据不同，被凭据轮换保护拒绝。仅两个固定控制器证书的空占位允许保留现有字节，其他凭据和替换行为继续拒绝；四项回归通过。
 3. 源码 `1c45135`、独立目录 `integration-attempt-03`：包 SHA256 `cd797812084f7892364834c87e853e62389e936f20bdcb401b3ed1d20a322404`，站点 SHA256 `81d3c832e7cd55824e33da4cf460e9d1fb64d467e40926eecda65ad4e19319e8`。真实退出码 1，确认 70 次写入。webhook 干运行在原 create manager 的原子 rules 列表发生 SSA 冲突；现场规则已由 API 默认补入 `scope: "*"`，源码未显式给出。后续 S3、数据库、KFP 消费者未执行。修复在源码显式给出 API 默认值，不 force-conflicts，不修改节点源码，不删除控制器。
+4. 角色 `c34bd9c` 的完整远程代码门禁与同源构建退出码 0，连续指纹 `1c77716bf9a8a7bba77b9b7a5b9c46844be440fa8e31bccdb5f9463bf4b5a2e3`。第四次节点目录 `integration-attempt-04` 包 SHA256 `34b9069c2f5a617bfbca90c2396a4432cdd7f1658d1061f8ba9aaff3258f5d37`。控制器/webhook CA 阶段通过，原 Pod UID 不变、重启数 0；随后 ValidatingAdmissionPolicy 服务端干运行拒绝 Quantity.sign()，退出码 1、确认 109 次写入。S3/数据库/KFP 消费者未写入。源修复将正数判断改为 compareTo(quantity('0')) > 0，保留原上界；安装在消费者之前等待策略 observedGeneration 和实际 typeChecking，无状态不能当通过。当前在线文档含更丰富的数量成员函数，现场编译器结果优先，不升级 API 或放宽边界凑通过；参考 [Kubernetes CEL](https://kubernetes.io/docs/reference/using-api/cel/)。
 
 控制器原 Pod UID：JobSet `f6b035f0-cd2e-4800-b8e2-826d6f15f025`、Trainer `d0453fc7-82cf-4d06-a794-c123e9d1365c`；第三次调用前两者 Running、重启数 0。此观察不证明 TrainJob、入口或业务验收通过。
 
@@ -33,3 +34,5 @@
 - 节点时间与 Fedora 有约 18 秒差，tar 解包输出 future timestamp 警告；逐项摘要通过。外部 UTC 仍 NOT_VERIFIED，未静音或调整时钟凑通过。
 
 本轮必需验收仍有 NOT_RUN，`ENV_READY` 不成立；CPU-P01 业务未运行。
+
+`4faade2` 的实际源绑定物料目录回归九项 PASS，退出码 0，日志 `material-layout-regression-attempt-01.log`。新完整构建候选使用 4faade2 的构建脚本与 c34bd9c 的受审 kk，二者分别记录；这是联调候选，不是最终同源冻结发布物。

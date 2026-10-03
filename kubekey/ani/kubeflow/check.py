@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 
 from common import Cluster, assets, atomic, identity, load_site
-from install import materialize
+from install import checked_policy, materialize
 from resources import RELEASE, entry, obj, runtime
 
 
@@ -101,7 +101,7 @@ def check(cluster, root, report):
         cluster.call(["create", "--dry-run=server", "--validate=strict", "-f", "-", "-o", "json"], admission)
     for name in ("ani-kfp-workspace", "ani-kfp-trainjob"):
         policy = cluster.owned(obj("ValidatingAdmissionPolicy", name, api="admissionregistration.k8s.io/v1"))
-        if not policy or policy.get("status", {}).get("typeChecking", {}).get("expressionWarnings"):
+        if not policy or not checked_policy(policy):
             raise RuntimeError("admission expression type checking differs: " + name)
     report.update(status="CONTROL_PLANE_CHECKED", httpRequests=requests, grpcTls="h2_verified / grpc_authorization_NOT_RUN",
                   runtime={"name": installed["metadata"]["name"], "uid": installed["metadata"]["uid"]},

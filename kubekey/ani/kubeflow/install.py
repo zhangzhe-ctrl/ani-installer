@@ -95,6 +95,16 @@ def database_secrets(cluster, config):
     cluster.apply(output)
 
 
+def checked_policy(value):
+    status = value.get("status", {})
+    if status.get("observedGeneration", 0) < value["metadata"].get("generation", 1) or "typeChecking" not in status:
+        return False
+    warnings = status["typeChecking"].get("expressionWarnings", [])
+    if warnings:
+        raise RuntimeError("admission policy type checking failed: " + value["metadata"]["name"] + ": " + json.dumps(warnings))
+    return True
+
+
 def install(cluster, root, report):
     site = cluster.site
     report["lock"] = product_lock()
@@ -168,7 +178,11 @@ def install(cluster, root, report):
         public_ca += [obj("ConfigMap", "ani-kfp-ca", namespace, data={"ca.crt": ca}),
                       obj("Secret", "ani-kfp-ca", namespace, type="Opaque", data={"ca.crt": base64.b64encode(ca.encode()).decode()})]
     cluster.apply(public_ca)
-    cluster.apply(admission(site, approved_runtime["metadata"]["name"], site["images"]["ani.local/kubeflow-execution:26.03-v1"]))
+    policies = admission(site, approved_runtime["metadata"]["name"], site["images"]["ani.local/kubeflow-execution:26.03-v1"])
+    cluster.apply(policies)
+    for value in policies:
+        if value["kind"] == "ValidatingAdmissionPolicy":
+            cluster.wait(value, checked_policy)
     cluster.apply(isolation(site))
     scoped_storage(cluster, ca)
     config = next(v["data"] for v in values if v["kind"] == "ConfigMap" and v["metadata"]["name"] == "pipeline-install-config")
