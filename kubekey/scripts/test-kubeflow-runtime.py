@@ -106,8 +106,8 @@ class ExistingPolicy(Cluster):
 
     def call(self, args, value, **kwargs):
         self.calls.append(args)
-        if "--field-manager=kubectl-create" not in args or "--force-conflicts" in args:
-            raise AssertionError("legacy owned policy must keep its original creator")
+        if args[0] != "replace" or "--field-manager=ani-kubeflow" not in args or "--force-conflicts" in args:
+            raise AssertionError("legacy owned policy replacement must use UID/version conditions without force")
         if value["metadata"].get("uid") != "policy-create-uid" or value["metadata"].get("resourceVersion") != "23":
             raise AssertionError("policy identity/version conditions must survive replay")
         return json.dumps(value)
@@ -122,7 +122,7 @@ class PolicyCreatorReplay(unittest.TestCase):
             self.assertEqual(len(cluster.calls), 2)
             self.assertEqual(cluster.writes[0]["uid"], "policy-create-uid")
 
-    def test_legacy_task_policy_keeps_creator_and_uid_version_conditions(self):
+    def test_legacy_task_policy_replacement_keeps_uid_version_conditions(self):
         self.apply_policy("kubectl-create")
 
     def test_foreign_policy_spec_manager_is_refused_before_a_request(self):

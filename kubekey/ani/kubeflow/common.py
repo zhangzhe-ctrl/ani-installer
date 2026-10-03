@@ -125,16 +125,24 @@ class Cluster:
                 obj["metadata"].update(uid=old["metadata"]["uid"], resourceVersion=old["metadata"]["resourceVersion"])
             secret = obj["kind"] == "Secret"
             manager = "ani-kubeflow"
+            legacy_policy = False
             if old and obj["kind"] == "ValidatingAdmissionPolicy" and obj["metadata"]["name"] in ("ani-kfp-workspace", "ani-kfp-trainjob"):
-                # Earlier role attempts created these owned policies with
-                # kubectl's default manager. Replay their atomic validation
-                # lists through that creator, never force a foreign manager.
+                # Earlier role attempts used kubectl's default create manager.
+                # Its Update-owned atomic lists conflict even with SSA using
+                # the same name. Replace only these owned policies, conditioned
+                # on their actual UID+resourceVersion, preserving metadata.
                 spec_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:spec" in m.get("fieldsV1", {})}
                 if spec_managers - {"kubectl-create", "ani-kubeflow"}:
                     raise RuntimeError("foreign policy spec manager; refusing mutation: " + identity(obj))
                 if "kubectl-create" in spec_managers:
-                    manager = "kubectl-create"
+                    legacy_policy = True
+                    metadata = {**old["metadata"], **obj["metadata"]}
+                    metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
+                    metadata.pop("managedFields", None)
+                    obj["metadata"] = metadata
             verb = ["apply", "--server-side", "--field-manager=" + manager, "--validate=strict"] if old else ["create", "--field-manager=ani-kubeflow", "--validate=strict"]
+            if legacy_policy:
+                verb = ["replace", "--field-manager=ani-kubeflow", "--validate=strict"]
             self.call(verb + ["--dry-run=server", "-f", "-", "-o", "json"], obj, sensitive=secret)
             prepared.append((obj, verb, secret))
         for obj, verb, secret in prepared:
