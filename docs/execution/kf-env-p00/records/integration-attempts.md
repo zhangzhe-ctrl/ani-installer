@@ -29,6 +29,10 @@
 
 第八次实际退出码 1，确认 127 次 Kubernetes 写入；准入阶段通过，S3 三次写入（控制 bucket、所有权标记、受限账号）均 CONFIRMED。账号读回的父身份、账号类别、状态及 explicit policy 正确，但 RustFS 将 StringLike 的相同前缀集合重新排序，原 JSON 列表顺序比较误拒绝。只读诊断源码 `cc3fcc5`，无持久操作；修复 `87bac84` 只规范 Action/Resource/s3:prefix 集合顺序，保留全部字段与重复项，新增权限、广域 Resource/前缀、缺失 Condition、其他身份仍拒绝。真实第八次失败为 RED，十八项受影响回归和实际返回的等价策略比较为 GREEN；本轮首次 Git TLS EOF 后有一次远程定向检查先于推送完成，记录该偏差、不进入最终发布证明，随后核实同一 SHA 已推送，再做交付验证。外存原始失败归档 SHA256 `a9b4dc3d2a075132d8b362438ae247bc5339b1c02959de07682d0d4db7ffd898`。未轮换现有账号，数据库/KFP 消费者未创建。
 
+第九次源 `991b1ad`，包 SHA256 `ad45d1dce1dad13abbbb0305fa2264a49f572410e02ef84c072e247b7960c125`；真实退出码 1，134 次确认写入。三套 S3 身份认证通过，隔离 MySQL/PVC 创建。原容器无 readinessProbe，初始化期间被当作 Ready，首个认证查询退出码 1；稍后相同 Pod 认证 SELECT 1 返回 1，日志显示临时 socket-only 初始化服务器随后切换到最终 3306 服务。修复 `1451eb2` 给同一受管 MySQL 配置有界、带身份认证的 TCP startup/readiness 查询，继续复用原凭据/PVC，不修改共享 PostgreSQL。原失败归档 SHA256 `f50b6efa97ad5760ae6745ba3df1699eb7d6d7cf767d479f3b589acb381beb1b`，尚未转移出 VM。
+
+第十次源 `0bbb832`，包 SHA256 `d83342ced57dd67da2ca913de6dbb5083748c31ec0dd15171fc6de15d36fdd26`；真实退出码 130，131 次确认写入。MySQL generation=2 的受审配置更新通过认证，PVC/凭据不变；MLMD 和 metadata Envoy 部署就绪。KFP API 明确 fatal：缺少 ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_HOST。固定 e4ebca3 的 main.go 无条件注册旧 VisualizationService 并要求 host/port。首个可用完整脱敏容器日志已保存；确认致命错误后，核验当前任务 install.py 的精确 PID/cmdline，仅 SIGINT 中止其只读等待，异常处理与直接退出码均落盘；无未知写入，不删除 Pod，不干等剩余 deadline。修复 `6a84dee` 保持旧功能目标为未监听的 127.0.0.1:9，成熟入口拒绝对应 HTTP/gRPC 路由；不新建 Service 或部署被排除组件。只跑改动对应行为测试；最终仍须真实 API 启动和 Run 验证。归档 SHA256 `17a199b4b0702c1077e3d298d1e6d2c68f7d02bf6f9c8e00bea390bf8bc7c9ef`，尚未转移出 VM。
+
 前两次原始日志已移出 VM：Fedora `integration-first-failures.tar`，SHA256 `0ecb1cee90ee2143e42d80af266f579692812b36fa8b30ce5fb1e401f4dd16ed`。第三次外存归档 SHA256 `f7bcc1797fc594670dc5410a4cc12629a801fb1ece7148729142de934ab43ad1`。
 
 `985f003eb6dd76301d9c515bb14defb0bae3db44` 的远程回归实际运行六项，退出码 0，日志 `targeted-webhook-replay-attempt-03.log`。回归覆盖两类 webhook 原子规则的 API 默认 scope 重入、显式 Namespaced scope 保留，以及既有四项证书保护。源绑定审批只变更 common.py 摘要和生成源码引用；新审批 SHA256 `f7eb88958ae20cc27477ec2d9f4e6209c7333d47a8cece9e9f0f614c8254380c`。修复后现场重入尚未执行。
