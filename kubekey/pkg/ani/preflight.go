@@ -392,6 +392,16 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		if err := verifyKubeflowAssets(input.ArtifactRoot); err != nil {
 			return report, fail("Kubeflow asset source binding", err)
 		}
+		if err := verifyKubeflowWheels(input.ArtifactRoot); err != nil {
+			return report, fail("Kubeflow closed SDK wheels", err)
+		}
+		tool, ok := lock.ToolByArtifactPath("bin/ani-kfp-grpc-check")
+		if !ok {
+			return report, fail("Kubeflow gRPC client binding", fmt.Errorf("required environment client has no material approval"))
+		}
+		if err := VerifyFileMaterialDigest(filepath.Join(input.ArtifactRoot, "bin", "ani-kfp-grpc-check"), tool.BinarySHA256); err != nil {
+			return report, fail("Kubeflow gRPC client digest", err)
+		}
 	}
 
 	// Required artifact files. Beyond metadata, the binaries the install will

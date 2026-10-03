@@ -46,3 +46,47 @@ func verifyKubeflowAssets(artifactRoot string) error {
 	}
 	return nil
 }
+
+// The wheel approval was already bound to this kk by verifyKubeflowAssets.
+// Physical wheel bytes are part of the closed first-install delivery, even
+// though deployed steps consume the already-built SDK image without pip.
+func verifyKubeflowWheels(artifactRoot string) error {
+	root := filepath.Join(artifactRoot, "manifests", "kubeflow", KubeflowRelease)
+	data, err := os.ReadFile(filepath.Join(root, "execution-image.lock.json"))
+	if err != nil {
+		return fmt.Errorf("required SDK wheel approval: %w", err)
+	}
+	var approval struct {
+		Schema string `json:"schema"`
+		Wheels []struct {
+			File string `json:"file"`
+			SHA256 string `json:"sha256"`
+		} `json:"wheels"`
+	}
+	if err := json.Unmarshal(data, &approval); err != nil {
+		return fmt.Errorf("decode SDK wheel approval: %w", err)
+	}
+	if approval.Schema != "ani.kubeflow.execution-image.v1" || len(approval.Wheels) == 0 {
+		return fmt.Errorf("SDK wheel approval is empty or unsupported")
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "wheels"))
+	if err != nil || len(entries) != len(approval.Wheels) {
+		return fmt.Errorf("physical SDK wheel set differs from source approval: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, wheel := range approval.Wheels {
+		if filepath.Base(wheel.File) != wheel.File || strings.Contains(wheel.File, "..") || !isHex64(wheel.SHA256) || seen[wheel.File] {
+			return fmt.Errorf("unsafe or duplicate wheel binding %q", wheel.File)
+		}
+		seen[wheel.File] = true
+		path := filepath.Join(root, "wheels", wheel.File)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return fmt.Errorf("required wheel is not a regular file: %s", wheel.File)
+		}
+		if err := VerifyFileMaterialDigest(path, wheel.SHA256); err != nil {
+			return fmt.Errorf("source-bound SDK wheel: %w", err)
+		}
+	}
+	return nil
+}

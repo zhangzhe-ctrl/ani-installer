@@ -49,6 +49,14 @@ base:
 # 随制品提供的固定二进制工具
 # ---------------------------------------------------------------------------
 tools:
+  ani-kfp-grpc-check:
+    version: 26.03-v1
+    source: https://github.com/zhangzhe-ctrl/ani-installer/tree/e2fc0711d7af43aebdc5bed6694b3e3296825705/kubekey/cmd/ani-kfp-grpc-check
+    binarySha256: d1838246f171e155086bafaf99ac352463d2ae16a7a62b691f8318642436e38b
+    artifactPath: bin/ani-kfp-grpc-check
+    purpose: bounded TLS and native authorization environment client; no proxy service
+    build: Fedora Go1.26.7 CGO_ENABLED=0 go build -trimpath -buildvcs=false
+    status: actual_remote_binary_bytes_confirmed / grpc_authorization_not_run
   helm:
     version: v3.20.0
     gitVersion: v3.20.0+gb2e4314

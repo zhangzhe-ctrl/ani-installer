@@ -106,7 +106,10 @@ class Cluster:
             old = self.owned(obj)
             if old and obj["kind"] == "Secret":
                 # Controller-generated cert bytes and stable credentials survive retries.
-                if "data" in obj and obj["data"] != old.get("data"):
+                controller_placeholder = (obj["metadata"].get("namespace") == "kubeflow-system"
+                    and obj["metadata"]["name"] in ("jobset-webhook-server-cert", "kubeflow-trainer-webhook-cert")
+                    and obj.get("data", {}) == {} and not obj.get("stringData"))
+                if "data" in obj and obj["data"] != old.get("data") and not controller_placeholder:
                     raise RuntimeError("refusing credential rotation: " + identity(obj))
                 continue
             if old:

@@ -43,6 +43,8 @@ EXTRA_IMAGE_TARS="${EXTRA_IMAGE_TARS:-}"
 EXTRA_IMAGE_ORIGINALS="${EXTRA_IMAGE_ORIGINALS:-}"
 HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the fixed chart renders}"
 RUSTFS_RC_BIN="${RUSTFS_RC_BIN:-}"
+KUBEFLOW_WHEELS_DIR="${KUBEFLOW_WHEELS_DIR:-}"
+KUBEFLOW_GRPC_CHECK_BIN="${KUBEFLOW_GRPC_CHECK_BIN:-}"
 VIRTCTL_BIN="${VIRTCTL_BIN:-}"
 KUBEVIRT_GUEST="${KUBEVIRT_GUEST:-}"
 TRIVY_DB_FILE="${TRIVY_DB_FILE:-}"
@@ -266,7 +268,7 @@ copy_material() {
 if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
   mkdir -p "$OUTPUT/manifests/kubeflow"
   python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
-    --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+    --wheels-dir "$KUBEFLOW_WHEELS_DIR" --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
 fi
 
 echo "[1/6] placing KubeKey artifact"
@@ -368,6 +370,7 @@ echo "[3/6] placing fixed binaries, repository ISO and chart material"
 tool_sources=(--source "helm=$HELM_BIN" --source "hauler=$HAULER_BIN")
 if "$RUSTFS_LOCKED"; then tool_sources+=(--source "rustfs-rc=$RUSTFS_RC_BIN"); fi
 if "$B05_LOCKED"; then tool_sources+=(--source "virtctl=$VIRTCTL_BIN"); fi
+if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then tool_sources+=(--source "ani-kfp-grpc-check=$KUBEFLOW_GRPC_CHECK_BIN"); fi
 materials place-tools --lock "$COMPONENT_LOCK" --artifact-root "$OUTPUT" "${tool_sources[@]}"
 materials place-charts --lock "$COMPONENT_LOCK" --charts-dir "$CHARTS_DIR" --artifact-root "$OUTPUT"
 # B05 guest is fixed by the official publisher digest in batchB05.guest and

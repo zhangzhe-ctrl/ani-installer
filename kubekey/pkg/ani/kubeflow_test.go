@@ -44,8 +44,12 @@ func TestKubeflowAssetsRejectCrossValidArtifact(t *testing.T) {
 	}
 	for name := range approval.Files {
 		source := filepath.Join("..", "..", "ani", "kubeflow", name)
-		if strings.HasSuffix(name, ".json") {
+		if name == "resources.json" || name == "overlay.lock.json" {
 			source = filepath.Join("..", "..", "ani", "kubeflow", "overlay", name)
+		} else if strings.HasPrefix(name, "probe-") {
+			source = filepath.Join("..", "..", "ani", "kubeflow", "probes", strings.TrimPrefix(name, "probe-"))
+		} else if name == "requirements.lock" {
+			source = filepath.Join("..", "..", "ani", "kubeflow", "execution-image", name)
 		}
 		data, err := os.ReadFile(source)
 		if err != nil {

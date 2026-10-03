@@ -38,10 +38,18 @@ def execute(args, report, record):
     pipeline = kfp.Client(host=args.kfp, namespace=args.namespace,
                           existing_token=pathlib.Path(args.kfp_token).read_text().strip(),
                           ssl_ca_cert=args.kfp_ca, verify_ssl=True)
+    clients = {}
     for key in ("_run_api", "_experiment_api", "_pipelines_api", "_upload_api"):
         generated = getattr(pipeline, key)
+        clients[id(generated.api_client)] = generated.api_client
         generated.api_client.configuration.retries = 0
         generated.api_client.rest_client.pool_manager.connection_pool_kw["retries"] = 0
+    for generated in clients.values():
+        original_call = generated.call_api
+        def bounded(*arguments, _original=original_call, **keywords):
+            keywords["_request_timeout"] = keywords.get("_request_timeout") or (5, 30)
+            return _original(*arguments, **keywords)
+        generated.call_api = bounded
     execution = "env-" + uuid.uuid4().hex[:16]
     claim = "ani-kfp-workspace-" + execution
     job_name = "ani-kfp-train-" + execution
@@ -105,6 +113,27 @@ def execute(args, report, record):
                 raise RuntimeError("TrainJob UID changed")
             record["trainJob"] = {"name": job_name, "uid": job["metadata"]["uid"],
                 "conditions": job.get("status", {}).get("conditions", [])}
+            # Read the trusted component's create response. Observing a label
+            # or current name alone never grants stop/cleanup ownership.
+            if not record.get("creationReceipt"):
+                all_pods = core.list_namespaced_pod(args.namespace, _request_timeout=30).items
+                for control in all_pods:
+                    if control.spec.service_account_name != "pipeline-runner" or control.status.phase not in ("Running", "Succeeded", "Failed"):
+                        continue
+                    try:
+                        log = core.read_namespaced_pod_log(control.metadata.name, args.namespace, container="main", _request_timeout=30)
+                    except client.exceptions.ApiException as error:
+                        if error.status in (400, 404):
+                            continue
+                        raise
+                    for line in log.splitlines():
+                        if not line.startswith("ANI_TRAINJOB_CREATE_RESPONSE "):
+                            continue
+                        receipt = json.loads(line.removeprefix("ANI_TRAINJOB_CREATE_RESPONSE "))
+                        if receipt.get("execution") == execution and receipt.get("kfpRunId") == run.run_id:
+                            if receipt.get("namespace") != args.namespace or receipt.get("workspaceUid") != created.metadata.uid or receipt.get("trainJobName") != job_name or receipt.get("trainJobUid") != job["metadata"]["uid"]:
+                                raise RuntimeError("actual create response differs from observed external job")
+                            record["creationReceipt"] = {**receipt, "controlPodUid": control.metadata.uid}
             pods = core.list_namespaced_pod(args.namespace, label_selector="ani.io/execution-id=" + execution,
                                            _request_timeout=30).items
             record["trainPods"] = [{"name": p.metadata.name, "uid": p.metadata.uid, "node": p.spec.node_name,
@@ -112,7 +141,17 @@ def execute(args, report, record):
                 "phase": p.status.phase, "containers": [{"name": c.name,
                     "exitCode": c.state.terminated.exit_code if c.state and c.state.terminated else None,
                     "imageID": c.image_id} for c in p.status.container_statuses or []]} for p in pods]
-            if args.mode == "stop" and not stopped and any(p.status.phase == "Running" for p in pods):
+            output_fsynced = False
+            if args.mode == "stop" and not stopped and record.get("creationReceipt"):
+                for pod in pods:
+                    if pod.status.phase != "Running":
+                        continue
+                    log = core.read_namespaced_pod_log(pod.metadata.name, args.namespace, container="node", _request_timeout=30)
+                    for line in log.splitlines():
+                        value = json.loads(line)
+                        if value.get("execution") == execution and value.get("checkpoint") == "unique-output-fsynced":
+                            output_fsynced = True
+            if args.mode == "stop" and not stopped and output_fsynced:
                 record["stop"] = {"result": "UNKNOWN", "trainJobUid": job["metadata"]["uid"],
                                   "podUids": [p.metadata.uid for p in pods]}
                 save(report, record)
@@ -133,7 +172,7 @@ def execute(args, report, record):
     else:
         raise TimeoutError("bounded KFP/external TrainJob deadline")
     expected = {"success": "SUCCEEDED", "fail": "FAILED", "stop": "CANCELED"}[args.mode]
-    if observed.state != expected or not record.get("trainJob") or (args.mode == "stop" and not stopped):
+    if observed.state != expected or not record.get("trainJob") or not record.get("creationReceipt") or (args.mode == "stop" and not stopped):
         raise RuntimeError("actual run state/correlation differs")
     details = observed.run_details
     record["run"]["details"] = details.to_dict() if details else None

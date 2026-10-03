@@ -33,7 +33,16 @@ def external_training(claim: str, claim_uid: str, execution: str, run_id: str,
     if mode not in ("success", "fail", "stop") or not execution.startswith("env-"):
         raise ValueError("bounded environment probe mode or identity differs")
     config.load_incluster_config()
-    core, custom = client.CoreV1Api(), client.CustomObjectsApi()
+    configuration = client.Configuration.get_default_copy()
+    configuration.retries = 0
+    api = client.ApiClient(configuration)
+    api.rest_client.pool_manager.connection_pool_kw["retries"] = 0
+    original_call = api.call_api
+    def bounded(*arguments, **keywords):
+        keywords["_request_timeout"] = keywords.get("_request_timeout") or (5, 30)
+        return original_call(*arguments, **keywords)
+    api.call_api = bounded
+    core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)
     live_claim = core.read_namespaced_persistent_volume_claim(claim, namespace)
     if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:
         raise RuntimeError("workspace UID/lifecycle differs from the create response")
@@ -65,6 +74,7 @@ unique = pathlib.Path('/output/unique.json')
 with unique.open('x') as stream:
     json.dump({'execution': execution, 'inputSha256': expected, 'readonlyErrno': readonly_errno}, stream)
     stream.flush(); os.fsync(stream.fileno())
+print(json.dumps({'execution': execution, 'checkpoint': 'unique-output-fsynced', 'inputSha256': expected}), flush=True)
 if mode == 'fail':
     sys.exit(42)
 if mode == 'stop':
@@ -114,6 +124,8 @@ print(json.dumps({'execution': execution, 'loss': loss, 'inputSha256': expected}
     job_uid = created["metadata"]["uid"]
     correlation["trainJob"].update(uid=job_uid, creationResult="CONFIRMED")
     (output_dir / "correlation.json").write_text(json.dumps(correlation, sort_keys=True))
+    print("ANI_TRAINJOB_CREATE_RESPONSE " + json.dumps({"execution": execution, "kfpRunId": run_id,
+        "namespace": namespace, "workspaceUid": claim_uid, "trainJobName": name, "trainJobUid": job_uid}), flush=True)
     deadline = time.monotonic() + 480
     while time.monotonic() < deadline:
         current = custom.get_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", namespace, "trainjobs", name)
