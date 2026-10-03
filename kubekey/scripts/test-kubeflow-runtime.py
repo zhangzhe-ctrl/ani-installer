@@ -257,5 +257,30 @@ class LegacyVisualizationExcluded(unittest.TestCase):
         self.assertIn("location ^~ /api.VisualizationService/ { return 404; }", NGINX)
 
 
+class ExistingDownwardDeployment(Cluster):
+    def read(self, value):
+        current = copy.deepcopy(value)
+        current["metadata"].update(uid="deployment-create-uid", resourceVersion="29", labels={"ani.io/managed-by": "ani-lab"})
+        return current
+
+    def call(self, args, value, **kwargs):
+        selector = value["spec"]["template"]["spec"]["containers"][0]["env"][0]["valueFrom"]["fieldRef"]
+        if selector != {"apiVersion": "v1", "fieldPath": "metadata.namespace"}:
+            raise RuntimeError("atomic ObjectFieldSelector conflicts with API-defaulted v1")
+        if "--force-conflicts" in args:
+            raise AssertionError("defaults must not force field ownership")
+        return json.dumps(value)
+
+
+class DownwardAPIReplay(unittest.TestCase):
+    def test_namespace_selector_replays_with_explicit_server_default(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = ExistingDownwardDeployment({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            cluster.apply([{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "ml-pipeline", "namespace": "kubeflow"},
+                "spec": {"template": {"spec": {"containers": [{"name": "api", "env": [{"name": "POD_NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}}]}]}}}}])
+            self.assertEqual(cluster.writes[0]["uid"], "deployment-create-uid")
+            self.assertEqual(cluster.writes[0]["result"], "CONFIRMED")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -102,6 +102,16 @@ class Cluster:
         # Preflight the whole dependency group before its first mutation.
         prepared = []
         for obj in objects:
+            # ObjectFieldSelector is atomic for SSA. Creation defaults its
+            # apiVersion to v1; replay must explicitly retain that same value
+            # instead of conflicting with the initial create operation.
+            if obj.get("apiVersion") == "apps/v1" and obj["kind"] == "Deployment":
+                pod = obj["spec"]["template"]["spec"]
+                for container in pod.get("containers", []) + pod.get("initContainers", []):
+                    for variable in container.get("env", []):
+                        selector = variable.get("valueFrom", {}).get("fieldRef")
+                        if selector is not None:
+                            selector.setdefault("apiVersion", "v1")
             # Rule lists are atomic in admissionregistration/v1. A create
             # response defaults omitted scope to '*'; a later SSA with an
             # omitted scope conflicts with the initial create manager. Make
