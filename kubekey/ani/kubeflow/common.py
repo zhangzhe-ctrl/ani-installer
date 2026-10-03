@@ -136,6 +136,16 @@ class Cluster:
             secret = obj["kind"] == "Secret"
             manager = "ani-kubeflow"
             replace_owned = False
+            if old and obj["kind"] == "Role" and obj["metadata"].get("namespace") in self.site["tenants"] and obj["metadata"]["name"] == "ani-kfp-api-client":
+                rules_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:rules" in m.get("fieldsV1", {})}
+                if not rules_managers or rules_managers - {"kubectl-create", manager}:
+                    raise RuntimeError("foreign tenant API rules manager; refusing mutation: " + identity(obj))
+                if old.get("rules") != obj.get("rules"):
+                    metadata = {**old["metadata"], **obj["metadata"]}
+                    metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
+                    metadata.pop("managedFields", None)
+                    obj["metadata"] = metadata
+                    replace_owned = True
             if old and obj["kind"] == "ValidatingAdmissionPolicy" and obj["metadata"]["name"] in ("ani-kfp-workspace", "ani-kfp-trainjob"):
                 # Earlier role attempts used kubectl's default create manager.
                 # Its Update-owned atomic lists conflict even with SSA using

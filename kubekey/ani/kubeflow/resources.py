@@ -152,6 +152,8 @@ def tenant(site, namespace, mysql_api_rules):
     for name in ("api-client", "pipeline-runner", "trainer-workload"):
         output.append(obj("ServiceAccount", name, namespace, automountServiceAccountToken=name == "pipeline-runner"))
     api_rules = [rule("pipelines.kubeflow.org", ["pipelines", "pipelines/versions", "experiments", "runs", "jobs", "recurringruns", "artifacts", "tasks"], ["get", "list", "create", "update", "delete"])]
+    # Fixed KFP RunService uses a dedicated Namespace SAR verb for stopping.
+    api_rules.append(rule("pipelines.kubeflow.org", ["runs"], ["terminate"]))
     output += [role("ani-kfp-api-client", namespace, api_rules), rb("ani-kfp-api-client", namespace, "ani-kfp-api-client", "api-client"),
                rb("ani-kfp-runner-api", namespace, "ani-kfp-api-client", "pipeline-runner")]
     runner_rules = [rule("", ["configmaps"], ["get", "list", "watch"]),
