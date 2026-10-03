@@ -41,3 +41,5 @@
 `55e92205d445f99f0891596d835acb5efa74b26d` 的两条修复策略在 Fedora 生成，经审阅后在固定集群执行 strict server dry-run，真实退出码 0；输入 SHA256 `bdf7ce955de44afde3a3351a2d16650d4638652703cee4de9c6d3426db79adfe`，节点证据目录 `/home/ubuntu/kf-env-p00-policy-dryrun-attempt-01`。这仅证明当前 API 接受策略编译；安装后控制器实际 typeChecking 与资源正负向请求仍未通过。六项既有回归同时 PASS。
 
 完整联调物料候选 `materials-candidate-4faade2-attempt-02` 的既有 build-offline 退出码 0，104 镜像实际内容门禁、固定工具/Chart/ISO/guest/scanner、源绑定 manifests 均通过。SHA256SUMS 文件摘要 `7b0852087e2da0a3d86a64356d2eb3a3de9af7f08403a1e87b9d0035c6d4c114`；镜像归档 `bed5b9793c861ffbe61369ffdee49aef1a2466fb071e371db97901db882e12c2`。后续策略源变更要求更新角色物料并在阶段 D 最终同源冻结。
+
+`7e2b778` 的八项远程回归 PASS，退出码 0；相同实际策略 UID+resourceVersion 的 strict server-side replace dry-run 退出码 0，节点证据 `/home/ubuntu/kf-env-p00-policy-dryrun-attempt-03`。仅检查两个本任务创建响应 UID 的资源，第三方 spec manager 拒绝；没有持久 API 写入，也不宣称控制器实际类型检查已通过。
