@@ -105,6 +105,16 @@ def patch(obj):
     if kind == "Deployment":
         pod = obj["spec"]["template"]["spec"]
         for container in pod.get("containers", []):
+            # Preserve upstream requests/limits and supply an explicit budget
+            # where upstream omitted one. Do not equate low live usage with
+            # reserved capacity or reduce an upstream/approved request.
+            budget = container.setdefault("resources", {})
+            requests = budget.setdefault("requests", {})
+            limits = budget.setdefault("limits", {})
+            requests.setdefault("cpu", "100m")
+            requests.setdefault("memory", "256Mi")
+            limits.setdefault("cpu", "2")
+            limits.setdefault("memory", "2Gi")
             if name == "mysql":
                 env(container, "MYSQL_ALLOW_EMPTY_PASSWORD")
                 env(container, "MYSQL_ROOT_PASSWORD", secret="ani-kfp-mysql-root", key="password")

@@ -1,7 +1,7 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV00-readonly-inventory",
+  "checkpoint": "ENV01-source-material-render-in-progress-no-cluster-writes",
   "integration_status": "NOT_RUN",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
@@ -40,7 +40,10 @@
       "jobset": "v0.10.1",
       "argo": "v3.7.3"
     },
-    "candidate_images_digest_locked": false
+    "candidate_images_digest_locked": true,
+    "complete_release_material_frozen": false,
+    "registry_readback_status": "NOT_RUN",
+    "runtime_pull_status": "NOT_RUN"
   },
   "kfp": {
     "endpoint": null,
@@ -62,7 +65,13 @@
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
     "host_verified": true,
-    "build_status": "NOT_RUN"
+    "build_status": "PARTIAL_CHECKS / FINAL_CANDIDATE_NOT_RUN",
+    "checks": [
+      {"source": "b7d418d", "kind": "full-code-gate", "result": "FAIL", "first_failure": "role context guard omits kubeflow", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"},
+      {"source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985", "kind": "targeted-code-gate", "result": "FAIL", "first_failure": "Quantity pointer method called on temporary value", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"},
+      {"source": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d", "kind": "targeted-code-gate-and-python-syntax", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-9c0a757-attempt-01.log"}
+    ],
+    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "NOT_RUN"}
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt"],
   "blocked_items": [

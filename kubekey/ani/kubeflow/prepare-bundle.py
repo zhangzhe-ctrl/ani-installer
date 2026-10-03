@@ -16,12 +16,15 @@ FILES = {
 RELEASE = "26.03-kfp2.16-trainer2.1-v1"
 parser = argparse.ArgumentParser()
 parser.add_argument("--source-root", type=pathlib.Path, required=True)
+parser.add_argument("--overlay-dir", type=pathlib.Path, help="same-commit generated overlay for an approval proposal only")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--approval-output", type=pathlib.Path)
 group.add_argument("--output", type=pathlib.Path)
 args = parser.parse_args()
 root = args.source_root.resolve()
-actual = {name: hashlib.sha256((root / source).read_bytes()).hexdigest() for name, source in FILES.items()}
+if args.overlay_dir and not args.approval_output:
+    raise ValueError("a build consumes committed overlay bytes, not a proposal directory")
+actual = {name: hashlib.sha256((args.overlay_dir / name if args.overlay_dir and name in ("resources.json", "overlay.lock.json") else root / source).read_bytes()).hexdigest() for name, source in FILES.items()}
 if args.approval_output:
     # Generate outside the checkout. Return for local review and commit before
     # the final published commit's remote gate/build consumes this approval.

@@ -31,6 +31,8 @@ ESXi 已通过既有受管凭据、严格主机密钥验证只读核实：VMID 8
 
 先完成当前基础能力与容量、远程构建和数据边界调查，固定配置/版本/物料合同。保留现有联调环境，完成 ENV02～ENV05 真实联调。通过后才冻结候选和正式发布物，随后还原核实的干净快照，完成 ENV06 一次统一首装与独立 EAC01～EAC14。最终首装不继承联调 PASS。
 
-源码上游已在 Fedora 固定：KFP tag 2.16.0 → `e4ebca310f404dac306e16bc880de12bbbf63b95`；Trainer tag v2.1.0 → `73c9bece741ce17d2124abda3ec6bfcf5b5b8e87`。Trainer 源锁定 JobSet v0.10.1；KFP Argo 源引用 v3.7.3。这些是源码身份，镜像 digest 和完整物料尚未锁定。
+源码上游已在 Fedora 固定：KFP tag 2.16.0 → `e4ebca310f404dac306e16bc880de12bbbf63b95`；Trainer tag v2.1.0 → `73c9bece741ce17d2124abda3ec6bfcf5b5b8e87`。Trainer 源锁定 JobSet v0.10.1；KFP Argo 源引用 v3.7.3。14 个必需上游镜像与一个已远程构建的 SDK/CPU 执行镜像已登记平台摘要；旧 V1 cache 两镜像仅留研究证据，不交付。完整包、registry readback 和运行时拉取仍未完成。
+
+ENV01 已接入默认关闭配置、自动证书依赖、首装末尾角色、物料条目和生产渲染。Fedora 定向门禁 `9c0a757` rc=0，Python 部署模块语法检查 rc=0。完整门禁首轮 `b7d418d` 因上下文守卫缺登记失败，随后 `207f1c4` 因容量 Quantity 调用编译失败；两轮日志保留，修复后定向通过，但最终候选全门禁仍未执行。部署/check 脚本是未安装的实现草稿，不能标记 CODE_READY 或 ENV_READY。
 
 [官方 GHSA-gqww-5pj5-8fq7](https://github.com/kubeflow/pipelines/security/advisories/GHSA-gqww-5pj5-8fq7) 已核对：frontend ≤2.16.0 受影响。本轮不部署 frontend，不通过其代理形成可信调用链。

@@ -16,9 +16,9 @@ tasks:
   selected: true
   status: in_progress
   stages:
-    code: not_changed
-    materials: source_candidates_fixed
-    remoteBuild: not_run
+    code: first_install_draft_not_CODE_READY
+    materials: source_and_platform_images_and_blobs_verified_registry_NOT_RUN
+    remoteBuild: first_full_gate_fail_targeted_repair_pass_final_gate_NOT_RUN
     liveInventory: pass
     liveSmoke: not_run
     cleanOffline: not_run
@@ -33,6 +33,33 @@ tasks:
   - 现有集群保留联调；全部 Kubeflow 安装及验收 NOT_RUN，未恢复快照。
   - 时间为 installer 既有离线主从：ani-01 local stratum 10，ani-02/03 同步 ani-01；可靠外部时间未验证。
   - 快照 Id2/VMID 8/9/10 与每台两块快照覆盖磁盘已只读核实；用户确认当前数据无需保留、直接还原。恢复在联调与冻结通过后执行，不额外电源操作。
+  - 9c0a757 Fedora 定向门禁 rc=0：启用/关闭生产渲染、角色上下文、新物料锁/镜像表一致性。Python 部署模块语法检查 rc=0；不等于实际安装。
+  - 完整门禁 b7d418d 首轮 FAIL（角色上下文守卫缺 kubeflow）；207f1c4 定向复测 FAIL（临时 Quantity 指针方法调用）；首次日志均保留，修复后 9c0a757 定向 PASS。最终候选全门禁尚未执行。
+  - 首轮完整门禁误用 ANI_CHART_CACHE_DIR，脚本忽略后使用已有全局 charts 缓存；不清理共享缓存。后续使用已核实的 ANI_CHART_CACHE 指向任务缓存。
+  - SDK/CPU 执行镜像由已推送 abfc9dc 在 Fedora 隔离 Podman 存储构建，41 个 wheels 闭包及 OCI/dir blobs 验证；平台摘要 7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb。registry 与运行时拉取 NOT_RUN。
+- id: ENV01
+  title: 默认关闭的 Kubeflow 统一首装配置、物料和角色
+  dependsOn: [ENV00]
+  selected: true
+  status: in_progress
+  stages:
+    code: draft_role_config_materials_checker_registered
+    remoteRender: targeted_production_render_pass_final_candidate_NOT_RUN
+    sourceImages: 15_required_images_platform_digest_registered
+    registryReadback: not_run
+    liveInstall: not_run
+    integration: not_run
+    finalFirstInstall: not_run
+  evidence:
+  - docs/execution/kf-env-p00/config-contract.md
+  - docs/execution/kf-env-p00/kubeflow-site-option.yaml
+  - kubekey/ani/kubeflow/source-images.lock.json
+  - kubekey/ani/kubeflow/execution-image.lock.json
+  - kubekey/ani/kubeflow/overlay/overlay.lock.json
+  notes:
+  - 首装链新增末尾 opt-in 角色；已有 ani_components.yaml、components add/execute 合同不扩展。
+  - overlay 165 输入对象逐项说明，85 输出；无 frontend/Istio/Profile，租户 bootstrap 由本轮受管资源替换。后续生成变更须重新审阅摘要。
+  - deploy/check 实现仅源码准备，集群写入 0；冒号头哨兵是 TokenReview-only 源码候选推论，HTTP/gRPC/隔离/工作区真实联调全 NOT_RUN。
 - id: R00
   title: 冻结工作树、校准旧文档和执行环境
   dependsOn: []

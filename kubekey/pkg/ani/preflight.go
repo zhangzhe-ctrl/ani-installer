@@ -388,6 +388,11 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		return report, fail("materials lock", err)
 	}
 	artifactLockDigest := sha256FileHex(filepath.Join(input.ArtifactRoot, "config", "components.lock.yaml"))
+	if input.Cluster.KubeflowEnabled() {
+		if err := verifyKubeflowAssets(input.ArtifactRoot); err != nil {
+			return report, fail("Kubeflow asset source binding", err)
+		}
+	}
 
 	// Required artifact files. Beyond metadata, the binaries the install will
 	// actually run must be present: hauler (import+serve), the archive, the

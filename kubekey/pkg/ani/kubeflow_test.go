@@ -1,11 +1,62 @@
 package ani
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestKubeflowMissingMaterialFailsOnlyWhenSelected(t *testing.T) {
+	c := kubeflowTestConfig()
+	for _, key := range kubeflowImageKeys() {
+		table := r08FullTable(t)
+		delete(table, key.Original)
+		if _, err := KubeKeyConfig(c, "/offline/packages/kubekey-artifact.tgz", "/offline", table); err == nil || !strings.Contains(err.Error(), key.Original) {
+			t.Fatalf("missing selected image %s: %v", key.Original, err)
+		}
+	}
+	c.Kubeflow.Enabled = false
+	c.Components.CertManager.Enabled = true
+	table := r08FullTable(t)
+	for _, key := range kubeflowImageKeys() {
+		delete(table, key.Original)
+	}
+	if _, err := KubeKeyConfig(c, "/offline/packages/kubekey-artifact.tgz", "/offline", table); err != nil {
+		t.Fatalf("disabled Kubeflow requires Kubeflow material: %v", err)
+	}
+}
+
+func TestKubeflowAssetsRejectCrossValidArtifact(t *testing.T) {
+	root := t.TempDir()
+	bundle := filepath.Join(root, "manifests", "kubeflow", KubeflowRelease)
+	if err := os.MkdirAll(bundle, 0700); err != nil { t.Fatal(err) }
+	var approval struct { Files map[string]string `json:"files"` }
+	if err := json.Unmarshal(kubeflowAssetsApproval, &approval); err != nil { t.Fatal(err) }
+	for name := range approval.Files {
+		source := filepath.Join("..", "..", "ani", "kubeflow", name)
+		if strings.HasSuffix(name, ".json") { source = filepath.Join("..", "..", "ani", "kubeflow", "overlay", name) }
+		data, err := os.ReadFile(source)
+		if err != nil { t.Fatal(err) }
+		if err := os.WriteFile(filepath.Join(bundle, name), data, 0600); err != nil { t.Fatal(err) }
+	}
+	if err := os.WriteFile(filepath.Join(bundle, "assets.lock.json"), kubeflowAssetsApproval, 0600); err != nil { t.Fatal(err) }
+	if err := verifyKubeflowAssets(root); err != nil { t.Fatal(err) }
+	changed := []byte("# unauthorized replacement\n")
+	if err := os.WriteFile(filepath.Join(bundle, "resources.py"), changed, 0600); err != nil { t.Fatal(err) }
+	if err := verifyKubeflowAssets(root); err == nil { t.Fatal("changed role asset was accepted") }
+	var forged map[string]any
+	if err := json.Unmarshal(kubeflowAssetsApproval, &forged); err != nil { t.Fatal(err) }
+	hash := sha256.Sum256(changed)
+	forged["files"].(map[string]any)["resources.py"] = hex.EncodeToString(hash[:])
+	data, err := json.Marshal(forged)
+	if err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filepath.Join(bundle, "assets.lock.json"), data, 0600); err != nil { t.Fatal(err) }
+	if err := verifyKubeflowAssets(root); err == nil { t.Fatal("regenerated self-consistency lock approved an unauthorized asset") }
+}
 
 func kubeflowTestConfig() ClusterConfig {
 	c := validConfig()
