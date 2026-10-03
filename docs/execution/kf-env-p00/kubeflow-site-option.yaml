@@ -5,8 +5,8 @@ kubeflow:
   enabled: true
   release: 26.03-kfp2.16-trainer2.1-v1
   entryAddress: 172.16.101.10
-  httpPort: 30443
-  grpcPort: 30444
+  httpPort: 30445
+  grpcPort: 30446
   database:
     storageClass: ani-block
     storageSize: 20Gi

@@ -145,10 +145,24 @@ def checked_policy(value):
     return True
 
 
+def entry_ports_available(cluster):
+    wanted = {cluster.site["http_port"], cluster.site["grpc_port"]}
+    services = json.loads(cluster.call(["get", "services", "--all-namespaces", "-o", "json"]))["items"]
+    for value in services:
+        metadata = value["metadata"]
+        own_entry = (metadata.get("namespace") == "kubeflow" and metadata["name"] == "ani-kfp-entry"
+                     and metadata.get("labels", {}).get("ani.io/managed-by") == cluster.site["owner"])
+        for port in value.get("spec", {}).get("ports", []):
+            if port.get("nodePort") in wanted and not own_entry:
+                raise RuntimeError("configured Kubeflow NodePort %s is already allocated to %s/%s" %
+                                   (port["nodePort"], metadata.get("namespace"), metadata["name"]))
+
+
 def install(cluster, root, report):
     site = cluster.site
     report["lock"] = product_lock()
     values = materialize(root, site)
+    entry_ports_available(cluster)
     # Check collisions for all fixed upstream identities before any mutation.
     for value in values:
         cluster.owned(value)

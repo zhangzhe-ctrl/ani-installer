@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import Cluster
-from install import checked_policy, materialize
+from install import checked_policy, materialize, entry_ports_available
 from storage import same_policy, same_identity
 from resources import NGINX
 
@@ -280,6 +280,28 @@ class DownwardAPIReplay(unittest.TestCase):
                 "spec": {"template": {"spec": {"containers": [{"name": "api", "env": [{"name": "POD_NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}}]}]}}}}])
             self.assertEqual(cluster.writes[0]["uid"], "deployment-create-uid")
             self.assertEqual(cluster.writes[0]["result"], "CONFIRMED")
+
+
+class EntryPortsBeforeWrites(unittest.TestCase):
+    def cluster(self, namespace, name, port, owner="ani-lab"):
+        class ReadOnlyServices:
+            site = {"http_port": 30445, "grpc_port": 30446, "owner": "ani-lab"}
+            def call(self, args):
+                if args != ["get", "services", "--all-namespaces", "-o", "json"]:
+                    raise AssertionError("port preflight must perform only the cluster Service read")
+                return json.dumps({"items": [{"metadata": {"namespace": namespace, "name": name,
+                      "labels": {"ani.io/managed-by": owner}}, "spec": {"ports": [{"nodePort": port}]}}]})
+        return ReadOnlyServices()
+
+    def test_foreign_allocation_fails_before_any_persistent_request(self):
+        with self.assertRaisesRegex(RuntimeError, "already allocated to ani-business-envoy/ani-entry"):
+            entry_ports_available(self.cluster("ani-business-envoy", "ani-entry", 30445))
+
+    def test_unoccupied_ports_and_owned_entry_replay_are_allowed(self):
+        entry_ports_available(self.cluster("ani-business-envoy", "ani-entry", 30443))
+        entry_ports_available(self.cluster("kubeflow", "ani-kfp-entry", 30445))
+        with self.assertRaisesRegex(RuntimeError, "already allocated"):
+            entry_ports_available(self.cluster("kubeflow", "ani-kfp-entry", 30445, "foreign-owner"))
 
 
 if __name__ == "__main__":
