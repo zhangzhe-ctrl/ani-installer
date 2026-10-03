@@ -154,10 +154,11 @@ print(json.dumps({'execution': execution, 'loss': loss, 'inputSha256': expected}
     if any(v.secret or v.projected for v in training_pod.spec.volumes):
         raise RuntimeError("ordinary training Pod acquired a Secret/projected token")
     mounts = {v.mount_path: v for v in training_pod.spec.containers[0].volume_mounts}
-    if not mounts["/input"].read_only or mounts["/input"].sub_path != "input" or mounts["/output"].sub_path != "output":
+    if (not mounts["/input"].read_only or mounts["/input"].name != "workspace-input" or mounts["/input"].sub_path != "input"
+            or mounts["/output"].read_only or mounts["/output"].name != "workspace-output" or mounts["/output"].sub_path != "output"):
         raise RuntimeError("training mount contract differs")
-    claims = [v.persistent_volume_claim.claim_name for v in training_pod.spec.volumes if v.persistent_volume_claim]
-    if claims != [claim]:
+    claims = {v.name: v.persistent_volume_claim.claim_name for v in training_pod.spec.volumes if v.persistent_volume_claim}
+    if claims != {"workspace-input": claim, "workspace-output": claim}:
         raise RuntimeError("training Pod mounted a different execution claim")
     value = json.loads((output_dir / "model.json").read_text())
     if value["execution"] != execution or value["inputSha256"] != input_hash:
