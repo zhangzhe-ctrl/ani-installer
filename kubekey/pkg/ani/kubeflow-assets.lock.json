@@ -1,9 +1,9 @@
 {
   "schema": "ani.kubeflow.assets.v1",
   "release": "26.03-kfp2.16-trainer2.1-v1",
-  "generatedFromCommit": "ddbdf204bd1a4e03b681b280203591d484d4478d",
+  "generatedFromCommit": "0ffc5fba50009fa6b21cf2d5897e7c0d2675c528",
   "files": {
-    "common.py": "c7c385740232420b7a81bd9faaf0c8b0ae701fdc4c1e4be8c1d0d092080b9616",
+    "common.py": "e50b1627237b1bea9a9cd40305851cca15f29b4e45adfe3f3e1ef36a6a7e6241",
     "resources.py": "8f0d540fec3caea390d683beb388d81655d1cba18984cd4f0eee5bff616a0b40",
     "storage.py": "7b59854ddcb6cb784bfe7ab45d933a6b8b8e8fcb5410a930ab9de0e9a8cc86fc",
     "install.py": "6d71eb40bb10ab1db91af9f09688a19b53794e253ee839b3ea170b90b1b3853d",
