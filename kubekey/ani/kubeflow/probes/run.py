@@ -74,6 +74,8 @@ def execute(args, report, record):
         generated.call_api = bounded
     if args.reconcile_success_report:
         return reconcile_success(args, report, record, pipeline, core, custom)
+    if args.reconcile_stop_report:
+        return reconcile_stop(args, report, record, pipeline, core, custom)
     if args.resume_stop_report:
         previous_path = pathlib.Path(args.resume_stop_report)
         previous = json.loads(previous_path.read_text())
@@ -222,8 +224,8 @@ def monitor(args, report, record, pipeline, core, custom, created, run):
         time.sleep(5)
     else:
         raise TimeoutError("bounded KFP/external TrainJob deadline")
-    expected = {"success": "SUCCEEDED", "fail": "FAILED", "stop": "CANCELED"}[args.mode]
-    if observed.state != expected or not record.get("trainJob") or not record.get("creationReceipt") or (args.mode == "stop" and not stopped):
+    expected = {"success": {"SUCCEEDED"}, "fail": {"FAILED"}, "stop": {"CANCELED", "FAILED"}}[args.mode]
+    if observed.state not in expected or not record.get("trainJob") or not record.get("creationReceipt") or (args.mode == "stop" and not stopped):
         raise RuntimeError("actual run state/correlation differs")
     conditions = {c["type"]: c["status"] for c in record["trainJob"]["conditions"]}
     if args.mode == "success" and (conditions.get("Complete") != "True" or len(record.get("trainPods", [])) != 1 or record["trainPods"][0]["phase"] != "Succeeded"):
@@ -231,17 +233,7 @@ def monitor(args, report, record, pipeline, core, custom, created, run):
     if args.mode == "fail" and (conditions.get("Failed") != "True" or not any(c.get("exitCode") == 42 for p in record.get("trainPods", []) for c in p["containers"])):
         raise RuntimeError("failed Run lacks the external CPU process exit 42")
     if args.mode == "stop":
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            current = core.list_namespaced_pod(args.namespace, label_selector="ani.io/execution-id=" + execution, _request_timeout=30).items
-            if not set(record["stop"]["podUids"]) & {p.metadata.uid for p in current}:
-                if current:
-                    raise RuntimeError("controller created a replacement Pod after stop")
-                record["stop"].update(result="CONFIRMED", actualExternalPodsGone=True, remainingPodUids=[])
-                break
-            time.sleep(3)
-        else:
-            raise TimeoutError("actual external training Pod termination deadline")
+        verify_stopped(args, record, pipeline, core, custom, observed)
     details = observed.run_details
     record["run"]["details"] = pipeline._run_api.api_client.sanitize_for_serialization(details) if details else None
     # Artifact records may contain signed URLs. Keep these private; the caller
@@ -251,6 +243,62 @@ def monitor(args, report, record, pipeline, core, custom, created, run):
         raise RuntimeError("retained workspace identity changed")
     record.update(status="RUN_STATE_CORRELATED", workspaceRetained=True,
                   fileReadback="NOT_ATTESTED_BY_THIS_CLIENT", acceptance="EAC_NOT_ATTESTED")
+    save(report, record)
+
+
+def verify_stopped(args, record, pipeline, core, custom, observed):
+    receipt, stop = record["creationReceipt"], record["stop"]
+    if stop.get("trainJobResult") != "CONFIRMED" or stop.get("runResult") != "CONFIRMED" or stop["trainJobUid"] != receipt["trainJobUid"]:
+        raise ValueError("both original stop requests must have confirmed receipts")
+    job = custom.get_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", args.namespace, "trainjobs", receipt["trainJobName"], _request_timeout=30)
+    if job["metadata"]["uid"] != receipt["trainJobUid"] or not job["spec"].get("suspend") or not any(c["type"] == "Suspended" and c["status"] == "True" for c in job.get("status", {}).get("conditions", [])):
+        raise RuntimeError("original TrainJob is not actually suspended")
+    workflows = custom.list_namespaced_custom_object("argoproj.io", "v1alpha1", args.namespace, "workflows", label_selector="pipeline/runid=" + observed.run_id, _request_timeout=30)["items"]
+    if len(workflows) != 1 or workflows[0]["spec"].get("activeDeadlineSeconds") != 0 or workflows[0].get("status", {}).get("phase") != "Failed":
+        raise RuntimeError("fixed KFP terminate operation did not terminate the actual Workflow")
+    history = pipeline._run_api.api_client.sanitize_for_serialization(observed.state_history)
+    states = [row["state"] for row in history or []]
+    # KFP e4ebca3 terminates by activeDeadlineSeconds=0. Its IsTerminating
+    # predicate excludes final Workflows, so persistence reports final Failed.
+    # Require the real CANCELING transition; never relabel this as CANCELED.
+    if observed.state not in ("FAILED", "CANCELED") or "CANCELING" not in states or states[-1] != observed.state:
+        raise RuntimeError("terminal Run lacks the actual cancellation transition")
+    pods = core.list_namespaced_pod(args.namespace, _request_timeout=30).items
+    control = [p for p in pods if p.metadata.uid == receipt["controlPodUid"]]
+    workflow_uid = workflows[0]["metadata"]["uid"]
+    if len(control) != 1 or not any(o.kind == "Workflow" and o.uid == workflow_uid for o in control[0].metadata.owner_references or []):
+        raise RuntimeError("terminated Workflow differs from the original control Pod receipt")
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        current = core.list_namespaced_pod(args.namespace, label_selector="ani.io/execution-id=" + record["execution"], _request_timeout=30).items
+        if not set(stop["podUids"]) & {p.metadata.uid for p in current}:
+            if current:
+                raise RuntimeError("controller created a replacement Pod after stop")
+            stop.update(result="CONFIRMED", actualExternalPodsGone=True, remainingPodUids=[], workflowUid=workflow_uid,
+                        workflowActiveDeadlineSeconds=0, actualRunState=observed.state, stateHistory=history)
+            record["trainJob"]["conditions"] = job["status"]["conditions"]
+            return
+        time.sleep(3)
+    raise TimeoutError("actual external training Pod termination deadline")
+
+
+def reconcile_stop(args, report, record, pipeline, core, custom):
+    previous_path = pathlib.Path(args.reconcile_stop_report)
+    previous = json.loads(previous_path.read_text())
+    if args.mode != "stop" or previous["mode"] != "stop" or previous["status"] != "FAIL" or previous["namespace"] != args.namespace or any(previous[k]["creationResult"] != "CONFIRMED" for k in ("workspace", "experiment", "run")):
+        raise ValueError("only the original confirmed stop execution can be reconciled")
+    receipt, workspace = previous["creationReceipt"], previous["workspace"]
+    if receipt["execution"] != previous["execution"] or receipt["kfpRunId"] != previous["run"]["id"] or receipt["workspaceUid"] != workspace["uid"] or receipt["trainJobUid"] != previous["trainJob"]["uid"] or receipt["trainJobName"] != "ani-kfp-train-" + previous["execution"]:
+        raise ValueError("original stop creation identities differ")
+    claim = core.read_namespaced_persistent_volume_claim(workspace["name"], args.namespace, _request_timeout=30)
+    observed = pipeline.get_run(previous["run"]["id"])
+    if claim.metadata.uid != workspace["uid"] or claim.metadata.owner_references or claim.status.phase != "Bound" or observed.experiment_id != previous["experiment"]["id"]:
+        raise RuntimeError("current stopped workspace/experiment differs")
+    record.update(previous)
+    verify_stopped(args, record, pipeline, core, custom, observed)
+    record["run"].update(state=observed.state, details=pipeline._run_api.api_client.sanitize_for_serialization(observed.run_details))
+    record.update(status="RUN_STATE_CORRELATED", workspaceRetained=True, fileReadback="NOT_ATTESTED_BY_THIS_CLIENT",
+                  reconciliation={"sourceReportSha256": hashlib.sha256(previous_path.read_bytes()).hexdigest(), "persistentWrites": 0}, acceptance="EAC_NOT_ATTESTED")
     save(report, record)
 
 
@@ -301,6 +349,7 @@ if __name__ == "__main__":
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--mode", choices=("success", "fail", "stop"), required=True)
     parser.add_argument("--reconcile-success-report", help="read-only finalization of a confirmed completed execution; never recreates it")
+    parser.add_argument("--reconcile-stop-report", help="read-only finalization after both original stop requests were confirmed")
     parser.add_argument("--resume-stop-report", help="resume a confirmed running stop execution before any stop mutation; never creates a replacement")
     arguments = parser.parse_args()
     directory = pathlib.Path(arguments.output)
