@@ -61,7 +61,7 @@ try:
         using = [p for p in pods if any(v.get("persistentVolumeClaim", {}).get("claimName") == workspace["name"] for v in p["spec"].get("volumes", []))]
         if any(p.get("status", {}).get("phase") not in ("Failed", "Succeeded") for p in using):
             raise ValueError("a live Pod still uses the diagnostic workspace")
-        job = cluster.read(obj("TrainJob", "ani-kfp-train-" + execution, namespace))
+        job = cluster.read(obj("TrainJob", "ani-kfp-train-" + execution, namespace, api="trainer.kubeflow.org/v1alpha1"))
         if receipt:
             if not job or job["metadata"]["uid"] != receipt["trainJobUid"] or not any(c["type"] == "Complete" and c["status"] == "True" for c in job.get("status", {}).get("conditions", [])):
                 raise ValueError("diagnostic completed TrainJob differs")
