@@ -53,10 +53,13 @@ try:
     api_address = api_service["spec"]["clusterIP"]
     if api_service["spec"]["ports"][0]["port"] != 443 or not api_address:
         raise ValueError("actual Kubernetes Service differs from the verified API contract")
-    targets += [{"name": "kubernetes", "address": api_address, "port": 443}]
-    targets += [{"name": "kubernetes-node", "address": address, "port": 6443} for address in site["node_addresses"]]
+    api_targets = [{"name": "kubernetes", "address": api_address, "port": 443}]
+    api_targets += [{"name": "kubernetes-node", "address": address, "port": 6443} for address in site["node_addresses"]]
+    # Public server trust is not an identity credential. Supply no client
+    # certificate, key, SA token or Secret; all TLS requests remain verified.
+    public_ca = cluster.read(obj("ConfigMap", "kube-root-ca.crt", args.namespace))["data"]["ca.crt"]
     command = r'''
-import errno,json,os,pathlib,socket,sys
+import errno,http.client,json,os,pathlib,socket,ssl,sys
 targets=json.loads(sys.argv[1])
 assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
 assert not any(k in os.environ for k in ('AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','MYSQL_ROOT_PASSWORD'))
@@ -66,13 +69,27 @@ results=[]
 for target in targets:
     try:
         with socket.create_connection((target['address'],target['port']),timeout=2):
-            raise RuntimeError('ordinary workload reached control port')
+            raise RuntimeError('ordinary workload reached control port: '+target['name']+':'+str(target['port']))
     except (TimeoutError,socket.timeout):
         results.append({**target,'result':'TIMEOUT_DENIED'})
     except OSError as error:
         assert error.errno in (errno.ETIMEDOUT,errno.EACCES,errno.EPERM), 'unavailable target does not prove policy denial'
         results.append({**target,'result':'POLICY_DENIED','errno':error.errno})
-print(json.dumps({'dns':dns,'targets':results,'serviceAccountTokenPresent':False},sort_keys=True))
+context=ssl.create_default_context(cadata=sys.argv[3])
+api_results=[]
+body=json.dumps({'apiVersion':'v1','kind':'Pod','metadata':{'name':'unauthenticated-boundary-dryrun'},'spec':{'restartPolicy':'Never','containers':[{'name':'probe','image':sys.argv[5]}]}})
+for target in json.loads(sys.argv[4]):
+    connection=http.client.HTTPSConnection(target['address'],target['port'],context=context,timeout=3)
+    try:
+        connection.request('POST','/api/v1/namespaces/'+sys.argv[6]+'/pods?dryRun=All',body=body,headers={'Content-Type':'application/json'})
+        response=connection.getresponse();data=response.read(65536)
+        assert response.status in (401,403), 'ordinary anonymous workload acquired Kubernetes create authorization'
+        api_results.append({**target,'result':'AUTHORIZATION_DENIED','httpStatus':response.status})
+    except (TimeoutError,socket.timeout):
+        api_results.append({**target,'result':'TRANSPORT_DENIED'})
+    finally:
+        connection.close()
+print(json.dumps({'dns':dns,'targets':results,'kubernetesCreateDryRuns':api_results,'serviceAccountTokenPresent':False},sort_keys=True))
 '''
     name = "ani-kfp-boundary-" + uuid.uuid4().hex[:16]
     image = site["images"]["ani.local/kubeflow-execution:26.03-v1"]
@@ -80,7 +97,7 @@ print(json.dumps({'dns':dns,'targets':results,'serviceAccountTokenPresent':False
         "nodeSelector": {"kubernetes.io/hostname": args.node}, "restartPolicy": "Never", "activeDeadlineSeconds": 120,
         "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{"name": "probe", "image": image, "command": ["python", "-c", command],
-            "args": [json.dumps(targets), api_address],
+            "args": [json.dumps(targets), api_address, public_ca, json.dumps(api_targets), image, args.namespace],
             "securityContext": {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}, "readOnlyRootFilesystem": True},
             "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "256Mi"}}}]})
     if cluster.read(pod):
@@ -88,14 +105,15 @@ print(json.dumps({'dns':dns,'targets':results,'serviceAccountTokenPresent':False
     cluster.apply([pod])
     uid = cluster.writes[-1]["uid"]
     report.update(pod={"name": name, "uid": uid, "creationResult": "CONFIRMED"}, services=services,
-                  kubernetesService={"uid": api_service["metadata"]["uid"], "clusterIP": api_address})
+                  kubernetesService={"uid": api_service["metadata"]["uid"], "clusterIP": api_address},
+                  publicServerCaSha256=hashlib.sha256(public_ca.encode()).hexdigest(), identityCredentialsSupplied=False)
     atomic(output / "report.json", report)
     live = cluster.wait(pod, lambda p: p["metadata"]["uid"] == uid and p.get("status", {}).get("phase") in ("Failed", "Succeeded"), timeout=150)
     states = live["status"].get("containerStatuses", [])
     if live["status"]["phase"] != "Succeeded" or len(states) != 1 or states[0]["state"].get("terminated", {}).get("exitCode") != 0 or states[0].get("imageID", "").rsplit("@", 1)[-1] != image.rsplit("@", 1)[-1]:
         raise RuntimeError("actual boundary probe exit/digest differs; preserve Pod")
     evidence = json.loads(cluster.call(["logs", name, "-n", args.namespace, "-c", "probe"]))
-    if len(evidence["targets"]) != len(targets):
+    if len(evidence["targets"]) != len(targets) or len(evidence["kubernetesCreateDryRuns"]) != len(api_targets):
         raise RuntimeError("boundary probe omitted targets")
     report.update(status="ORDINARY_WORKLOAD_CONTROL_DENIED", evidence=evidence, imageID=states[0]["imageID"])
 except BaseException as error:
