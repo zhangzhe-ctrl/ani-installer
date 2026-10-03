@@ -135,7 +135,7 @@ class Cluster:
                 obj["metadata"].update(uid=old["metadata"]["uid"], resourceVersion=old["metadata"]["resourceVersion"])
             secret = obj["kind"] == "Secret"
             manager = "ani-kubeflow"
-            legacy_policy = False
+            replace_owned = False
             if old and obj["kind"] == "ValidatingAdmissionPolicy" and obj["metadata"]["name"] in ("ani-kfp-workspace", "ani-kfp-trainjob"):
                 # Earlier role attempts used kubectl's default create manager.
                 # Its Update-owned atomic lists conflict even with SSA using
@@ -145,13 +145,27 @@ class Cluster:
                 if spec_managers - {"kubectl-create", "ani-kubeflow"}:
                     raise RuntimeError("foreign policy spec manager; refusing mutation: " + identity(obj))
                 if "kubectl-create" in spec_managers:
-                    legacy_policy = True
+                    replace_owned = True
                     metadata = {**old["metadata"], **obj["metadata"]}
                     metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
                     metadata.pop("managedFields", None)
                     obj["metadata"] = metadata
+            if old and obj["kind"] == "ConfigMap" and obj["metadata"].get("namespace") == "kubeflow" and obj["metadata"]["name"] == "ani-kfp-entry":
+                # This role's create operation owns nginx.conf with Update.
+                # Use optimistic concurrency for its reviewed configuration
+                # update instead of forcing SSA across that ownership.
+                data_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:data" in m.get("fieldsV1", {})}
+                if data_managers != {manager} or set(old.get("data", {})) != {"nginx.conf"} or old.get("binaryData"):
+                    raise RuntimeError("foreign entry configuration; refusing mutation: " + identity(obj))
+                metadata = {**old["metadata"], **obj["metadata"]}
+                metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
+                metadata.pop("managedFields", None)
+                obj["metadata"] = metadata
+                if "immutable" in old:
+                    obj["immutable"] = old["immutable"]
+                replace_owned = True
             verb = ["apply", "--server-side", "--field-manager=" + manager, "--validate=strict"] if old else ["create", "--field-manager=ani-kubeflow", "--validate=strict"]
-            if legacy_policy:
+            if replace_owned:
                 verb = ["replace", "--field-manager=ani-kubeflow", "--validate=strict"]
             self.call(verb + ["--dry-run=server", "-f", "-", "-o", "json"], obj, sensitive=secret)
             prepared.append((obj, verb, secret))

@@ -304,5 +304,39 @@ class EntryPortsBeforeWrites(unittest.TestCase):
             entry_ports_available(self.cluster("kubeflow", "ani-kfp-entry", 30445, "foreign-owner"))
 
 
+class EntryConfigurationReplay(unittest.TestCase):
+    def update(self, manager="ani-kubeflow", extra_data=False):
+        class ExistingEntry(Cluster):
+            def read(self, value):
+                return {"metadata": {**value["metadata"], "uid": "entry-create-uid", "resourceVersion": "31",
+                    "labels": {"ani.io/managed-by": "ani-lab", "retained-label": "keep"},
+                    "annotations": {"retained-annotation": "keep"},
+                    "managedFields": [{"manager": manager, "operation": "Update", "fieldsV1": {"f:data": {}}}]},
+                    "data": {"nginx.conf": "old", **({"foreign.conf": "keep"} if extra_data else {})}}
+
+            def call(self, args, value, **kwargs):
+                if args[0] != "replace" or "--force-conflicts" in args:
+                    raise AssertionError("entry update must retain optimistic concurrency")
+                metadata = value["metadata"]
+                if metadata["uid"] != "entry-create-uid" or metadata["resourceVersion"] != "31" or metadata["labels"]["retained-label"] != "keep" or metadata["annotations"]["retained-annotation"] != "keep":
+                    raise AssertionError("actual identity/version and external metadata must survive")
+                return json.dumps(value)
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = ExistingEntry({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            cluster.apply([{"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "ani-kfp-entry", "namespace": "kubeflow"}, "data": {"nginx.conf": NGINX}}])
+            self.assertEqual(cluster.writes[0]["uid"], "entry-create-uid")
+
+    def test_owned_entry_updates_with_uid_version_and_preserves_metadata(self):
+        self.update()
+
+    def test_foreign_data_manager_is_rejected_before_any_request(self):
+        with self.assertRaisesRegex(RuntimeError, "foreign entry configuration"):
+            self.update(manager="foreign-operator")
+
+    def test_unknown_entry_data_cannot_be_erased(self):
+        with self.assertRaisesRegex(RuntimeError, "foreign entry configuration"):
+            self.update(extra_data=True)
+
+
 if __name__ == "__main__":
     unittest.main()
