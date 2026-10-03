@@ -1,7 +1,7 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV02-ENV04-role-attempt-08-in-progress-after-actual-admission-matrix",
+  "checkpoint": "ENV05-first-real-success-chain-with-cross-node-readback-and-MLMD; integration-in-progress",
   "integration_status": "IN_PROGRESS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
@@ -43,24 +43,24 @@
     "candidate_images_digest_locked": true,
     "complete_release_material_frozen": false,
     "registry_readback_status": "PASS_104_BUILD_HOST_CONTENT_AND_15_NODE_DEVELOPMENT / FINAL_TARGET_NOT_RUN",
-    "runtime_pull_status": "NOT_RUN"
+    "runtime_pull_status": "DEVELOPMENT_CPU_POD_DIGEST_PASS / FINAL_TARGET_NOT_RUN"
   },
   "kfp": {
-    "endpoint": null,
-    "multi_user_authorization_verified": false,
+    "endpoint": "https://172.16.101.10:30445",
+    "multi_user_authorization_verified": "DEVELOPMENT_HTTP_A_ALLOWED_A_TO_B_DENIED / FULL_HTTP_GRPC_MATRIX_PENDING",
     "frontend_deployed": false,
-    "credentials_reference_only": null
+    "credentials_reference_only": "pipeline-runner TokenRequest; separate Kubernetes and pipelines.kubeflow.org audiences; private short-lived token files"
   },
   "trainer": {
-    "runtime_ref": null,
-    "jobset_version": null
+    "runtime_ref": "ani-single-process-v1-7dd0ba78",
+    "jobset_version": "v0.10.1"
   },
   "storage": {
     "connection_ref": null,
-    "storage_class": null,
-    "workspace_mode": null
+    "storage_class": "ani-cephfs",
+    "workspace_mode": "program-managed create-only per-execution 5Gi RWX PVC; no Workflow ownerReference; read-only input and separate output subPaths"
   },
-  "tenant_bindings": [],
+  "tenant_bindings": ["ani-kfp-probe-a/pipeline-runner", "ani-kfp-probe-b/pipeline-runner"],
   "remote_build": {
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
@@ -74,7 +74,7 @@
       {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "full-code-gate-and-builtin-code-package", "result": "PASS", "exit_code": 0, "source_fingerprint": "af3e66917a0592feb92d282de693c48a1638b87f6bc5076de1744a0ab27c583a", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/build-code-probe-candidate-attempt-01.log"},
       {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "production-full-site-render", "result": "PASS", "exit_code": 0, "role_files": 121, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/release/integration-render-attempt-02.log"}
     ],
-    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "REGISTRY_BYTES_PASS / RUNTIME_NOT_RUN"}
+    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "DEVELOPMENT_REGISTRY_AND_ACTUAL_CPU_POD_BYTES_PASS / FINAL_TARGET_NOT_RUN"}
   },
   "development_deployment": {
     "role_source": "d8c404c1b35fb66d6b5b2c8182f6d317da48e2e8",
@@ -87,12 +87,34 @@
     "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-01/logs",
     "package_sha256": "deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74",
     "acceptance": "NOT_RUN",
-    "latest_attempt": {"number": 8, "result": "IN_PROGRESS", "exit_code": null, "completed_writes": null, "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-08/logs", "package_sha256": "9cd7a7442fdd3605104506d3e4524a4fa9c5d6de61358125f78155f1a57426e0", "site_sha256": "7fb94e0abda502764a39f89d5b2b8ef94bd84b164cb9b81705bbbe15935ca877", "admission_group_dryruns": 10, "workspace_matrix_dryruns": 12, "persistent_preflight_requests": 0, "acceptance": "EAC_NOT_ATTESTED"}
+    "latest_attempt": {"number": 18, "kind": "checker-only; resources installed by attempts 15/17", "source": "9e51d9c3156630574e3f859c8747d17bdd1a8369", "result": "CONTROL_PLANE_CHECKED", "exit_code": 0, "persistent_resource_writes": 0, "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-18/control-check-attempt-01", "package_sha256": "b422704cdb77470a90c69ddc03ea8aa0fb2847183a8ff7b5662ee3aa8707d468", "site_sha256": "6cece3b1803e6cbb85e0e4a7e0afce58e3aa4031294edb978d1b8e075b0d4942", "acceptance": "FINAL_EAC_NOT_ATTESTED"}
+  },
+  "development_main_flow": {
+    "execution": "env-1383024fd6ed4ac5",
+    "namespace": "ani-kfp-probe-b",
+    "run_id": "d550bc09-400f-41b4-a5a6-0dc48233cc5f",
+    "run_state": "SUCCEEDED",
+    "workspace_uid": "49148ca6-c804-44ed-9874-ad112eb21c52",
+    "train_job_uid": "177d4111-e176-4dc7-9ded-07028fa66492",
+    "cpu_pod_uid": "8f9d6ba7-ac16-43f1-a722-eb9f2cc67597",
+    "cpu_exit_code": 0,
+    "pipeline_sha256": "bf31a9457392d25da911d06220a048ad83c6810b5969e93a01d6165e81797134",
+    "client_original_exit_code": 1,
+    "client_original_failure": "SDK datetime serialization after actual Run success; partial private-report.new retained",
+    "read_only_reconciliation_source": "5e8eb32ba26b4a7260b76006a2084997764c86e5",
+    "read_only_reconciliation_exit_code": 0,
+    "cross_node_readback_exit_code": 0,
+    "nodes": {"pipeline_control": "ani-01", "training": "ani-03", "independent_readback": "ani-02"},
+    "input_sha256": "709f9c339a8f3724660e7fa9143a587e2d95c5ccc5be27f78623e1074a8550ab",
+    "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf",
+    "mlmd": {"kind": "actual read-only authenticated database association query", "run_context_id": 5, "dataset_artifact_id": 10, "link_artifact_id": 13, "metrics_artifact_id": 14, "model_artifact_id": 15, "prepare_execution_id": 11, "training_execution_id": 12},
+    "evidence": ["Fedora: probes/integration-success-b-attempt-02/reconciled-result-attempt-01/private-report.json", "node attempt-18: workspace-readback-success-b02-attempt-01/report.json", "node attempt-18: logs/mlmd-link-success-b02-attempt-01.log"],
+    "remaining": ["actual exit-42 and stop output retention", "execution isolation", "independent S3 artifact readback and cross-tenant denial", "full HTTP/gRPC identity and spoof matrix", "ordinary Pod raw API/MLMD/database denial", "database persistence", "candidate freeze", "clean unified first install and independent final EAC"]
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt", "records/integration-attempts.md"],
   "blocked_items": [
     {"scope": "external-time-verification", "reason": "existing installer-isolated master ani-01 uses local stratum 10; ani-02/03 sync to it at stratum 11 with observed microsecond offsets; external UTC source NOT_VERIFIED"},
-    {"scope": "storage-acceptance", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; task PVC write/read not yet run"}
+    {"scope": "storage-health", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; actual task PVC mount/write and cross-node readback passed in development; warnings remain visible"}
   ],
   "lab_restore": {
     "data_authorization": "user: 无需保留，直接还原",
