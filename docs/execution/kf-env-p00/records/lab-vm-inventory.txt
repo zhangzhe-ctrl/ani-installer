@@ -1,0 +1,57 @@
+      guestFullName = "Ubuntu Linux (64-bit)", 
+      ipAddress = "172.16.101.10", 
+      name = "ani-01", 
+      vmPathName = "[容量存储 (1)] ani-01/ani-01.vmx", 
+      uuid = "564d5e21-67e0-62ab-a80d-ed15c7e2f021", 
+      instanceUuid = "529a2e39-f3cd-f70a-4e17-7f94b777dc65", 
+      guestFullName = "Ubuntu Linux (64-bit)", 
+--Snapshot Name        : iso-install-complete
+--Snapshot Id        : 2
+--Snapshot State       : powered on
+----Snapshot Name        : pre-kubeovn-rustfs-20260929
+----Snapshot Id        : 3
+----Snapshot State       : powered off
+   name = "ani-01", 
+   guestFullName = "Ubuntu Linux (64-bit)", 
+   uuid = "564d5e21-67e0-62ab-a80d-ed15c7e2f021", 
+   instanceUuid = "529a2e39-f3cd-f70a-4e17-7f94b777dc65", 
+      vmPathName = "[容量存储 (1)] ani-01/ani-01.vmx", 
+         name = "容量存储 (1)", 
+      guestFullName = "Ubuntu Linux (64-bit)", 
+      ipAddress = "172.16.101.11", 
+      name = "ani-02", 
+      vmPathName = "[容量存储 (1)] ani-02/ani-02.vmx", 
+      uuid = "564d28df-a2a9-cbe1-37b8-83b1ad1a5a0f", 
+      instanceUuid = "528d0389-d3cd-ce47-2d4b-d76e53a6a009", 
+      guestFullName = "Ubuntu Linux (64-bit)", 
+--Snapshot Name        : iso-install-complete
+--Snapshot Id        : 2
+--Snapshot State       : powered on
+----Snapshot Name        : pre-kubeovn-rustfs-20260929
+----Snapshot Id        : 3
+----Snapshot State       : powered off
+   name = "ani-02", 
+   guestFullName = "Ubuntu Linux (64-bit)", 
+   uuid = "564d28df-a2a9-cbe1-37b8-83b1ad1a5a0f", 
+   instanceUuid = "528d0389-d3cd-ce47-2d4b-d76e53a6a009", 
+      vmPathName = "[容量存储 (1)] ani-02/ani-02.vmx", 
+         name = "容量存储 (1)", 
+      guestFullName = "Ubuntu Linux (64-bit)", 
+      ipAddress = "172.16.101.12", 
+      name = "ani-03", 
+      vmPathName = "[容量存储 (1)] ani-03/ani-03.vmx", 
+      uuid = "564d687d-853a-0567-eaeb-649365e93245", 
+      instanceUuid = "5261dff2-5476-294a-94c3-7a334cf1e732", 
+      guestFullName = "Ubuntu Linux (64-bit)", 
+--Snapshot Name        : iso-install-complete
+--Snapshot Id        : 2
+--Snapshot State       : powered on
+----Snapshot Name        : pre-kubeovn-rustfs-20260929
+----Snapshot Id        : 3
+----Snapshot State       : powered off
+   name = "ani-03", 
+   guestFullName = "Ubuntu Linux (64-bit)", 
+   uuid = "564d687d-853a-0567-eaeb-649365e93245", 
+   instanceUuid = "5261dff2-5476-294a-94c3-7a334cf1e732", 
+      vmPathName = "[容量存储 (1)] ani-03/ani-03.vmx", 
+         name = "容量存储 (1)", 

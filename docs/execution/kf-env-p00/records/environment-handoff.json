@@ -1,0 +1,173 @@
+{
+  "schema": "ani.cpu-p00.environment.v1",
+  "status": "IN_PROGRESS",
+  "checkpoint": "ENV00-readonly-inventory",
+  "integration_status": "NOT_RUN",
+  "final_first_install_status": "NOT_RUN",
+  "business_p01_status": "NOT_RUN",
+  "cluster": {
+    "context": "kubernetes-admin@ani-lab",
+    "api_server": "https://lb.kubesphere.local:6443",
+    "identity_source": "kube-system Namespace UID; integration baseline only",
+    "identity": "87ecef8e-ac4e-442b-8e15-5e906263be6b",
+    "expected_node_ips": [
+      "172.16.101.10",
+      "172.16.101.11",
+      "172.16.101.12"
+    ],
+    "actual_nodes": [
+      {"name": "ani-01", "uid": "6e06d97d-abe8-4ae8-9748-aed3c21ac2db", "internal_ip": "172.16.101.10"},
+      {"name": "ani-02", "uid": "cdcc5133-469e-4e1b-9d1a-44fe2a93c1ae", "internal_ip": "172.16.101.11"},
+      {"name": "ani-03", "uid": "946c0d15-f9f0-4cc8-86b7-3945e1630228", "internal_ip": "172.16.101.12"}
+    ]
+  },
+  "repositories": {
+    "installer": {
+      "remote": "https://github.com/zhangzhe-ctrl/ani-installer.git",
+      "original_branch": "main",
+      "base_sha": "78d8418307b6156954feb10aee8d6972d2ff1bbd",
+      "task_branch": "feat/kubeflow-cpu-p00",
+      "worktree": "/home/chabking/workspace/ani-installer"
+    }
+  },
+  "versions_and_images": {
+    "kubernetes_observed": "v1.35.8",
+    "containerd_observed": "2.3.4",
+    "kubeovn_observed": "v1.16.6",
+    "upstream_source_candidates": {
+      "kfp_2.16.0": "e4ebca310f404dac306e16bc880de12bbbf63b95",
+      "trainer_v2.1.0": "73c9bece741ce17d2124abda3ec6bfcf5b5b8e87",
+      "jobset": "v0.10.1",
+      "argo": "v3.7.3"
+    },
+    "candidate_images_digest_locked": false
+  },
+  "kfp": {
+    "endpoint": null,
+    "multi_user_authorization_verified": false,
+    "frontend_deployed": false,
+    "credentials_reference_only": null
+  },
+  "trainer": {
+    "runtime_ref": null,
+    "jobset_version": null
+  },
+  "storage": {
+    "connection_ref": null,
+    "storage_class": null,
+    "workspace_mode": null
+  },
+  "tenant_bindings": [],
+  "remote_build": {
+    "kind": "ssh-fedora",
+    "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
+    "host_verified": true,
+    "build_status": "NOT_RUN"
+  },
+  "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt"],
+  "blocked_items": [
+    {"scope": "time-preflight", "reason": "ani-01 NTP unsynchronized; chrony has no source and uses local stratum 10"},
+    {"scope": "snapshot-restore", "reason": "current ANI services/PVC data boundary awaiting clarification; no restore performed"},
+    {"scope": "storage-acceptance", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; task PVC write/read not yet run"}
+  ],
+  "tests": [
+    {
+      "id": "EAC01",
+      "name": "确认集群",
+      "criterion": "授权context/API标识与10～12节点名/UID/InternalIP相符，未假定角色",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC02",
+      "name": "只安装所选组件",
+      "criterion": "固定版本和镜像摘要；无本期排除项新增、无共享资源抢占",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC03",
+      "name": "构建环境",
+      "criterion": "远程生成/编译/镜像渠道可用；本机和节点宿主机未运行构建",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC04",
+      "name": "数据库持久化",
+      "criterion": "API/MLMD连接正常，隔离账号，重启后本次记录存在",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC05",
+      "name": "S3",
+      "criterion": "平台及运行身份真实写/读/校验，越权前缀拒绝",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC06",
+      "name": "KFP Run",
+      "criterion": "远程编译小型Pipeline、固定版本提交、步骤与终态可读",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC07",
+      "name": "工件与元数据",
+      "criterion": "真实文件独立取回摘要一致；MLMD有执行/工件关联",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC08",
+      "name": "Trainer",
+      "criterion": "单节点单进程CPU实际运行、成功/失败正确、无GPU请求",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC09",
+      "name": "停止",
+      "criterion": "环境probe实际Pod终止，无控制器无限重新创建",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC10",
+      "name": "工作卷",
+      "criterion": "KFP与外部TrainJob显式挂载、跨Pod/必要跨节点交接、不同执行不覆盖",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC11",
+      "name": "保留",
+      "criterion": "失败/发布未成时唯一输出不被自动GC抢删",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC12",
+      "name": "双租户权限",
+      "criterion": "合法身份正向；A到B拒绝；实际KFP请求不是只做can-i",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC13",
+      "name": "防旁路",
+      "criterion": "无凭据/伪造头/普通Pod到API原口、MLMD/DB访问按策略拒绝",
+      "status": "NOT_RUN",
+      "evidence": []
+    },
+    {
+      "id": "EAC14",
+      "name": "交接",
+      "criterion": "实际入口/版本/UID/Runtime/存储与凭据引用、证据和未测项完整；不含秘密",
+      "status": "NOT_RUN",
+      "evidence": []
+    }
+  ]
+}
