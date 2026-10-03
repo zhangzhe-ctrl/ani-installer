@@ -97,9 +97,29 @@ def database_secrets(cluster, config):
 
 def checked_policy(value):
     status = value.get("status", {})
-    if status.get("observedGeneration", 0) < value["metadata"].get("generation", 1) or "typeChecking" not in status:
+    if status.get("observedGeneration", 0) < value["metadata"].get("generation", 1):
         return False
-    warnings = status["typeChecking"].get("expressionWarnings", [])
+    checking = status.get("typeChecking")
+    if checking is None:
+        # Kubernetes 1.35's status controller always applies observedGeneration
+        # and typeChecking together. Removing the final warning via SSA can
+        # omit the now-empty object from the JSON result. Require the actual
+        # status controller's ownership and current update time in that case;
+        # observedGeneration alone is never completion evidence.
+        fields = value["metadata"].get("managedFields", [])
+        specification_times = [field.get("time", "") for field in fields
+                               if "f:spec" in field.get("fieldsV1", {})]
+        completed = any(field.get("manager") == "validatingadmissionpolicy-status"
+                        and field.get("operation") == "Apply" and field.get("subresource") == "status"
+                        and {"f:observedGeneration", "f:typeChecking"}.issubset(field.get("fieldsV1", {}).get("f:status", {}))
+                        and field.get("time") and field["time"] >= max(specification_times, default="")
+                        for field in fields)
+        if not completed:
+            return False
+        checking = {}
+    if not isinstance(checking, dict):
+        return False
+    warnings = checking.get("expressionWarnings", [])
     if warnings:
         raise RuntimeError("admission policy type checking failed: " + value["metadata"]["name"] + ": " + json.dumps(warnings))
     return True

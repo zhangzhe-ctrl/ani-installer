@@ -9,6 +9,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import Cluster
+from install import checked_policy
 
 
 class ExistingSecret(Cluster):
@@ -128,6 +129,54 @@ class PolicyCreatorReplay(unittest.TestCase):
     def test_foreign_policy_spec_manager_is_refused_before_a_request(self):
         with self.assertRaisesRegex(RuntimeError, "foreign policy spec manager"):
             self.apply_policy("foreign-operator")
+
+
+class PolicyTypeCheckCompletion(unittest.TestCase):
+    def current(self):
+        # The actual 1.35.8 warning-to-empty SSA response keeps controller
+        # ownership while omitting status.typeChecking from the JSON object.
+        return {"metadata": {"name": "ani-kfp-workspace", "generation": 2,
+                "managedFields": [
+                    {"manager": "ani-kubeflow", "time": "2026-10-03T10:49:13Z", "fieldsV1": {"f:spec": {}}},
+                    {"manager": "validatingadmissionpolicy-status", "operation": "Apply", "subresource": "status",
+                     "time": "2026-10-03T10:49:13Z", "fieldsV1": {"f:status": {"f:observedGeneration": {}, "f:typeChecking": {}}}}]},
+                "status": {"observedGeneration": 2}}
+
+    def test_controller_completed_empty_transition_is_recognized(self):
+        self.assertTrue(checked_policy(self.current()))
+
+    def test_observed_generation_without_controller_completion_is_not_ready(self):
+        value = self.current()
+        value["metadata"]["managedFields"] = []
+        self.assertFalse(checked_policy(value))
+
+    def test_stale_generation_and_stale_controller_time_are_not_ready(self):
+        value = self.current()
+        value["status"]["observedGeneration"] = 1
+        self.assertFalse(checked_policy(value))
+        value = self.current()
+        value["metadata"]["managedFields"][1]["time"] = "2026-10-03T10:49:12Z"
+        self.assertFalse(checked_policy(value))
+
+    def test_wrong_status_manager_or_incomplete_field_ownership_is_not_ready(self):
+        value = self.current()
+        value["metadata"]["managedFields"][1]["manager"] = "other-manager"
+        self.assertFalse(checked_policy(value))
+        value = self.current()
+        del value["metadata"]["managedFields"][1]["fieldsV1"]["f:status"]["f:typeChecking"]
+        self.assertFalse(checked_policy(value))
+
+    def test_actual_type_warning_is_a_failure(self):
+        value = self.current()
+        value["status"]["typeChecking"] = {"expressionWarnings": [{"warning": "undefined field requests"}]}
+        with self.assertRaisesRegex(RuntimeError, "type checking failed"):
+            checked_policy(value)
+
+    def test_explicit_empty_type_checking_is_ready(self):
+        value = self.current()
+        value["metadata"]["managedFields"] = []
+        value["status"]["typeChecking"] = {}
+        self.assertTrue(checked_policy(value))
 
 
 if __name__ == "__main__":
