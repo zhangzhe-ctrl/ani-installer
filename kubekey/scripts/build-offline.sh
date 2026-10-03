@@ -464,13 +464,21 @@ for forbidden in \
   probe.sh \
   network-probe.sh \
   cluster.example.yaml \
-  README.md \
-  manifests; do
+  README.md; do
   if [[ -e "$OUTPUT/$forbidden" ]]; then
     echo "artifact output must not contain code-release file or directory: $OUTPUT/$forbidden" >&2
     exit 1
   fi
 done
+if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
+  # This fixed directory is offline material, approved against source bytes;
+  # unknown manifests, additional releases or regenerated approvals fail.
+  python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
+    --verify-output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+elif [[ -e "$OUTPUT/manifests" ]]; then
+  echo "artifact output carries undeclared manifest material" >&2
+  exit 1
+fi
 ani_assert_release_clean "$OUTPUT" || exit 1
 
 echo "[6/6] generating artifact checksums"

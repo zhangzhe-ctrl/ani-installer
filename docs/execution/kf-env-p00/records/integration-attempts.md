@@ -7,7 +7,7 @@
 - `1c45135ed3b090e01e131b31909f4b9810232906` 已推送；Fedora `build-code.sh` 真实退出码 0，统一门禁、编译、发布连续指纹 `1b690b7633c46db0b4e00980a93e3999fe93ccd19aee3321c7c0630bcd5dd006`。日志：构建任务根 `build-code-closed-assets-attempt-01.log`。
 - 13 个角色/探针源文件、41 个实际离线 wheels、gRPC 客户端源码归档纳入源绑定物料；审批文件 SHA256 `2bd910cddadaba2bb50a41cacc0aa70a1b212cae3fb5deeed7a9a491182068e6`。gRPC 客户端离线重建与固定二进制字节相同，协议认证仍未执行。
 - 保留两次首次门禁失败：`4278d5b` 缺工具源码归档摘要；`74517a6` 的物料测试仍固定四工具。修复后 `1c45135` 定向检查及统一门禁 PASS，未跳过检查。
-- 完整旧基础物料在 Fedora `reference-artifacts-attempt-02/artifact-c165ae7-candidate-r2`，逐项原始 SHA256SUMS 验证通过；原清单 SHA256 `441f3bc8c4f081a8e660ce35fc3eaa5d05aaf257d3721f18b2b977692e020640`。104 镜像累计候选包正在走既有完整内容门禁；尚未冻结正式发布物。
+- 完整旧基础物料在 Fedora `reference-artifacts-attempt-02/artifact-c165ae7-candidate-r2`，逐项原始 SHA256SUMS 验证通过；原清单 SHA256 `441f3bc8c4f081a8e660ce35fc3eaa5d05aaf257d3721f18b2b977692e020640`。104 镜像累计候选已通过既有实际 registry 内容门禁：15 个 pin-only 字节一致、75 个 lock+pin 字节一致、14 个来源 index 的 amd64 内容一致。完整包 `build-offline-materials-1c45135-attempt-01.log` 仍 FAIL，真实退出码 1：最后目录检查错误禁止已受审 Kubeflow manifests；保留失败输出，未补 SHA256SUMS 或发布 PASS。源修复只允许固定 release 的源绑定完整文件集、41 wheels 与固定 gRPC 源归档，其他目录、文件、篡改和自签审批继续拒绝。正式发布物尚未冻结。
 
 ## 现场安装尝试
 
