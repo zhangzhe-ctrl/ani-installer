@@ -19,7 +19,9 @@
 
 控制器原 Pod UID：JobSet `f6b035f0-cd2e-4800-b8e2-826d6f15f025`、Trainer `d0453fc7-82cf-4d06-a794-c123e9d1365c`；第三次调用前两者 Running、重启数 0。此观察不证明 TrainJob、入口或业务验收通过。
 
-前两次原始日志已移出 VM：Fedora `integration-first-failures.tar`，SHA256 `0ecb1cee90ee2143e42d80af266f579692812b36fa8b30ce5fb1e401f4dd16ed`。第三次日志仍在固定节点目录，将在恢复前外存。
+前两次原始日志已移出 VM：Fedora `integration-first-failures.tar`，SHA256 `0ecb1cee90ee2143e42d80af266f579692812b36fa8b30ce5fb1e401f4dd16ed`。第三次外存归档 SHA256 `f7bcc1797fc594670dc5410a4cc12629a801fb1ece7148729142de934ab43ad1`。
+
+`985f003eb6dd76301d9c515bb14defb0bae3db44` 的远程回归实际运行六项，退出码 0，日志 `targeted-webhook-replay-attempt-03.log`。回归覆盖两类 webhook 原子规则的 API 默认 scope 重入、显式 Namespaced scope 保留，以及既有四项证书保护。源绑定审批只变更 common.py 摘要和生成源码引用；新审批 SHA256 `f7eb88958ae20cc27477ec2d9f4e6209c7333d47a8cece9e9f0f614c8254380c`。修复后现场重入尚未执行。
 
 ## 执行偏差及证据限制
 
