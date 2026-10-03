@@ -1,0 +1,197 @@
+{
+  "schema": "ani.kubeflow.final-eac.v1",
+  "status": "PASS",
+  "cluster_uid": "5277649d-e28d-4a0a-ae76-8354365c63bc",
+  "source_commit": "dee542af0122e9f95bded2f349849df3a1a53e4a",
+  "source_fingerprint": "cd0515ec5d196c28486ca564bc24f6872c68cacfb14b5a060c36e69584d919cc",
+  "run_id": "ani-ani-lab-20261003-162500",
+  "install_exit_code": 0,
+  "smoke_exit_code": 0,
+  "eac": [
+    {
+      "id": "EAC01",
+      "status": "PASS",
+      "criterion": "授权context/API标识与10～12节点名/UID/InternalIP相符，未假定角色",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-cluster-baseline.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/var/lib/ani-installer/ani-lab/run.json"
+      ]
+    },
+    {
+      "id": "EAC02",
+      "status": "PASS",
+      "criterion": "固定版本和镜像摘要；无本期排除项新增、无共享资源抢占",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/logs/formal-install.log",
+        "records/candidate-freeze.json"
+      ]
+    },
+    {
+      "id": "EAC03",
+      "status": "PASS",
+      "criterion": "远程生成/编译/镜像渠道可用；本机和节点宿主机未运行构建",
+      "evidence": [
+        "records/candidate-freeze.json",
+        "remote code-frozen-dee542a-attempt-01.log and materials-frozen-dee542a-attempt-01.log"
+      ]
+    },
+    {
+      "id": "EAC04",
+      "status": "PASS",
+      "criterion": "API/MLMD连接正常，隔离账号，重启后本次记录存在",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/dedicated-db-persistence/report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b02/client.rc",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv"
+      ]
+    },
+    {
+      "id": "EAC05",
+      "status": "PASS",
+      "criterion": "平台及运行身份真实写/读/校验，越权前缀拒绝",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/s3-scoped-io-success-b01/report.json"
+      ]
+    },
+    {
+      "id": "EAC06",
+      "status": "PASS",
+      "criterion": "远程编译小型Pipeline、固定版本提交、步骤与终态可读",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b01/result-parent/result/private-report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b02/result-parent/result/private-report.json"
+      ]
+    },
+    {
+      "id": "EAC07",
+      "status": "PASS",
+      "criterion": "真实文件独立取回摘要一致；MLMD有执行/工件关联",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv",
+        "records/final-file-index.json"
+      ]
+    },
+    {
+      "id": "EAC08",
+      "status": "PASS",
+      "criterion": "单节点单进程CPU实际运行、成功/失败正确、无GPU请求",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b01/result-parent/result/private-report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/failure-a01/result-parent/result/private-report.json"
+      ]
+    },
+    {
+      "id": "EAC09",
+      "status": "PASS",
+      "criterion": "环境probe实际Pod终止，无控制器无限重新创建",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/stop-a02/result-parent/result/private-report.json"
+      ]
+    },
+    {
+      "id": "EAC10",
+      "status": "PASS",
+      "criterion": "KFP与外部TrainJob显式挂载、跨Pod/必要跨节点交接、不同执行不覆盖",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-success-b01-isolation/report.json",
+        "records/final-file-index.json"
+      ]
+    },
+    {
+      "id": "EAC11",
+      "status": "PASS",
+      "criterion": "失败/发布未成时唯一输出不被自动GC抢删",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-failure-a01-readback/report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-stop-a02-readback/report.json"
+      ]
+    },
+    {
+      "id": "EAC12",
+      "status": "PASS",
+      "criterion": "合法身份正向；A到B拒绝；实际KFP请求不是只做can-i",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/entry-matrix/result/report.json"
+      ]
+    },
+    {
+      "id": "EAC13",
+      "status": "PASS",
+      "criterion": "无凭据/伪造头/普通Pod到API原口、MLMD/DB访问按策略拒绝",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workload-boundary/report.json"
+      ]
+    },
+    {
+      "id": "EAC14",
+      "status": "PASS",
+      "criterion": "实际入口/版本/UID/Runtime/存储与凭据引用、证据和未测项完整；不含秘密",
+      "evidence": [
+        "records/environment-handoff.json",
+        "records/final-eac-summary.json",
+        "records/final-file-index.json"
+      ]
+    }
+  ],
+  "four_runs": {
+    "success-b01": {
+      "execution": "env-8743a650c78c4d69",
+      "namespace": "ani-kfp-probe-b",
+      "mode": "success",
+      "run_id": "b8400975-d7f5-4ea0-af3f-0a357bc621b7",
+      "actual_run_state": "SUCCEEDED",
+      "client_exit_code": 0
+    },
+    "success-b02": {
+      "execution": "env-fec16fbc555349ae",
+      "namespace": "ani-kfp-probe-b",
+      "mode": "success",
+      "run_id": "9e884b20-aa5b-42c2-a979-b647604dbf0c",
+      "actual_run_state": "SUCCEEDED",
+      "client_exit_code": 0
+    },
+    "failure-a01": {
+      "execution": "env-78df120a20754fab",
+      "namespace": "ani-kfp-probe-a",
+      "mode": "fail",
+      "run_id": "2ae9bde7-caee-4f0d-9ca4-519ba7d4d613",
+      "actual_run_state": "FAILED",
+      "client_exit_code": 0
+    },
+    "stop-a02": {
+      "execution": "env-5739863a8ea14afa",
+      "namespace": "ani-kfp-probe-a",
+      "mode": "stop",
+      "run_id": "f5bcb66a-5988-4807-b675-21333bab4632",
+      "actual_run_state": "FAILED",
+      "client_exit_code": 0
+    }
+  },
+  "entry_requests": 62,
+  "s3_explicit_denials": 12,
+  "unique_exported_files": 18,
+  "native_archive": {
+    "path": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-eac-native-dee542a-attempt-01.tar",
+    "sha256": "0594bff8452e0cb5f1b5bf839c503d1184ab1babf7cda1f5e0ba32426aef3c09",
+    "node_and_external_hash_match": true
+  },
+  "business_p01_status": "NOT_RUN",
+  "capacity": {
+    "current_claims": 28,
+    "total_declared_logical_gi": 140,
+    "replicas": 3,
+    "maximum_claim_raw_gi": 420,
+    "raw_gi": 600,
+    "reserve_raw_gi": 120,
+    "remaining_beyond_claims_and_reserve_raw_gi": 60,
+    "observed_base_requested_cpu": 7.325,
+    "allocatable_cpu": 46.8,
+    "two_tenant_quota_requested_cpu": 12,
+    "baseline_plus_quota_requested_cpu": 19.325,
+    "evidence": [
+      "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-retained-pvcs.json",
+      "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-node-request-budget.txt"
+    ],
+    "coverage": "observed scheduler allocation and bounded planning; no throughput or maximum-concurrency acceptance"
+  }
+}

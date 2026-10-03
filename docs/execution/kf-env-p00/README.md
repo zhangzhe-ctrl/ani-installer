@@ -15,26 +15,36 @@
 
 ## 当前检查点
 
-ENV00 调查已记录，ENV01 实现/渲染通过后进入 ENV02～ENV04 联调部署。当前调用已审阅的首装角色，新增任务独立 registry 及声明的 Kubeflow 资源；尚未恢复快照，未设置 `ENV_READY`。
+ENV00～ENV06 已完成，状态 `ENV_READY`。候选源码 `dee542af0122e9f95bded2f349849df3a1a53e4a` 在三台已授权还原 Id2 的干净主机上完成统一首装，实际退出码 0；首装 runId `ani-ani-lab-20261003-162500`。随后新环境的 15 项产品 smoke 和独立 EAC01～EAC14 均 PASS。最终集群 UID 为 `5277649d-e28d-4a0a-ae76-8354365c63bc`，未继承联调 PASS。
 
-已实际核实：三节点均 Ubuntu 24.04.4 amd64、Kubernetes v1.35.8、containerd 2.3.4。API 为 `https://lb.kubesphere.local:6443`；context 为 `kubernetes-admin@ani-lab`。集群标识采用 kube-system Namespace UID `87ecef8e-ac4e-442b-8e15-5e906263be6b`。完整脱敏清单见 `records/cluster-record.json`。
+联调基线：三节点均 Ubuntu 24.04.4 amd64、Kubernetes v1.35.8、containerd 2.3.4。API 为 `https://lb.kubesphere.local:6443`；context 为 `kubernetes-admin@ani-lab`。旧 kube-system Namespace UID `87ecef8e-ac4e-442b-8e15-5e906263be6b` 仅属于已还原的联调环境。历史清单见 `records/cluster-record.json`，当前首装前主机身份见 `records/clean-first-install-start.json`。
 
-三节点各 15.6 CPU allocatable、约 29.3 GiB allocatable memory；每节点已有 200 GiB Ceph 数据盘，600 GiB raw 总量。现有 `ani-block`、`ani-cephfs` 和 23 个 Bound PVC 不代表本轮工作卷已通过实际写读。现有 Ceph 20.2.4 为 HEALTH_WARN，含四个 CSI 客户端不安全密钥类型、允许/可创建旧密钥及一项 BlueStore slow-op 告警，不静音、不轮换共享身份。
+容量与时间历史调查见 `records/capacity-and-time.txt`；联调期间已验证实际 PVC 写读、跨节点交接和普通工作负载访问拒绝。旧 Ceph 与时间告警保留在历史记录中，最终环境重新观察，不沿用旧健康结论。
 
-Kube-OVN v1.16.6 运行参数开启 `--enable-np=true`、`--np-enforcement=standard`；7 项现有 NetworkPolicy 不是本轮防旁路验收。CoreDNS Service 为 `coredns`（10.96.0.3），已有两个 EndpointSlice endpoint。KFP、Argo、Trainer、JobSet 的相关 CRD 未发现；其缺失是本任务安装前提。现有 cert-manager v1.21.2、RustFS 1.0.0、PostgreSQL 17.11、Harbor 和 ANI 服务须保持所有权边界。
+ESXi 已通过既有受管凭据、严格主机密钥验证核实：VMID 8/9/10 分别为 ani-01/02/03，guest IP 与本轮目标一致。三个 `iso-install-complete` snapshot Id2 均已直接还原，每台两块 200 GiB persistent 磁盘均被快照覆盖；见 `records/clean-first-install-start.json`。快照恢复仅属于本轮实验室准备，不进入安装包和正常产品流程。
 
-时间基线是 installer 既有离线主从：ani-01 `NTPSynchronized=no`，chrony 无外部源、local stratum 10；ani-02/03 实际同步 ani-01、stratum 11，观测偏差分别约 29/17 微秒。该布局与当前 `KubeKeyConfig.native.ntp` 一致，不将未接外部时间源误判成两从节点未同步；UTC 外部可靠性仍未验证，Ceph 节点间同步继续核实。证书到期检查显示集群证书有效至 2027-09-29。
+## 统一首装入口
 
-ESXi 已通过既有受管凭据、严格主机密钥验证只读核实：VMID 8/9/10 分别为 ani-01/02/03，guest IP 与本轮目标一致。三个 `iso-install-complete` snapshot Id2 存在，每台两块 200 GiB persistent 磁盘均被快照覆盖；Id3 是旧 kcn/RGW 环境，不能作最终干净快照。见 `records/lab-vm-inventory.txt`。用户已明确当前实验数据无需保留、直接还原；恢复尚未执行，仍须先完成联调和候选冻结。旧恢复脚本有 .20～.22 白名单及额外 power.on，本轮不运行其恢复入口、不放宽白名单。
+在安装前将 [Kubeflow 显式选项](kubeflow-site-option.yaml) 合入完整站点配置；该片段不能独立执行。主机、存储、registry 和所选基础组件按站点完整声明。字段与身份合同见 [config-contract.md](config-contract.md)。配置关闭时保持原安装行为。
 
-## 后续次序
+以下绝对路径为本轮正式制品和私有配置，不是通用客户默认路径：
 
-先完成当前基础能力与容量、远程构建和数据边界调查，固定配置/版本/物料合同。保留现有联调环境，完成 ENV02～ENV05 真实联调。通过后才冻结候选和正式发布物，随后还原核实的干净快照，完成 ENV06 一次统一首装与独立 EAC01～EAC14。最终首装不继承联调 PASS。
+```sh
+sudo /home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/code-frozen-dee542a-attempt-01/kk ani install \
+  --config /home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/site.private.yaml \
+  --package-root /home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/materials-frozen-dee542a-attempt-01
+```
 
-源码上游已在 Fedora 固定：KFP tag 2.16.0 → `e4ebca310f404dac306e16bc880de12bbbf63b95`；Trainer tag v2.1.0 → `73c9bece741ce17d2124abda3ec6bfcf5b5b8e87`。Trainer 源锁定 JobSet v0.10.1；KFP Argo 源引用 v3.7.3。14 个必需上游镜像与一个已远程构建的 SDK/CPU 执行镜像已登记平台摘要；旧 V1 cache 两镜像仅留研究证据，不交付。完整包、registry readback 和运行时拉取仍未完成。
+本轮已执行该命令并成功。当前正式安装记录是 `/var/lib/ani-installer/ani-lab/run.json`，对应 `run-state.json` 为 `succeeded`；后续核验消费这个安装记录。首装失败时保留现场，定位后回到源码与正式发布链修复。
 
-ENV01 已接入默认关闭配置、自动证书依赖、首装末尾角色、物料条目和生产渲染。Fedora 完整门禁 `8dcffa7`、`5052e81` 均 rc=0，后者同源构建代码包；生产完整站点渲染 121 个角色文件及所选 Chart 展开通过。首次渲染因开发目录没有规范 Chart 路径失败，使用既有物料放置器校验并落盘后通过。历史 `b7d418d` 上下文守卫与 `207f1c4` Quantity 编译失败均保留。最终冻结门禁和环境验收尚未执行，不能标记 ENV_READY。
+冻结门禁、完整材料及目标摘要见 [candidate-freeze.json](records/candidate-freeze.json)：同源远程门禁/代码包/材料包/生产渲染均 rc=0，121 个角色文件，104 个镜像实际字节检查。正式 registry 为 `172.16.101.10:5000`；旧联调的 5001 仅属于历史开发环境。
 
-联调包 SHA256 `deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74` 已在 ani-01 回读一致。独立 registry `172.16.101.10:5001` 的 15 个 Kubeflow 镜像已通过既有 `kk ani materials verify-registry` 实际 manifest/config/layer 字节门禁。此为固定源锁的开发投影，不是最终完整物料包验收或追加安装合同。现有 5000 registry 与基础服务保持运行。部署日志使用 `/home/ubuntu/kf-env-p00/integration-attempt-01/logs`，每轮创建 UID 与首错记录由同一首装角色落盘；CPU/工作区/租户 EAC 仍为 NOT_RUN。
+联调和最终复验分别覆盖：真实 Pipeline→TrainJob→工作卷→工件成功链、实际退出 42、停止后无替代 Pod、专用 MySQL 容器重启后相同记录与新执行、两执行互不覆盖、S3 12 项明确 403、62 项 HTTP/gRPC 身份请求，以及普通无凭据 Pod 到 10 个控制目标和 4 个 Kubernetes 创建目标的拒绝。最终 18 个唯一文件已在节点外按原始字节、大小和 SHA256 校验保存。
+
+结果见 [final-eac-summary.json](records/final-eac-summary.json)、[environment-handoff.json](records/environment-handoff.json) 和 [final-file-index.json](records/final-file-index.json)。原始记录与大包在 Fedora 任务专属目录；最终原始归档 SHA256 为 `0594bff8452e0cb5f1b5bf839c503d1184ab1babf7cda1f5e0ba32426aef3c09`。联调与首错历史见 [integration-attempts.md](records/integration-attempts.md)。
+
+Ceph 当前保留三项认证配置 HEALTH_WARN；离线主时钟使用 local stratum 10，两从节点同步它，外部 UTC 源仍 NOT_VERIFIED。未静音告警或轮换密钥。当前 28 个 PVC 声明总计 140Gi，三副本上界 420Gi；raw 600Gi，另留 120Gi 余量。四个执行卷均保留，两探针租户已达到每租户两个卷的上限，清理须按实际 UID 和输出保留决定推进。
+
+交 CPU-P01：CPU00 复核最终身份与正式记录；CPU02 绑定并复验真实服务身份。环境探针 SA 不作 modeldev 正式授权。CPU-P01/BFF 业务、GPU 和最大并发吞吐均未验收。
 
 [官方 GHSA-gqww-5pj5-8fq7](https://github.com/kubeflow/pipelines/security/advisories/GHSA-gqww-5pj5-8fq7) 已核对：frontend ≤2.16.0 受影响。本轮不部署 frontend，不通过其代理形成可信调用链。

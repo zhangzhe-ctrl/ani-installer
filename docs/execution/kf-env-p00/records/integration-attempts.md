@@ -1,6 +1,6 @@
 # 保留现场联调记录
 
-这些记录只属于开发联调，不进入最终干净首装的 EAC PASS。三台 VM 的 Id2 恢复仍未执行；用户已授权当前实验数据无需保留。阶段 C/D 通过后才执行恢复。
+以下联调记录不进入最终干净首装的 EAC PASS。阶段 C/D 已通过，三台 VM 已按用户“无需保留，直接还原”的授权恢复 Id2；正式统一首装的当前记录见下方阶段 E，最终 EAC 使用新环境独立执行。
 
 ## 同源构建与闭合物料
 
@@ -87,6 +87,18 @@ C 必需联调通过；代码候选 `dee542af0122e9f95bded2f349849df3a1a53e4a`�
 实验室公网阻断随快照清除，已在实际产品锁下恢复既有脚本的 IPv4/IPv6 ANI-OFFLINE 私网保留规则；三台新 TCP 到公网 1.1.1.1:443 超时 rc=124，私网 Fedora 制品 TCP 可达。首次操作复制函数时缺闭合花括号，bash 在 apply 前退出 2；只读核实两族规则均未变，再在 Fedora bash -n 核实完整原始函数后执行，原失败与对账保留于 `release/clean-offline-boundary-dee542a-attempt-02`。未改 installer 源码或用公网阻断代替后续内部 NetworkPolicy 验收。该准备锁的实际 holder 2859/timeout 2860 经 cmdline 核实后终止，锁释放；正式 installer 实际 kernel FLOCK holder 为 3601。
 
 正式唯一入口 `kk ani install --config site.private.yaml --package-root materials-frozen-dee542a-attempt-01` 在 2026-10-03T16:25:38Z 启动，产品 run `ani-ani-lab-20261003-162500`。目标根 `/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004`，stdout/退出码分别 `logs/formal-install.log`/`logs/formal-install.rc`；当前运行中，未预填退出码或 install-success。最终 EAC01～EAC14 全部仍待新环境独立执行。
+
+### 阶段 E 终态与独立复验
+
+首装在 2026-10-03T17:11:40Z 完成，真实 CLI rc=0，`run.json` 为 install-success，`run-state.json` 为 succeeded。正式源仍为 `dee542a`，源码指纹、kk、配置和材料锁与 D 冻结一致；Kubeflow 角色 153 次确认写入。新集群 UID `5277649d-e28d-4a0a-ae76-8354365c63bc`；节点 ani-01/02/03 UID 分别 `201e41ac-c50d-4c77-b118-72d1ed93e111`、`73564fa7-98ad-45d4-9576-be59f6d5d245`、`af992ed9-cbe1-4f64-8fac-7433808bfab2`。原 15 项产品 smoke 退出码 0，各项 pass。
+
+新环境独立用例全部 client rc=0：B1 Run `b8400975-d7f5-4ea0-af3f-0a357bc621b7`、B2 Run `9e884b20-aa5b-42c2-a979-b647604dbf0c` 均 SUCCEEDED；A1 Run `2ae9bde7-caee-4f0d-9ca4-519ba7d4d613` 实际 CPU exit 42/FAILED；A2 Run `f5bcb66a-5988-4807-b675-21333bab4632` 两停止请求确认，真实状态 CANCELING→FAILED、Workflow activeDeadlineSeconds=0、原 CPU Pod Gone/无替代。四个独立 5Gi RWX 卷保留，跨节点只读 reader 取回文件；B1 全部字节/摘要在 B2 后不变。专用 MySQL 只 graceful shutdown 一次，Pod/PVC UID 不变、容器 restartCount 0→1，前后 8 行 KFP/MLMD 完全相同；B2 在其后实际成功。最终只读 SQL 的 24 行证据包含四 Run 终态和两成功执行的 Model/Link Event 与 Run/TrainJob/PVC 属性关联。
+
+S3 三个受限身份各一次唯一对象写读，12 项明确 403，无未知结果；两成功执行的 Model/Link 原始字节与卷/创建 UID 一致。入口 62 项实际 HTTP/gRPC 请求通过；普通无身份 Pod 的 10 个原始控制目标和 4 个 Kubernetes 创建目标均拒绝。四卷 14 个文件及 S3 四个工件，共 18 个唯一文件在 Fedora 解码并逐一核对大小/SHA256。停止和失败未自动清理卷。本轮最终验收没有手工 Kubernetes 资源删除；既有基础 smoke 的协议探针及额外四个 1Gi 快照测试卷按原脚本执行并在原始记录中列明。
+
+最终节点外原始归档 `probes/final-clean-first-install-dee542a-attempt-01/final-eac-native-dee542a-attempt-01.tar` SHA256 `0594bff8452e0cb5f1b5bf839c503d1184ab1babf7cda1f5e0ba32426aef3c09`，节点/Fedora 一致。两次长 SSH 控制连接在原生完成/释放后仍保持打开；只关闭已核实的本任务本地 SSH 客户端，未重启或停止 registry/集群服务。原生产品/业务 rc 与连接终止分别记录。有限验收锁于 2026-10-03T18:00:13Z 确认释放。
+
+最终 EAC01～EAC14 PASS，`ENV_READY`；CPU-P01/BFF、GPU、最大并发吞吐 NOT_RUN/NOT_VERIFIED。Ceph 保留三项认证 HEALTH_WARN；主时钟 local stratum 10、两从 stratum 11，外部 UTC 源 NOT_VERIFIED。当前 28 个 PVC/140Gi 声明，三副本上界 420Gi、raw 600Gi、另留 120Gi，未降副本或容量。正式结果、身份、残留、CA/Secret 引用和 CPU00/CPU02 继续条件集中在 `environment-handoff.json`，摘要和唯一文件索引见 `final-eac-summary.json`/`final-file-index.json`。
 
 ## 执行偏差及证据限制
 

@@ -1,25 +1,80 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
-  "status": "IN_PROGRESS",
-  "checkpoint": "ENV05-real-integration-pass; candidate-frozen; authorized-Id2-restore-complete; clean-unified-install-in-progress",
+  "status": "ENV_READY",
+  "checkpoint": "ENV06-clean-unified-first-install-and-independent-EAC01-EAC14-PASS",
   "integration_status": "PASS",
-  "final_first_install_status": "IN_PROGRESS",
+  "final_first_install_status": "PASS",
   "business_p01_status": "NOT_RUN",
   "cluster": {
     "context": "kubernetes-admin@ani-lab",
     "api_server": "https://lb.kubesphere.local:6443",
-    "identity_source": "kube-system Namespace UID; integration baseline only",
-    "identity": "87ecef8e-ac4e-442b-8e15-5e906263be6b",
+    "kubeconfig_reference": "/etc/kubernetes/admin.conf",
+    "identity_source": "final clean-install kube-system Namespace UID",
+    "identity": "5277649d-e28d-4a0a-ae76-8354365c63bc",
     "expected_node_ips": [
       "172.16.101.10",
       "172.16.101.11",
       "172.16.101.12"
     ],
     "actual_nodes": [
-      {"name": "ani-01", "uid": "6e06d97d-abe8-4ae8-9748-aed3c21ac2db", "internal_ip": "172.16.101.10"},
-      {"name": "ani-02", "uid": "cdcc5133-469e-4e1b-9d1a-44fe2a93c1ae", "internal_ip": "172.16.101.11"},
-      {"name": "ani-03", "uid": "946c0d15-f9f0-4cc8-86b7-3945e1630228", "internal_ip": "172.16.101.12"}
-    ]
+      {
+        "name": "ani-01",
+        "uid": "201e41ac-c50d-4c77-b118-72d1ed93e111",
+        "internal_ip": "172.16.101.10",
+        "versions": {
+          "architecture": "amd64",
+          "bootID": "63017eac-d07b-4ecc-a045-c15b6e0e192e",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-139-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "cd933c2ed43e460986560541fa038e54",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "215e4d56-e067-ab62-a80d-ed15c7e2f021"
+        }
+      },
+      {
+        "name": "ani-02",
+        "uid": "73564fa7-98ad-45d4-9576-be59f6d5d245",
+        "internal_ip": "172.16.101.11",
+        "versions": {
+          "architecture": "amd64",
+          "bootID": "6a3dbeb8-2773-4cbc-9986-69537c27ce50",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-139-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "ff15e43d9efa48ffa63ab0c8878b6566",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "df284d56-a9a2-e1cb-37b8-83b1ad1a5a0f"
+        }
+      },
+      {
+        "name": "ani-03",
+        "uid": "af992ed9-cbe1-4f64-8fac-7433808bfab2",
+        "internal_ip": "172.16.101.12",
+        "versions": {
+          "architecture": "amd64",
+          "bootID": "6c95cc81-2a74-44d8-a45e-9d8c4ba38471",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-139-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "2e5cc7ce6b9c4666a1943a6fa65c1858",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "7d684d56-3a85-6705-eaeb-649365e93245"
+        }
+      }
+    ],
+    "namespace_uids": {
+      "kubeflow": "13f4731b-f470-4eaa-ab16-2a0300d36507",
+      "kubeflow-system": "8f4b16f0-b94f-4a24-92b3-89fab2ca43c3",
+      "ani-kfp-probe-a": "606c0127-8b17-4410-9f08-9697b05988f4",
+      "ani-kfp-probe-b": "fbc885c4-b94c-4cd0-b291-ff7730b729b3"
+    }
   },
   "repositories": {
     "installer": {
@@ -42,39 +97,172 @@
     },
     "candidate_images_digest_locked": true,
     "complete_release_material_frozen": true,
-    "registry_readback_status": "PASS_104_BUILD_HOST_CONTENT_AND_15_NODE_DEVELOPMENT / FINAL_TARGET_NOT_RUN",
-    "runtime_pull_status": "DEVELOPMENT_CPU_POD_DIGEST_PASS / FINAL_TARGET_NOT_RUN"
+    "registry_readback_status": "PASS_104_FORMAL_FIRST_INSTALL_BYTE_GATE",
+    "runtime_pull_status": "PASS_FINAL_CONTROLLER_AND_REAL_CPU_POD_LOCKED_DIGESTS"
   },
   "kfp": {
     "endpoint": "https://172.16.101.10:30445",
-    "multi_user_authorization_verified": "DEVELOPMENT_62_REAL_HTTP_GRPC_REQUESTS_PASS / FINAL_TARGET_NOT_RUN",
+    "multi_user_authorization_verified": "PASS_FINAL_62_REAL_HTTP_GRPC_REQUESTS",
     "frontend_deployed": false,
-    "credentials_reference_only": "pipeline-runner TokenRequest; separate Kubernetes and pipelines.kubeflow.org audiences; private short-lived token files"
+    "credentials_reference_only": "pipeline-runner TokenRequest; separate Kubernetes and pipelines.kubeflow.org audiences; private short-lived token files",
+    "grpc_endpoint": "172.16.101.10:30446",
+    "ca_reference": "kubeflow/ani-kfp-ca ConfigMap key ca.crt",
+    "ca_pem_sha256": "a8e111601a502f4f19f80b186dc57746730203a54d6ebbc5636636725d5d639a",
+    "trusted_client_identity_headers": "none; protected header variants and duplicate Authorization rejected"
   },
   "trainer": {
     "runtime_ref": "ani-single-process-v1-7dd0ba78",
-    "jobset_version": "v0.10.1"
+    "jobset_version": "v0.10.1",
+    "runtime_uid": "1cd463ad-ce63-430c-ab3a-6b36ff63651f",
+    "gpu_status": "NOT_VERIFIED; not installed or requested",
+    "requests": {
+      "cpu": "1",
+      "memory": "512Mi"
+    },
+    "limits": {
+      "cpu": "1",
+      "memory": "2Gi"
+    }
   },
   "storage": {
-    "connection_ref": null,
+    "connection_ref": "/var/lib/ani-installer/ani-lab/work/connections.d/kubeflow.md",
     "storage_class": "ani-cephfs",
-    "workspace_mode": "program-managed create-only per-execution 5Gi RWX PVC; no Workflow ownerReference; read-only input and separate output subPaths"
+    "workspace_mode": "program-managed create-only per-execution 5Gi RWX PVC; no Workflow ownerReference; read-only input and separate output subPaths",
+    "database": {
+      "namespace": "kubeflow",
+      "deployment": "mysql",
+      "deployment_uid": "7379d03b-764d-4cf6-b895-dcc4a1c98b30",
+      "pvc": "mysql-pv-claim",
+      "pvc_uid": "8e3b4e3b-9883-4222-97d1-99eb7bc495bf",
+      "pod_uid": "670adc4e-8ed0-4351-ae3e-f615e904a2d7",
+      "storage_class": "ani-block",
+      "size": "20Gi",
+      "secret_refs": [
+        "kubeflow/ani-kfp-api-db",
+        "kubeflow/ani-kfp-mlmd-db",
+        "kubeflow/ani-kfp-mysql-root"
+      ]
+    },
+    "s3": {
+      "endpoint": "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+      "ca_ref": "ani-platform/ani-rustfs-ca ConfigMap",
+      "control_secret": "kubeflow/ani-kfp-control-s3",
+      "tenant_secrets": [
+        "ani-kfp-probe-a/mlpipeline-minio-artifact",
+        "ani-kfp-probe-b/mlpipeline-minio-artifact"
+      ],
+      "scoped_io": "3 confirmed positive objects; 12 explicit 403 denials; no unknown outcomes"
+    }
   },
-  "tenant_bindings": ["ani-kfp-probe-a/pipeline-runner", "ani-kfp-probe-b/pipeline-runner"],
+  "tenant_bindings": [
+    {
+      "namespace": "ani-kfp-probe-a",
+      "service_account": "api-client",
+      "uid": "891d88b6-2063-494b-9854-14e453ec7a41",
+      "automount_service_account_token": false
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "service_account": "default",
+      "uid": "9b38885a-e337-482f-8d69-6db6cba002ef",
+      "automount_service_account_token": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "service_account": "pipeline-runner",
+      "uid": "a5966501-2865-4bc9-8223-a4c867cf3fc2",
+      "automount_service_account_token": true
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "service_account": "trainer-workload",
+      "uid": "74b110fb-1e13-45eb-9d4f-7faf6d4fd5f8",
+      "automount_service_account_token": false
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "service_account": "api-client",
+      "uid": "e74a8ec7-cec8-4d2e-b30a-c52ba378a2f9",
+      "automount_service_account_token": false
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "service_account": "default",
+      "uid": "89b91aea-d231-4994-b617-db5948d37cfc",
+      "automount_service_account_token": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "service_account": "pipeline-runner",
+      "uid": "ce0bcc81-351f-4267-9a2f-2a63cf0f73e2",
+      "automount_service_account_token": true
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "service_account": "trainer-workload",
+      "uid": "4abf209f-7c22-4441-a4b4-f04b83529f90",
+      "automount_service_account_token": false
+    }
+  ],
   "remote_build": {
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
     "host_verified": true,
     "build_status": "dee542a_SAME_SOURCE_FULL_GATE_CODE_MATERIAL_BUILD_RENDER_TARGET_CHECKSUMS_PASS",
     "checks": [
-      {"source": "b7d418d", "kind": "full-code-gate", "result": "FAIL", "first_failure": "role context guard omits kubeflow", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"},
-      {"source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985", "kind": "targeted-code-gate", "result": "FAIL", "first_failure": "Quantity pointer method called on temporary value", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"},
-      {"source": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d", "kind": "targeted-code-gate-and-python-syntax", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-9c0a757-attempt-01.log"},
-      {"source": "8dcffa7237a7209969621e9a39a63c29d7f7571e", "kind": "full-code-gate", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-assets-attempt-01.log"},
-      {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "full-code-gate-and-builtin-code-package", "result": "PASS", "exit_code": 0, "source_fingerprint": "af3e66917a0592feb92d282de693c48a1638b87f6bc5076de1744a0ab27c583a", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/build-code-probe-candidate-attempt-01.log"},
-      {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "production-full-site-render", "result": "PASS", "exit_code": 0, "role_files": 121, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/release/integration-render-attempt-02.log"}
+      {
+        "source": "b7d418d",
+        "kind": "full-code-gate",
+        "result": "FAIL",
+        "first_failure": "role context guard omits kubeflow",
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"
+      },
+      {
+        "source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985",
+        "kind": "targeted-code-gate",
+        "result": "FAIL",
+        "first_failure": "Quantity pointer method called on temporary value",
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"
+      },
+      {
+        "source": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d",
+        "kind": "targeted-code-gate-and-python-syntax",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-9c0a757-attempt-01.log"
+      },
+      {
+        "source": "8dcffa7237a7209969621e9a39a63c29d7f7571e",
+        "kind": "full-code-gate",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-assets-attempt-01.log"
+      },
+      {
+        "source": "5052e81a69975e53bad714c2b525a5bfe041c1b8",
+        "kind": "full-code-gate-and-builtin-code-package",
+        "result": "PASS",
+        "exit_code": 0,
+        "source_fingerprint": "af3e66917a0592feb92d282de693c48a1638b87f6bc5076de1744a0ab27c583a",
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/build-code-probe-candidate-attempt-01.log"
+      },
+      {
+        "source": "5052e81a69975e53bad714c2b525a5bfe041c1b8",
+        "kind": "production-full-site-render",
+        "result": "PASS",
+        "exit_code": 0,
+        "role_files": 121,
+        "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/release/integration-render-attempt-02.log"
+      }
     ],
-    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "DEVELOPMENT_REGISTRY_AND_ACTUAL_CPU_POD_BYTES_PASS / FINAL_TARGET_NOT_RUN"}
+    "sdk_image": {
+      "build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b",
+      "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED",
+      "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb",
+      "wheels": 41,
+      "registry_and_runtime": "PASS_FINAL_REGISTRY_AND_REAL_CPU_POD_BYTES"
+    },
+    "frozen_identity_reference": "records/candidate-freeze.json"
   },
   "development_deployment": {
     "role_source": "d8c404c1b35fb66d6b5b2c8182f6d317da48e2e8",
@@ -87,7 +275,18 @@
     "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-01/logs",
     "package_sha256": "deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74",
     "acceptance": "NOT_RUN",
-    "latest_attempt": {"number": 18, "kind": "checker-only; resources installed by attempts 15/17", "source": "9e51d9c3156630574e3f859c8747d17bdd1a8369", "result": "CONTROL_PLANE_CHECKED", "exit_code": 0, "persistent_resource_writes": 0, "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-18/control-check-attempt-01", "package_sha256": "b422704cdb77470a90c69ddc03ea8aa0fb2847183a8ff7b5662ee3aa8707d468", "site_sha256": "6cece3b1803e6cbb85e0e4a7e0afce58e3aa4031294edb978d1b8e075b0d4942", "acceptance": "FINAL_EAC_NOT_ATTESTED"}
+    "latest_attempt": {
+      "number": 18,
+      "kind": "checker-only; resources installed by attempts 15/17",
+      "source": "9e51d9c3156630574e3f859c8747d17bdd1a8369",
+      "result": "CONTROL_PLANE_CHECKED",
+      "exit_code": 0,
+      "persistent_resource_writes": 0,
+      "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-18/control-check-attempt-01",
+      "package_sha256": "b422704cdb77470a90c69ddc03ea8aa0fb2847183a8ff7b5662ee3aa8707d468",
+      "site_sha256": "6cece3b1803e6cbb85e0e4a7e0afce58e3aa4031294edb978d1b8e075b0d4942",
+      "acceptance": "FINAL_EAC_NOT_ATTESTED"
+    }
   },
   "development_main_flow": {
     "execution": "env-1383024fd6ed4ac5",
@@ -104,36 +303,151 @@
     "read_only_reconciliation_source": "5e8eb32ba26b4a7260b76006a2084997764c86e5",
     "read_only_reconciliation_exit_code": 0,
     "cross_node_readback_exit_code": 0,
-    "nodes": {"pipeline_control": "ani-01", "training": "ani-03", "independent_readback": "ani-02"},
+    "nodes": {
+      "pipeline_control": "ani-01",
+      "training": "ani-03",
+      "independent_readback": "ani-02"
+    },
     "input_sha256": "709f9c339a8f3724660e7fa9143a587e2d95c5ccc5be27f78623e1074a8550ab",
     "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf",
-    "mlmd": {"kind": "actual read-only authenticated database association query", "run_context_id": 5, "dataset_artifact_id": 10, "link_artifact_id": 13, "metrics_artifact_id": 14, "model_artifact_id": 15, "prepare_execution_id": 11, "training_execution_id": 12},
-    "evidence": ["Fedora: probes/integration-success-b-attempt-02/reconciled-result-attempt-01/private-report.json", "node attempt-18: workspace-readback-success-b02-attempt-01/report.json", "node attempt-18: logs/mlmd-link-success-b02-attempt-01.log"],
-    "remaining": ["clean unified first install and independent final EAC"]
+    "mlmd": {
+      "kind": "actual read-only authenticated database association query",
+      "run_context_id": 5,
+      "dataset_artifact_id": 10,
+      "link_artifact_id": 13,
+      "metrics_artifact_id": 14,
+      "model_artifact_id": 15,
+      "prepare_execution_id": 11,
+      "training_execution_id": 12
+    },
+    "evidence": [
+      "Fedora: probes/integration-success-b-attempt-02/reconciled-result-attempt-01/private-report.json",
+      "node attempt-18: workspace-readback-success-b02-attempt-01/report.json",
+      "node attempt-18: logs/mlmd-link-success-b02-attempt-01.log"
+    ],
+    "remaining": [
+      "clean unified first install and independent final EAC"
+    ]
   },
   "development_acceptance": {
     "source_candidate": "dee542af0122e9f95bded2f349849df3a1a53e4a",
     "asset_approval_sha256": "ede18d55e6579ed752a5df1559afbbc2903597b64dadb28274d996a4fe809f57",
-    "failure": {"run_id": "7e6cf92d-a49d-400b-a989-0862099f350c", "state": "FAILED", "cpu_exit_code": 42, "workspace_uid": "9dcc36ce-fbdb-4290-b7cf-b40a55ded162", "readback": "FILES_READ_BACK"},
-    "stop": {"run_id": "7eff9b74-55ec-4347-9bb1-caca563d2b44", "actual_state": "FAILED", "actual_history": ["PENDING", "RUNNING", "CANCELING", "FAILED"], "workflow_active_deadline_seconds": 0, "train_job_uid": "53ea5559-5d17-4727-887f-cf193acc094e", "original_cpu_pod_uid": "469a9180-4c14-49e3-9ad1-d950f0ffb134", "original_cpu_pod_gone": true, "replacement_cpu_pods": 0, "readback": "FILES_READ_BACK", "client_original_exit_code": 1, "read_only_reconciliation_exit_code": 0},
-    "s3": {"status": "SCOPED_IO_AND_ARTIFACT_READ_BACK", "positive_unique_writes": 3, "explicit_403_denials": 15, "unknown_outcomes": 0, "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf", "evidence": "node attempt-19/s3-data-attempt-02/report.json"},
-    "entry": {"status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED", "requests": 62, "exit_code": 0, "evidence": "Fedora probes/entry-matrix-attempt-01/result/report.json"},
-    "ordinary_workload": {"status": "ORDINARY_WORKLOAD_CONTROL_DENIED", "pod_uid": "36f4e343-b268-4042-867e-45fd7dc7f07f", "raw_control_targets_denied": 10, "kubernetes_create_targets_denied": 4, "identity_credentials_supplied": false, "evidence": "node attempt-19/workload-boundary-b-attempt-04/report.json"},
-    "dedicated_database": {"status": "DEDICATED_DB_RECORDS_PERSISTED", "pod_uid": "be7bdfb8-b6c0-4d3f-939f-dc99a51e952d", "pvc_uid": "c8cb3eeb-0dfc-4e71-ad2b-ef734a6c1b78", "pod_replaced": false, "container_restart_count_before": 0, "container_restart_count_after": 1, "identical_record_count": 8, "records_sha256": "ea1536b90673ab60392da748215da585071f140315e84ff6a66ba61b0dcba23e", "evidence": "node attempt-19/dedicated-db-persistence-attempt-02/report.json"},
-    "post_restart_main_flow": {"execution": "env-85ec691ef9424b8b", "run_id": "175e6bb3-0720-418b-a02d-7f6ccc447032", "run_state": "SUCCEEDED", "workspace_uid": "52508ce7-9591-4971-a3a1-971cb4cded01", "train_job_uid": "9ee5184b-caaf-4ebe-ab35-1bf987d4bf94", "cpu_pod_uid": "babef277-00b5-4542-b045-61bffe091599", "cpu_exit_code": 0, "client_exit_code": 0, "reader_node": "ani-02", "model_sha256": "8f3875da8b3ed5c1db4816fc17cd2ad42bd542ddbd28132967dc9683a7591cce", "mlmd_dataset_id": 24, "mlmd_training_execution_id": 24, "mlmd_link_id": 27, "mlmd_metrics_id": 28, "mlmd_model_id": 29, "s3_read_only_export": "ARTIFACTS_READ_BACK"},
+    "failure": {
+      "run_id": "7e6cf92d-a49d-400b-a989-0862099f350c",
+      "state": "FAILED",
+      "cpu_exit_code": 42,
+      "workspace_uid": "9dcc36ce-fbdb-4290-b7cf-b40a55ded162",
+      "readback": "FILES_READ_BACK"
+    },
+    "stop": {
+      "run_id": "7eff9b74-55ec-4347-9bb1-caca563d2b44",
+      "actual_state": "FAILED",
+      "actual_history": [
+        "PENDING",
+        "RUNNING",
+        "CANCELING",
+        "FAILED"
+      ],
+      "workflow_active_deadline_seconds": 0,
+      "train_job_uid": "53ea5559-5d17-4727-887f-cf193acc094e",
+      "original_cpu_pod_uid": "469a9180-4c14-49e3-9ad1-d950f0ffb134",
+      "original_cpu_pod_gone": true,
+      "replacement_cpu_pods": 0,
+      "readback": "FILES_READ_BACK",
+      "client_original_exit_code": 1,
+      "read_only_reconciliation_exit_code": 0
+    },
+    "s3": {
+      "status": "SCOPED_IO_AND_ARTIFACT_READ_BACK",
+      "positive_unique_writes": 3,
+      "explicit_403_denials": 15,
+      "unknown_outcomes": 0,
+      "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf",
+      "evidence": "node attempt-19/s3-data-attempt-02/report.json"
+    },
+    "entry": {
+      "status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED",
+      "requests": 62,
+      "exit_code": 0,
+      "evidence": "Fedora probes/entry-matrix-attempt-01/result/report.json"
+    },
+    "ordinary_workload": {
+      "status": "ORDINARY_WORKLOAD_CONTROL_DENIED",
+      "pod_uid": "36f4e343-b268-4042-867e-45fd7dc7f07f",
+      "raw_control_targets_denied": 10,
+      "kubernetes_create_targets_denied": 4,
+      "identity_credentials_supplied": false,
+      "evidence": "node attempt-19/workload-boundary-b-attempt-04/report.json"
+    },
+    "dedicated_database": {
+      "status": "DEDICATED_DB_RECORDS_PERSISTED",
+      "pod_uid": "be7bdfb8-b6c0-4d3f-939f-dc99a51e952d",
+      "pvc_uid": "c8cb3eeb-0dfc-4e71-ad2b-ef734a6c1b78",
+      "pod_replaced": false,
+      "container_restart_count_before": 0,
+      "container_restart_count_after": 1,
+      "identical_record_count": 8,
+      "records_sha256": "ea1536b90673ab60392da748215da585071f140315e84ff6a66ba61b0dcba23e",
+      "evidence": "node attempt-19/dedicated-db-persistence-attempt-02/report.json"
+    },
+    "post_restart_main_flow": {
+      "execution": "env-85ec691ef9424b8b",
+      "run_id": "175e6bb3-0720-418b-a02d-7f6ccc447032",
+      "run_state": "SUCCEEDED",
+      "workspace_uid": "52508ce7-9591-4971-a3a1-971cb4cded01",
+      "train_job_uid": "9ee5184b-caaf-4ebe-ab35-1bf987d4bf94",
+      "cpu_pod_uid": "babef277-00b5-4542-b045-61bffe091599",
+      "cpu_exit_code": 0,
+      "client_exit_code": 0,
+      "reader_node": "ani-02",
+      "model_sha256": "8f3875da8b3ed5c1db4816fc17cd2ad42bd542ddbd28132967dc9683a7591cce",
+      "mlmd_dataset_id": 24,
+      "mlmd_training_execution_id": 24,
+      "mlmd_link_id": 27,
+      "mlmd_metrics_id": 28,
+      "mlmd_model_id": 29,
+      "s3_read_only_export": "ARTIFACTS_READ_BACK"
+    },
     "execution_isolation": "distinct PVC creation UIDs and execution-bound input/model/unique/correlation hashes; B1 exported before cleanup; B2 and B3 retained and independently read",
     "retained_file_exports": "node attempt-19/workspace-{b02,b03,fail-a01,stop-a02}-export-attempt-01; whitelist file bytes, hashes and creation UIDs; S3 Model/Link bytes exported separately",
-    "external_terminal_checkpoint": {"path": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/integration-terminal-c-checkpoint-attempt-02.tar", "sha256": "f3a15118de93ec1d9ae1c7963d99bc8515fd9674cae5c1f8953d9713e3112d89", "target_and_fedora_hashes_match": true},
+    "external_terminal_checkpoint": {
+      "path": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/integration-terminal-c-checkpoint-attempt-02.tar",
+      "sha256": "f3a15118de93ec1d9ae1c7963d99bc8515fd9674cae5c1f8953d9713e3112d89",
+      "target_and_fedora_hashes_match": true
+    },
     "scope": "development only; no snapshot restore; final EAC not inherited"
   },
-  "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt", "records/integration-attempts.md"],
-  "blocked_items": [
-    {"scope": "external-time-verification", "reason": "existing installer-isolated master ani-01 uses local stratum 10; ani-02/03 sync to it at stratum 11 with observed microsecond offsets; external UTC source NOT_VERIFIED"},
-    {"scope": "storage-health", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; actual task PVC mount/write and cross-node readback passed in development; warnings remain visible"}
+  "evidence": [
+    "records/cluster-record.json",
+    "records/lab-vm-inventory.txt",
+    "records/integration-attempts.md",
+    "records/final-eac-summary.json",
+    "records/final-file-index.json",
+    "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv"
   ],
+  "blocked_items": [],
   "lab_restore": {
     "data_authorization": "user: 无需保留，直接还原",
-    "targets": [{"vmid": 8, "name": "ani-01", "ip": "172.16.101.10", "snapshot_id": 2}, {"vmid": 9, "name": "ani-02", "ip": "172.16.101.11", "snapshot_id": 2}, {"vmid": 10, "name": "ani-03", "ip": "172.16.101.12", "snapshot_id": 2}],
+    "targets": [
+      {
+        "vmid": 8,
+        "name": "ani-01",
+        "ip": "172.16.101.10",
+        "snapshot_id": 2
+      },
+      {
+        "vmid": 9,
+        "name": "ani-02",
+        "ip": "172.16.101.11",
+        "snapshot_id": 2
+      },
+      {
+        "vmid": 10,
+        "name": "ani-03",
+        "ip": "172.16.101.12",
+        "snapshot_id": 2
+      }
+    ],
     "disk_coverage": "both 200GiB persistent disks per VM are snapshot-backed",
     "execution_status": "RESTORED_TO_VERIFIED_CLEAN_BARE_HOSTS",
     "clean_baseline_record": "records/clean-first-install-start.json",
@@ -145,99 +459,664 @@
       "id": "EAC01",
       "name": "确认集群",
       "criterion": "授权context/API标识与10～12节点名/UID/InternalIP相符，未假定角色",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-cluster-baseline.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/var/lib/ani-installer/ani-lab/run.json"
+      ]
     },
     {
       "id": "EAC02",
       "name": "只安装所选组件",
       "criterion": "固定版本和镜像摘要；无本期排除项新增、无共享资源抢占",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/logs/formal-install.log",
+        "records/candidate-freeze.json"
+      ]
     },
     {
       "id": "EAC03",
       "name": "构建环境",
       "criterion": "远程生成/编译/镜像渠道可用；本机和节点宿主机未运行构建",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "records/candidate-freeze.json",
+        "remote code-frozen-dee542a-attempt-01.log and materials-frozen-dee542a-attempt-01.log"
+      ]
     },
     {
       "id": "EAC04",
       "name": "数据库持久化",
       "criterion": "API/MLMD连接正常，隔离账号，重启后本次记录存在",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/dedicated-db-persistence/report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b02/client.rc",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv"
+      ]
     },
     {
       "id": "EAC05",
       "name": "S3",
       "criterion": "平台及运行身份真实写/读/校验，越权前缀拒绝",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/s3-scoped-io-success-b01/report.json"
+      ]
     },
     {
       "id": "EAC06",
       "name": "KFP Run",
       "criterion": "远程编译小型Pipeline、固定版本提交、步骤与终态可读",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b01/result-parent/result/private-report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b02/result-parent/result/private-report.json"
+      ]
     },
     {
       "id": "EAC07",
       "name": "工件与元数据",
       "criterion": "真实文件独立取回摘要一致；MLMD有执行/工件关联",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv",
+        "records/final-file-index.json"
+      ]
     },
     {
       "id": "EAC08",
       "name": "Trainer",
       "criterion": "单节点单进程CPU实际运行、成功/失败正确、无GPU请求",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b01/result-parent/result/private-report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/failure-a01/result-parent/result/private-report.json"
+      ]
     },
     {
       "id": "EAC09",
       "name": "停止",
       "criterion": "环境probe实际Pod终止，无控制器无限重新创建",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/stop-a02/result-parent/result/private-report.json"
+      ]
     },
     {
       "id": "EAC10",
       "name": "工作卷",
       "criterion": "KFP与外部TrainJob显式挂载、跨Pod/必要跨节点交接、不同执行不覆盖",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-success-b01-isolation/report.json",
+        "records/final-file-index.json"
+      ]
     },
     {
       "id": "EAC11",
       "name": "保留",
       "criterion": "失败/发布未成时唯一输出不被自动GC抢删",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-failure-a01-readback/report.json",
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workspace-stop-a02-readback/report.json"
+      ]
     },
     {
       "id": "EAC12",
       "name": "双租户权限",
       "criterion": "合法身份正向；A到B拒绝；实际KFP请求不是只做can-i",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/entry-matrix/result/report.json"
+      ]
     },
     {
       "id": "EAC13",
       "name": "防旁路",
       "criterion": "无凭据/伪造头/普通Pod到API原口、MLMD/DB访问按策略拒绝",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/workload-boundary/report.json"
+      ]
     },
     {
       "id": "EAC14",
       "name": "交接",
       "criterion": "实际入口/版本/UID/Runtime/存储与凭据引用、证据和未测项完整；不含秘密",
-      "status": "NOT_RUN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        "records/environment-handoff.json",
+        "records/final-eac-summary.json",
+        "records/final-file-index.json"
+      ]
     }
-  ]
+  ],
+  "final_acceptance": {
+    "scope": "fresh cluster only; no inherited integration PASS",
+    "native_install_exit_code": 0,
+    "install_started_at": "2026-10-03T16:25:38Z",
+    "install_finished_at": "2026-10-03T17:11:40Z",
+    "run_id": "ani-ani-lab-20261003-162500",
+    "native_success_record": "/var/lib/ani-installer/ani-lab/run.json",
+    "smoke": {
+      "components": 15,
+      "overall": "pass",
+      "exit_code": 0,
+      "report": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/native-evidence/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004/final-acceptance-dee542a-attempt-01/product-smoke/verify-smoke-ani-ani-lab-20261003-162500.json"
+    },
+    "runs": {
+      "success-b01": {
+        "execution": "env-8743a650c78c4d69",
+        "namespace": "ani-kfp-probe-b",
+        "mode": "success",
+        "run_id": "b8400975-d7f5-4ea0-af3f-0a357bc621b7",
+        "actual_run_state": "SUCCEEDED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-8743a650c78c4d69",
+          "creationResult": "CONFIRMED",
+          "uid": "c9d2526e-3e86-405c-af8d-253e031f236c"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-8743a650c78c4d69",
+          "uid": "bc3fffef-3b63-4aaf-8787-c69e9407345d",
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-10-03T17:24:52Z",
+              "message": "jobset completed successfully",
+              "reason": "AllJobsCompleted",
+              "status": "True",
+              "type": "Complete"
+            }
+          ]
+        },
+        "train_pods": [
+          {
+            "name": "ani-kfp-train-env-8743a650c78c4d69-node-0-0-25nml",
+            "uid": "9361abab-a921-439e-9d51-7db3490483d2",
+            "node": "ani-03",
+            "serviceAccount": "trainer-workload",
+            "tokenMount": false,
+            "phase": "Succeeded",
+            "containers": [
+              {
+                "name": "node",
+                "exitCode": 0,
+                "imageID": "172.16.101.10:5000/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+              }
+            ]
+          }
+        ],
+        "creation_receipt": {
+          "execution": "env-8743a650c78c4d69",
+          "kfpRunId": "b8400975-d7f5-4ea0-af3f-0a357bc621b7",
+          "namespace": "ani-kfp-probe-b",
+          "workspaceUid": "c9d2526e-3e86-405c-af8d-253e031f236c",
+          "trainJobName": "ani-kfp-train-env-8743a650c78c4d69",
+          "trainJobUid": "bc3fffef-3b63-4aaf-8787-c69e9407345d",
+          "controlPodUid": "a83966c3-fd1e-45fe-91ff-404d08af0e46"
+        },
+        "client_exit_code": 0,
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-c63ab7b7147a440d",
+            "uid": "14cb1968-ea4a-4e56-b6da-8bb50648f8af",
+            "creationResult": "CONFIRMED",
+            "node": "ani-02"
+          },
+          "file_hashes": {
+            "correlationSha256": "ac7afc967f615ed630f274110fada76eadb07a0a0c9ed8edde78d8c727b12433",
+            "execution": "env-8743a650c78c4d69",
+            "inputSha256": "cc83f5c19a7ababb1f01ff2af2af90b96ab0d9e11fa2c88680b3c689b968a45f",
+            "loss": 8.908003952590845e-05,
+            "mode": "success",
+            "modelSha256": "e77fd48ef401e809486f6592ebbb24d69bc7cb2f53e2a37ea1555060b7aacf1e",
+            "readOnlyMountErrno": 30,
+            "trainingReadOnlyInputErrno": 30,
+            "uniqueSha256": "ce042d38ef146be86b5a5b43fc44d34fba66b686f3a62bc838a4a81fc538cd70"
+          }
+        },
+        "evidence": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b01/result-parent/result/private-report.json"
+      },
+      "success-b02": {
+        "execution": "env-fec16fbc555349ae",
+        "namespace": "ani-kfp-probe-b",
+        "mode": "success",
+        "run_id": "9e884b20-aa5b-42c2-a979-b647604dbf0c",
+        "actual_run_state": "SUCCEEDED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-fec16fbc555349ae",
+          "creationResult": "CONFIRMED",
+          "uid": "13c46f44-ce93-44c3-ae90-dbb96bf7fd0f"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-fec16fbc555349ae",
+          "uid": "480e78b8-fcb0-4c18-90dc-19edb802b8c7",
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-10-03T17:34:25Z",
+              "message": "jobset completed successfully",
+              "reason": "AllJobsCompleted",
+              "status": "True",
+              "type": "Complete"
+            }
+          ]
+        },
+        "train_pods": [
+          {
+            "name": "ani-kfp-train-env-fec16fbc555349ae-node-0-0-cccf2",
+            "uid": "d2b56d0d-e196-485b-87ca-a9e785637878",
+            "node": "ani-03",
+            "serviceAccount": "trainer-workload",
+            "tokenMount": false,
+            "phase": "Succeeded",
+            "containers": [
+              {
+                "name": "node",
+                "exitCode": 0,
+                "imageID": "172.16.101.10:5000/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+              }
+            ]
+          }
+        ],
+        "creation_receipt": {
+          "execution": "env-fec16fbc555349ae",
+          "kfpRunId": "9e884b20-aa5b-42c2-a979-b647604dbf0c",
+          "namespace": "ani-kfp-probe-b",
+          "workspaceUid": "13c46f44-ce93-44c3-ae90-dbb96bf7fd0f",
+          "trainJobName": "ani-kfp-train-env-fec16fbc555349ae",
+          "trainJobUid": "480e78b8-fcb0-4c18-90dc-19edb802b8c7",
+          "controlPodUid": "09082a3a-7216-429e-aeb7-5e79cec2428e"
+        },
+        "client_exit_code": 0,
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-ed9b5955835e4365",
+            "uid": "ff2ea32d-f335-44d0-92e6-1d4bb8460c92",
+            "creationResult": "CONFIRMED",
+            "node": "ani-02"
+          },
+          "file_hashes": {
+            "correlationSha256": "1bc10203128cd52ecbc46215964b3aa342ea8503f725a280e87351f80345421a",
+            "execution": "env-fec16fbc555349ae",
+            "inputSha256": "8ba1f90f275880f2bf7b14c8e8399761ee1ccbeda713f572a704af7cdfc02ef5",
+            "loss": 8.908003952590845e-05,
+            "mode": "success",
+            "modelSha256": "d6e0373c8b974e815549b36e8e5680444e9d59f2d7818c7023cc8ca26baa3a76",
+            "readOnlyMountErrno": 30,
+            "trainingReadOnlyInputErrno": 30,
+            "uniqueSha256": "4664ab32ace2cea10b0578ebc1ab203580c1355c8415a24edc09c3317a87f569"
+          }
+        },
+        "evidence": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/success-b02/result-parent/result/private-report.json"
+      },
+      "failure-a01": {
+        "execution": "env-78df120a20754fab",
+        "namespace": "ani-kfp-probe-a",
+        "mode": "fail",
+        "run_id": "2ae9bde7-caee-4f0d-9ca4-519ba7d4d613",
+        "actual_run_state": "FAILED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-78df120a20754fab",
+          "creationResult": "CONFIRMED",
+          "uid": "35e2e5ae-8d45-4dae-abd0-b67a33b02b93"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-78df120a20754fab",
+          "uid": "f023f587-569e-4876-ad06-d83db38ac228",
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-10-03T17:45:01Z",
+              "message": "jobset failed due to reaching max number of restarts (first failed job: ani-kfp-train-env-78df120a20754fab-node-0)",
+              "reason": "ReachedMaxRestarts",
+              "status": "True",
+              "type": "Failed"
+            }
+          ]
+        },
+        "train_pods": [
+          {
+            "name": "ani-kfp-train-env-78df120a20754fab-node-0-0-hz5w6",
+            "uid": "89bc393a-03a1-47bd-932b-3992add2e41f",
+            "node": "ani-02",
+            "serviceAccount": "trainer-workload",
+            "tokenMount": false,
+            "phase": "Failed",
+            "containers": [
+              {
+                "name": "node",
+                "exitCode": 42,
+                "imageID": "172.16.101.10:5000/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+              }
+            ]
+          }
+        ],
+        "creation_receipt": {
+          "execution": "env-78df120a20754fab",
+          "kfpRunId": "2ae9bde7-caee-4f0d-9ca4-519ba7d4d613",
+          "namespace": "ani-kfp-probe-a",
+          "workspaceUid": "35e2e5ae-8d45-4dae-abd0-b67a33b02b93",
+          "trainJobName": "ani-kfp-train-env-78df120a20754fab",
+          "trainJobUid": "f023f587-569e-4876-ad06-d83db38ac228",
+          "controlPodUid": "f620126c-ce81-4757-a57f-287f1630c7cd"
+        },
+        "client_exit_code": 0,
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-498abc555a5b40e7",
+            "uid": "f903fc60-6ec8-48d1-90dc-e782aaf6945b",
+            "creationResult": "CONFIRMED",
+            "node": "ani-03"
+          },
+          "file_hashes": {
+            "correlationSha256": "91390ab6b09b89ba38a1bd855ac2c818d98c202525d4166a1015952f4692ed82",
+            "execution": "env-78df120a20754fab",
+            "inputSha256": "852b80078648a9b6956f42d4696f578763f69b8f8e439f6f189685b5501a2585",
+            "mode": "fail",
+            "readOnlyMountErrno": 30,
+            "trainingReadOnlyInputErrno": 30,
+            "uniqueSha256": "4bab6f4efa54b8bdadf96fac753cff991931b39aad161df1f289fe6b2044eee5"
+          }
+        },
+        "evidence": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/failure-a01/result-parent/result/private-report.json"
+      },
+      "stop-a02": {
+        "execution": "env-5739863a8ea14afa",
+        "namespace": "ani-kfp-probe-a",
+        "mode": "stop",
+        "run_id": "f5bcb66a-5988-4807-b675-21333bab4632",
+        "actual_run_state": "FAILED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-5739863a8ea14afa",
+          "creationResult": "CONFIRMED",
+          "uid": "4681ee99-8ec6-4788-84d3-367275603966"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-5739863a8ea14afa",
+          "uid": "ef8f2ff9-11f3-4f68-9380-3ab7d7c1ec3e",
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-10-03T17:49:14Z",
+              "message": "TrainJob is suspended",
+              "reason": "Suspended",
+              "status": "True",
+              "type": "Suspended"
+            }
+          ]
+        },
+        "train_pods": [
+          {
+            "name": "ani-kfp-train-env-5739863a8ea14afa-node-0-0-vt7xm",
+            "uid": "6619ae41-1440-42d7-9dac-86c3e157806d",
+            "node": "ani-03",
+            "serviceAccount": "trainer-workload",
+            "tokenMount": false,
+            "phase": "Running",
+            "containers": [
+              {
+                "name": "node",
+                "exitCode": null,
+                "imageID": "172.16.101.10:5000/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+              }
+            ]
+          }
+        ],
+        "creation_receipt": {
+          "execution": "env-5739863a8ea14afa",
+          "kfpRunId": "f5bcb66a-5988-4807-b675-21333bab4632",
+          "namespace": "ani-kfp-probe-a",
+          "workspaceUid": "4681ee99-8ec6-4788-84d3-367275603966",
+          "trainJobName": "ani-kfp-train-env-5739863a8ea14afa",
+          "trainJobUid": "ef8f2ff9-11f3-4f68-9380-3ab7d7c1ec3e",
+          "controlPodUid": "1ccabca5-2c9b-4243-8229-1fc6e104bb7b"
+        },
+        "client_exit_code": 0,
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-e61dff979955427d",
+            "uid": "75ecfafe-2f4e-4beb-9fe7-b03e4e26e449",
+            "creationResult": "CONFIRMED",
+            "node": "ani-02"
+          },
+          "file_hashes": {
+            "correlationSha256": "6dc84ff18728e45d1e1259e58e731f095f432897ed8a60df6c5f454a51c88723",
+            "execution": "env-5739863a8ea14afa",
+            "inputSha256": "9675701d1d909277f010bdfbefbbb7b6f85ba73e86f52dbf54308487506a626e",
+            "mode": "stop",
+            "readOnlyMountErrno": 30,
+            "trainingReadOnlyInputErrno": 30,
+            "uniqueSha256": "de34cb3efd7b0c19c979457a1b316557f9d839381592821edd7e434596ff64cf"
+          }
+        },
+        "evidence": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/stop-a02/result-parent/result/private-report.json",
+        "stop": {
+          "result": "CONFIRMED",
+          "trainJobUid": "ef8f2ff9-11f3-4f68-9380-3ab7d7c1ec3e",
+          "podUids": [
+            "6619ae41-1440-42d7-9dac-86c3e157806d"
+          ],
+          "trainJobResult": "CONFIRMED",
+          "runResult": "CONFIRMED",
+          "actualExternalPodsGone": true,
+          "remainingPodUids": [],
+          "workflowUid": "d54c9fc7-86aa-432c-8d80-e985beea7ec4",
+          "workflowActiveDeadlineSeconds": 0,
+          "actualRunState": "FAILED",
+          "stateHistory": [
+            {
+              "update_time": "2026-10-03T17:47:23+00:00",
+              "state": "PENDING"
+            },
+            {
+              "update_time": "2026-10-03T17:47:24+00:00",
+              "state": "RUNNING"
+            },
+            {
+              "update_time": "2026-10-03T17:49:15+00:00",
+              "state": "CANCELING"
+            },
+            {
+              "update_time": "2026-10-03T17:49:25+00:00",
+              "state": "FAILED"
+            }
+          ]
+        }
+      }
+    },
+    "database_persistence": {
+      "status": "DEDICATED_DB_RECORDS_PERSISTED",
+      "lock": {
+        "path": "/var/lib/ani-installer/ani-install.lock",
+        "holderPid": 174358,
+        "deviceInode": "08:02:3277532",
+        "development": true
+      },
+      "scope": "dedicated kubeflow/mysql container only",
+      "sourceSha256": "0658fad7b90d91a1d7629f833d390a22bcc1fe23c60097e627fbee8c84145340",
+      "restart": {
+        "result": "CONFIRMED",
+        "podUid": "670adc4e-8ed0-4351-ae3e-f615e904a2d7",
+        "originalContainerId": "containerd://4772df6c87adfc4edb5b33302fae58823703d028a84d392d5aa93a980a5538af",
+        "originalRestartCount": 0,
+        "deploymentUid": "7379d03b-764d-4cf6-b895-dcc4a1c98b30",
+        "pvcUid": "8e3b4e3b-9883-4222-97d1-99eb7bc495bf",
+        "requestResult": "CONFIRMED",
+        "actualRestartCount": 1,
+        "actualContainerId": "containerd://5b12af2d6b006288b6b3515df6785b7fc15f81975db94261196fc6b983b32a77"
+      },
+      "recordsSha256": "9074898e524248d18bafcfafc1e6037e7f5b84928faf33e423d50e0d14153d36",
+      "recordCount": 8,
+      "runId": "b8400975-d7f5-4ea0-af3f-0a357bc621b7"
+    },
+    "execution_isolation": "B1 four file byte/hash records identical after B2; distinct PVC creation UIDs",
+    "s3": {
+      "positive_unique_writes": 3,
+      "explicit_403_denials": 12,
+      "unknown_outcomes": 0,
+      "retained_objects": [
+        {
+          "namespace": "kubeflow",
+          "bucket": "ani-kfp-control",
+          "key": "pipelines/environment-probes/env-s3-8d1b107442cc4cdca4db284304a61653.json",
+          "sha256": "cbd0dc38710e9df8117f56495dbd31d4a40d370a08dd191545e77cee34a31e42"
+        },
+        {
+          "namespace": "ani-kfp-probe-a",
+          "bucket": "ani-kfp-ani-kfp-probe-a",
+          "key": "artifacts/environment-probes/env-s3-8d1b107442cc4cdca4db284304a61653.json",
+          "sha256": "221897309a77488c2dadc9024af7614553669c16109d0df92d9aea0afcb020f8"
+        },
+        {
+          "namespace": "ani-kfp-probe-b",
+          "bucket": "ani-kfp-ani-kfp-probe-b",
+          "key": "artifacts/environment-probes/env-s3-8d1b107442cc4cdca4db284304a61653.json",
+          "sha256": "71a1cd39fa97f23c7c3620b3f62233c57fff4ce508c19e96caa11677652078b6"
+        }
+      ],
+      "artifact_exports": {
+        "success-b01": {
+          "model": {
+            "key": "artifacts/ani-environment-handoff/b8400975-d7f5-4ea0-af3f-0a357bc621b7/external-training/fee02d5d-6f23-4cac-a40f-f4454f3ece21/model",
+            "sha256": "e77fd48ef401e809486f6592ebbb24d69bc7cb2f53e2a37ea1555060b7aacf1e",
+            "size": 207
+          },
+          "link": {
+            "key": "artifacts/ani-environment-handoff/b8400975-d7f5-4ea0-af3f-0a357bc621b7/external-training/fee02d5d-6f23-4cac-a40f-f4454f3ece21/link",
+            "sha256": "aba777632c2fd43726fd76a27d5886e6dbbd0bbf40ad76691c85289dab25ba37",
+            "size": 919
+          }
+        },
+        "success-b02": {
+          "model": {
+            "key": "artifacts/ani-environment-handoff/9e884b20-aa5b-42c2-a979-b647604dbf0c/external-training/64a6a1f2-aa71-4a6a-be3b-1173512ffa28/model",
+            "sha256": "d6e0373c8b974e815549b36e8e5680444e9d59f2d7818c7023cc8ca26baa3a76",
+            "size": 207
+          },
+          "link": {
+            "key": "artifacts/ani-environment-handoff/9e884b20-aa5b-42c2-a979-b647604dbf0c/external-training/64a6a1f2-aa71-4a6a-be3b-1173512ffa28/link",
+            "sha256": "60aaedc7a14b866a3425d2c89a1c2bf18030c0608bd13fa23d40e738424510b6",
+            "size": 919
+          }
+        }
+      }
+    },
+    "mlmd": {
+      "source": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-mlmd-linkage.tsv",
+      "actual_row_count": 24,
+      "checks": "actual KFP four terminal states; Model/Link Event and execution/run/TrainJob/PVC properties match both successful creation receipts"
+    },
+    "entry": {
+      "requests": 62,
+      "exit_code": 0,
+      "status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED"
+    },
+    "ordinary_workload": {
+      "pod": {
+        "name": "ani-kfp-boundary-d53dfc10bb854d74",
+        "uid": "65a92043-cc36-4d95-aa7e-28f8ad709928",
+        "creationResult": "CONFIRMED"
+      },
+      "status": "ORDINARY_WORKLOAD_CONTROL_DENIED",
+      "identity_credentials_supplied": false,
+      "raw_control_targets": 10,
+      "kubernetes_create_targets": 4,
+      "image_id": "172.16.101.10:5000/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+    },
+    "unique_file_exports": 18,
+    "native_evidence": {
+      "path": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-eac-native-dee542a-attempt-01.tar",
+      "sha256": "0594bff8452e0cb5f1b5bf839c503d1184ab1babf7cda1f5e0ba32426aef3c09",
+      "node_and_external_hash_match": true
+    },
+    "product_lock": "bounded holder confirmed stopped and kernel lock released 2026-10-03T18:00:13Z",
+    "residuals": {
+      "workspace_claims": 4,
+      "reader_pods": 5,
+      "ordinary_boundary_pods": 1,
+      "successful_cpu_pods": 2,
+      "failed_cpu_pods": 1,
+      "stopped_cpu_pods": 0,
+      "cleanup": "NOT_REQUESTED; all four PVCs and unique output retained; no manual resource cleanup in final EAC"
+    },
+    "installation_writes": {
+      "kubeflow_role_confirmed": 153,
+      "scope": "one unified first install; fresh cluster and selected base roles; Kubeflow creates namespace/controllers/webhooks/runtime/policies/dedicated data/entry"
+    },
+    "acceptance_writes": {
+      "restricted_clients": {
+        "PVC": 4,
+        "KFP_experiments": 4,
+        "KFP_runs": 4,
+        "external_TrainJobs": 4,
+        "UID_owned_JobSets": 4
+      },
+      "independent_reader_pods": 5,
+      "ordinary_boundary_pods": 1,
+      "dedicated_mysql_container_restarts": 1,
+      "positive_scoped_S3_objects": 3,
+      "denied_S3_put_attempts": 3,
+      "stop_requests": 2,
+      "base_smoke": "existing selected component protocol probes and task-owned data; snapshot smoke retains four additional 1Gi PVCs and two snapshots; native reports enumerate actual objects",
+      "no_shared_database_restart": true,
+      "no_manual_final_resource_cleanup": true
+    },
+    "control_transport": {
+      "native_install_exit_code": 0,
+      "native_smoke_exit_code": 0,
+      "all_business_clients_exit_code": 0,
+      "note": "two long SSH control channels stayed open after confirmed native completion/release; only owned local SSH clients were terminated after reconciliation; registry process and cluster workloads were preserved"
+    }
+  },
+  "known_warnings": [
+    {
+      "scope": "storage-health",
+      "status": "HEALTH_WARN",
+      "details": {
+        "AUTH_INSECURE_CLIENT_KEY_TYPE": {
+          "message": "4 auth client entities with insecure key types",
+          "severity": "HEALTH_WARN"
+        },
+        "AUTH_INSECURE_KEYS_ALLOWED": {
+          "message": "Monitors are configured to allow auth using insecure key types",
+          "severity": "HEALTH_WARN"
+        },
+        "AUTH_INSECURE_KEYS_CREATABLE": {
+          "message": "Monitors are configured to allow creation of insecure key types",
+          "severity": "HEALTH_WARN"
+        }
+      },
+      "coverage": "PVC/S3/DB and cross-node real file I/O passed; warnings not muted; no key rotation"
+    },
+    {
+      "scope": "external-time",
+      "status": "NOT_VERIFIED",
+      "details": "ani-01 local stratum 10; ani-02/03 source ani-01 stratum 11; final observed system offsets 0.822/4.302 microseconds slow; external UTC source not configured"
+    }
+  ],
+  "next_actions": [
+    "CPU00: verify this final cluster UID, node/Namespace UIDs, install-success record and source/material identities",
+    "CPU02: bind and revalidate real service identity; environment probe SA is not formal modeldev authorization",
+    "CPU-P01/BFF business remains NOT_RUN; do not reinstall controllers",
+    "Retained claims already reach 2-per-tenant limit; only UID-guarded cleanup after preserving unique files and explicit owner decision"
+  ],
+  "capacity": {
+    "current_claims": 28,
+    "total_declared_logical_gi": 140,
+    "replicas": 3,
+    "maximum_claim_raw_gi": 420,
+    "raw_gi": 600,
+    "reserve_raw_gi": 120,
+    "remaining_beyond_claims_and_reserve_raw_gi": 60,
+    "observed_base_requested_cpu": 7.325,
+    "allocatable_cpu": 46.8,
+    "two_tenant_quota_requested_cpu": 12,
+    "baseline_plus_quota_requested_cpu": 19.325,
+    "evidence": [
+      "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-retained-pvcs.json",
+      "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/final-clean-first-install-dee542a-attempt-01/final-node-request-budget.txt"
+    ],
+    "coverage": "observed scheduler allocation and bounded planning; no throughput or maximum-concurrency acceptance"
+  }
 }

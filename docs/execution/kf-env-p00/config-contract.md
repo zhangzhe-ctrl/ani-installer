@@ -1,6 +1,6 @@
-# ENV01 配置与首装合同草案
+# ENV01 配置与首装合同
 
-状态：IN_PROGRESS。以下是待实现并验证的合同，不是 CODE_READY 或 ENV_READY。
+状态：CODE_READY / REMOTE_CHECKED / ENV_READY。源候选 `dee542af0122e9f95bded2f349849df3a1a53e4a` 经真实联调、冻结、最终干净统一首装和新环境独立 EAC01～EAC14 验证。实际发布物与结果分别见 `records/candidate-freeze.json`、`records/environment-handoff.json`。CPU-P01/BFF 业务和 GPU 未验收。
 
 首装站点新增 `kubeflow` 节，省略或 `enabled: false` 保持既有选择与安装行为。启用只接受本轮固定 `release: 26.03-kfp2.16-trainer2.1-v1`，与 `profile: full` 配合；不接受未知 release、GPU runtime、base profile 或隐式缺依赖。产品名称仍为 Kubeflow。部署角色只在 `create_cluster` 的所选基础组件尾部接入；不把角色加入 `ani_components.yaml`。
 
@@ -8,9 +8,9 @@
 
 ## 认证和入口
 
-优先固定成熟 TLS 代理与 KFP 原生 TokenReview，避免开发新 Go 代理。候选机制：受限客户端携带 audience 为 `pipelines.kubeflow.org` 的短期 Kubernetes SA Bearer token；KFP TokenReview 验证身份并继续 Namespace SAR，`MULTIUSER=true`、`MULTIUSER_SHARED_READ=false`。环境探针 SA 只获 A 或 B 的 KFP 权限，后续 CPU02 再绑定正式服务身份。
+采用固定 Nginx TLS 入口与 KFP 原生 TokenReview。受限客户端携带 audience 为 `pipelines.kubeflow.org` 的短期 Kubernetes SA Bearer token；KFP TokenReview 验证身份并继续 Namespace SAR，`MULTIUSER=true`、`MULTIUSER_SHARED_READ=false`。环境探针 SA 只获 A 或 B 的 KFP 权限，后续 CPU02 再绑定正式服务身份。
 
-固定 KFP 源 `auth.GetAuthenticators` 的首个认证器是 HTTP 身份头，随后才是 TokenReview。空环境变量被 Viper 默认忽略，不能用空 `KUBEFLOW_USERID_HEADER` 表示关闭。候选 overlay 将该字段固定为 `:`（普通 HTTP/gRPC 客户端不能声明的头名），随后使用原生 TokenReview；这是源码推论，实机认证仍为 NOT_RUN。固定 Nginx 1.30.5 TLS 入口拒绝/剥离常见身份头及变体，不能仅依赖 NetworkPolicy。HTTP 与 gRPC 必须检查无凭据、无效/错误 audience、重复 Authorization、重复/大小写/下划线身份头、A→B；不能提前记 PASS。
+固定 KFP 源 `auth.GetAuthenticators` 的首个认证器是 HTTP 身份头，随后才是 TokenReview。空环境变量被 Viper 默认忽略，不能用空 `KUBEFLOW_USERID_HEADER` 表示关闭。overlay 将该字段固定为 `:`（普通 HTTP/gRPC 客户端不能声明的头名），随后使用原生 TokenReview。固定 Nginx 1.30.5 TLS 入口拒绝/剥离常见身份头及变体，不能仅依赖 NetworkPolicy。联调环境已通过 62 项真实 HTTP/gRPC 请求，覆盖无凭据、无效/错误 audience、重复 Authorization、重复/大小写/下划线身份头和 A→B；最终环境独立复验，不沿用该 PASS。
 
 原始 API HTTP/gRPC 端口只允许本期控制面必要调用和入口 Pod；训练 Pod 无控制面证书、管理员 S3 凭据、默认 SA token 或任意 Kubernetes 创建权。MLMD/MySQL 只允许已列明内部消费者；受限启动/driver 的必要访问单列，不能给全部 Namespace 放通。
 
@@ -24,11 +24,11 @@
 
 选择依据来自固定 KFP 源：`GetWorkspacePVC` 会应用用户 PVC patch，再用用户 size 覆盖默认 requests；原生卷由 Argo Workflow 管理。`backend/src/apiserver/resource/resource_manager.go:ReportWorkflowResource` 会删除已持久终态的 Workflow，持久化 agent 默认一天后再次上报；该生命周期不能保证发布未成的唯一文件继续保留。不能把 agent TTL 设置为 0 当作关闭 GC，0 会立即越过 TTL。故安装前固定上述独立卷方案，保留上游 Workflow GC，不运行失败后切换。原生 Workspace 的运行行为仍为 NOT_RUN，不声称实机复现。管理员以 admission 和 ResourceQuota 强制限定 StorageClass、容量、卷数量与 owner 策略。
 
-## 初始容量核算（尚未冻结）
+## 容量核算
 
-现有 23 个 PVC 声明合计 100 GiB；现场 raw 600 GiB、Ceph 三副本。按完整基础选择保留相同需求，候选 KFP MySQL 20 GiB，加两租户合计最多四个 5 GiB 执行卷（含失败保留），逻辑声明 140 GiB，三副本 420 GiB；另预留 raw 20%（120 GiB），剩余约 60 GiB raw。该预算不含无限保留、新增未声明外部负载或磁盘快照增长，正式冻结前按完整站点和每项 PVC 重算。不能通过降副本或减原批准容量凑通过。
+最终完整站点及产品 smoke 后共 28 个 PVC，声明合计 140Gi，含 MySQL 20Gi、四个 5Gi 执行卷及保留的存储探针卷。现场 raw 600Gi，RBD/CephFS 三副本，声明上界 420Gi；另预留 raw 20%（120Gi），剩余 60Gi。原始 PVC 与副本记录在最终证据目录。预算不含无限保留、新增外部负载或无限快照增长；未减少批准容量或副本。
 
-三节点总 allocatable CPU 46.8、memory 约 88 GiB，当前 metrics 使用约 2.34 CPU/21 GiB。实际请求、init 最大值、DaemonSet 副本、可调度容量与本轮控制器/数据库/Runtime/两执行共存预算仍需冻结，不用低实时使用量代替请求预算。
+三节点总 allocatable CPU 46.8、memory 约 88Gi。最终 scheduler 分配表已计入实际 Pod/init/DaemonSet 请求，基础 CPU 请求合计 7.325；两租户 requests.cpu 配额合计 12，合计上界 19.325。Runtime 每执行请求 1 CPU/512Mi，限制 1 CPU/2Gi。真实用例顺序执行并验证互不覆盖；这些容量规划不等于最大并发或吞吐验收。
 
 ## 写入与复验边界
 

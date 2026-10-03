@@ -1,6 +1,6 @@
 # Merge this section into a validated profile: full site with Kube-OVN,
 # persistent storage and declared RustFS. This is not a standalone site file.
-# Status: candidate contract; final offline install and EAC acceptance NOT_RUN.
+# Status: final clean offline first install and EAC01-EAC14 PASS.
 kubeflow:
   enabled: true
   release: 26.03-kfp2.16-trainer2.1-v1
