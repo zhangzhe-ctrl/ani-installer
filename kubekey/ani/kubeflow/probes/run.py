@@ -235,7 +235,9 @@ def monitor(args, report, record, pipeline, core, custom, created, run):
         while time.monotonic() < deadline:
             current = core.list_namespaced_pod(args.namespace, label_selector="ani.io/execution-id=" + execution, _request_timeout=30).items
             if not set(record["stop"]["podUids"]) & {p.metadata.uid for p in current}:
-                record["stop"].update(actualExternalPodsGone=True, remainingPodUids=[p.metadata.uid for p in current])
+                if current:
+                    raise RuntimeError("controller created a replacement Pod after stop")
+                record["stop"].update(result="CONFIRMED", actualExternalPodsGone=True, remainingPodUids=[])
                 break
             time.sleep(3)
         else:
