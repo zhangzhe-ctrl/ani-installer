@@ -27,6 +27,8 @@
 
 第八次源 `d8c404c1b35fb66d6b5b2c8182f6d317da48e2e8`；独立开发包 SHA256 `9cd7a7442fdd3605104506d3e4524a4fa9c5d6de61358125f78155f1a57426e0`、站点 SHA256 `7fb94e0abda502764a39f89d5b2b8ef94bd84b164cb9b81705bbbe15935ca877`。目标逐项清单核验、整组十次准入 dry-run 与十二次 PVC 正负向 dry-run 均通过后持产品锁调用同一角色。安装进行中，结果待实际落盘；不是正式同源发布物冻结或最终验收。
 
+第八次实际退出码 1，确认 127 次 Kubernetes 写入；准入阶段通过，S3 三次写入（控制 bucket、所有权标记、受限账号）均 CONFIRMED。账号读回的父身份、账号类别、状态及 explicit policy 正确，但 RustFS 将 StringLike 的相同前缀集合重新排序，原 JSON 列表顺序比较误拒绝。只读诊断源码 `cc3fcc5`，无持久操作；修复 `87bac84` 只规范 Action/Resource/s3:prefix 集合顺序，保留全部字段与重复项，新增权限、广域 Resource/前缀、缺失 Condition、其他身份仍拒绝。真实第八次失败为 RED，十八项受影响回归和实际返回的等价策略比较为 GREEN；本轮首次 Git TLS EOF 后有一次远程定向检查先于推送完成，记录该偏差、不进入最终发布证明，随后核实同一 SHA 已推送，再做交付验证。外存原始失败归档 SHA256 `a9b4dc3d2a075132d8b362438ae247bc5339b1c02959de07682d0d4db7ffd898`。未轮换现有账号，数据库/KFP 消费者未创建。
+
 前两次原始日志已移出 VM：Fedora `integration-first-failures.tar`，SHA256 `0ecb1cee90ee2143e42d80af266f579692812b36fa8b30ce5fb1e401f4dd16ed`。第三次外存归档 SHA256 `f7bcc1797fc594670dc5410a4cc12629a801fb1ece7148729142de934ab43ad1`。
 
 `985f003eb6dd76301d9c515bb14defb0bae3db44` 的远程回归实际运行六项，退出码 0，日志 `targeted-webhook-replay-attempt-03.log`。回归覆盖两类 webhook 原子规则的 API 默认 scope 重入、显式 Namespaced scope 保留，以及既有四项证书保护。源绑定审批只变更 common.py 摘要和生成源码引用；新审批 SHA256 `f7eb88958ae20cc27477ec2d9f4e6209c7333d47a8cece9e9f0f614c8254380c`。修复后现场重入尚未执行。
