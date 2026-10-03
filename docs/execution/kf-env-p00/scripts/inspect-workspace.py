@@ -77,7 +77,7 @@ try:
         raise ValueError("reader node is outside the fixed target")
     name = "ani-kfp-workspace-reader-" + uuid.uuid4().hex[:16]
     command = r'''
-import errno,hashlib,json,pathlib,sys
+import base64,errno,hashlib,json,pathlib,sys
 execution,mode,workspace_uid,train_uid=sys.argv[1:]
 root=pathlib.Path('/workspace')
 try:
@@ -87,10 +87,12 @@ except OSError as error:
     readonly_errno=error.errno
 else:
     raise RuntimeError('reader mount was writable')
+files={}
 def read(relative):
     path=root/relative
     assert not path.is_symlink() and path.is_file() and path.stat().st_size <= 65536
     body=path.read_bytes()
+    files[relative]={'sha256':hashlib.sha256(body).hexdigest(),'size':len(body),'base64':base64.b64encode(body).decode()}
     return json.loads(body),hashlib.sha256(body).hexdigest()
 dataset,input_sha=read('input/dataset.json')
 unique,unique_sha=read('output/unique.json')
@@ -108,6 +110,7 @@ if mode=='success':
 else:
     assert not (root/'output/model.json').exists()
 assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
+result['files']=files
 print(json.dumps(result,sort_keys=True))
 '''
     if args.diagnostic_failure:
