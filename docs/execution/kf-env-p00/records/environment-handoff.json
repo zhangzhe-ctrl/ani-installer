@@ -1,7 +1,7 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV05-real-integration-pass; ENV06-candidate-freeze-in-progress; clean-install-not-run",
+  "checkpoint": "ENV05-real-integration-pass; candidate-frozen-and-target-rechecked; clean-install-not-run",
   "integration_status": "PASS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
@@ -41,7 +41,7 @@
       "argo": "v3.7.3"
     },
     "candidate_images_digest_locked": true,
-    "complete_release_material_frozen": false,
+    "complete_release_material_frozen": true,
     "registry_readback_status": "PASS_104_BUILD_HOST_CONTENT_AND_15_NODE_DEVELOPMENT / FINAL_TARGET_NOT_RUN",
     "runtime_pull_status": "DEVELOPMENT_CPU_POD_DIGEST_PASS / FINAL_TARGET_NOT_RUN"
   },
@@ -65,7 +65,7 @@
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
     "host_verified": true,
-    "build_status": "c34bd9c_REMOTE_GATE_AND_CODE_BUILD_PASS / FINAL_FREEZE_NOT_RUN",
+    "build_status": "dee542a_SAME_SOURCE_FULL_GATE_CODE_MATERIAL_BUILD_RENDER_TARGET_CHECKSUMS_PASS",
     "checks": [
       {"source": "b7d418d", "kind": "full-code-gate", "result": "FAIL", "first_failure": "role context guard omits kubeflow", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"},
       {"source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985", "kind": "targeted-code-gate", "result": "FAIL", "first_failure": "Quantity pointer method called on temporary value", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"},
@@ -109,7 +109,7 @@
     "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf",
     "mlmd": {"kind": "actual read-only authenticated database association query", "run_context_id": 5, "dataset_artifact_id": 10, "link_artifact_id": 13, "metrics_artifact_id": 14, "model_artifact_id": 15, "prepare_execution_id": 11, "training_execution_id": 12},
     "evidence": ["Fedora: probes/integration-success-b-attempt-02/reconciled-result-attempt-01/private-report.json", "node attempt-18: workspace-readback-success-b02-attempt-01/report.json", "node attempt-18: logs/mlmd-link-success-b02-attempt-01.log"],
-    "remaining": ["candidate freeze", "clean unified first install and independent final EAC"]
+    "remaining": ["clean unified first install and independent final EAC"]
   },
   "development_acceptance": {
     "source_candidate": "dee542af0122e9f95bded2f349849df3a1a53e4a",

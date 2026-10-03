@@ -78,6 +78,10 @@ C 必需联调通过；代码候选 `dee542af0122e9f95bded2f349849df3a1a53e4a`�
 
 外部终态检查点 `/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/integration-terminal-c-checkpoint-attempt-02.tar` 与目标端 SHA256 均为 `f3a15118de93ec1d9ae1c7963d99bc8515fd9674cae5c1f8953d9713e3112d89`。包含角色 14～19 原始日志、控制检查、删除条件与回执、数据库前后记录、S3/权限/边界报告，以及 B2/B3/失败/停止卷白名单唯一文件和 B2/B3 Model/Link 原字节；短期身份 token 和 Secret 配置未入包。首次 archive-attempt-01 因 sh 不展开 brace 而缺角色日志，保留部分包，未用于恢复门禁。
 
+阶段 D 已通过，完整冻结身份见 `records/candidate-freeze.json`。Fedora 干净 checkout `frozen-source-dee542a` 的统一 gate、同源 build-code、build-offline 均退出 0，门禁/编译/打包源码指纹始终 `cd0515ec5d196c28486ca564bc24f6872c68cacfb14b5a060c36e69584d919cc`。104 镜像实际内容门禁通过；13 源绑定角色文件、41 wheels、固定 gRPC 工具/源码、11 Chart、仓库 ISO/guest/scanner 实际封装。完整配置 validate、121 文件生产渲染退出 0。正式配置来自已核实完整基础选择，启用 Kubeflow、入口 30445/30446，正式 registry 5000；SSH 及既有口令未改变。
+
+发布传输包 SHA256 `c1f00b7af44a5cea649a0c97d65657231f82dde69dff0580163b35d892b30a61` 在 Fedora/当前 ani-01 一致；ani-01 代码和材料 SHA256SUMS 全部逐项通过，正式 site 原文件/归一化 digest 与 Fedora 一致。目标核包/配置日志已在节点外保存，归档 `release/target-freeze-dee542a-attempt-01.tar` SHA256 `507a22ea00581ab5888e484cf7713256741176361b9046dad2bc069b4c9fd3ae`。不将 config-validation 记录当 install-success。三 VM UUID、guest IP、Id2 及两块 200GiB persistent backing 已重新核实；尚未恢复。下一步仅按授权直接 revert Id2，再重发现身份，以同一发布物进行最终统一首装。
+
 ## 执行偏差及证据限制
 
 - 早期诊断清理曾把 dryRun 放在 raw DELETE URL query，同时提供 DeleteOptions body；kubectl 原生 RawDelete 此时未传递 query 意图，A1 的拟 dry-run 实际删除了本任务已完整导出的 reader/工作卷，意图记录晚于这两个首个效果。原后续 404/等待超时保留并只读对账，未清理其他对象。已改为 DeleteOptions body 的 dryRun=[All]，并在实际删除前核实同 UID 未出现 deletionTimestamp；后续删除请求均先记 UNKNOWN、使用服务端 UID 条件、只发一次。未移除 finalizer、未强制删 Pod。
