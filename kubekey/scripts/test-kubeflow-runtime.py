@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Regression for observed webhook bootstrap replay, preserving rotation guards."""
 import pathlib
+import copy
+import json
 import sys
 import tempfile
 import unittest
@@ -41,6 +43,54 @@ class WebhookReplay(unittest.TestCase):
     def test_managed_database_placeholder_cannot_erase_credentials(self):
         with self.assertRaisesRegex(RuntimeError, "refusing credential rotation"):
             self.check_secret("kubeflow", "ani-kfp-api-db", {})
+
+
+class DefaultedWebhook(Cluster):
+    def __init__(self, site, directory, declared_scope=None):
+        super().__init__(site, directory)
+        self.calls = []
+        self.declared_scope = declared_scope
+
+    def read(self, value):
+        live = copy.deepcopy(value)
+        live["metadata"].update(uid="webhook-create-uid", resourceVersion="17")
+        live["metadata"]["labels"] = {"ani.io/managed-by": "ani-lab"}
+        for webhook in live["webhooks"]:
+            for rule in webhook["rules"]:
+                rule.setdefault("scope", "*")
+        return live
+
+    def call(self, args, value, **kwargs):
+        self.calls.append(args)
+        for webhook in value["webhooks"]:
+            for rule in webhook["rules"]:
+                if rule.get("scope") != (self.declared_scope or "*"):
+                    raise RuntimeError("atomic webhook rules conflict with create manager")
+        response = copy.deepcopy(value)
+        response["metadata"].update(uid="webhook-create-uid", resourceVersion="18")
+        return json.dumps(response)
+
+
+class WebhookRuleDefaults(unittest.TestCase):
+    def apply_webhook(self, kind, scope=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = DefaultedWebhook({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt", scope)
+            rule = {"apiGroups": ["jobset.x-k8s.io"], "apiVersions": ["v1alpha2"], "operations": ["CREATE"], "resources": ["jobsets"]}
+            if scope:
+                rule["scope"] = scope
+            cluster.apply([{"apiVersion": "admissionregistration.k8s.io/v1", "kind": kind,
+                            "metadata": {"name": "task-webhook"}, "webhooks": [{"name": "jobset.kb.io", "rules": [rule]}]}])
+            self.assertEqual(len(cluster.calls), 2)
+            self.assertTrue(all("--force-conflicts" not in args for args in cluster.calls))
+            self.assertEqual(cluster.writes[0]["uid"], "webhook-create-uid")
+            self.assertEqual(cluster.writes[0]["result"], "CONFIRMED")
+
+    def test_create_default_is_explicit_for_both_webhook_kinds_on_replay(self):
+        for kind in ("MutatingWebhookConfiguration", "ValidatingWebhookConfiguration"):
+            self.apply_webhook(kind)
+
+    def test_explicit_scope_is_preserved(self):
+        self.apply_webhook("ValidatingWebhookConfiguration", "Namespaced")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV02-ENV04-isolated-registry-verified-role-install-in-progress",
+  "checkpoint": "ENV02-ENV04-role-attempt-03-fail-webhook-default-scope-source-repair",
   "integration_status": "IN_PROGRESS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
@@ -65,7 +65,7 @@
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
     "host_verified": true,
-    "build_status": "5052e81_REMOTE_GATE_AND_CODE_BUILD_PASS / FINAL_FREEZE_NOT_RUN",
+    "build_status": "1c45135_REMOTE_GATE_AND_CODE_BUILD_PASS / FINAL_FREEZE_NOT_RUN",
     "checks": [
       {"source": "b7d418d", "kind": "full-code-gate", "result": "FAIL", "first_failure": "role context guard omits kubeflow", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"},
       {"source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985", "kind": "targeted-code-gate", "result": "FAIL", "first_failure": "Quantity pointer method called on temporary value", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"},
@@ -77,7 +77,7 @@
     "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "REGISTRY_BYTES_PASS / RUNTIME_NOT_RUN"}
   },
   "development_deployment": {
-    "role_source": "5052e81a69975e53bad714c2b525a5bfe041c1b8",
+    "role_source": "1c45135ed3b090e01e131b31909f4b9810232906",
     "lab_invocation_source": "e8a87a0",
     "product_lock": "/var/lib/ani-installer/ani-install.lock",
     "registry": "172.16.101.10:5001",
@@ -86,9 +86,10 @@
     "scope": "task directories and dedicated registry; declared Kubeflow resources; no snapshot restore or shared registry restart",
     "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-01/logs",
     "package_sha256": "deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74",
-    "acceptance": "NOT_RUN"
+    "acceptance": "NOT_RUN",
+    "latest_attempt": {"number": 3, "result": "FAIL", "exit_code": 1, "completed_writes": 70, "first_failure": "SSA atomic webhook rules conflict caused by omitted API-default scope", "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-03/logs", "downstream_storage_database_kfp": "NOT_RUN"}
   },
-  "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt"],
+  "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt", "records/integration-attempts.md"],
   "blocked_items": [
     {"scope": "external-time-verification", "reason": "existing installer-isolated master ani-01 uses local stratum 10; ani-02/03 sync to it at stratum 11 with observed microsecond offsets; external UTC source NOT_VERIFIED"},
     {"scope": "storage-acceptance", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; task PVC write/read not yet run"}

@@ -102,6 +102,15 @@ class Cluster:
         # Preflight the whole dependency group before its first mutation.
         prepared = []
         for obj in objects:
+            # Rule lists are atomic in admissionregistration/v1. A create
+            # response defaults omitted scope to '*'; a later SSA with an
+            # omitted scope conflicts with the initial create manager. Make
+            # this API default explicit for both create and replay. Other
+            # differences retain their normal SSA conflict protection.
+            if obj.get("apiVersion") == "admissionregistration.k8s.io/v1" and obj["kind"] in ("MutatingWebhookConfiguration", "ValidatingWebhookConfiguration"):
+                for webhook in obj.get("webhooks", []):
+                    for rule in webhook.get("rules", []):
+                        rule.setdefault("scope", "*")
             obj["metadata"].setdefault("labels", {})["ani.io/managed-by"] = self.site["owner"]
             old = self.owned(obj)
             if old and obj["kind"] == "Secret":
