@@ -4,6 +4,7 @@ import argparse
 import email
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -13,6 +14,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--base-index", type=pathlib.Path, required=True)
 parser.add_argument("--output", type=pathlib.Path, required=True)
 parser.add_argument("--source-commit", required=True)
+parser.add_argument("--storage-root", type=pathlib.Path, required=True)
+parser.add_argument("--run-root", type=pathlib.Path, required=True)
 args = parser.parse_args()
 raw = args.base_index.read_bytes()
 expected_index = "65a93d69fa75478d554f4ad27c85c1e69fa184956261b4301ebaf6dbb0a3543d"
@@ -24,6 +27,12 @@ if len(manifests) != 1:
     parser.error("Python base has no unique linux/amd64 manifest")
 base = "docker.io/library/python@" + manifests[0]["digest"]
 args.output.mkdir(mode=0o700)
+if not args.storage_root.is_absolute() or not args.run_root.is_absolute():
+    parser.error("task-owned container cache and run root must be absolute")
+storage_config = args.output / "storage.conf"
+storage_config.write_text("[storage]\ndriver=\"overlay\"\ngraphroot=" + json.dumps(str(args.storage_root)) +
+                          "\nrunroot=" + json.dumps(str(args.run_root)) + "\n")
+os.environ["CONTAINERS_STORAGE_CONF"] = str(storage_config)
 (args.output / "wheels").mkdir()
 image_source = pathlib.Path(__file__).parent / "execution-image"
 for name in ("requirements.in", "Containerfile"):
@@ -83,7 +92,8 @@ run("build-offline", ["podman", "build", "--pull=never", "--network=none",
     "--build-arg", "BASE_IMAGE=" + base, "-t", tag, "-f", str(args.output / "Containerfile"), str(args.output)])
 run("verify-sdk", ["podman", "run", "--rm", "--pull=never", "--network=none", tag,
     "python", "-c", "import kfp,kfp.kubernetes,boto3; assert kfp.__version__ == '2.16.0'; assert kfp.kubernetes.__version__ == '2.16.0'; print(kfp.__version__, kfp.kubernetes.__version__)"])
-run("copy-image", ["skopeo", "copy", "--preserve-digests", "containers-storage:" + tag,
+run("save-image", ["podman", "save", "--format=oci-archive", "--output=" + str(args.output / "execution.oci.tar"), tag])
+run("copy-image", ["skopeo", "copy", "--preserve-digests", "oci-archive:" + str(args.output / "execution.oci.tar"),
                    "dir:" + str(args.output / "image")])
 image_dir = args.output / "image"
 manifest_bytes = (image_dir / "manifest.json").read_bytes()
