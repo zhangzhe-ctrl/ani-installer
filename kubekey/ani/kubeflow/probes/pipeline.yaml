@@ -195,15 +195,18 @@ deploymentSpec:
           \ or v.projected for v in training_pod.spec.volumes):\n        raise RuntimeError(\"\
           ordinary training Pod acquired a Secret/projected token\")\n    mounts =\
           \ {v.mount_path: v for v in training_pod.spec.containers[0].volume_mounts}\n\
-          \    if not mounts[\"/input\"].read_only or mounts[\"/input\"].sub_path\
-          \ != \"input\" or mounts[\"/output\"].sub_path != \"output\":\n        raise\
-          \ RuntimeError(\"training mount contract differs\")\n    claims = [v.persistent_volume_claim.claim_name\
-          \ for v in training_pod.spec.volumes if v.persistent_volume_claim]\n   \
-          \ if claims != [claim]:\n        raise RuntimeError(\"training Pod mounted\
-          \ a different execution claim\")\n    value = json.loads((output_dir / \"\
-          model.json\").read_text())\n    if value[\"execution\"] != execution or\
-          \ value[\"inputSha256\"] != input_hash:\n        raise RuntimeError(\"external\
-          \ training output belongs to another execution\")\n    shutil.copyfile(output_dir\
+          \    if (not mounts[\"/input\"].read_only or mounts[\"/input\"].name !=\
+          \ \"workspace-input\" or mounts[\"/input\"].sub_path != \"input\"\n    \
+          \        or mounts[\"/output\"].read_only or mounts[\"/output\"].name !=\
+          \ \"workspace-output\" or mounts[\"/output\"].sub_path != \"output\"):\n\
+          \        raise RuntimeError(\"training mount contract differs\")\n    claims\
+          \ = {v.name: v.persistent_volume_claim.claim_name for v in training_pod.spec.volumes\
+          \ if v.persistent_volume_claim}\n    if claims != {\"workspace-input\":\
+          \ claim, \"workspace-output\": claim}:\n        raise RuntimeError(\"training\
+          \ Pod mounted a different execution claim\")\n    value = json.loads((output_dir\
+          \ / \"model.json\").read_text())\n    if value[\"execution\"] != execution\
+          \ or value[\"inputSha256\"] != input_hash:\n        raise RuntimeError(\"\
+          external training output belongs to another execution\")\n    shutil.copyfile(output_dir\
           \ / \"model.json\", model.path)\n    correlation.update(trainPod={\"name\"\
           : training_pod.metadata.name, \"uid\": training_pod.metadata.uid, \"node\"\
           : training_pod.spec.node_name},\n                       pipelineNode=os.environ.get(\"\
