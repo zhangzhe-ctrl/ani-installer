@@ -204,8 +204,13 @@ def monitor(args, report, record, pipeline, core, custom, created, run):
                 patch = [{"op": "test", "path": "/metadata/uid", "value": job["metadata"]["uid"]},
                          {"op": "test", "path": "/metadata/resourceVersion", "value": job["metadata"]["resourceVersion"]},
                          {"op": "add", "path": "/spec/suspend", "value": True}]
-                custom.patch_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", args.namespace,
-                    "trainjobs", job_name, patch, _request_timeout=30)
+                # This locked SDK's generated CRD patch method always sends
+                # merge-patch. UID/resourceVersion tests require JSON Patch.
+                custom.api_client.call_api("/apis/trainer.kubeflow.org/v1alpha1/namespaces/{namespace}/trainjobs/{name}",
+                    "PATCH", {"namespace": args.namespace, "name": job_name}, [],
+                    {"Accept": "application/json", "Content-Type": "application/json-patch+json"},
+                    body=patch, response_type="object", auth_settings=["BearerToken"],
+                    _return_http_data_only=True, _request_timeout=30)
                 record["stop"]["trainJobResult"] = "CONFIRMED"
                 save(report, record)
                 pipeline.terminate_run(run.run_id)
