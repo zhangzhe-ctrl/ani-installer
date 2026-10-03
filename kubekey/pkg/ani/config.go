@@ -658,6 +658,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 	keys := make([]ImageKey, 0, len(all))
 	for _, key := range all {
 		switch key.Group {
+		case "kubeflow":
+			if base || !c.KubeflowEnabled() {
+				continue
+			}
 		case "metrics-server":
 			if base || !c.Components.MetricsServer.Enabled {
 				continue
@@ -1544,6 +1548,14 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err != nil {
 		return nil, err
 	}
+	kubeflow := kubeflowSpec(c)
+	if c.KubeflowEnabled() {
+		refs, err := kubeflowPinnedImages(imageTable, registry)
+		if err != nil {
+			return nil, err
+		}
+		kubeflow["images"] = refs
+	}
 
 	components := componentSpec(c.EffectiveComponents(), c.Name)
 	nodeNames := make([]string, 0, len(c.Nodes))
@@ -1645,7 +1657,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			"images":      imageRefs,
 			"image_parts": imageParts,
 			"components":  components,
-			"kubeflow":    kubeflowSpec(c),
+			"kubeflow":    kubeflow,
 			"profile":     installProfile(c.Profile),
 			"storage": map[string]any{
 				"enabled":                 c.Storage.Enabled,

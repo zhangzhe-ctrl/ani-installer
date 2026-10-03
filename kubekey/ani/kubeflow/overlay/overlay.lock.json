@@ -1,0 +1,847 @@
+{
+  "schema": "ani.kubeflow.overlay.v1",
+  "status": "PRE_REVIEW",
+  "generator_source_commit": "207f1c462b40f836be24dfc8585ee6bfb7fa6985",
+  "upstream_commits": {
+    "kfp": "e4ebca310f404dac306e16bc880de12bbbf63b95",
+    "trainer": "73c9bece741ce17d2124abda3ec6bfcf5b5b8e87",
+    "argo": "bded09fe4abd37cb98d7fc81b4c14a6f5034e9ab",
+    "jobset": "da72d32bb0060354aa04b1a5868f3b363b088446"
+  },
+  "input_sha256": {
+    "kfp": "e0dcb42db7dc3104383d13953c4905445f8f9b4cdf8c621864174527f6a644b5",
+    "trainer": "db69ab7f57697e1391e5621a863817cb4b922071582053ddfda4ddee7d8b302f"
+  },
+  "resources_sha256": "8dec93e63e2c2904ad5275bb7908e8574742ac9e83ca16bf933edd40f0b4a2ff",
+  "resource_count": 85,
+  "inventory": [
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/clusterworkflowtemplates.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/compositecontrollers.metacontroller.k8s.io",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/controllerrevisions.metacontroller.k8s.io",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/cronworkflows.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/decoratorcontrollers.metacontroller.k8s.io",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/scheduledworkflows.kubeflow.org",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/viewers.kubeflow.org",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workflowartifactgctasks.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workfloweventbindings.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workflows.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workflowtaskresults.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workflowtasksets.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/workflowtemplates.argoproj.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/argo",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/kubeflow-pipelines-cache",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/kubeflow-pipelines-cache-deployer-sa",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/kubeflow-pipelines-container-builder",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/kubeflow-pipelines-metadata-writer",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/kubeflow-pipelines-viewer",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/meta-controller-service",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/metadata-grpc-server",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline-persistenceagent",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline-scheduledworkflow",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline-viewer-crd-service-account",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/ml-pipeline-visualizationserver",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/mysql",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/pipeline-runner",
+      "action": "exclude",
+      "reason": "runner identity is provisioned per managed tenant"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow/seaweedfs",
+      "action": "exclude",
+      "reason": "declared RustFS provider replaces the upstream object service"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/argo-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/kubeflow-pipelines-cache-deployer-role",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/kubeflow-pipelines-cache-role",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/kubeflow-pipelines-metadata-writer-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/kubeflow-pipelines-public",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/ml-pipeline",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/ml-pipeline-persistenceagent-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/ml-pipeline-scheduledworkflow-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/ml-pipeline-viewer-controller-role",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow/pipeline-runner",
+      "action": "exclude",
+      "reason": "runner identity is provisioned per managed tenant"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/aggregate-to-kubeflow-pipelines-edit",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/aggregate-to-kubeflow-pipelines-view",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/argo-aggregate-to-admin",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/argo-aggregate-to-edit",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/argo-aggregate-to-view",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/argo-cluster-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-metacontroller",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-pipelines-cache-deployer-clusterrole",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-pipelines-cache-role",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-pipelines-edit",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-pipelines-metadata-writer-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-pipelines-view",
+      "action": "exclude",
+      "reason": "explicit tenant permissions replace aggregate/shared administrator roles"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/ml-pipeline",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/ml-pipeline-persistenceagent-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/ml-pipeline-scheduledworkflow-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/ml-pipeline-viewer-controller-role",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/argo-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/kubeflow-pipelines-cache-binding",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/kubeflow-pipelines-cache-deployer-rolebinding",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/kubeflow-pipelines-metadata-writer-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/kubeflow-pipelines-public",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/ml-pipeline",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/ml-pipeline-persistenceagent-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/ml-pipeline-scheduledworkflow-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/ml-pipeline-viewer-crd-binding",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow/pipeline-runner-binding",
+      "action": "exclude",
+      "reason": "runner identity is provisioned per managed tenant"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/argo-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/kubeflow-pipelines-cache-binding",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/kubeflow-pipelines-cache-deployer-clusterrolebinding",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/kubeflow-pipelines-metadata-writer-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/meta-controller-cluster-role-binding",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/ml-pipeline",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/ml-pipeline-persistenceagent-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/ml-pipeline-scheduledworkflow-binding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/ml-pipeline-viewer-crd-binding",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/kfp-launcher",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/kubeflow-pipelines-profile-controller-code-c55f957kgf",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/kubeflow-pipelines-profile-controller-env-5252m69c4c",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/kubeflow-pipelines-public",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/metadata-envoy-configmap",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/metadata-grpc-configmap",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/ml-pipeline-ui-configmap",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/pipeline-api-server-config-dc9hkg52h6",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/pipeline-install-config",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow/workflow-controller-configmap",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "v1/Secret/kubeflow/mlpipeline-minio-artifact",
+      "action": "replace",
+      "reason": "managed isolated identities replace upstream constant credentials"
+    },
+    {
+      "identity": "v1/Secret/kubeflow/mysql-secret",
+      "action": "replace",
+      "reason": "managed isolated identities replace upstream constant credentials"
+    },
+    {
+      "identity": "v1/Service/kubeflow/cache-server",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "v1/Service/kubeflow/kubeflow-pipelines-profile-controller",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "v1/Service/kubeflow/metadata-envoy-service",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow/metadata-grpc-service",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow/ml-pipeline",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/Service/kubeflow/ml-pipeline-visualizationserver",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "v1/Service/kubeflow/mysql",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow/seaweedfs",
+      "action": "exclude",
+      "reason": "declared RustFS provider replaces the upstream object service"
+    },
+    {
+      "identity": "scheduling.k8s.io/v1/PriorityClass/_/workflow-controller",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/PersistentVolumeClaim/kubeflow/mysql-pv-claim",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "v1/PersistentVolumeClaim/kubeflow/seaweedfs-pvc",
+      "action": "exclude",
+      "reason": "declared RustFS provider replaces the upstream object service"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/cache-deployer-deployment",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/cache-server",
+      "action": "exclude",
+      "reason": "legacy V1 cache webhook; V2 execution cache remains in driver/API/MLMD"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/kubeflow-pipelines-profile-controller",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/metadata-envoy-deployment",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/metadata-grpc-deployment",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/metadata-writer",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline-persistenceagent",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline-scheduledworkflow",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline-viewer-crd",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/ml-pipeline-visualizationserver",
+      "action": "exclude",
+      "reason": "frontend, visualization, public/default access or in-cluster image builder is outside this release"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/mysql",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/seaweedfs",
+      "action": "exclude",
+      "reason": "declared RustFS provider replaces the upstream object service"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow/workflow-controller",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/StatefulSet/kubeflow/metacontroller",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "metacontroller.k8s.io/v1alpha1/DecoratorController/kubeflow/kubeflow-pipelines-profile-controller",
+      "action": "exclude",
+      "reason": "profile bootstrap replaced by managed tenant SA/RBAC/launcher/storage resources"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/metadata-grpc-service",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/ml-pipeline",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/ml-pipeline-mysql",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/ml-pipeline-seaweedfs",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/DestinationRule/kubeflow/ml-pipeline-visualizationserver",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/VirtualService/kubeflow/metadata-grpc",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.istio.io/v1alpha3/VirtualService/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "networking.k8s.io/v1/NetworkPolicy/kubeflow/seaweedfs",
+      "action": "exclude",
+      "reason": "declared RustFS provider replaces the upstream object service"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/metadata-grpc-service",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/ml-pipeline",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/ml-pipeline-ui",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/ml-pipeline-visualizationserver",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/mysql",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/seaweedfs-service",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "security.istio.io/v1beta1/AuthorizationPolicy/kubeflow/service-cache-server",
+      "action": "exclude",
+      "reason": "Istio is outside this release; replaced by TLS entry and explicit authorization/network policy"
+    },
+    {
+      "identity": "v1/Namespace/_/kubeflow-system",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/clustertrainingruntimes.trainer.kubeflow.org",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/jobsets.jobset.x-k8s.io",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/trainingruntimes.trainer.kubeflow.org",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apiextensions.k8s.io/v1/CustomResourceDefinition/_/trainjobs.trainer.kubeflow.org",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow-system/jobset-controller-manager",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ServiceAccount/kubeflow-system/kubeflow-trainer-controller-manager",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/Role/kubeflow-system/jobset-leader-election-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/jobset-manager-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/jobset-metrics-reader",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/jobset-proxy-role",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRole/_/kubeflow-trainer-controller-manager",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/RoleBinding/kubeflow-system/jobset-leader-election-rolebinding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/jobset-manager-rolebinding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/jobset-metrics-reader-rolebinding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/jobset-proxy-rolebinding",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "rbac.authorization.k8s.io/v1/ClusterRoleBinding/_/kubeflow-trainer-controller-manager",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow-system/jobset-manager-config",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/ConfigMap/kubeflow-system/kubeflow-trainer-config",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Secret/kubeflow-system/jobset-webhook-server-cert",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Secret/kubeflow-system/kubeflow-trainer-webhook-cert",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow-system/jobset-controller-manager-metrics-service",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow-system/jobset-webhook-service",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "v1/Service/kubeflow-system/kubeflow-trainer-controller-manager",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow-system/jobset-controller-manager",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "apps/v1/Deployment/kubeflow-system/kubeflow-trainer-controller-manager",
+      "action": "replace",
+      "reason": "ANI authentication/storage/credential/dependency policy"
+    },
+    {
+      "identity": "admissionregistration.k8s.io/v1/MutatingWebhookConfiguration/_/jobset-mutating-webhook-configuration",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "admissionregistration.k8s.io/v1/ValidatingWebhookConfiguration/_/jobset-validating-webhook-configuration",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    },
+    {
+      "identity": "admissionregistration.k8s.io/v1/ValidatingWebhookConfiguration/_/validator.trainer.kubeflow.org",
+      "action": "keep",
+      "reason": "fixed required backend/controller/API resource"
+    }
+  ],
+  "api_authentication": "TokenReview only; ':' is not a legal client HTTP/gRPC header name",
+  "header_auth_live_status": "NOT_RUN",
+  "compatibility_status": "NOT_RUN"
+}

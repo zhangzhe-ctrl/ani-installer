@@ -5,6 +5,7 @@
   "connections_dir": "{{ .ani.run.connections_dir }}",
   "artifact_root": "{{ .ani.artifact_root }}",
   "registry": "{{ .ani.registry }}",
+  "images": {{ toJson .ani.kubeflow.images }},
   "owner": {{ toJson .kubernetes.cluster_name }},
   "node_addresses": {{ toJson .ani.node_addresses }},
   "entry_address": "{{ .ani.kubeflow.entry_address }}",

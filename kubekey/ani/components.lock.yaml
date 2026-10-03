@@ -753,3 +753,269 @@ batchB07:
       sourceManifestDigest: sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0
       amd64ManifestDigest: sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0
       use: B07 Harbor valkey-photon
+
+# Kubeflow first-install-only material; no addition contract.
+kubeflow:
+  release: 26.03-kfp2.16-trainer2.1-v1
+  status: source_bytes_verified / runtime_not_verified
+  sourceIdentitiesCommit: 51f312a0a7d342d765eb199c19afa4e8f2adabf7
+  executionImageBuildCommit: abfc9dcfc842e8356853da4b75c8266af7ba763b
+  images:
+  - original: ghcr.io/kubeflow/kfp-api-server:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-api-server:2.16.0
+    sourceManifestDigest: sha256:5f9d674f75dbd9c056ad31a1d8c5432e1bdc1f0597dfefe6f58d00af983fbe22
+    amd64ManifestDigest: sha256:5f9d674f75dbd9c056ad31a1d8c5432e1bdc1f0597dfefe6f58d00af983fbe22
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-api-server:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-metadata-envoy:2.16.0
+    sourceManifestDigest: sha256:ae854892d51ac29bbab8a1cddd9a5beadd2e84b27b1a6bfbdf1871c9438e8763
+    amd64ManifestDigest: sha256:ae854892d51ac29bbab8a1cddd9a5beadd2e84b27b1a6bfbdf1871c9438e8763
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-metadata-writer:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-metadata-writer:2.16.0
+    sourceManifestDigest: sha256:0aabb7e4af425a622b502ff9a32add14e147f0408e127a129b118053b80d270f
+    amd64ManifestDigest: sha256:0aabb7e4af425a622b502ff9a32add14e147f0408e127a129b118053b80d270f
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-metadata-writer:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-persistence-agent:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-persistence-agent:2.16.0
+    sourceManifestDigest: sha256:7d44250d37fd8026740d1640cb91313580c05c875bd72ccbd66bc0ed44e3ed2b
+    amd64ManifestDigest: sha256:7d44250d37fd8026740d1640cb91313580c05c875bd72ccbd66bc0ed44e3ed2b
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-persistence-agent:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-scheduled-workflow-controller:2.16.0
+    sourceManifestDigest: sha256:87851f90101b078defee70e19d0ff1b1fd485dcc99fb66298193c2545c4b0fc5
+    amd64ManifestDigest: sha256:87851f90101b078defee70e19d0ff1b1fd485dcc99fb66298193c2545c4b0fc5
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-driver:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-driver:2.16.0
+    sourceManifestDigest: sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd
+    amd64ManifestDigest: sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-driver:2.16.0'
+  - original: ghcr.io/kubeflow/kfp-launcher:2.16.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/kfp-launcher:2.16.0
+    sourceManifestDigest: sha256:6b2d6c5733d957c9f7831cafe12aebcf9ef8ec503f57b74ed2ab00d5db113d29
+    amd64ManifestDigest: sha256:6b2d6c5733d957c9f7831cafe12aebcf9ef8ec503f57b74ed2ab00d5db113d29
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/kfp-launcher:2.16.0'
+  - original: gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/tfx-oss-public/ml_metadata_store_server:1.14.0
+    sourceManifestDigest: sha256:51404ef4419c1426da80f3e14a83dcb55f65bb5a971371d36d14cec1e50af830
+    amd64ManifestDigest: sha256:51404ef4419c1426da80f3e14a83dcb55f65bb5a971371d36d14cec1e50af830
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0'
+  - original: quay.io/argoproj/workflow-controller:v3.7.3
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/argoproj/workflow-controller:v3.7.3
+    sourceManifestDigest: sha256:86544f45dfb5eec10a101dd46e4078edc527ca548ed754bcf520ab4a1c80ba31
+    amd64ManifestDigest: sha256:5c8f5b6e5a2134dafdeadf758f230e4cc08db78f813e52d928e8f4f4541f243d
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: quay.io/argoproj/workflow-controller:v3.7.3'
+  - original: quay.io/argoproj/argoexec:v3.7.3
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/argoproj/argoexec:v3.7.3
+    sourceManifestDigest: sha256:d299769f4681ba47fa5e4e00f1c4d31eee782659c43625ea1bdf1cff08ca34dd
+    amd64ManifestDigest: sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: quay.io/argoproj/argoexec:v3.7.3'
+  - original: ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/kubeflow/trainer/trainer-controller-manager:v2.1.0
+    sourceManifestDigest: sha256:47b4373af5e26a8ed2afadb7a3efe6372a2a1ebd62120509114de7fc29d60873
+    amd64ManifestDigest: sha256:aa5949fc4ccbbed2537fa05f08ca330bc83b40aef930d2a0d44970922f197a73
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0'
+  - original: registry.k8s.io/jobset/jobset:v0.10.1
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/jobset/jobset:v0.10.1
+    sourceManifestDigest: sha256:6976d1db4923177577e8ee3fe42abb173315a9bcf1b811f0ed94dd2073bd42bf
+    amd64ManifestDigest: sha256:a018e2ca9b2a73645e108930a1a1795392fe8b765e4c81f5240f640b854436c4
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: registry.k8s.io/jobset/jobset:v0.10.1'
+  - original: docker.io/library/mysql:8.4.11
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/library/mysql:8.4.11
+    sourceManifestDigest: sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
+    amd64ManifestDigest: sha256:80f4933e3835f9dc4d35a28ec500d7986cb4414e6c6821c5461239cb7beb8995
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: docker.io/library/mysql:8.4.11'
+  - original: docker.io/library/nginx:1.30.5
+    haulerRef: 127.0.0.1:5000/ani-kubeflow/library/nginx:1.30.5
+    sourceManifestDigest: sha256:b972f831f200b19ef0767938224f9711e74cd783718738cd7405d5cabf75c442
+    amd64ManifestDigest: sha256:3d2f995522ddb52c3a4eb8008b8fa26f184f7146851df1da831f88885ac40aae
+    platform: linux/amd64
+    use: 'Kubeflow first-install backend/dynamic runtime: docker.io/library/nginx:1.30.5'
+  - original: ani.local/kubeflow-execution:26.03-v1
+    haulerRef: 127.0.0.1:5000/ani/kubeflow-execution:26.03-v1
+    sourceManifestDigest: sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb
+    amd64ManifestDigest: sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb
+    platform: linux/amd64
+    use: Kubeflow single-process runtime and offline SDK/environment probes
+  sdk:
+    kfp: 2.16.0
+    kfp-kubernetes: 2.16.0
+    wheels:
+    - name: boto3
+      version: 1.40.45
+      file: boto3-1.40.45-py3-none-any.whl
+      sha256: 5b145752d20f29908e3cb8c823bee31c77e6bcf18787e570f36bbc545cc779ed
+    - name: botocore
+      version: 1.40.76
+      file: botocore-1.40.76-py3-none-any.whl
+      sha256: fe425d386e48ac64c81cbb4a7181688d813df2e2b4c78b95ebe833c9e868c6f4
+    - name: certifi
+      version: 2026.7.22
+      file: certifi-2026.7.22-py3-none-any.whl
+      sha256: 62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775
+    - name: cffi
+      version: 2.1.1
+      file: cffi-2.1.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+      sha256: 34e261f78cb6ceaaa36f42f2613f4380d94d9c759a9c73c769ee6e0247364632
+    - name: charset-normalizer
+      version: 3.5.2
+      file: charset_normalizer-3.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+      sha256: 211d5a3eb6af8f513b8d4ca19a8c1b7accab1b5f0d3175f9826b03c1a920dc1f
+    - name: click
+      version: 8.5.0
+      file: click-8.5.0-py3-none-any.whl
+      sha256: 255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360
+    - name: click-option-group
+      version: 0.5.7
+      file: click_option_group-0.5.7-py3-none-any.whl
+      sha256: 96b9f52f397ef4d916f81929bd6c1f85e89046c7a401a64e72a61ae74ad35c24
+    - name: cryptography
+      version: 50.0.2
+      file: cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl
+      sha256: 9dab55f57c74c3cad24c323bacbbd04be4705ba6eb0d92e920b1fc4837ed5079
+    - name: docstring_parser
+      version: 0.18.0
+      file: docstring_parser-0.18.0-py3-none-any.whl
+      sha256: b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
+    - name: google-api-core
+      version: 2.40.0
+      file: google_api_core-2.40.0-py3-none-any.whl
+      sha256: 4b9e0a80024c269ae173136d5439f4ed284651d6e5e2773ba5c694f481f9c0f4
+    - name: google-auth
+      version: 2.59.1
+      file: google_auth-2.59.1-py3-none-any.whl
+      sha256: 89c3f931683a482ac97e61df7eb9da5e08a91703f3c752b2377d72cfb7d69e6a
+    - name: google-cloud-core
+      version: 2.8.0
+      file: google_cloud_core-2.8.0-py3-none-any.whl
+      sha256: e235b0952f7ffe7b9c71a4cf96b506d9cfb557e22557c412f0df9b7068b5d007
+    - name: google-cloud-storage
+      version: 3.16.0
+      file: google_cloud_storage-3.16.0-py3-none-any.whl
+      sha256: 59e54ff1f7f8a7253c01f593f79d253728c122a8901b83f68fe7464a4131539f
+    - name: google-crc32c
+      version: 1.9.0
+      file: google_crc32c-1.9.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+      sha256: 86764b99e7a607830d93cb5b75e0ec3ff6cb06d3c274624418473cee701900d4
+    - name: google-resumable-media
+      version: 2.11.0
+      file: google_resumable_media-2.11.0-py3-none-any.whl
+      sha256: f43d15e6a7f818f762eaead0f369c551f8275a4179c9d6225d0d259f49b87b5d
+    - name: googleapis-common-protos
+      version: 1.75.5
+      file: googleapis_common_protos-1.75.5-py3-none-any.whl
+      sha256: d7285525c23039db98f2463e6d5a4f9b958b94d497f03a844ece3259c4e72d5d
+    - name: idna
+      version: '3.20'
+      file: idna-3.20-py3-none-any.whl
+      sha256: ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+    - name: jmespath
+      version: 1.1.0
+      file: jmespath-1.1.0-py3-none-any.whl
+      sha256: a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
+    - name: kfp
+      version: 2.16.0
+      file: kfp-2.16.0-py3-none-any.whl
+      sha256: c06e5b24c5d4ddc9a65eb1f4ab120437d97a10c483d87fb41ce2f91a30f5aedb
+    - name: kfp-kubernetes
+      version: 2.16.0
+      file: kfp_kubernetes-2.16.0-py3-none-any.whl
+      sha256: d2a5ef0edfbfdf3a60dbb72f8cbde766636d06cd30d90cbd23c8167538fcdb4d
+    - name: kfp-pipeline-spec
+      version: 2.17.0
+      file: kfp_pipeline_spec-2.17.0-py3-none-any.whl
+      sha256: a2ae9f287ce69d72f2fc10a5dca30a5e32ab3b6975ad6ce9d4b54e0e02c54371
+    - name: kfp-server-api
+      version: 2.17.0
+      file: kfp_server_api-2.17.0-py3-none-any.whl
+      sha256: b19ec6ed81743c634ba708af0f8a46369443bffaaad068be5755bb1384a26e8c
+    - name: kubernetes
+      version: 30.1.0
+      file: kubernetes-30.1.0-py2.py3-none-any.whl
+      sha256: e212e8b7579031dd2e512168b617373bc1e03888d41ac4e04039240a292d478d
+    - name: oauthlib
+      version: 4.0.0
+      file: oauthlib-4.0.0-py3-none-any.whl
+      sha256: 624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd
+    - name: opentelemetry-api
+      version: 1.45.0
+      file: opentelemetry_api-1.45.0-py3-none-any.whl
+      sha256: 80e068aba7cd56c8b58512d6a36f8d25cb1dfaa0c0a4cc1c938ccf9f362d9cb3
+    - name: proto-plus
+      version: 1.29.0
+      file: proto_plus-1.29.0-py3-none-any.whl
+      sha256: 8acd070469a7aaf43f440b022ef9757c8cac1a9f866e933f59ae98669ddc6c8b
+    - name: protobuf
+      version: 6.33.6
+      file: protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl
+      sha256: e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593
+    - name: pyasn1
+      version: 0.6.4
+      file: pyasn1-0.6.4-py3-none-any.whl
+      sha256: deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b
+    - name: pyasn1_modules
+      version: 0.4.2
+      file: pyasn1_modules-0.4.2-py3-none-any.whl
+      sha256: 29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a
+    - name: pycparser
+      version: '3.0'
+      file: pycparser-3.0-py3-none-any.whl
+      sha256: b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
+    - name: python-dateutil
+      version: 2.9.0.post0
+      file: python_dateutil-2.9.0.post0-py2.py3-none-any.whl
+      sha256: a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
+    - name: PyYAML
+      version: 6.0.3
+      file: pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+      sha256: b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d
+    - name: requests
+      version: 2.34.2
+      file: requests-2.34.2-py3-none-any.whl
+      sha256: 2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0
+    - name: requests-oauthlib
+      version: 2.0.0
+      file: requests_oauthlib-2.0.0-py2.py3-none-any.whl
+      sha256: 7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36
+    - name: requests-toolbelt
+      version: 1.0.0
+      file: requests_toolbelt-1.0.0-py2.py3-none-any.whl
+      sha256: cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06
+    - name: s3transfer
+      version: 0.14.0
+      file: s3transfer-0.14.0-py3-none-any.whl
+      sha256: ea3b790c7077558ed1f02a3072fb3cb992bbbd253392f4b6e9e8976941c7d456
+    - name: six
+      version: 1.17.0
+      file: six-1.17.0-py2.py3-none-any.whl
+      sha256: 4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+    - name: tabulate
+      version: 0.10.0
+      file: tabulate-0.10.0-py3-none-any.whl
+      sha256: f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3
+    - name: typing_extensions
+      version: 4.16.0
+      file: typing_extensions-4.16.0-py3-none-any.whl
+      sha256: 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+    - name: urllib3
+      version: 2.8.0
+      file: urllib3-2.8.0-py3-none-any.whl
+      sha256: 0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+    - name: websocket-client
+      version: 1.9.2
+      file: websocket_client-1.9.2-py3-none-any.whl
+      sha256: e1a673830a9c7bfa47b1cd3d5e4178f4c9651d80a4eab02c9c23a1c3ec6250ce

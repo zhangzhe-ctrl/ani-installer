@@ -12,6 +12,42 @@ import (
 
 const KubeflowRelease = "26.03-kfp2.16-trainer2.1-v1"
 
+func kubeflowImageKeys() []ImageKey {
+	return []ImageKey{
+		{Group: "kubeflow", Name: "api", Original: "ghcr.io/kubeflow/kfp-api-server:2.16.0"},
+		{Group: "kubeflow", Name: "metadataEnvoy", Original: "ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0"},
+		{Group: "kubeflow", Name: "metadataWriter", Original: "ghcr.io/kubeflow/kfp-metadata-writer:2.16.0"},
+		{Group: "kubeflow", Name: "persistence", Original: "ghcr.io/kubeflow/kfp-persistence-agent:2.16.0"},
+		{Group: "kubeflow", Name: "scheduledWorkflow", Original: "ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0"},
+		{Group: "kubeflow", Name: "driver", Original: "ghcr.io/kubeflow/kfp-driver:2.16.0"},
+		{Group: "kubeflow", Name: "launcher", Original: "ghcr.io/kubeflow/kfp-launcher:2.16.0"},
+		{Group: "kubeflow", Name: "mlmd", Original: "gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0"},
+		{Group: "kubeflow", Name: "argo", Original: "quay.io/argoproj/workflow-controller:v3.7.3"},
+		{Group: "kubeflow", Name: "argoExecutor", Original: "quay.io/argoproj/argoexec:v3.7.3"},
+		{Group: "kubeflow", Name: "trainer", Original: "ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0"},
+		{Group: "kubeflow", Name: "jobset", Original: "registry.k8s.io/jobset/jobset:v0.10.1"},
+		{Group: "kubeflow", Name: "mysql", Original: "docker.io/library/mysql:8.4.11"},
+		{Group: "kubeflow", Name: "entry", Original: "docker.io/library/nginx:1.30.5"},
+		{Group: "kubeflow", Name: "execution", Original: "ani.local/kubeflow-execution:26.03-v1"},
+	}
+}
+
+func kubeflowPinnedImages(table ImageTable, registry string) (map[string]string, error) {
+	refs := map[string]string{}
+	for _, key := range kubeflowImageKeys() {
+		ref, err := table.LocalReference(key.Original, registry)
+		if err != nil {
+			return nil, err
+		}
+		image := table[key.Original]
+		if !strings.HasPrefix(image.Digest, "sha256:") || !isHex64(strings.TrimPrefix(image.Digest, "sha256:")) {
+			return nil, fmt.Errorf("Kubeflow image %q has no approved platform digest", key.Original)
+		}
+		refs[key.Original] = strings.Split(ref, "@")[0] + "@" + image.Digest
+	}
+	return refs, nil
+}
+
 // Kubeflow belongs to the first-install chain, outside Components. It is not
 // an addition target; omitting this pointer preserves legacy config digests.
 type KubeflowConfig struct {
@@ -93,7 +129,8 @@ func validateKubeflow(c ClusterConfig) error {
 	if k.Workspace.MaxClaimsPerTenant < 1 || k.Workspace.MaxClaimsPerTenant > 4 {
 		return fmt.Errorf("kubeflow.workspace.maxClaimsPerTenant must be within 1..4; retained failed runs count against this bound")
 	}
-	workspaceSize := resource.MustParse(k.Workspace.MaxSize).Value()
+	workspaceQuantity := resource.MustParse(k.Workspace.MaxSize)
+	workspaceSize := workspaceQuantity.Value()
 	if workspaceSize <= 0 || workspaceSize > math.MaxInt64 / int64(k.Workspace.MaxClaimsPerTenant) {
 		return fmt.Errorf("kubeflow.workspace.maxSize exceeds the supported aggregate quota quantity")
 	}
@@ -127,7 +164,8 @@ func kubeflowSpec(c ClusterConfig) map[string]any {
 	spec["workspace_class"] = k.Workspace.StorageClass
 	spec["workspace_max_size"] = k.Workspace.MaxSize
 	spec["workspace_max_claims"] = k.Workspace.MaxClaimsPerTenant
-	spec["workspace_quota_size"] = fmt.Sprint(resource.MustParse(k.Workspace.MaxSize).Value() * int64(k.Workspace.MaxClaimsPerTenant))
+	workspaceQuantity := resource.MustParse(k.Workspace.MaxSize)
+	spec["workspace_quota_size"] = fmt.Sprint(workspaceQuantity.Value() * int64(k.Workspace.MaxClaimsPerTenant))
 	spec["workspace_mode"] = "managed-execution-pvc-v1"
 	spec["tenants"] = k.Tenants
 	return spec

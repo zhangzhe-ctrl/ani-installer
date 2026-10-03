@@ -179,7 +179,7 @@ type ImageKey struct {
 // never resolves. The override is stated next to the locked entry it applies to
 // rather than in the role template, so there is one place to read.
 func componentImageKeys() []ImageKey {
-	return []ImageKey{
+	return append([]ImageKey{
 		// R08: the two main CNIs and the foundation components now have real,
 		// declared keys (every original exists in images.tsv / images-kubeovn.tsv
 		// exactly as shipped), so a required image that is missing from the
@@ -253,7 +253,7 @@ func componentImageKeys() []ImageKey {
 		{Group: "logs", Name: "opensearch", Original: "docker.io/opensearchproject/opensearch:3.8.0", Backend: "opensearch"},
 		{Group: "lab", Name: "python", Original: "docker.io/library/python:3.13.11-alpine3.23"},
 		{Group: "lab", Name: "busybox", Original: "docker.io/library/busybox:1.37.0"},
-	}
+	}, kubeflowImageKeys()...)
 }
 
 // SplitImageReferences turns the listed images into per-name registry,

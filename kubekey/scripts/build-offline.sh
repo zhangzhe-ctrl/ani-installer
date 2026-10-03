@@ -260,6 +260,15 @@ copy_material() {
   cp --reflink=auto --sparse=auto -- "$source" "$destination"
 }
 
+# First-install Kubeflow assets use the same cumulative material artifact.
+# Their exact source-approved bytes are also embedded in kk's preflight.
+# This does not add an installation-afterwards or material-extension entry.
+if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
+  mkdir -p "$OUTPUT/manifests/kubeflow"
+  python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
+    --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+fi
+
 echo "[1/6] placing KubeKey artifact"
 if [[ -n "$KUBEKEY_ARTIFACT" ]]; then
   copy_material "$KUBEKEY_ARTIFACT" "$OUTPUT/packages/kubekey-artifact.tgz"

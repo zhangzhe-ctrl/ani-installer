@@ -128,6 +128,8 @@ def patch(obj):
                 env(container, "V2_DRIVER_IMAGE", "ANI_IMAGE_ghcr.io/kubeflow/kfp-driver:2.16.0")
                 env(container, "V2_LAUNCHER_IMAGE", "ANI_IMAGE_ghcr.io/kubeflow/kfp-launcher:2.16.0")
                 env(container, "SSL_CERT_FILE", "/etc/ani-ca/ca.crt")
+                env(container, "CABUNDLE_CONFIGMAP_NAME", "ani-kfp-ca")
+                env(container, "CABUNDLE_KEY_NAME", "ca.crt")
                 for variable in ("DBCONFIG_USER", "DBCONFIG_MYSQLCONFIG_USER"):
                     env(container, variable, secret="ani-kfp-api-db", key="username")
                 for variable in ("DBCONFIG_PASSWORD", "DBCONFIG_MYSQLCONFIG_PASSWORD"):
@@ -137,6 +139,9 @@ def patch(obj):
             elif name == "metadata-grpc-deployment":
                 env(container, "DBCONFIG_USER", secret="ani-kfp-mlmd-db", key="username")
                 env(container, "DBCONFIG_PASSWORD", secret="ani-kfp-mlmd-db", key="password")
+            elif name == "workflow-controller":
+                arguments = container["args"]
+                arguments[arguments.index("--executor-image") + 1] = "ANI_IMAGE_quay.io/argoproj/argoexec:v3.7.3"
             # Preserve upstream workflow GC. Workspace retention uses managed
             # per-execution PVCs without Workflow ownerReferences instead.
     return obj

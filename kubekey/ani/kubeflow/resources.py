@@ -148,7 +148,7 @@ def tenant(site, namespace, mysql_api_rules):
     output += [role("ani-kfp-api-client", namespace, api_rules), rb("ani-kfp-api-client", namespace, "ani-kfp-api-client", "api-client"),
                rb("ani-kfp-runner-api", namespace, "ani-kfp-api-client", "pipeline-runner")]
     runner_rules = [rule("", ["configmaps"], ["get", "list", "watch"]),
-        rule("", ["secrets"], ["get"], ["mlpipeline-minio-artifact"]),
+        rule("", ["secrets"], ["get"], ["mlpipeline-minio-artifact", "ani-kfp-ca"]),
         rule("", ["persistentvolumeclaims"], ["create", "get", "list", "watch"]),
         rule("argoproj.io", ["workflows"], ["get", "list", "watch", "patch", "update"]),
         rule("argoproj.io", ["workflowtaskresults"], ["create", "patch"]),
@@ -162,6 +162,14 @@ def tenant(site, namespace, mysql_api_rules):
         "credentials": {"fromEnv": False, "secretRef": {"secretName": "mlpipeline-minio-artifact", "accessKeyKey": "accesskey", "secretKeyKey": "secretkey"}}}}}
     output += [obj("ConfigMap", "kfp-launcher", namespace, data={"defaultPipelineRoot": "s3://ani-kfp-" + namespace + "/artifacts", "clusterDomain": "cluster.local", "providers": json.dumps(provider)}),
         obj("ConfigMap", "metadata-grpc-configmap", namespace, data={"METADATA_GRPC_SERVICE_HOST": "metadata-grpc-service.kubeflow.svc.cluster.local", "METADATA_GRPC_SERVICE_PORT": "8080"})]
+    repository = {"archiveLogs": True, "s3": {"endpoint": "ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+        "bucket": "ani-kfp-" + namespace, "region": "us-east-1", "insecure": False,
+        "keyFormat": "artifacts/argo/{{workflow.uid}}/{{pod.name}}",
+        "caSecret": {"name": "ani-kfp-ca", "key": "ca.crt"},
+        "accessKeySecret": {"name": "mlpipeline-minio-artifact", "key": "accesskey"},
+        "secretKeySecret": {"name": "mlpipeline-minio-artifact", "key": "secretkey"}}}
+    output.append(obj("ConfigMap", "artifact-repositories", namespace, data={"default-v1": json.dumps(repository)}))
+    output[-1]["metadata"]["annotations"] = {"workflows.argoproj.io/default-artifact-repository": "default-v1"}
     return output
 
 
@@ -178,11 +186,17 @@ def admission(site, runtime_name, image):
         "ani-kfp-trainjob": ("trainer.kubeflow.org", "v1alpha1", "trainjobs", [
             ("object.spec.runtimeRef.name == params.data.runtimeName && (!has(object.spec.runtimeRef.kind) || object.spec.runtimeRef.kind == 'ClusterTrainingRuntime')", "Use the fixed versioned runtime"),
             ("!has(object.spec.trainer) || !has(object.spec.trainer.numNodes) || object.spec.trainer.numNodes == 1", "This runtime supports one node"),
+            ("!has(object.spec.trainer) || !has(object.spec.trainer.numProcPerNode) || object.spec.trainer.numProcPerNode == 1", "This runtime supports one process"),
+            ("!has(object.spec.initializer)", "This runtime does not provision initializer credentials or jobs"),
+            ("!has(object.spec.trainer) || !has(object.spec.trainer.resourcesPerNode) || ((!has(object.spec.trainer.resourcesPerNode.requests) || object.spec.trainer.resourcesPerNode.requests.all(k, k in ['cpu', 'memory'])) && (!has(object.spec.trainer.resourcesPerNode.limits) || object.spec.trainer.resourcesPerNode.limits.all(k, k in ['cpu', 'memory'])))", "Only CPU and memory resource overrides are supported"),
+            ("!has(object.spec.trainer) || !has(object.spec.trainer.resourcesPerNode) || !has(object.spec.trainer.resourcesPerNode.requests) || object.spec.trainer.resourcesPerNode.requests.all(k, quantity(object.spec.trainer.resourcesPerNode.requests[k]).sign() > 0 && quantity(object.spec.trainer.resourcesPerNode.requests[k]).compareTo(quantity(k == 'cpu' ? '2' : '4Gi')) <= 0)", "Training resource requests exceed the administrator bound"),
+            ("!has(object.spec.trainer) || !has(object.spec.trainer.resourcesPerNode) || !has(object.spec.trainer.resourcesPerNode.limits) || object.spec.trainer.resourcesPerNode.limits.all(k, quantity(object.spec.trainer.resourcesPerNode.limits[k]).sign() > 0 && quantity(object.spec.trainer.resourcesPerNode.limits[k]).compareTo(quantity(k == 'cpu' ? '2' : '4Gi')) <= 0)", "Training resource limits exceed the administrator bound"),
             ("!has(object.spec.trainer) || !has(object.spec.trainer.image) || object.spec.trainer.image == params.data.image", "Runtime image overrides must preserve the approved digest"),
             ("!has(object.spec.trainer) || !has(object.spec.trainer.env) || object.spec.trainer.env.all(e, !has(e.valueFrom))", "Training containers cannot acquire Secret or token references"),
             ("!has(object.spec.labels) || object.spec.labels.all(k, k in ['ani.io/execution-id'])", "Training labels cannot impersonate pipeline control pods"),
             ("!has(object.spec.podTemplateOverrides) || object.spec.podTemplateOverrides.all(p, !has(p.metadata) || (!has(p.metadata.labels) || p.metadata.labels.all(k, k in ['ani.io/execution-id'])))", "Pod overrides cannot acquire control network labels"),
             ("!has(object.spec.podTemplateOverrides) || object.spec.podTemplateOverrides.all(p, !has(p.spec) || !has(p.spec.serviceAccountName) || p.spec.serviceAccountName == 'trainer-workload')", "Training service account is fixed and unprivileged"),
+            ("!has(object.spec.podTemplateOverrides) || object.spec.podTemplateOverrides.all(p, !has(p.spec) || ((!has(p.spec.initContainers) || size(p.spec.initContainers) == 0) && (!has(p.spec.imagePullSecrets) || size(p.spec.imagePullSecrets) == 0)))", "Training overrides cannot acquire initializer or image-pull Secrets"),
             ("!has(object.spec.podTemplateOverrides) || object.spec.podTemplateOverrides.all(p, !has(p.spec) || !has(p.spec.volumes) || p.spec.volumes.all(v, has(v.persistentVolumeClaim) && v.persistentVolumeClaim.claimName.startsWith('ani-kfp-workspace-')))", "Only explicit execution PVC volumes are allowed"),
             ("!has(object.spec.podTemplateOverrides) || object.spec.podTemplateOverrides.all(p, !has(p.spec) || !has(p.spec.containers) || p.spec.containers.all(c, !has(c.env) || c.env.all(e, !has(e.valueFrom))))", "Container overrides cannot acquire Secret or token references"),
         ]),

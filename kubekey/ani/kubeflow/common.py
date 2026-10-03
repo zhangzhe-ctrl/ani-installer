@@ -1,0 +1,181 @@
+"""Runtime helpers for the existing ANI first-install role (stdlib only)."""
+import base64
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import time
+
+from resources import RELEASE
+
+PLURALS = {
+    "Namespace": "namespaces", "ServiceAccount": "serviceaccounts", "Secret": "secrets",
+    "ConfigMap": "configmaps", "Service": "services", "PersistentVolumeClaim": "persistentvolumeclaims",
+    "Deployment": "deployments", "Role": "roles", "ClusterRole": "clusterroles",
+    "RoleBinding": "rolebindings", "ClusterRoleBinding": "clusterrolebindings",
+    "CustomResourceDefinition": "customresourcedefinitions", "PriorityClass": "priorityclasses",
+    "MutatingWebhookConfiguration": "mutatingwebhookconfigurations", "ValidatingWebhookConfiguration": "validatingwebhookconfigurations",
+    "Certificate": "certificates", "NetworkPolicy": "networkpolicies", "ResourceQuota": "resourcequotas",
+    "LimitRange": "limitranges", "ValidatingAdmissionPolicy": "validatingadmissionpolicies",
+    "ValidatingAdmissionPolicyBinding": "validatingadmissionpolicybindings", "ClusterTrainingRuntime": "clustertrainingruntimes",
+    "Pod": "pods", "Job": "jobs", "TrainJob": "trainjobs", "Workflow": "workflows",
+}
+
+
+def atomic(path, value):
+    path = pathlib.Path(path)
+    temporary = path.with_suffix(path.suffix + ".new")
+    with temporary.open("x") as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def load_site(path, kubeconfig=None):
+    site = json.loads(pathlib.Path(path).read_text())
+    if site["release"] != RELEASE or site["workspace_mode"] != "managed-execution-pvc-v1":
+        raise ValueError("unsupported Kubeflow release or workspace mode")
+    if kubeconfig is not None and kubeconfig != site["kubeconfig"]:
+        raise ValueError("checker kubeconfig differs from this install run")
+    for key in ("kubeconfig", "artifact_root", "logs_dir", "connections_dir"):
+        if not pathlib.Path(site[key]).is_absolute() or not pathlib.Path(site[key]).exists():
+            raise ValueError("missing fixed execution path: " + key)
+    for original, image in site["images"].items():
+        if not image.startswith(site["registry"] + "/") or not re.fullmatch(r".+@sha256:[a-f0-9]{64}", image):
+            raise ValueError("image is not mapped to an approved offline platform digest: " + original)
+    return site
+
+
+def endpoint(obj):
+    version = obj["apiVersion"]
+    prefix = "/api/v1" if version == "v1" else "/apis/" + version
+    namespace = obj["metadata"].get("namespace")
+    if namespace:
+        prefix += "/namespaces/" + namespace
+    return prefix + "/" + PLURALS[obj["kind"]] + "/" + obj["metadata"]["name"]
+
+
+def identity(obj):
+    return "/".join((obj["kind"], obj["metadata"].get("namespace", "_"), obj["metadata"]["name"]))
+
+
+class Cluster:
+    def __init__(self, site, directory):
+        self.site = site
+        self.directory = pathlib.Path(directory)
+        self.directory.mkdir(mode=0o700)
+        self.command = ["kubectl", "--kubeconfig", site["kubeconfig"], "--request-timeout=30s"]
+        self.writes = []
+        self.sequence = 0
+
+    def call(self, args, value=None, sensitive=False, timeout=45):
+        result = subprocess.run(self.command + args, input=None if value is None else json.dumps(value),
+                                text=True, capture_output=True, timeout=timeout)
+        if result.returncode:
+            if sensitive:
+                raise RuntimeError("kubectl sensitive operation failed rc=" + str(result.returncode))
+            raise RuntimeError("kubectl " + " ".join(args[:3]) + ": " + result.stderr.strip())
+        return result.stdout
+
+    def read(self, obj):
+        result = subprocess.run(self.command + ["get", "--raw", endpoint(obj)], text=True, capture_output=True, timeout=45)
+        if result.returncode:
+            if "(NotFound)" in result.stderr:
+                return None
+            raise RuntimeError("object lookup failed: " + identity(obj) + ": " + result.stderr.strip())
+        return json.loads(result.stdout)
+
+    def owned(self, obj):
+        existing = self.read(obj)
+        if existing and existing["metadata"].get("labels", {}).get("ani.io/managed-by") != self.site["owner"]:
+            raise RuntimeError("foreign object; refusing mutation: " + identity(obj))
+        if existing and existing["metadata"].get("deletionTimestamp"):
+            raise RuntimeError("object is terminating: " + identity(obj))
+        return existing
+
+    def apply(self, objects):
+        # Preflight the whole dependency group before its first mutation.
+        prepared = []
+        for obj in objects:
+            obj["metadata"].setdefault("labels", {})["ani.io/managed-by"] = self.site["owner"]
+            old = self.owned(obj)
+            if old and obj["kind"] == "Secret":
+                # Controller-generated cert bytes and stable credentials survive retries.
+                if "data" in obj and obj["data"] != old.get("data"):
+                    raise RuntimeError("refusing credential rotation: " + identity(obj))
+                continue
+            if old:
+                obj["metadata"].update(uid=old["metadata"]["uid"], resourceVersion=old["metadata"]["resourceVersion"])
+            secret = obj["kind"] == "Secret"
+            verb = ["apply", "--server-side", "--field-manager=ani-kubeflow", "--validate=strict"] if old else ["create", "--validate=strict"]
+            self.call(verb + ["--dry-run=server", "-f", "-", "-o", "json"], obj, sensitive=secret)
+            prepared.append((obj, verb, secret))
+        for obj, verb, secret in prepared:
+            self.sequence += 1
+            name = identity(obj)
+            pending = {"sequence": self.sequence, "identity": name, "result": "UNKNOWN", "action": verb[0]}
+            self.writes.append(pending)
+            atomic(self.directory / "writes.json", self.writes)
+            # Unknown timeout/cancellation is reconciled by read-only investigation,
+            # never automatically sent again under a fresh name.
+            response = json.loads(self.call(verb + ["-f", "-", "-o", "json"], obj, sensitive=secret))
+            pending.update(result="CONFIRMED", uid=response["metadata"]["uid"], generation=response["metadata"].get("generation"))
+            atomic(self.directory / "writes.json", self.writes)
+
+    def wait(self, obj, predicate, timeout=600):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            value = self.read(obj)
+            if value and predicate(value):
+                return value
+            time.sleep(3)
+        raise TimeoutError("deadline exceeded: " + identity(obj))
+
+    def deployment(self, obj):
+        def ready(value):
+            status = value.get("status", {})
+            replicas = value["spec"].get("replicas", 1)
+            return (status.get("observedGeneration", 0) >= value["metadata"].get("generation", 0)
+                    and status.get("updatedReplicas", 0) == replicas and status.get("availableReplicas", 0) == replicas
+                    and status.get("readyReplicas", 0) == replicas and status.get("replicas", 0) == replicas)
+        value = self.wait(obj, ready)
+        selector = ",".join(k + "=" + v for k, v in value["spec"]["selector"]["matchLabels"].items())
+        pods = json.loads(self.call(["get", "pods", "-n", obj["metadata"]["namespace"], "-l", selector, "-o", "json"]))["items"]
+        if not pods or any(p.get("metadata", {}).get("deletionTimestamp") or not any(c["type"] == "Ready" and c["status"] == "True" for c in p.get("status", {}).get("conditions", [])) for p in pods):
+            raise RuntimeError("Deployment conditions disagree with current Pod conditions: " + identity(obj))
+        return {"uid": value["metadata"]["uid"], "generation": value["metadata"].get("generation"),
+                "pods": [{"uid": p["metadata"]["uid"], "name": p["metadata"]["name"], "node": p["spec"].get("nodeName"),
+                          "containers": [{"name": c["name"], "imageID": c.get("imageID"), "restarts": c.get("restartCount")} for c in p["status"].get("containerStatuses", [])]} for p in pods]}
+
+    def evidence(self):
+        # No Secret, pod environment or arbitrary ConfigMap content in diagnostics.
+        for namespace in ("kubeflow", "kubeflow-system", *self.site["tenants"]):
+            for resource in ("events", "pods", "endpointslices", "persistentvolumeclaims"):
+                result = subprocess.run(self.command + ["get", resource, "-n", namespace, "-o", "json"], text=True, capture_output=True, timeout=45)
+                if result.returncode == 0:
+                    value = json.loads(result.stdout)
+                    if resource == "pods":
+                        for item in value.get("items", []):
+                            item.pop("spec", None)
+                            item.get("metadata", {}).pop("annotations", None)
+                    atomic(self.directory / (namespace + "-" + resource + ".json"), value)
+
+
+def decode(secret, key):
+    return base64.b64decode(secret["data"][key]).decode()
+
+
+def assets(root):
+    root = pathlib.Path(root)
+    lock = json.loads((root / "assets.lock.json").read_text())
+    for name, expected in lock["files"].items():
+        if pathlib.Path(name).is_absolute() or ".." in pathlib.Path(name).parts:
+            raise ValueError("unsafe asset path")
+        if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
+            raise ValueError("offline asset digest differs: " + name)
+    return root
