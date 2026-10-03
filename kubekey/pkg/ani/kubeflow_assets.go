@@ -12,6 +12,7 @@ import (
 
 // The running kk carries the reviewed source approval. Regenerating the
 // artifact's SHA256SUMS or its own asset lock cannot approve different scripts.
+//
 //go:embed kubeflow-assets.lock.json
 var kubeflowAssetsApproval []byte
 

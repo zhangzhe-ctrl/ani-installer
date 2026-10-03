@@ -5569,6 +5569,16 @@
                   "name": "envoy-admin"
                 }
               ],
+              "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "256Mi"
+                }
+              },
               "securityContext": {
                 "allowPrivilegeEscalation": false,
                 "capabilities": {
@@ -5724,6 +5734,16 @@
                 },
                 "timeoutSeconds": 2
               },
+              "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "256Mi"
+                }
+              },
               "securityContext": {
                 "allowPrivilegeEscalation": false,
                 "capabilities": {
@@ -5796,6 +5816,16 @@
               ],
               "image": "ANI_IMAGE_ghcr.io/kubeflow/kfp-metadata-writer:2.16.0",
               "name": "main",
+              "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "256Mi"
+                }
+              },
               "securityContext": {
                 "allowPrivilegeEscalation": false,
                 "capabilities": {
@@ -6165,6 +6195,10 @@
                 "timeoutSeconds": 2
               },
               "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
                 "requests": {
                   "cpu": "250m",
                   "memory": "500Mi"
@@ -6282,6 +6316,10 @@
               "imagePullPolicy": "IfNotPresent",
               "name": "ml-pipeline-persistenceagent",
               "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
                 "requests": {
                   "cpu": "120m",
                   "memory": "500Mi"
@@ -6419,6 +6457,16 @@
                   "name": "http"
                 }
               ],
+              "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "256Mi"
+                }
+              },
               "securityContext": {
                 "allowPrivilegeEscalation": false,
                 "capabilities": {
@@ -6662,6 +6710,10 @@
                 }
               ],
               "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
                 "requests": {
                   "cpu": "100m",
                   "memory": "500Mi"
@@ -35377,6 +35429,7 @@
               },
               "resources": {
                 "limits": {
+                  "cpu": "2",
                   "memory": "4Gi"
                 },
                 "requests": {
@@ -35490,6 +35543,16 @@
                 "initialDelaySeconds": 10,
                 "periodSeconds": 15,
                 "timeoutSeconds": 3
+              },
+              "resources": {
+                "limits": {
+                  "cpu": "2",
+                  "memory": "2Gi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "256Mi"
+                }
               },
               "securityContext": {
                 "allowPrivilegeEscalation": false,

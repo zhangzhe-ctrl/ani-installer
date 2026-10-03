@@ -115,6 +115,18 @@ def install(cluster, root, report):
     if "-----BEGIN CERTIFICATE-----" not in ca or "PRIVATE KEY" in ca:
         raise ValueError("public CA contract differs")
     site["kubernetes_service_ip"] = cluster.read(obj("Service", "kubernetes", "default"))["spec"]["clusterIP"]
+    pipeline_role = next(v["rules"] for v in values if v["kind"] == "Role" and v["metadata"]["name"] == "ml-pipeline")
+    approved_runtime = runtime(site["images"])
+    dynamic = entry(site, site["images"]) + isolation(site) + admission(site, approved_runtime["metadata"]["name"], site["images"]["ani.local/kubeflow-execution:26.03-v1"])
+    dynamic.append(approved_runtime)
+    for namespace in site["tenants"]:
+        dynamic += tenant(site, namespace, pipeline_role)
+    for namespace in ("kubeflow", *site["tenants"]):
+        dynamic += [obj("ConfigMap", "ani-kfp-ca", namespace), obj("Secret", "ani-kfp-ca", namespace)]
+    dynamic += [obj("Secret", name, "kubeflow") for name in ("ani-kfp-mysql-root", "ani-kfp-api-db", "ani-kfp-mlmd-db", "ani-kfp-mysql-init", "ani-kfp-control-s3")]
+    dynamic += [obj("Secret", "mlpipeline-minio-artifact", namespace) for namespace in site["tenants"]]
+    for value in dynamic:
+        cluster.owned(value)
     cluster_uid = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
     report["clusterUid"] = cluster_uid
     atomic(cluster.directory / "report.json", report)
@@ -146,7 +158,6 @@ def install(cluster, root, report):
     report["completedPhases"].append("TRAINER_JOBSET_CONTROLLERS_WEBHOOK_CA")
     atomic(cluster.directory / "report.json", report)
 
-    pipeline_role = next(v["rules"] for v in values if v["kind"] == "Role" and v["metadata"]["name"] == "ml-pipeline")
     for namespace in site["tenants"]:
         resources = tenant(site, namespace, pipeline_role)
         cluster.apply([v for v in resources if v["kind"] == "Namespace"])
@@ -156,7 +167,6 @@ def install(cluster, root, report):
         public_ca += [obj("ConfigMap", "ani-kfp-ca", namespace, data={"ca.crt": ca}),
                       obj("Secret", "ani-kfp-ca", namespace, type="Opaque", data={"ca.crt": base64.b64encode(ca.encode()).decode()})]
     cluster.apply(public_ca)
-    approved_runtime = runtime(site["images"])
     cluster.apply(admission(site, approved_runtime["metadata"]["name"], site["images"]["ani.local/kubeflow-execution:26.03-v1"]))
     cluster.apply(isolation(site))
     scoped_storage(cluster, ca)
