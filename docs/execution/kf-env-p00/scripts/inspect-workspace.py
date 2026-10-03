@@ -17,6 +17,8 @@ parser.add_argument("--site", required=True)
 parser.add_argument("--private-report", required=True)
 parser.add_argument("--reader-node", required=True)
 parser.add_argument("--output", required=True)
+parser.add_argument("--diagnostic-failure", action="store_true",
+                    help="export an earlier terminal setup failure; never an acceptance PASS")
 args = parser.parse_args()
 site = json.loads(pathlib.Path(args.site).read_text())
 material = pathlib.Path(site["artifact_root"]) / "manifests/kubeflow" / site["release"]
@@ -37,14 +39,36 @@ atomic(output / "report.json", report)
 try:
     record = json.loads(pathlib.Path(args.private_report).read_text())
     namespace, execution, mode = record["namespace"], record["execution"], record["mode"]
-    if namespace not in site["tenants"] or record["status"] != "RUN_STATE_CORRELATED" or not execution.startswith("env-"):
+    required_status = "FAIL" if args.diagnostic_failure else "RUN_STATE_CORRELATED"
+    if namespace not in site["tenants"] or record["status"] != required_status or not execution.startswith("env-"):
         raise ValueError("not an accepted environment execution receipt")
-    workspace, receipt = record["workspace"], record["creationReceipt"]
-    if workspace["creationResult"] != "CONFIRMED" or receipt["workspaceUid"] != workspace["uid"] or receipt["execution"] != execution:
+    workspace, receipt = record["workspace"], record.get("creationReceipt", {})
+    if workspace["creationResult"] != "CONFIRMED" or (receipt and (receipt["workspaceUid"] != workspace["uid"] or receipt["execution"] != execution)):
         raise ValueError("workspace create response differs")
+    if not args.diagnostic_failure and not receipt:
+        raise ValueError("external training receipt is missing")
     claim = cluster.read(obj("PersistentVolumeClaim", workspace["name"], namespace))
     if not claim or claim["metadata"]["uid"] != workspace["uid"] or claim["metadata"].get("ownerReferences") or claim["status"].get("phase") != "Bound":
         raise ValueError("retained workspace identity/lifecycle differs")
+    if args.diagnostic_failure:
+        if record["run"]["creationResult"] != "CONFIRMED" or record["run"]["state"] != "FAILED":
+            raise ValueError("diagnostic source is not a confirmed terminal failed Run")
+        workflows = json.loads(cluster.call(["get", "workflows", "-n", namespace, "-o", "json"]))["items"]
+        matched = [w for w in workflows if w["metadata"].get("labels", {}).get("pipeline/runid") == record["run"]["id"]]
+        if len(matched) != 1 or matched[0].get("status", {}).get("phase") != "Failed":
+            raise ValueError("actual failed Workflow differs")
+        pods = json.loads(cluster.call(["get", "pods", "-n", namespace, "-o", "json"]))["items"]
+        using = [p for p in pods if any(v.get("persistentVolumeClaim", {}).get("claimName") == workspace["name"] for v in p["spec"].get("volumes", []))]
+        if any(p.get("status", {}).get("phase") not in ("Failed", "Succeeded") for p in using):
+            raise ValueError("a live Pod still uses the diagnostic workspace")
+        job = cluster.read(obj("TrainJob", "ani-kfp-train-" + execution, namespace))
+        if receipt:
+            if not job or job["metadata"]["uid"] != receipt["trainJobUid"] or not any(c["type"] == "Complete" and c["status"] == "True" for c in job.get("status", {}).get("conditions", [])):
+                raise ValueError("diagnostic completed TrainJob differs")
+        elif job:
+            raise ValueError("unexpected TrainJob without a creation receipt")
+        report.update(diagnostic=True, acceptance="NOT_ATTESTED", workflowUid=matched[0]["metadata"]["uid"],
+                      originalReportSha256=hashlib.sha256(pathlib.Path(args.private_report).read_bytes()).hexdigest())
     node = json.loads(cluster.call(["get", "node", args.reader_node, "-o", "json"]))
     if not any(a["type"] == "InternalIP" and a["address"] in site["node_addresses"] for a in node["status"]["addresses"]):
         raise ValueError("reader node is outside the fixed target")
@@ -83,12 +107,45 @@ else:
 assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
 print(json.dumps(result,sort_keys=True))
 '''
+    if args.diagnostic_failure:
+        command = r'''
+import base64,errno,hashlib,json,pathlib,sys
+execution,mode,workspace_uid,train_uid=sys.argv[1:]
+root=pathlib.Path('/workspace')
+assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
+try:
+    (root/'readback-negative').write_text('must-not-write')
+except OSError as error:
+    assert error.errno in (errno.EROFS,errno.EACCES)
+    readonly_errno=error.errno
+else:
+    raise RuntimeError('diagnostic mount was writable')
+files={}
+allowed={'input/dataset.json','output/unique.json','output/correlation.json','output/model.json'}
+for path in root.rglob('*'):
+    assert not path.is_symlink()
+    if path.is_dir():
+        assert path.relative_to(root).as_posix() in ('input','output')
+        continue
+    relative=path.relative_to(root).as_posix()
+    assert relative in allowed and path.is_file() and path.stat().st_size<=65536
+    body=path.read_bytes();data=json.loads(body)
+    assert data['execution']==execution
+    files[relative]={'sha256':hashlib.sha256(body).hexdigest(),'size':len(body),'base64':base64.b64encode(body).decode()}
+if train_uid:
+    assert set(files)==allowed
+    correlation=json.loads(base64.b64decode(files['output/correlation.json']['base64']))
+    assert correlation['workspace']['uid']==workspace_uid and correlation['trainJob']['uid']==train_uid
+else:
+    assert set(files)<= {'input/dataset.json'}
+print(json.dumps({'execution':execution,'files':files,'readOnlyMountErrno':readonly_errno},sort_keys=True))
+'''
     security = {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}, "readOnlyRootFilesystem": True}
     pod = obj("Pod", name, namespace, spec={"serviceAccountName": "trainer-workload", "automountServiceAccountToken": False,
         "nodeSelector": {"kubernetes.io/hostname": args.reader_node}, "restartPolicy": "Never",
         "activeDeadlineSeconds": 120, "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{"name": "reader", "image": site["images"]["ani.local/kubeflow-execution:26.03-v1"], "command": ["python", "-c", command],
-            "args": [execution, mode, workspace["uid"], receipt["trainJobUid"]], "securityContext": security,
+            "args": [execution, mode, workspace["uid"], receipt.get("trainJobUid", "")], "securityContext": security,
             "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "256Mi"}},
             "volumeMounts": [{"name": "workspace", "mountPath": "/workspace", "readOnly": True}]}],
         "volumes": [{"name": "workspace", "persistentVolumeClaim": {"claimName": workspace["name"], "readOnly": True}}]})
@@ -120,7 +177,7 @@ print(json.dumps(result,sort_keys=True))
     final = cluster.read(obj("PersistentVolumeClaim", workspace["name"], namespace))
     if final["metadata"]["uid"] != workspace["uid"] or final["metadata"].get("ownerReferences"):
         raise RuntimeError("workspace lifecycle changed during readback")
-    report.update(status="FILES_READ_BACK", fileEvidence=data, readerImageID=states[0].get("imageID"), retained=True)
+    report.update(status="DIAGNOSTIC_FILES_EXPORTED" if args.diagnostic_failure else "FILES_READ_BACK", fileEvidence=data, readerImageID=states[0].get("imageID"), retained=True)
     atomic(output / "report.json", report)
 except BaseException as error:
     report.update(status="FAIL", error=str(error))
