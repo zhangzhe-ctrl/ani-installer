@@ -21,6 +21,7 @@ parser.add_argument("--site", required=True)
 parser.add_argument("--private-success-report", required=True)
 parser.add_argument("--model-sha256", required=True)
 parser.add_argument("--output", required=True)
+parser.add_argument("--resume-report", help="reuse confirmed objects and reconcile the earlier failed negative upload; no replacement positive uploads")
 args = parser.parse_args()
 site = json.loads(pathlib.Path(args.site).read_text())
 material = pathlib.Path(site["artifact_root"]) / "manifests/kubeflow" / site["release"]
@@ -35,11 +36,22 @@ output = pathlib.Path(args.output)
 if not output.is_absolute() or not re.fullmatch(r"[a-f0-9]{64}", args.model_sha256):
     raise ValueError("absolute output and actual model hash required")
 cluster = Cluster(site, output)
-report = {"schema": "ani.kubeflow.s3-data.v1", "status": "IN_PROGRESS", "lock": product_lock(),
+    report = {"schema": "ani.kubeflow.s3-data.v1", "status": "IN_PROGRESS", "lock": product_lock(),
           "requests": [], "retainedObjects": [], "cleanup": "NOT_REQUESTED",
           "sourceSha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()}
 atomic(output / "report.json", report)
 try:
+    previous = None
+    if args.resume_report:
+        previous_path = pathlib.Path(args.resume_report)
+        previous = json.loads(previous_path.read_text())
+        if previous["schema"] != report["schema"] or previous["status"] != "FAIL" or len(previous["retainedObjects"]) != 3:
+            raise ValueError("not the earlier confirmed three-identity S3 attempt")
+        unknown = [r for r in previous["requests"] if r["result"] == "UNKNOWN"]
+        if len(unknown) != 1 or unknown[0]["identity"] != "kubeflow" or unknown[0].get("exitCode") != 7 or not unknown[0]["mutation"]:
+            raise ValueError("unsupported unknown S3 outcome; read-only investigation required")
+        report.update(requests=previous["requests"], retainedObjects=previous["retainedObjects"],
+                      resumedFromSha256=hashlib.sha256(previous_path.read_bytes()).hexdigest())
     record = json.loads(pathlib.Path(args.private_success_report).read_text())
     if record["status"] != "RUN_STATE_CORRELATED" or record["mode"] != "success" or record["run"]["state"] != "SUCCEEDED" or record["namespace"] not in site["tenants"]:
         raise ValueError("confirmed successful execution required")
@@ -76,24 +88,36 @@ try:
                              "secret_key": password, "region": "us-east-1", "signature": "v4", "bucket_lookup": "path",
                              "insecure": False, "ca_bundle": str(work / "ca.crt")}
                     aliases.append("[[aliases]]\n" + "\n".join(k + " = " + json.dumps(v) for k, v in alias.items()))
+                if previous:
+                    # Root is used solely to resolve the exact earlier unknown
+                    # object outcome. All acceptance I/O uses scoped aliases.
+                    root = cluster.owned(obj("Secret", "ani-rustfs-root", "ani-platform"))
+                    root_access, root_secret = decode(root, "RUSTFS_ACCESS_KEY"), decode(root, "RUSTFS_SECRET_KEY")
+                    credentials.extend((root_access, root_secret))
+                    alias = {"name": "reconcile-root", "endpoint": "https://127.0.0.1:" + str(port), "access_key": root_access,
+                             "secret_key": root_secret, "region": "us-east-1", "signature": "v4", "bucket_lookup": "path",
+                             "insecure": False, "ca_bundle": str(work / "ca.crt")}
+                    aliases.append("[[aliases]]\n" + "\n".join(k + " = " + json.dumps(v) for k, v in alias.items()))
                 (config / "config.toml").write_text("schema_version = 1\n" + "\n".join(aliases) + "\n")
                 os.chmod(config / "config.toml", 0o600)
-                environment = dict(os.environ, RC_CONFIG_DIR=str(config))
+                environment = dict(os.environ, RC_CONFIG_DIR=str(config), AWS_MAX_ATTEMPTS="1")
                 executable = str(pathlib.Path(site["artifact_root"]) / "bin/rc")
 
-                def request(arguments, identity, mutation=False, denied=False):
+                def request(arguments, identity, mutation=False, denied=False, body=None):
                     row = {"identity": identity, "operation": arguments[:2], "result": "UNKNOWN", "mutation": mutation}
                     report["requests"].append(row)
                     atomic(output / "report.json", report)
-                    result = subprocess.run([executable] + arguments, capture_output=True, timeout=60, env=environment)
+                    result = subprocess.run([executable] + arguments, input=body, capture_output=True, timeout=60, env=environment)
                     row["exitCode"] = result.returncode
                     if denied:
                         message = (result.stdout + result.stderr).decode(errors="replace")
-                        if result.returncode == 0 or not re.search(r"AccessDenied|Access Denied|Forbidden|StatusCode.?403|status.?403", message, re.I):
-                            raise RuntimeError("negative S3 request lacks explicit access denial")
                         for credential in credentials:
                             message = message.replace(credential, "<redacted>")
-                        row.update(result="DENIED", diagnostic=message[:2048])
+                        row["diagnostic"] = message[:4096]
+                        atomic(output / "report.json", report)
+                        if result.returncode == 0 or not re.search(r"AccessDenied|Access Denied|Forbidden|StatusCode.?403|status.?403", message, re.I):
+                            raise RuntimeError("negative S3 request lacks explicit access denial")
+                        row["result"] = "DENIED"
                     elif result.returncode:
                         raise RuntimeError("scoped S3 request failed rc=" + str(result.returncode))
                     else:
@@ -102,6 +126,18 @@ try:
                     return result.stdout
 
                 attempt = "env-s3-" + uuid.uuid4().hex
+                if previous:
+                    keys = {r["key"].rsplit("/", 1)[-1] for r in previous["retainedObjects"]}
+                    if len(keys) != 1 or not re.fullmatch(r"env-s3-[a-f0-9]{32}\.json", next(iter(keys))):
+                        raise ValueError("earlier unique S3 keys differ")
+                    attempt = next(iter(keys))[:-5]
+                    target = "reconcile-root/ani-kfp-control/outside/" + attempt + ".json"
+                    result = subprocess.run([executable, "--json", "object", "stat", target], capture_output=True, timeout=60, env=environment)
+                    message = (result.stdout + result.stderr).decode(errors="replace")
+                    if result.returncode != 5 or not re.search(r"NoSuchKey|Not.?Found|not exist|status.?404", message, re.I):
+                        raise RuntimeError("earlier unknown upload is not confirmed absent; no resend")
+                    unknown[0].update(result="RECONCILED_NOT_CREATED", reconciliation={"method": "read-only root HEAD of exact unknown key", "exitCode": result.returncode})
+                    atomic(output / "report.json", report)
                 objects = {}
                 for namespace, secret_name, bucket, prefix in bindings:
                     body = json.dumps({"attempt": attempt, "namespace": namespace}, sort_keys=True).encode()
@@ -109,8 +145,13 @@ try:
                     path.write_bytes(body)
                     key = prefix + "/environment-probes/" + attempt + ".json"
                     destination = namespace + "/" + bucket + "/" + key
-                    request(["put", str(path), destination, "--overwrite", "false", "--retry-attempts", "1"], namespace, mutation=True)
-                    report["retainedObjects"].append({"namespace": namespace, "bucket": bucket, "key": key, "sha256": hashlib.sha256(body).hexdigest()})
+                    if previous:
+                        matched = [r for r in previous["retainedObjects"] if r["namespace"] == namespace]
+                        if len(matched) != 1 or matched[0] != {"namespace": namespace, "bucket": bucket, "key": key, "sha256": hashlib.sha256(body).hexdigest()}:
+                            raise ValueError("earlier confirmed scoped object differs")
+                    else:
+                        request(["put", str(path), destination, "--overwrite", "false", "--retry-attempts", "1"], namespace, mutation=True)
+                        report["retainedObjects"].append({"namespace": namespace, "bucket": bucket, "key": key, "sha256": hashlib.sha256(body).hexdigest()})
                     actual = request(["object", "show", destination], namespace)
                     if actual != body:
                         raise RuntimeError("scoped S3 byte readback differs")
@@ -121,7 +162,7 @@ try:
                         if other != namespace:
                             request(["--json", "object", "show", namespace + "/" + other_bucket + "/" + key], namespace, denied=True)
                     path = objects[namespace][2]
-                    request(["--json", "put", str(path), namespace + "/" + bucket + "/outside/" + attempt + ".json", "--overwrite", "false", "--retry-attempts", "1"], namespace, mutation=True, denied=True)
+                    request(["--json", "pipe", namespace + "/" + bucket + "/outside/" + attempt + ".json"], namespace, mutation=True, denied=True, body=path.read_bytes())
                 namespace = record["namespace"]
                 bucket = "ani-kfp-" + namespace
                 prefix = namespace + "/" + bucket + "/artifacts/ani-environment-handoff/" + run_id + "/external-training/"

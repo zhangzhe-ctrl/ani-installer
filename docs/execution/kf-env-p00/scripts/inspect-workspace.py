@@ -51,7 +51,9 @@ try:
     if not claim or claim["metadata"]["uid"] != workspace["uid"] or claim["metadata"].get("ownerReferences") or claim["status"].get("phase") != "Bound":
         raise ValueError("retained workspace identity/lifecycle differs")
     if args.diagnostic_failure:
-        if record["run"]["creationResult"] != "CONFIRMED" or record["run"]["state"] != "FAILED":
+        partial_stop = (mode == "stop" and record.get("stop", {}).get("trainJobResult") == "CONFIRMED"
+                        and record.get("errorStatus") == 403 and not record["stop"].get("runResult"))
+        if record["run"]["creationResult"] != "CONFIRMED" or (record["run"]["state"] != "FAILED" and not partial_stop):
             raise ValueError("diagnostic source is not a confirmed terminal failed Run")
         workflows = json.loads(cluster.call(["get", "workflows", "-n", namespace, "-o", "json"]))["items"]
         matched = [w for w in workflows if w["metadata"].get("labels", {}).get("pipeline/runid") == record["run"]["id"]]
@@ -63,7 +65,8 @@ try:
             raise ValueError("a live Pod still uses the diagnostic workspace")
         job = cluster.read(obj("TrainJob", "ani-kfp-train-" + execution, namespace, api="trainer.kubeflow.org/v1alpha1"))
         if receipt:
-            if not job or job["metadata"]["uid"] != receipt["trainJobUid"] or not any(c["type"] == "Complete" and c["status"] == "True" for c in job.get("status", {}).get("conditions", [])):
+            condition = "Suspended" if partial_stop else "Complete"
+            if not job or job["metadata"]["uid"] != receipt["trainJobUid"] or not any(c["type"] == condition and c["status"] == "True" for c in job.get("status", {}).get("conditions", [])) or (partial_stop and not job["spec"].get("suspend")):
                 raise ValueError("diagnostic completed TrainJob differs")
         elif job:
             raise ValueError("unexpected TrainJob without a creation receipt")
@@ -133,9 +136,11 @@ for path in root.rglob('*'):
     assert data['execution']==execution
     files[relative]={'sha256':hashlib.sha256(body).hexdigest(),'size':len(body),'base64':base64.b64encode(body).decode()}
 if train_uid:
-    assert set(files)==allowed
+    assert set(files)==(allowed-{'output/model.json'} if mode=='stop' else allowed)
     correlation=json.loads(base64.b64decode(files['output/correlation.json']['base64']))
+    unique=json.loads(base64.b64decode(files['output/unique.json']['base64']))
     assert correlation['workspace']['uid']==workspace_uid and correlation['trainJob']['uid']==train_uid
+    assert unique['inputSha256']==correlation['inputSha256']==files['input/dataset.json']['sha256']
 else:
     assert set(files)<= {'input/dataset.json'}
 print(json.dumps({'execution':execution,'files':files,'readOnlyMountErrno':readonly_errno},sort_keys=True))
