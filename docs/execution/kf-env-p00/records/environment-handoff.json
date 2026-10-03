@@ -1,7 +1,7 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV02-ENV04-role-attempt-04-fail-quantity-cel-source-repair",
+  "checkpoint": "ENV02-ENV04-role-attempt-06-fail-binding-defaults-source-repair",
   "integration_status": "IN_PROGRESS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
@@ -42,7 +42,7 @@
     },
     "candidate_images_digest_locked": true,
     "complete_release_material_frozen": false,
-    "registry_readback_status": "PASS_15_KUBEFLOW_IMAGES_DEVELOPMENT_ONLY_COMPLETE_RELEASE_NOT_RUN",
+    "registry_readback_status": "PASS_104_BUILD_HOST_CONTENT_AND_15_NODE_DEVELOPMENT / FINAL_TARGET_NOT_RUN",
     "runtime_pull_status": "NOT_RUN"
   },
   "kfp": {
@@ -77,7 +77,7 @@
     "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "REGISTRY_BYTES_PASS / RUNTIME_NOT_RUN"}
   },
   "development_deployment": {
-    "role_source": "c34bd9c711cbcced6d1929941a84a582795b6064",
+    "role_source": "a455c040c91020bf86134afc0b15ac6e0d9a5dcf",
     "lab_invocation_source": "e8a87a0",
     "product_lock": "/var/lib/ani-installer/ani-install.lock",
     "registry": "172.16.101.10:5001",
@@ -87,7 +87,7 @@
     "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-01/logs",
     "package_sha256": "deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74",
     "acceptance": "NOT_RUN",
-    "latest_attempt": {"number": 4, "result": "FAIL", "exit_code": 1, "completed_writes": 109, "first_failure": "server dry-run CEL compiler has no Quantity.sign overload", "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-04/logs", "controllers_webhook_ca": "PASS_CURRENT_UIDS_NO_RESTART", "downstream_storage_database_kfp": "NOT_RUN"}
+    "latest_attempt": {"number": 6, "result": "FAIL", "exit_code": 1, "completed_writes": 106, "first_failure": "server dry-run binding atomic matchResources default-value conflict", "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-06/logs", "controllers_webhook_ca": "PASS_CURRENT_UIDS_NO_RESTART", "downstream_storage_database_kfp": "NOT_RUN"}
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt", "records/integration-attempts.md"],
   "blocked_items": [

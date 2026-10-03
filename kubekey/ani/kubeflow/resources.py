@@ -209,11 +209,12 @@ def admission(site, runtime_name, image):
     for name, (group, version, resource, expressions) in policies.items():
         output.append(obj("ValidatingAdmissionPolicy", name, api="admissionregistration.k8s.io/v1", spec={
             "failurePolicy": "Fail", "paramKind": {"apiVersion": "v1", "kind": "ConfigMap"},
-            "matchConstraints": {"resourceRules": [{"apiGroups": [group], "apiVersions": [version], "operations": ["CREATE", "UPDATE"], "resources": [resource], "scope": "*"}]},
+            "matchConstraints": {"matchPolicy": "Equivalent", "namespaceSelector": {}, "objectSelector": {},
+                                 "resourceRules": [{"apiGroups": [group], "apiVersions": [version], "operations": ["CREATE", "UPDATE"], "resources": [resource], "scope": "*"}]},
             "validations": [{"expression": expression, "message": message} for expression, message in expressions]}))
         output.append(obj("ValidatingAdmissionPolicyBinding", name, api="admissionregistration.k8s.io/v1", spec={
             "policyName": name, "paramRef": {"name": "ani-workspace-policy", "parameterNotFoundAction": "Deny"},
-            "validationActions": ["Deny"], "matchResources": {"namespaceSelector": selector}}))
+            "validationActions": ["Deny"], "matchResources": {"matchPolicy": "Equivalent", "namespaceSelector": selector, "objectSelector": {}}}))
     for namespace in site["tenants"]:
         output.append(obj("ConfigMap", "ani-workspace-policy", namespace, data={"storageClass": site["workspace_class"],
             "maxSize": site["workspace_max_size"], "runtimeName": runtime_name, "image": image}))

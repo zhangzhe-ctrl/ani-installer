@@ -98,7 +98,7 @@ class Cluster:
             raise RuntimeError("object is terminating: " + identity(obj))
         return existing
 
-    def apply(self, objects):
+    def prepare(self, objects):
         # Preflight the whole dependency group before its first mutation.
         prepared = []
         for obj in objects:
@@ -145,6 +145,10 @@ class Cluster:
                 verb = ["replace", "--field-manager=ani-kubeflow", "--validate=strict"]
             self.call(verb + ["--dry-run=server", "-f", "-", "-o", "json"], obj, sensitive=secret)
             prepared.append((obj, verb, secret))
+        return prepared
+
+    def apply(self, objects):
+        prepared = self.prepare(objects)
         for obj, verb, secret in prepared:
             self.sequence += 1
             name = identity(obj)
