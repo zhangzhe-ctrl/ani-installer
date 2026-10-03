@@ -104,10 +104,11 @@ print(json.dumps({'execution': execution, 'loss': loss, 'inputSha256': expected}
             "podTemplateOverrides": [{"targetJobs": [{"name": "node"}],
                 "metadata": {"labels": {"ani.io/execution-id": execution}},
                 "spec": {"serviceAccountName": "trainer-workload", "nodeSelector": {"kubernetes.io/hostname": trainer_node},
-                    "volumes": [{"name": "workspace", "persistentVolumeClaim": {"claimName": claim}}],
+                    "volumes": [{"name": name, "persistentVolumeClaim": {"claimName": claim}}
+                                for name in ("workspace-input", "workspace-output")],
                     "containers": [{"name": "node", "volumeMounts": [
-                        {"name": "workspace", "mountPath": "/input", "subPath": "input", "readOnly": True},
-                        {"name": "workspace", "mountPath": "/output", "subPath": "output", "readOnly": False}]}]}}]}}
+                        {"name": "workspace-input", "mountPath": "/input", "subPath": "input", "readOnly": True},
+                        {"name": "workspace-output", "mountPath": "/output", "subPath": "output", "readOnly": False}]}]}}]}}
     try:
         custom.get_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", namespace, "trainjobs", name)
     except ApiException as error:
