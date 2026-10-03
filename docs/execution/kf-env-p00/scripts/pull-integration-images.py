@@ -27,16 +27,29 @@ output = pathlib.Path(args.output)
 output.mkdir(mode=0o700)
 record = {"status": "IN_PROGRESS", "transport": "declared HTTP offline registry; no TLS bypass", "images": []}
 for index, (original, image) in enumerate(sorted(images.items())):
-    row = {"original": original, "image": image, "result": "UNKNOWN"}
+    named, digest = image.rsplit("@", 1)
+    # Kubelet/CRI normalizes a tag@digest to repository@digest. Store the
+    # exact same manifest under that identity, not an unusable tag@digest key.
+    reference = named.rsplit(":", 1)[0] + "@" + digest
+    row = {"original": original, "image": image, "clientReference": reference, "result": "UNKNOWN"}
     record["images"].append(row)
     (output / "report.json").write_text(json.dumps(record, indent=2) + "\n")
     with (output / (str(index) + ".log")).open("x") as log:
-        result = subprocess.run(["timeout", "120", "ctr", "--namespace", "k8s.io", "images", "pull", "--plain-http", image], stdout=log, stderr=subprocess.STDOUT)
+        result = subprocess.run(["timeout", "120", "ctr", "--namespace", "k8s.io", "images", "pull", "--plain-http", reference], stdout=log, stderr=subprocess.STDOUT)
     row.update(exitCode=result.returncode, result="CONFIRMED" if result.returncode == 0 else "FAIL")
     if result.returncode:
         record["status"] = "FAIL"
         (output / "report.json").write_text(json.dumps(record, indent=2) + "\n")
         raise SystemExit(result.returncode)
+    inspection = subprocess.run(["crictl", "--runtime-endpoint", "unix:///run/containerd/containerd.sock",
+        "--image-endpoint", "unix:///run/containerd/containerd.sock", "inspecti", reference], text=True, capture_output=True, timeout=30)
+    row["criInspectExitCode"] = inspection.returncode
+    status = json.loads(inspection.stdout)["status"] if inspection.returncode == 0 else {}
+    row["cri"] = {"id": status.get("id"), "repoDigests": status.get("repoDigests", [])}
+    if inspection.returncode or reference not in row["cri"]["repoDigests"]:
+        record["status"] = "FAIL"
+        (output / "report.json").write_text(json.dumps(record, indent=2) + "\n")
+        raise SystemExit(inspection.returncode or 1)
     (output / "report.json").write_text(json.dumps(record, indent=2) + "\n")
 record["status"] = "EXPLICIT_CONTAINERD_PULLS_COMPLETE"
 (output / "report.json").write_text(json.dumps(record, indent=2) + "\n")
