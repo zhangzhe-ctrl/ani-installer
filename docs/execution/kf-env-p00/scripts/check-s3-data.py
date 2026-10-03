@@ -109,7 +109,7 @@ try:
                     path.write_bytes(body)
                     key = prefix + "/environment-probes/" + attempt + ".json"
                     destination = namespace + "/" + bucket + "/" + key
-                    request(["put", str(path), destination, "--overwrite", "false"], namespace, mutation=True)
+                    request(["put", str(path), destination, "--overwrite", "false", "--retry-attempts", "1"], namespace, mutation=True)
                     report["retainedObjects"].append({"namespace": namespace, "bucket": bucket, "key": key, "sha256": hashlib.sha256(body).hexdigest()})
                     actual = request(["object", "show", destination], namespace)
                     if actual != body:
@@ -121,11 +121,11 @@ try:
                         if other != namespace:
                             request(["--json", "object", "show", namespace + "/" + other_bucket + "/" + key], namespace, denied=True)
                     path = objects[namespace][2]
-                    request(["--json", "put", str(path), namespace + "/" + bucket + "/outside/" + attempt + ".json", "--overwrite", "false"], namespace, mutation=True, denied=True)
+                    request(["--json", "put", str(path), namespace + "/" + bucket + "/outside/" + attempt + ".json", "--overwrite", "false", "--retry-attempts", "1"], namespace, mutation=True, denied=True)
                 namespace = record["namespace"]
                 bucket = "ani-kfp-" + namespace
                 prefix = namespace + "/" + bucket + "/artifacts/ani-environment-handoff/" + run_id + "/external-training/"
-                listing = json.loads(request(["--json", "ls", prefix, "--recursive"], namespace))
+                listing = json.loads(request(["--json", "object", "list", prefix, "--recursive"], namespace))
                 items = listing["items"]
                 artifacts = {}
                 for name in ("model", "link"):
