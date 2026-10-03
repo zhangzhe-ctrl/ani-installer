@@ -3,6 +3,7 @@
 Materialized by the reviewed first-install role. No cluster access in this
 module; generated objects must pass the actual API's strict dry-run first.
 """
+import hashlib
 import json
 
 RELEASE = "26.03-kfp2.16-trainer2.1-v1"
@@ -60,6 +61,9 @@ http {
   access_log off;
   client_body_temp_path /tmp/client;
   proxy_temp_path /tmp/proxy;
+  fastcgi_temp_path /tmp/fastcgi;
+  uwsgi_temp_path /tmp/uwsgi;
+  scgi_temp_path /tmp/scgi;
   grpc_socket_keepalive on;
   underscores_in_headers on;
   ignore_invalid_headers on;
@@ -125,7 +129,8 @@ def entry(site, images):
             "ports": [{"name": "https", "port": 8443, "targetPort": 8443, "nodePort": site["http_port"]},
                       {"name": "grpcs", "port": 8444, "targetPort": 8444, "nodePort": site["grpc_port"]}]}),
         obj("Deployment", "ani-kfp-entry", "kubeflow", api="apps/v1", spec={"replicas": 1,
-            "selector": {"matchLabels": labels}, "template": {"metadata": {"labels": labels}, "spec": {
+            "selector": {"matchLabels": labels}, "template": {"metadata": {"labels": labels,
+                "annotations": {"ani.io/nginx-config-sha256": hashlib.sha256(NGINX.encode()).hexdigest()}}, "spec": {
                 "automountServiceAccountToken": False, "serviceAccountName": "ani-kfp-entry",
                 "securityContext": {"fsGroup": 1000}, "containers": [{"name": "nginx",
                     "image": images["docker.io/library/nginx:1.30.5"], "command": ["nginx"], "args": ["-g", "daemon off;"],
