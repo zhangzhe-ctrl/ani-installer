@@ -5,6 +5,7 @@ Use the shipped mature rc client and existing managed scoped Secrets. No root
 identity, account changes, overwrite, retry or automatic object cleanup.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -22,7 +23,10 @@ parser.add_argument("--private-success-report", required=True)
 parser.add_argument("--model-sha256", required=True)
 parser.add_argument("--output", required=True)
 parser.add_argument("--resume-report", help="reuse confirmed objects and reconcile the earlier failed negative upload; no replacement positive uploads")
+parser.add_argument("--read-artifacts-only", action="store_true", help="export existing Model/Link bytes without repeating acceptance writes")
 args = parser.parse_args()
+if args.read_artifacts_only and args.resume_report:
+    parser.error("read-only artifact export cannot resume a mutation attempt")
 site = json.loads(pathlib.Path(args.site).read_text())
 material = pathlib.Path(site["artifact_root"]) / "manifests/kubeflow" / site["release"]
 sys.path.insert(0, str(material))
@@ -62,6 +66,8 @@ try:
     ca = cluster.owned(obj("ConfigMap", "ani-rustfs-ca", "ani-platform"))["data"]["ca.crt"]
     bindings = [("kubeflow", "ani-kfp-control-s3", "ani-kfp-control", "pipelines")]
     bindings += [(n, "mlpipeline-minio-artifact", "ani-kfp-" + n, "artifacts") for n in site["tenants"]]
+    if args.read_artifacts_only:
+        bindings = [b for b in bindings if b[0] == record["namespace"]]
     credentials = []
     with tempfile.TemporaryDirectory(prefix="s3-data-private-", dir=output) as directory:
         work = pathlib.Path(directory)
@@ -104,6 +110,8 @@ try:
                 executable = str(pathlib.Path(site["artifact_root"]) / "bin/rc")
 
                 def request(arguments, identity, mutation=False, denied=False, body=None):
+                    if args.read_artifacts_only and mutation:
+                        raise RuntimeError("artifact export forbids S3 mutations")
                     row = {"identity": identity, "operation": arguments[:2], "result": "UNKNOWN", "mutation": mutation}
                     report["requests"].append(row)
                     atomic(output / "report.json", report)
@@ -139,7 +147,7 @@ try:
                     unknown[0].update(result="RECONCILED_NOT_CREATED", reconciliation={"method": "read-only root HEAD of exact unknown key", "exitCode": result.returncode})
                     atomic(output / "report.json", report)
                 objects = {}
-                for namespace, secret_name, bucket, prefix in bindings:
+                for namespace, secret_name, bucket, prefix in (() if args.read_artifacts_only else bindings):
                     body = json.dumps({"attempt": attempt, "namespace": namespace}, sort_keys=True).encode()
                     path = work / (namespace + ".json")
                     path.write_bytes(body)
@@ -156,7 +164,7 @@ try:
                     if actual != body:
                         raise RuntimeError("scoped S3 byte readback differs")
                     objects[namespace] = (bucket, key, path)
-                for namespace, _, bucket, _ in bindings:
+                for namespace, _, bucket, _ in (() if args.read_artifacts_only else bindings):
                     request(["--json", "object", "show", namespace + "/" + bucket + "/ani-installer/owner.json"], namespace, denied=True)
                     for other, (other_bucket, key, _) in objects.items():
                         if other != namespace:
@@ -183,8 +191,8 @@ try:
                         raise RuntimeError("S3 model differs from independent PVC readback")
                     if name == "link" and (value["kfpRunId"] != run_id or value["workspace"]["uid"] != receipt["workspaceUid"] or value["trainJob"]["uid"] != receipt["trainJobUid"]):
                         raise RuntimeError("S3 Link creation UIDs differ")
-                    artifacts[name] = {"key": matched[0], "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
-                report.update(status="SCOPED_IO_AND_ARTIFACT_READ_BACK", artifacts=artifacts, runId=run_id)
+                    artifacts[name] = {"key": matched[0], "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "base64": base64.b64encode(data).decode()}
+                report.update(status="ARTIFACTS_READ_BACK" if args.read_artifacts_only else "SCOPED_IO_AND_ARTIFACT_READ_BACK", artifacts=artifacts, runId=run_id)
             finally:
                 forward.terminate()
                 try:
