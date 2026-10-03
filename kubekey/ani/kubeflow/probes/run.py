@@ -16,6 +16,21 @@ import kfp
 from kubernetes import client
 
 
+def pod_log(core, name, namespace, container):
+    # The generated client turns a single JSON log line into str(dict).
+    # Logs are bytes, not a JSON API response; retain their original encoding.
+    response = core.read_namespaced_pod_log(name, namespace, container=container,
+                                            _preload_content=False, _request_timeout=30)
+    try:
+        body = response.data
+        if len(body) > 1048576:
+            raise RuntimeError("environment Pod log exceeds bounded size")
+        return body.decode("utf-8")
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def save(path, record):
     # Serialize before opening the exclusive temporary file. An unsupported
     # value must not leave a partial file that prevents the failure record.
@@ -59,6 +74,22 @@ def execute(args, report, record):
         generated.call_api = bounded
     if args.reconcile_success_report:
         return reconcile_success(args, report, record, pipeline, core, custom)
+    if args.resume_stop_report:
+        previous_path = pathlib.Path(args.resume_stop_report)
+        previous = json.loads(previous_path.read_text())
+        if args.mode != "stop" or previous["mode"] != "stop" or previous["status"] != "FAIL" or previous.get("stop") or previous["namespace"] != args.namespace:
+            raise ValueError("only a failed stop client before its first stop mutation can resume")
+        workspace, receipt = previous["workspace"], previous["creationReceipt"]
+        if any(previous[key]["creationResult"] != "CONFIRMED" for key in ("workspace", "experiment", "run")) or receipt["execution"] != previous["execution"] or receipt["kfpRunId"] != previous["run"]["id"] or receipt["workspaceUid"] != workspace["uid"]:
+            raise ValueError("original stop creation receipts differ")
+        created = core.read_namespaced_persistent_volume_claim(workspace["name"], args.namespace, _request_timeout=30)
+        job = custom.get_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", args.namespace, "trainjobs", receipt["trainJobName"], _request_timeout=30)
+        run = pipeline.get_run(previous["run"]["id"])
+        if created.metadata.uid != workspace["uid"] or created.metadata.owner_references or created.status.phase != "Bound" or job["metadata"]["uid"] != receipt["trainJobUid"] or job["metadata"].get("annotations", {}).get("ani.io/kfp-run-id") != run.run_id or job["spec"].get("suspend") or job["spec"]["runtimeRef"]["name"] != args.runtime or run.state != "RUNNING" or run.experiment_id != previous["experiment"]["id"]:
+            raise ValueError("current stop execution identity/state differs")
+        record.update(previous, status="IN_PROGRESS", resumption={"originalReportSha256": hashlib.sha256(previous_path.read_bytes()).hexdigest(), "newExecutionCreates": 0})
+        save(report, record)
+        return monitor(args, report, record, pipeline, core, custom, created, run)
     execution = "env-" + uuid.uuid4().hex[:16]
     claim = "ani-kfp-workspace-" + execution
     job_name = "ani-kfp-train-" + execution
@@ -106,6 +137,12 @@ def execute(args, report, record):
         enable_caching=False, service_account="pipeline-runner")
     record["run"].update(id=run.run_id, creationResult="CONFIRMED")
     save(report, record)
+    return monitor(args, report, record, pipeline, core, custom, created, run)
+
+
+def monitor(args, report, record, pipeline, core, custom, created, run):
+    execution, claim = record["execution"], record["workspace"]["name"]
+    job_name = "ani-kfp-train-" + execution
     deadline, stopped = time.monotonic() + 780, False
     while time.monotonic() < deadline:
         observed = pipeline.get_run(run.run_id)
@@ -130,7 +167,7 @@ def execute(args, report, record):
                     if control.spec.service_account_name != "pipeline-runner" or control.status.phase not in ("Running", "Succeeded", "Failed"):
                         continue
                     try:
-                        log = core.read_namespaced_pod_log(control.metadata.name, args.namespace, container="main", _request_timeout=30)
+                        log = pod_log(core, control.metadata.name, args.namespace, "main")
                     except client.exceptions.ApiException as error:
                         if error.status in (400, 404):
                             continue
@@ -155,7 +192,7 @@ def execute(args, report, record):
                 for pod in pods:
                     if pod.status.phase != "Running":
                         continue
-                    log = core.read_namespaced_pod_log(pod.metadata.name, args.namespace, container="node", _request_timeout=30)
+                    log = pod_log(core, pod.metadata.name, args.namespace, "node")
                     for line in log.splitlines():
                         value = json.loads(line)
                         if value.get("execution") == execution and value.get("checkpoint") == "unique-output-fsynced":
@@ -257,6 +294,7 @@ if __name__ == "__main__":
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--mode", choices=("success", "fail", "stop"), required=True)
     parser.add_argument("--reconcile-success-report", help="read-only finalization of a confirmed completed execution; never recreates it")
+    parser.add_argument("--resume-stop-report", help="resume a confirmed running stop execution before any stop mutation; never creates a replacement")
     arguments = parser.parse_args()
     directory = pathlib.Path(arguments.output)
     directory.mkdir(mode=0o700)
