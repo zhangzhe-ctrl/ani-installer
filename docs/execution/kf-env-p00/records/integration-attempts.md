@@ -36,3 +36,5 @@
 本轮必需验收仍有 NOT_RUN，`ENV_READY` 不成立；CPU-P01 业务未运行。
 
 `4faade2` 的实际源绑定物料目录回归九项 PASS，退出码 0，日志 `material-layout-regression-attempt-01.log`。新完整构建候选使用 4faade2 的构建脚本与 c34bd9c 的受审 kk，二者分别记录；这是联调候选，不是最终同源冻结发布物。
+
+`55e92205d445f99f0891596d835acb5efa74b26d` 的两条修复策略在 Fedora 生成，经审阅后在固定集群执行 strict server dry-run，真实退出码 0；输入 SHA256 `bdf7ce955de44afde3a3351a2d16650d4638652703cee4de9c6d3426db79adfe`，节点证据目录 `/home/ubuntu/kf-env-p00-policy-dryrun-attempt-01`。这仅证明当前 API 接受策略编译；安装后控制器实际 typeChecking 与资源正负向请求仍未通过。六项既有回归同时 PASS。
