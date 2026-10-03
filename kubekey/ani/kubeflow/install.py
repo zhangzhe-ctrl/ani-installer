@@ -66,7 +66,13 @@ def materialize(root, site):
             container = value["spec"]["template"]["spec"]["containers"][0]
             container["env"] += [
                 {"name": "ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_HOST", "value": "127.0.0.1"},
-                {"name": "ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_PORT", "value": "9"}]
+                {"name": "ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_PORT", "value": "9"},
+                # The fixed compiler exposes this supported workflow patch.
+                # KFP executor templates replace workflow securityContext, so
+                # supply the volume group through Argo's final PodSpec merge.
+                {"name": "COMPILED_PIPELINE_SPEC_PATCH", "value": json.dumps({
+                    "podSpecPatch": json.dumps({"securityContext": {
+                        "fsGroup": 1000, "fsGroupChangePolicy": "OnRootMismatch"}})})}]
         if value["kind"] == "Deployment" and value["metadata"]["name"] == "mysql":
             # Docker's first initialization uses a temporary socket-only
             # server before installing the credentials/schema. A Running Pod
