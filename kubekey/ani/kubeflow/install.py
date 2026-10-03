@@ -58,6 +58,15 @@ def materialize(root, site):
     if len(resources) != lock["resource_count"]:
         raise ValueError("overlay resource count differs")
     for value in resources:
+        if value["kind"] == "Deployment" and value["metadata"]["name"] == "ml-pipeline":
+            # 2.16.0 registers the excluded legacy visualization RPC
+            # unconditionally and requires these values even without a
+            # visualization Service. Keep its target closed; the mature
+            # entry also rejects its HTTP/gRPC routes. No fake Service exists.
+            container = value["spec"]["template"]["spec"]["containers"][0]
+            container["env"] += [
+                {"name": "ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_HOST", "value": "127.0.0.1"},
+                {"name": "ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_PORT", "value": "9"}]
         if value["kind"] == "Deployment" and value["metadata"]["name"] == "mysql":
             # Docker's first initialization uses a temporary socket-only
             # server before installing the credentials/schema. A Running Pod

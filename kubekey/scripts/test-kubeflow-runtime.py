@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubefl
 from common import Cluster
 from install import checked_policy, materialize
 from storage import same_policy, same_identity
+from resources import NGINX
 
 
 class ExistingSecret(Cluster):
@@ -239,6 +240,21 @@ class MySQLDependencyReadiness(unittest.TestCase):
             self.assertIn('SELECT 1', query)
             self.assertLessEqual(probe["failureThreshold"] * probe["periodSeconds"], 500)
         self.assertEqual(database["spec"]["template"]["spec"]["volumes"][0]["persistentVolumeClaim"]["claimName"], "mysql-pv-claim")
+
+
+class LegacyVisualizationExcluded(unittest.TestCase):
+    def test_backend_startup_configuration_keeps_excluded_service_closed(self):
+        root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"
+        references = json.loads((root / "source-images.json").read_text())
+        values = materialize(root / "overlay", {"images": {name: "offline/" + name for name in references},
+                            "database_class": "ani-block", "database_size": "20Gi"})
+        api = next(v for v in values if v["kind"] == "Deployment" and v["metadata"]["name"] == "ml-pipeline")
+        environment = {v["name"]: v.get("value") for v in api["spec"]["template"]["spec"]["containers"][0]["env"]}
+        self.assertEqual(environment["ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_HOST"], "127.0.0.1")
+        self.assertEqual(environment["ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_PORT"], "9")
+        self.assertFalse(any("visualizationserver" in v["metadata"]["name"] for v in values))
+        self.assertIn("location ^~ /apis/v1beta1/visualizations { return 404; }", NGINX)
+        self.assertIn("location ^~ /api.VisualizationService/ { return 404; }", NGINX)
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@ http {
     ssl_protocols TLSv1.2 TLSv1.3;
     client_max_body_size 20m;
     if ($forged_identity) { return 400; }
+    location ^~ /apis/v1beta1/visualizations { return 404; }
     location = /healthz { return 200 "tls-entry-alive\\n"; }
     location / {
       proxy_pass http://ml-pipeline.kubeflow.svc.cluster.local:8888;
@@ -93,6 +94,7 @@ http {
     ssl_certificate_key /etc/kfp-tls/tls.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     if ($forged_identity) { return 400; }
+    location ^~ /api.VisualizationService/ { return 404; }
     location / {
       grpc_pass grpc://ml-pipeline.kubeflow.svc.cluster.local:8887;
       grpc_set_header Authorization $http_authorization;
