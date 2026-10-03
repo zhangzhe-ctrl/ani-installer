@@ -17,14 +17,21 @@ from kubernetes import client
 
 
 def save(path, record):
+    # Serialize before opening the exclusive temporary file. An unsupported
+    # value must not leave a partial file that prevents the failure record.
+    body = json.dumps(record, indent=2) + "\n"
     temporary = path.with_suffix(".new")
     with temporary.open("x") as stream:
         os.chmod(temporary, 0o600)
-        json.dump(record, stream, indent=2)
-        stream.write("\n")
+        stream.write(body)
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, path)
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def execute(args, report, record):
@@ -50,6 +57,8 @@ def execute(args, report, record):
             keywords["_request_timeout"] = keywords.get("_request_timeout") or (5, 30)
             return _original(*arguments, **keywords)
         generated.call_api = bounded
+    if args.reconcile_success_report:
+        return reconcile_success(args, report, record, pipeline, core, custom)
     execution = "env-" + uuid.uuid4().hex[:16]
     claim = "ani-kfp-workspace-" + execution
     job_name = "ani-kfp-train-" + execution
@@ -190,7 +199,7 @@ def execute(args, report, record):
         else:
             raise TimeoutError("actual external training Pod termination deadline")
     details = observed.run_details
-    record["run"]["details"] = details.to_dict() if details else None
+    record["run"]["details"] = pipeline._run_api.api_client.sanitize_for_serialization(details) if details else None
     # Artifact records may contain signed URLs. Keep these private; the caller
     # publishes only reviewed IDs, hashes and MLMD links in sanitized evidence.
     final = core.read_namespaced_persistent_volume_claim(claim, args.namespace, _request_timeout=30)
@@ -201,12 +210,53 @@ def execute(args, report, record):
     save(report, record)
 
 
+def reconcile_success(args, report, record, pipeline, core, custom):
+    """Read-only recovery of a completed execution whose terminal save failed."""
+    source = pathlib.Path(args.reconcile_success_report).read_bytes()
+    previous = json.loads(source)
+    if (args.mode != "success" or previous["mode"] != "success" or previous["namespace"] != args.namespace
+            or previous["status"] != "IN_PROGRESS" or previous["run"].get("state") != "SUCCEEDED"
+            or any(previous[key].get("creationResult") != "CONFIRMED" for key in ("workspace", "experiment", "run"))):
+        raise ValueError("only the recorded, confirmed successful execution can be reconciled")
+    execution, workspace, receipt = previous["execution"], previous["workspace"], previous["creationReceipt"]
+    if (not execution.startswith("env-") or workspace["name"] != "ani-kfp-workspace-" + execution
+            or receipt["execution"] != execution or receipt["namespace"] != args.namespace
+            or receipt["workspaceUid"] != workspace["uid"] or receipt["kfpRunId"] != previous["run"]["id"]
+            or receipt["trainJobName"] != "ani-kfp-train-" + execution or receipt["trainJobUid"] != previous["trainJob"]["uid"]):
+        raise ValueError("recorded creation response identities differ")
+    claim = core.read_namespaced_persistent_volume_claim(workspace["name"], args.namespace, _request_timeout=30)
+    job = custom.get_namespaced_custom_object("trainer.kubeflow.org", "v1alpha1", args.namespace,
+                                             "trainjobs", receipt["trainJobName"], _request_timeout=30)
+    observed = pipeline.get_run(previous["run"]["id"])
+    if (claim.metadata.uid != workspace["uid"] or claim.metadata.owner_references or claim.status.phase != "Bound"
+            or job["metadata"]["uid"] != receipt["trainJobUid"] or job["metadata"].get("annotations", {}).get("ani.io/kfp-run-id") != receipt["kfpRunId"]
+            or job["spec"]["runtimeRef"]["name"] != args.runtime or observed.state != "SUCCEEDED"
+            or observed.run_id != previous["run"]["id"] or observed.experiment_id != previous["experiment"]["id"]
+            or not any(c["type"] == "Complete" and c["status"] == "True" for c in job.get("status", {}).get("conditions", []))):
+        raise RuntimeError("current successful execution identities or conditions differ")
+    if len(previous.get("trainPods", [])) != 1:
+        raise ValueError("no unique recorded external training Pod")
+    stored = previous["trainPods"][0]
+    pod = core.read_namespaced_pod(stored["name"], args.namespace, _request_timeout=30)
+    if (pod.metadata.uid != stored["uid"] or pod.status.phase != "Succeeded" or pod.spec.service_account_name != "trainer-workload"
+            or pod.spec.automount_service_account_token is not False or pod.spec.node_name != args.trainer_node
+            or len(pod.status.container_statuses or []) != 1 or pod.status.container_statuses[0].state.terminated.exit_code != 0
+            or pod.status.container_statuses[0].image_id.rsplit("@", 1)[-1] != args.image.rsplit("@", 1)[-1]):
+        raise RuntimeError("current training Pod differs from the original receipt")
+    record.update(previous)
+    record["run"]["details"] = pipeline._run_api.api_client.sanitize_for_serialization(observed.run_details) if observed.run_details else None
+    record.update(status="RUN_STATE_CORRELATED", workspaceRetained=True, fileReadback="NOT_ATTESTED_BY_THIS_CLIENT",
+                  acceptance="EAC_NOT_ATTESTED", reconciliation={"sourceReportSha256": hashlib.sha256(source).hexdigest(), "persistentWrites": 0})
+    save(report, record)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     for name in ("api", "api-ca", "api-token", "kfp", "kfp-ca", "kfp-token", "namespace",
                  "pipeline", "image", "runtime", "trainer-node", "storage-class", "size", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--mode", choices=("success", "fail", "stop"), required=True)
+    parser.add_argument("--reconcile-success-report", help="read-only finalization of a confirmed completed execution; never recreates it")
     arguments = parser.parse_args()
     directory = pathlib.Path(arguments.output)
     directory.mkdir(mode=0o700)
