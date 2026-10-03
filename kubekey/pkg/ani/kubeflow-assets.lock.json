@@ -1,12 +1,12 @@
 {
   "schema": "ani.kubeflow.assets.v1",
   "release": "26.03-kfp2.16-trainer2.1-v1",
-  "generatedFromCommit": "29aa3bbc82dd5da3307658bf87dc893195f69835",
+  "generatedFromCommit": "168cf109c46e32f9b69e17dd6879f0884f492f58",
   "files": {
     "common.py": "b52155bc1db586e2265ca07fa5a896712858a2ea8b996fc263f89924b9d15454",
     "resources.py": "5d3f0223ee4a2be9938df38d6da3cba42678068c199859bf0f553100c4462aa2",
     "storage.py": "7c7a1f9c3c5ab797906a7a17d2449d8a19169e10558c77dd4456004cfd71b8f5",
-    "install.py": "2f554ff709c3e6cb6fd90cd7b006f681b9c7970d6ec67844e0fa84edf0f4b070",
+    "install.py": "8676ff3aecfaf11951c73b1f4c17318917f1ea3c255bf5c583190fe9cf7ea3f0",
     "check.py": "d3f4e348221899aceb8c14a52023ad3e592a6e42ebb2e73946ceaf0a5ae47933",
     "resources.json": "b65a4a65c456aa2cbe519ea96a5bc221b2949ecbcc4b8ec2a2fba75eff6c2f21",
     "overlay.lock.json": "ba9e651101de196e044e4d8e8cdc1f3a22c75436be25968309c8fcee07404364"
