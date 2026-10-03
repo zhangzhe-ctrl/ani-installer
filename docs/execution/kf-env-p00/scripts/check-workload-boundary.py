@@ -49,7 +49,11 @@ try:
         services.append({"name": name, "uid": service["metadata"]["uid"], "podUid": ref["uid"], "clusterIP": service["spec"]["clusterIP"], "podIP": endpoints[0]["addresses"][0]})
         for address in (service["spec"]["clusterIP"], endpoints[0]["addresses"][0]):
             targets += [{"name": name, "address": address, "port": p} for p in ports]
-    targets += [{"name": "kubernetes", "address": site["kubernetes_service_ip"], "port": 443}]
+    api_service = cluster.read(obj("Service", "kubernetes", "default"))
+    api_address = api_service["spec"]["clusterIP"]
+    if api_service["spec"]["ports"][0]["port"] != 443 or not api_address:
+        raise ValueError("actual Kubernetes Service differs from the verified API contract")
+    targets += [{"name": "kubernetes", "address": api_address, "port": 443}]
     targets += [{"name": "kubernetes-node", "address": address, "port": 6443} for address in site["node_addresses"]]
     command = r'''
 import errno,json,os,pathlib,socket,sys
@@ -76,14 +80,15 @@ print(json.dumps({'dns':dns,'targets':results,'serviceAccountTokenPresent':False
         "nodeSelector": {"kubernetes.io/hostname": args.node}, "restartPolicy": "Never", "activeDeadlineSeconds": 120,
         "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{"name": "probe", "image": image, "command": ["python", "-c", command],
-            "args": [json.dumps(targets), site["kubernetes_service_ip"]],
+            "args": [json.dumps(targets), api_address],
             "securityContext": {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}, "readOnlyRootFilesystem": True},
             "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "256Mi"}}}]})
     if cluster.read(pod):
         raise ValueError("name occupied; no replacement")
     cluster.apply([pod])
     uid = cluster.writes[-1]["uid"]
-    report.update(pod={"name": name, "uid": uid, "creationResult": "CONFIRMED"}, services=services)
+    report.update(pod={"name": name, "uid": uid, "creationResult": "CONFIRMED"}, services=services,
+                  kubernetesService={"uid": api_service["metadata"]["uid"], "clusterIP": api_address})
     atomic(output / "report.json", report)
     live = cluster.wait(pod, lambda p: p["metadata"]["uid"] == uid and p.get("status", {}).get("phase") in ("Failed", "Succeeded"), timeout=150)
     states = live["status"].get("containerStatuses", [])
