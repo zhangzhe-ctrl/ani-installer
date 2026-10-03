@@ -1,8 +1,8 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV01-source-material-render-in-progress-no-cluster-writes",
-  "integration_status": "NOT_RUN",
+  "checkpoint": "ENV02-ENV04-isolated-registry-verified-role-install-in-progress",
+  "integration_status": "IN_PROGRESS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
   "cluster": {
@@ -42,7 +42,7 @@
     },
     "candidate_images_digest_locked": true,
     "complete_release_material_frozen": false,
-    "registry_readback_status": "NOT_RUN",
+    "registry_readback_status": "PASS_15_KUBEFLOW_IMAGES_DEVELOPMENT_ONLY_COMPLETE_RELEASE_NOT_RUN",
     "runtime_pull_status": "NOT_RUN"
   },
   "kfp": {
@@ -65,13 +65,28 @@
     "kind": "ssh-fedora",
     "entry_reference": "kubekey/scripts/build-code.sh; task root /home/chabking/ani-installer-runs/kf-env-p00-20261003",
     "host_verified": true,
-    "build_status": "PARTIAL_CHECKS / FINAL_CANDIDATE_NOT_RUN",
+    "build_status": "5052e81_REMOTE_GATE_AND_CODE_BUILD_PASS / FINAL_FREEZE_NOT_RUN",
     "checks": [
       {"source": "b7d418d", "kind": "full-code-gate", "result": "FAIL", "first_failure": "role context guard omits kubeflow", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-b7d418d-attempt-01.log"},
       {"source": "207f1c462b40f836be24dfc8585ee6bfb7fa6985", "kind": "targeted-code-gate", "result": "FAIL", "first_failure": "Quantity pointer method called on temporary value", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-207f1c4-attempt-01.log"},
-      {"source": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d", "kind": "targeted-code-gate-and-python-syntax", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-9c0a757-attempt-01.log"}
+      {"source": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d", "kind": "targeted-code-gate-and-python-syntax", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/targeted-gate-9c0a757-attempt-01.log"},
+      {"source": "8dcffa7237a7209969621e9a39a63c29d7f7571e", "kind": "full-code-gate", "result": "PASS", "exit_code": 0, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/code-gate-assets-attempt-01.log"},
+      {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "full-code-gate-and-builtin-code-package", "result": "PASS", "exit_code": 0, "source_fingerprint": "af3e66917a0592feb92d282de693c48a1638b87f6bc5076de1744a0ab27c583a", "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/build-code-probe-candidate-attempt-01.log"},
+      {"source": "5052e81a69975e53bad714c2b525a5bfe041c1b8", "kind": "production-full-site-render", "result": "PASS", "exit_code": 0, "role_files": 121, "log": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/release/integration-render-attempt-02.log"}
     ],
-    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "NOT_RUN"}
+    "sdk_image": {"build_source": "abfc9dcfc842e8356853da4b75c8266af7ba763b", "result": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED", "amd64_digest": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb", "wheels": 41, "registry_and_runtime": "REGISTRY_BYTES_PASS / RUNTIME_NOT_RUN"}
+  },
+  "development_deployment": {
+    "role_source": "5052e81a69975e53bad714c2b525a5bfe041c1b8",
+    "lab_invocation_source": "e8a87a0",
+    "product_lock": "/var/lib/ani-installer/ani-install.lock",
+    "registry": "172.16.101.10:5001",
+    "registry_service": "ani-kfp-lab-registry-20261003.service",
+    "registry_content": "15 byte-exact images with manifest/config/layer bytes verified by existing kk gate",
+    "scope": "task directories and dedicated registry; declared Kubeflow resources; no snapshot restore or shared registry restart",
+    "evidence_root": "/home/ubuntu/kf-env-p00/integration-attempt-01/logs",
+    "package_sha256": "deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74",
+    "acceptance": "NOT_RUN"
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt"],
   "blocked_items": [

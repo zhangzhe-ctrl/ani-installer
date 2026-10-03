@@ -15,7 +15,7 @@
 
 ## 当前检查点
 
-ENV00 调查进行中，ENV01～ENV06 未完成。没有安装或恢复快照，没有设置 `ENV_READY`。
+ENV00 调查已记录，ENV01 实现/渲染通过后进入 ENV02～ENV04 联调部署。当前调用已审阅的首装角色，新增任务独立 registry 及声明的 Kubeflow 资源；尚未恢复快照，未设置 `ENV_READY`。
 
 已实际核实：三节点均 Ubuntu 24.04.4 amd64、Kubernetes v1.35.8、containerd 2.3.4。API 为 `https://lb.kubesphere.local:6443`；context 为 `kubernetes-admin@ani-lab`。集群标识采用 kube-system Namespace UID `87ecef8e-ac4e-442b-8e15-5e906263be6b`。完整脱敏清单见 `records/cluster-record.json`。
 
@@ -33,6 +33,8 @@ ESXi 已通过既有受管凭据、严格主机密钥验证只读核实：VMID 8
 
 源码上游已在 Fedora 固定：KFP tag 2.16.0 → `e4ebca310f404dac306e16bc880de12bbbf63b95`；Trainer tag v2.1.0 → `73c9bece741ce17d2124abda3ec6bfcf5b5b8e87`。Trainer 源锁定 JobSet v0.10.1；KFP Argo 源引用 v3.7.3。14 个必需上游镜像与一个已远程构建的 SDK/CPU 执行镜像已登记平台摘要；旧 V1 cache 两镜像仅留研究证据，不交付。完整包、registry readback 和运行时拉取仍未完成。
 
-ENV01 已接入默认关闭配置、自动证书依赖、首装末尾角色、物料条目和生产渲染。Fedora 定向门禁 `9c0a757` rc=0，Python 部署模块语法检查 rc=0。完整门禁首轮 `b7d418d` 因上下文守卫缺登记失败，随后 `207f1c4` 因容量 Quantity 调用编译失败；两轮日志保留，修复后定向通过，但最终候选全门禁仍未执行。部署/check 脚本是未安装的实现草稿，不能标记 CODE_READY 或 ENV_READY。
+ENV01 已接入默认关闭配置、自动证书依赖、首装末尾角色、物料条目和生产渲染。Fedora 完整门禁 `8dcffa7`、`5052e81` 均 rc=0，后者同源构建代码包；生产完整站点渲染 121 个角色文件及所选 Chart 展开通过。首次渲染因开发目录没有规范 Chart 路径失败，使用既有物料放置器校验并落盘后通过。历史 `b7d418d` 上下文守卫与 `207f1c4` Quantity 编译失败均保留。最终冻结门禁和环境验收尚未执行，不能标记 ENV_READY。
+
+联调包 SHA256 `deffbab85e5a7672ee271311978da09a4f8c5fde5ab593794bae1a1b95468e74` 已在 ani-01 回读一致。独立 registry `172.16.101.10:5001` 的 15 个 Kubeflow 镜像已通过既有 `kk ani materials verify-registry` 实际 manifest/config/layer 字节门禁。此为固定源锁的开发投影，不是最终完整物料包验收或追加安装合同。现有 5000 registry 与基础服务保持运行。部署日志使用 `/home/ubuntu/kf-env-p00/integration-attempt-01/logs`，每轮创建 UID 与首错记录由同一首装角色落盘；CPU/工作区/租户 EAC 仍为 NOT_RUN。
 
 [官方 GHSA-gqww-5pj5-8fq7](https://github.com/kubeflow/pipelines/security/advisories/GHSA-gqww-5pj5-8fq7) 已核对：frontend ≤2.16.0 受影响。本轮不部署 frontend，不通过其代理形成可信调用链。
