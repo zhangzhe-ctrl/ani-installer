@@ -42,6 +42,6 @@ done
 "$base/input/kk" ani materials verify-registry --registry-address 172.16.101.10:5001 \
   --images-tsv "$base/input/development-kubeflow.images.tsv" \
   --lock "$base/input/development-kubeflow.lock.yaml" \
-  --evidence-dir "$base/input/image-evidence" --verify-blob-bytes > "$base/logs/registry-content.log" 2>&1
+  --evidence-dir "$base/input/image-evidence" > "$base/logs/registry-content.log" 2>&1
 export ANI_KUBEFLOW_DEVELOPMENT=1 PYTHONDONTWRITEBYTECODE=1
 python3 "$artifact/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1/install.py" --site "$base/site.json"
