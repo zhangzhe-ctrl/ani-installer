@@ -10,7 +10,7 @@
 
 优先固定成熟 TLS 代理与 KFP 原生 TokenReview，避免开发新 Go 代理。候选机制：受限客户端携带 audience 为 `pipelines.kubeflow.org` 的短期 Kubernetes SA Bearer token；KFP TokenReview 验证身份并继续 Namespace SAR，`MULTIUSER=true`、`MULTIUSER_SHARED_READ=false`。环境探针 SA 只获 A 或 B 的 KFP 权限，后续 CPU02 再绑定正式服务身份。
 
-固定 KFP 源 `auth.GetAuthenticators` 的首个认证器是 HTTP 身份头，随后才是 TokenReview。本轮必须在配置及真实协议上关闭客户端可声明的头身份，入口拒绝/剥离常见身份头及变体；不能仅依赖 NetworkPolicy。HTTP 与 gRPC 都必须检查无凭据、无效/错误 audience、重复 Authorization、重复/大小写/下划线身份头、A→B。尚未证明空 `KUBEFLOW_USERID_HEADER` 能可靠关闭首个认证器，不能提前记 PASS；需运行固定源码测试和真实请求。
+固定 KFP 源 `auth.GetAuthenticators` 的首个认证器是 HTTP 身份头，随后才是 TokenReview。空环境变量被 Viper 默认忽略，不能用空 `KUBEFLOW_USERID_HEADER` 表示关闭。候选 overlay 将该字段固定为 `:`（普通 HTTP/gRPC 客户端不能声明的头名），随后使用原生 TokenReview；这是源码推论，实机认证仍为 NOT_RUN。固定 Nginx 1.30.5 TLS 入口拒绝/剥离常见身份头及变体，不能仅依赖 NetworkPolicy。HTTP 与 gRPC 必须检查无凭据、无效/错误 audience、重复 Authorization、重复/大小写/下划线身份头、A→B；不能提前记 PASS。
 
 原始 API HTTP/gRPC 端口只允许本期控制面必要调用和入口 Pod；训练 Pod 无控制面证书、管理员 S3 凭据、默认 SA token 或任意 Kubernetes 创建权。MLMD/MySQL 只允许已列明内部消费者；受限启动/driver 的必要访问单列，不能给全部 Namespace 放通。
 

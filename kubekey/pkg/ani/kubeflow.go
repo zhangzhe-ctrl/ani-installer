@@ -2,8 +2,8 @@ package ani
 
 import (
 	"fmt"
-	"net"
 	"math"
+	"net"
 	"regexp"
 	"strings"
 
@@ -131,7 +131,7 @@ func validateKubeflow(c ClusterConfig) error {
 	}
 	workspaceQuantity := resource.MustParse(k.Workspace.MaxSize)
 	workspaceSize := workspaceQuantity.Value()
-	if workspaceSize <= 0 || workspaceSize > math.MaxInt64 / int64(k.Workspace.MaxClaimsPerTenant) {
+	if workspaceSize <= 0 || workspaceSize > math.MaxInt64/int64(k.Workspace.MaxClaimsPerTenant) {
 		return fmt.Errorf("kubeflow.workspace.maxSize exceeds the supported aggregate quota quantity")
 	}
 	if len(k.Tenants) < 1 || len(k.Tenants) > 8 {

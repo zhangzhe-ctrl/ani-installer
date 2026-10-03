@@ -1,7 +1,7 @@
 {
   "schema": "ani.kubeflow.overlay.v1",
   "status": "PRE_REVIEW",
-  "generator_source_commit": "207f1c462b40f836be24dfc8585ee6bfb7fa6985",
+  "generator_source_commit": "9c0a757028428ab1fc8c6f1dd740a7af6ed8367d",
   "upstream_commits": {
     "kfp": "e4ebca310f404dac306e16bc880de12bbbf63b95",
     "trainer": "73c9bece741ce17d2124abda3ec6bfcf5b5b8e87",
@@ -12,7 +12,7 @@
     "kfp": "e0dcb42db7dc3104383d13953c4905445f8f9b4cdf8c621864174527f6a644b5",
     "trainer": "db69ab7f57697e1391e5621a863817cb4b922071582053ddfda4ddee7d8b302f"
   },
-  "resources_sha256": "8dec93e63e2c2904ad5275bb7908e8574742ac9e83ca16bf933edd40f0b4a2ff",
+  "resources_sha256": "9c0340f39b1ff1b7d1e47b7690b1b9f8ca9609393b0c612a3f2a2a63a636e7af",
   "resource_count": 85,
   "inventory": [
     {

@@ -975,9 +975,9 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 	}
 	ctx := map[string]any{
 		"ani": map[string]any{
-			"registry":    "192.0.2.11:5000",
-			"images":      complete,
-			"image_parts": imageParts,
+			"registry":      "192.0.2.11:5000",
+			"images":        complete,
+			"image_parts":   imageParts,
 			"objectStorage": map[string]any{"provider": objectProviderRGW, "milvus_s3": binding.templateSpec()},
 			"components": map[string]any{
 				"nats":   map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
@@ -1173,7 +1173,7 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		"storage":     true,
 		// First-install-only block; its enabled and disabled contexts are also
 		// rendered by TestKubeflowUsesProductionRenderContext.
-		"kubeflow":    true,
+		"kubeflow": true,
 		// C07's run scope. Not whitelisted on trust: the loop below proves
 		// KubeKeyConfig actually emits .ani.run with the fields roles read, so
 		// this entry cannot drift into a key nobody builds.

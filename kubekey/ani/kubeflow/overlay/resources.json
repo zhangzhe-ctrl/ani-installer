@@ -6082,6 +6082,14 @@
                   "value": "/etc/ani-ca/ca.crt"
                 },
                 {
+                  "name": "CABUNDLE_CONFIGMAP_NAME",
+                  "value": "ani-kfp-ca"
+                },
+                {
+                  "name": "CABUNDLE_KEY_NAME",
+                  "value": "ca.crt"
+                },
+                {
                   "name": "DBCONFIG_USER",
                   "valueFrom": {
                     "secretKeyRef": {
@@ -6616,7 +6624,7 @@
                 "--configmap",
                 "workflow-controller-configmap",
                 "--executor-image",
-                "quay.io/argoproj/argoexec:v3.7.3"
+                "ANI_IMAGE_quay.io/argoproj/argoexec:v3.7.3"
               ],
               "command": [
                 "workflow-controller"

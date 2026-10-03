@@ -112,13 +112,23 @@ func TestKubeflowUsesProductionRenderContext(t *testing.T) {
 		// RustFS independently needs the certificate component when Kubeflow is off.
 		c.Components.CertManager.Enabled = !enabled
 		files, err := RenderSite(roles, c, "/offline", r08FullTable(t))
-		if err != nil { t.Fatal(err) }
-		if err := ValidateRenderedArtifacts(files); err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateRenderedArtifacts(files); err != nil {
+			t.Fatal(err)
+		}
 		found := false
 		for _, file := range files {
-			if file.Role == "kubeflow" { found = true }
-			if file.Name == "kubeflow-site.yaml" && !strings.Contains(string(file.Rendered), `"http_port": 30443`) { t.Fatal("entry port was not rendered") }
+			if file.Role == "kubeflow" {
+				found = true
+			}
+			if file.Name == "kubeflow-site.yaml" && !strings.Contains(string(file.Rendered), `"http_port": 30443`) {
+				t.Fatal("entry port was not rendered")
+			}
 		}
-		if found != enabled { t.Fatalf("Kubeflow rendered=%v, enabled=%v", found, enabled) }
+		if found != enabled {
+			t.Fatalf("Kubeflow rendered=%v, enabled=%v", found, enabled)
+		}
 	}
 }
