@@ -1,0 +1,18 @@
+[
+  "ghcr.io/kubeflow/kfp-api-server:2.16.0",
+  "ghcr.io/kubeflow/kfp-cache-deployer:2.16.0",
+  "ghcr.io/kubeflow/kfp-cache-server:2.16.0",
+  "ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0",
+  "ghcr.io/kubeflow/kfp-metadata-writer:2.16.0",
+  "ghcr.io/kubeflow/kfp-persistence-agent:2.16.0",
+  "ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0",
+  "ghcr.io/kubeflow/kfp-driver:2.16.0",
+  "ghcr.io/kubeflow/kfp-launcher:2.16.0",
+  "gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0",
+  "quay.io/argoproj/workflow-controller:v3.7.3",
+  "quay.io/argoproj/argoexec:v3.7.3",
+  "ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0",
+  "registry.k8s.io/jobset/jobset:v0.10.1",
+  "docker.io/library/mysql:8.4.11",
+  "docker.io/library/nginx:1.30.5"
+]
