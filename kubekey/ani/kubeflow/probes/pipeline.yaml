@@ -1,0 +1,339 @@
+# PIPELINE DEFINITION
+# Name: ani-environment-handoff
+# Inputs:
+#    claim: str
+#    claim_uid: str
+#    execution: str
+#    mode: str [Default: 'success']
+#    namespace: str
+#    runtime_name: str
+#    trainer_node: str
+components:
+  comp-external-training:
+    executorLabel: exec-external-training
+    inputDefinitions:
+      artifacts:
+        dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        claim:
+          parameterType: STRING
+        claim_uid:
+          parameterType: STRING
+        execution:
+          parameterType: STRING
+        mode:
+          parameterType: STRING
+        namespace:
+          parameterType: STRING
+        run_id:
+          parameterType: STRING
+        runtime_name:
+          parameterType: STRING
+        trainer_node:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        link:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+  comp-prepare-dataset:
+    executorLabel: exec-prepare-dataset
+    inputDefinitions:
+      parameters:
+        execution:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-external-training:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - external_training
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef external_training(claim: str, claim_uid: str, execution: str,\
+          \ run_id: str,\n                      namespace: str, runtime_name: str,\
+          \ mode: str, trainer_node: str,\n                      dataset: Input[Dataset],\
+          \ model: Output[Model], link: Output[Artifact], metrics: Output[Metrics]):\n\
+          \    import errno\n    import hashlib\n    import json\n    import os\n\
+          \    import pathlib\n    import shutil\n    import time\n    from kubernetes\
+          \ import client, config\n    from kubernetes.client.exceptions import ApiException\n\
+          \n    if mode not in (\"success\", \"fail\", \"stop\") or not execution.startswith(\"\
+          env-\"):\n        raise ValueError(\"bounded environment probe mode or identity\
+          \ differs\")\n    config.load_incluster_config()\n    core, custom = client.CoreV1Api(),\
+          \ client.CustomObjectsApi()\n    live_claim = core.read_namespaced_persistent_volume_claim(claim,\
+          \ namespace)\n    if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:\n\
+          \        raise RuntimeError(\"workspace UID/lifecycle differs from the create\
+          \ response\")\n    workspace = pathlib.Path(\"/workspace\")\n    input_dir,\
+          \ output_dir = workspace / \"input\", workspace / \"output\"\n    input_dir.mkdir(mode=0o755)\n\
+          \    output_dir.mkdir(mode=0o755)\n    payload = pathlib.Path(dataset.path).read_bytes()\n\
+          \    if json.loads(payload)[\"execution\"] != execution:\n        raise\
+          \ RuntimeError(\"downloaded input artifact belongs to another execution\"\
+          )\n    (input_dir / \"dataset.json\").write_bytes(payload)\n    os.chmod(input_dir\
+          \ / \"dataset.json\", 0o444)\n    input_hash = hashlib.sha256(payload).hexdigest()\n\
+          \    training = r'''\nimport errno, hashlib, json, os, pathlib, sys, time\n\
+          mode, execution, expected = sys.argv[1:]\npayload = pathlib.Path('/input/dataset.json').read_bytes()\n\
+          assert hashlib.sha256(payload).hexdigest() == expected\nassert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()\n\
+          assert not any(k in os.environ for k in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',\
+          \ 'MYSQL_ROOT_PASSWORD'))\ntry:\n    pathlib.Path('/input/write-negative').write_text('must-not-write')\n\
+          except OSError as error:\n    assert error.errno in (errno.EROFS, errno.EACCES)\n\
+          \    readonly_errno = error.errno\nelse:\n    raise RuntimeError('input\
+          \ mount was writable')\nunique = pathlib.Path('/output/unique.json')\nwith\
+          \ unique.open('x') as stream:\n    json.dump({'execution': execution, 'inputSha256':\
+          \ expected, 'readonlyErrno': readonly_errno}, stream)\n    stream.flush();\
+          \ os.fsync(stream.fileno())\nif mode == 'fail':\n    sys.exit(42)\nif mode\
+          \ == 'stop':\n    time.sleep(600)\n    raise RuntimeError('stop probe was\
+          \ not stopped before its deadline')\ndata = json.loads(payload)\nw, b =\
+          \ 0.0, 0.0\nfor _ in range(100):\n    residuals = [w*x+b-y for x,y in zip(data['x'],\
+          \ data['y'])]\n    w -= 0.02 * 2 * sum(r*x for r,x in zip(residuals,data['x']))/len(residuals)\n\
+          \    b -= 0.02 * 2 * sum(residuals)/len(residuals)\nloss = sum((w*x+b-y)**2\
+          \ for x,y in zip(data['x'],data['y']))/len(data['x'])\nassert loss < 0.1\n\
+          result = {'execution': execution, 'weight': w, 'bias': b, 'loss': loss,\
+          \ 'inputSha256': expected}\nwith pathlib.Path('/output/model.json').open('x')\
+          \ as stream:\n    json.dump(result, stream, sort_keys=True); stream.flush();\
+          \ os.fsync(stream.fileno())\nprint(json.dumps({'execution': execution, 'loss':\
+          \ loss, 'inputSha256': expected}))\n'''\n    name = \"ani-kfp-train-\" +\
+          \ execution\n    job = {\"apiVersion\": \"trainer.kubeflow.org/v1alpha1\"\
+          , \"kind\": \"TrainJob\",\n        \"metadata\": {\"name\": name, \"namespace\"\
+          : namespace,\n            \"labels\": {\"ani.io/execution-id\": execution},\n\
+          \            \"annotations\": {\"ani.io/kfp-run-id\": run_id, \"ani.io/workspace-name\"\
+          : claim, \"ani.io/workspace-uid\": claim_uid}},\n        \"spec\": {\"runtimeRef\"\
+          : {\"name\": runtime_name}, \"trainer\": {\"numNodes\": 1, \"numProcPerNode\"\
+          : 1,\n            \"command\": [\"python\", \"-c\", training], \"args\"\
+          : [mode, execution, input_hash]},\n            \"labels\": {\"ani.io/execution-id\"\
+          : execution},\n            \"podTemplateOverrides\": [{\"targetJobs\": [{\"\
+          name\": \"node\"}],\n                \"metadata\": {\"labels\": {\"ani.io/execution-id\"\
+          : execution}},\n                \"spec\": {\"serviceAccountName\": \"trainer-workload\"\
+          , \"nodeSelector\": {\"kubernetes.io/hostname\": trainer_node},\n      \
+          \              \"volumes\": [{\"name\": \"workspace\", \"persistentVolumeClaim\"\
+          : {\"claimName\": claim}}],\n                    \"containers\": [{\"name\"\
+          : \"node\", \"volumeMounts\": [\n                        {\"name\": \"workspace\"\
+          , \"mountPath\": \"/input\", \"subPath\": \"input\", \"readOnly\": True},\n\
+          \                        {\"name\": \"workspace\", \"mountPath\": \"/output\"\
+          , \"subPath\": \"output\", \"readOnly\": False}]}]}}]}}\n    try:\n    \
+          \    custom.get_namespaced_custom_object(\"trainer.kubeflow.org\", \"v1alpha1\"\
+          , namespace, \"trainjobs\", name)\n    except ApiException as error:\n \
+          \       if error.status != 404:\n            raise\n    else:\n        raise\
+          \ RuntimeError(\"probe name occupied; never delete/recreate by name\")\n\
+          \    custom.create_namespaced_custom_object(\"trainer.kubeflow.org\", \"\
+          v1alpha1\", namespace, \"trainjobs\", job, dry_run=\"All\")\n    correlation\
+          \ = {\"schema\": \"ani.kubeflow.handoff-probe.v1\", \"execution\": execution,\
+          \ \"kfpRunId\": run_id,\n                   \"namespace\": namespace, \"\
+          workspace\": {\"name\": claim, \"uid\": claim_uid},\n                  \
+          \ \"trainJob\": {\"name\": name, \"creationResult\": \"UNKNOWN\"}, \"inputSha256\"\
+          : input_hash}\n    (output_dir / \"correlation.json\").write_text(json.dumps(correlation,\
+          \ sort_keys=True))\n    created = custom.create_namespaced_custom_object(\"\
+          trainer.kubeflow.org\", \"v1alpha1\", namespace, \"trainjobs\", job)\n \
+          \   job_uid = created[\"metadata\"][\"uid\"]\n    correlation[\"trainJob\"\
+          ].update(uid=job_uid, creationResult=\"CONFIRMED\")\n    (output_dir / \"\
+          correlation.json\").write_text(json.dumps(correlation, sort_keys=True))\n\
+          \    deadline = time.monotonic() + 480\n    while time.monotonic() < deadline:\n\
+          \        current = custom.get_namespaced_custom_object(\"trainer.kubeflow.org\"\
+          , \"v1alpha1\", namespace, \"trainjobs\", name)\n        if current[\"metadata\"\
+          ][\"uid\"] != job_uid:\n            raise RuntimeError(\"TrainJob UID changed\
+          \ during the probe\")\n        conditions = {c[\"type\"]: c[\"status\"]\
+          \ for c in current.get(\"status\", {}).get(\"conditions\", [])}\n      \
+          \  correlation[\"trainJob\"][\"conditions\"] = conditions\n        (output_dir\
+          \ / \"correlation.json\").write_text(json.dumps(correlation, sort_keys=True))\n\
+          \        if conditions.get(\"Failed\") == \"True\":\n            raise RuntimeError(\"\
+          external TrainJob failed; retain this execution PVC and unique output\"\
+          )\n        if conditions.get(\"Complete\") == \"True\":\n            break\n\
+          \        time.sleep(3)\n    else:\n        raise TimeoutError(\"external\
+          \ TrainJob deadline; preserve and reconcile, no blind replacement\")\n \
+          \   if core.read_namespaced_persistent_volume_claim(claim, namespace).metadata.uid\
+          \ != claim_uid:\n        raise RuntimeError(\"workspace identity changed\
+          \ across Pods\")\n    pods = core.list_namespaced_pod(namespace, label_selector=\"\
+          ani.io/execution-id=\" + execution).items\n    train_pods = [p for p in\
+          \ pods if p.spec.service_account_name == \"trainer-workload\"]\n    if len(train_pods)\
+          \ != 1 or train_pods[0].status.phase != \"Succeeded\":\n        raise RuntimeError(\"\
+          expected one successful external training Pod\")\n    training_pod = train_pods[0]\n\
+          \    if training_pod.spec.automount_service_account_token is not False or\
+          \ training_pod.spec.node_name != trainer_node:\n        raise RuntimeError(\"\
+          training token/node contract differs\")\n    if any(v.secret or v.projected\
+          \ for v in training_pod.spec.volumes):\n        raise RuntimeError(\"ordinary\
+          \ training Pod acquired a Secret/projected token\")\n    mounts = {v.mount_path:\
+          \ v for v in training_pod.spec.containers[0].volume_mounts}\n    if not\
+          \ mounts[\"/input\"].read_only or mounts[\"/input\"].sub_path != \"input\"\
+          \ or mounts[\"/output\"].sub_path != \"output\":\n        raise RuntimeError(\"\
+          training mount contract differs\")\n    claims = [v.persistent_volume_claim.claim_name\
+          \ for v in training_pod.spec.volumes if v.persistent_volume_claim]\n   \
+          \ if claims != [claim]:\n        raise RuntimeError(\"training Pod mounted\
+          \ a different execution claim\")\n    value = json.loads((output_dir / \"\
+          model.json\").read_text())\n    if value[\"execution\"] != execution or\
+          \ value[\"inputSha256\"] != input_hash:\n        raise RuntimeError(\"external\
+          \ training output belongs to another execution\")\n    shutil.copyfile(output_dir\
+          \ / \"model.json\", model.path)\n    correlation.update(trainPod={\"name\"\
+          : training_pod.metadata.name, \"uid\": training_pod.metadata.uid, \"node\"\
+          : training_pod.spec.node_name},\n                       pipelineNode=os.environ.get(\"\
+          ANI_PROBE_NODE\"), outputSha256=hashlib.sha256(pathlib.Path(model.path).read_bytes()).hexdigest(),\
+          \ loss=value[\"loss\"])\n    jobsets = custom.list_namespaced_custom_object(\"\
+          jobset.x-k8s.io\", \"v1alpha2\", namespace, \"jobsets\")[\"items\"]\n  \
+          \  owned = [item for item in jobsets if any(reference[\"uid\"] == job_uid\
+          \ for reference in item[\"metadata\"].get(\"ownerReferences\", []))]\n \
+          \   if len(owned) != 1:\n        raise RuntimeError(\"external TrainJob\
+          \ has no unique UID-owned JobSet\")\n    correlation[\"jobSet\"] = {\"name\"\
+          : owned[0][\"metadata\"][\"name\"], \"uid\": owned[0][\"metadata\"][\"uid\"\
+          ]}\n    pathlib.Path(link.path).write_text(json.dumps(correlation, sort_keys=True))\n\
+          \    for key, value in {\"kfp_run_id\": run_id, \"train_job_uid\": job_uid,\
+          \ \"workspace_uid\": claim_uid, \"execution\": execution}.items():\n   \
+          \     link.metadata[key] = value\n        model.metadata[key] = value\n\
+          \    metrics.log_metric(\"loss\", correlation[\"loss\"])\n    metrics.log_metric(\"\
+          single_process\", 1)\n\n"
+        image: ANI_IMAGE_ani.local/kubeflow-execution:26.03-v1
+        resources:
+          cpuLimit: 1.0
+          cpuRequest: 0.1
+          memoryLimit: 1.073741824
+          memoryRequest: 0.268435456
+          resourceCpuLimit: '1'
+          resourceCpuRequest: 100m
+          resourceMemoryLimit: 1Gi
+          resourceMemoryRequest: 256Mi
+    exec-prepare-dataset:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - prepare_dataset
+        command:
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef prepare_dataset(execution: str, dataset: Output[Dataset]):\n\
+          \    import json\n    import pathlib\n    value = {\"execution\": execution,\
+          \ \"x\": [0.0, 1.0, 2.0, 3.0], \"y\": [1.0, 3.0, 5.0, 7.0]}\n    pathlib.Path(dataset.path).write_text(json.dumps(value,\
+          \ sort_keys=True))\n    dataset.metadata[\"environment_probe\"] = True\n\
+          \    dataset.metadata[\"execution\"] = execution\n\n"
+        image: ANI_IMAGE_ani.local/kubeflow-execution:26.03-v1
+        resources:
+          cpuLimit: 0.5
+          cpuRequest: 0.1
+          memoryLimit: 0.536870912
+          memoryRequest: 0.134217728
+          resourceCpuLimit: 500m
+          resourceCpuRequest: 100m
+          resourceMemoryLimit: 512Mi
+          resourceMemoryRequest: 128Mi
+pipelineInfo:
+  name: ani-environment-handoff
+root:
+  dag:
+    tasks:
+      external-training:
+        cachingOptions: {}
+        componentRef:
+          name: comp-external-training
+        dependentTasks:
+        - prepare-dataset
+        inputs:
+          artifacts:
+            dataset:
+              taskOutputArtifact:
+                outputArtifactKey: dataset
+                producerTask: prepare-dataset
+          parameters:
+            claim:
+              componentInputParameter: claim
+            claim_uid:
+              componentInputParameter: claim_uid
+            execution:
+              componentInputParameter: execution
+            mode:
+              componentInputParameter: mode
+            namespace:
+              componentInputParameter: namespace
+            run_id:
+              runtimeValue:
+                constant: '{{$.pipeline_job_uuid}}'
+            runtime_name:
+              componentInputParameter: runtime_name
+            trainer_node:
+              componentInputParameter: trainer_node
+        taskInfo:
+          name: external-training
+      prepare-dataset:
+        cachingOptions: {}
+        componentRef:
+          name: comp-prepare-dataset
+        inputs:
+          parameters:
+            execution:
+              componentInputParameter: execution
+        taskInfo:
+          name: prepare-dataset
+  inputDefinitions:
+    parameters:
+      claim:
+        parameterType: STRING
+      claim_uid:
+        parameterType: STRING
+      execution:
+        parameterType: STRING
+      mode:
+        defaultValue: success
+        isOptional: true
+        parameterType: STRING
+      namespace:
+        parameterType: STRING
+      runtime_name:
+        parameterType: STRING
+      trainer_node:
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-external-training:
+          fieldPathAsEnv:
+          - fieldPath: spec.nodeName
+            name: ANI_PROBE_NODE
+          nodeSelector:
+            labels:
+              kubernetes.io/hostname: ani-01
+          pvcMount:
+          - componentInputParameter: claim
+            mountPath: /workspace
+            pvcNameParameter:
+              componentInputParameter: claim
