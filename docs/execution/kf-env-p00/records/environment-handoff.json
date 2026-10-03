@@ -1,8 +1,8 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV05-first-real-success-chain-with-cross-node-readback-and-MLMD; integration-in-progress",
-  "integration_status": "IN_PROGRESS",
+  "checkpoint": "ENV05-real-integration-pass; ENV06-candidate-freeze-in-progress; clean-install-not-run",
+  "integration_status": "PASS",
   "final_first_install_status": "NOT_RUN",
   "business_p01_status": "NOT_RUN",
   "cluster": {
@@ -47,7 +47,7 @@
   },
   "kfp": {
     "endpoint": "https://172.16.101.10:30445",
-    "multi_user_authorization_verified": "DEVELOPMENT_HTTP_A_ALLOWED_A_TO_B_DENIED / FULL_HTTP_GRPC_MATRIX_PENDING",
+    "multi_user_authorization_verified": "DEVELOPMENT_62_REAL_HTTP_GRPC_REQUESTS_PASS / FINAL_TARGET_NOT_RUN",
     "frontend_deployed": false,
     "credentials_reference_only": "pipeline-runner TokenRequest; separate Kubernetes and pipelines.kubeflow.org audiences; private short-lived token files"
   },
@@ -109,7 +109,22 @@
     "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf",
     "mlmd": {"kind": "actual read-only authenticated database association query", "run_context_id": 5, "dataset_artifact_id": 10, "link_artifact_id": 13, "metrics_artifact_id": 14, "model_artifact_id": 15, "prepare_execution_id": 11, "training_execution_id": 12},
     "evidence": ["Fedora: probes/integration-success-b-attempt-02/reconciled-result-attempt-01/private-report.json", "node attempt-18: workspace-readback-success-b02-attempt-01/report.json", "node attempt-18: logs/mlmd-link-success-b02-attempt-01.log"],
-    "remaining": ["actual exit-42 and stop output retention", "execution isolation", "independent S3 artifact readback and cross-tenant denial", "full HTTP/gRPC identity and spoof matrix", "ordinary Pod raw API/MLMD/database denial", "database persistence", "candidate freeze", "clean unified first install and independent final EAC"]
+    "remaining": ["candidate freeze", "clean unified first install and independent final EAC"]
+  },
+  "development_acceptance": {
+    "source_candidate": "dee542af0122e9f95bded2f349849df3a1a53e4a",
+    "asset_approval_sha256": "ede18d55e6579ed752a5df1559afbbc2903597b64dadb28274d996a4fe809f57",
+    "failure": {"run_id": "7e6cf92d-a49d-400b-a989-0862099f350c", "state": "FAILED", "cpu_exit_code": 42, "workspace_uid": "9dcc36ce-fbdb-4290-b7cf-b40a55ded162", "readback": "FILES_READ_BACK"},
+    "stop": {"run_id": "7eff9b74-55ec-4347-9bb1-caca563d2b44", "actual_state": "FAILED", "actual_history": ["PENDING", "RUNNING", "CANCELING", "FAILED"], "workflow_active_deadline_seconds": 0, "train_job_uid": "53ea5559-5d17-4727-887f-cf193acc094e", "original_cpu_pod_uid": "469a9180-4c14-49e3-9ad1-d950f0ffb134", "original_cpu_pod_gone": true, "replacement_cpu_pods": 0, "readback": "FILES_READ_BACK", "client_original_exit_code": 1, "read_only_reconciliation_exit_code": 0},
+    "s3": {"status": "SCOPED_IO_AND_ARTIFACT_READ_BACK", "positive_unique_writes": 3, "explicit_403_denials": 15, "unknown_outcomes": 0, "model_sha256": "b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf", "evidence": "node attempt-19/s3-data-attempt-02/report.json"},
+    "entry": {"status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED", "requests": 62, "exit_code": 0, "evidence": "Fedora probes/entry-matrix-attempt-01/result/report.json"},
+    "ordinary_workload": {"status": "ORDINARY_WORKLOAD_CONTROL_DENIED", "pod_uid": "36f4e343-b268-4042-867e-45fd7dc7f07f", "raw_control_targets_denied": 10, "kubernetes_create_targets_denied": 4, "identity_credentials_supplied": false, "evidence": "node attempt-19/workload-boundary-b-attempt-04/report.json"},
+    "dedicated_database": {"status": "DEDICATED_DB_RECORDS_PERSISTED", "pod_uid": "be7bdfb8-b6c0-4d3f-939f-dc99a51e952d", "pvc_uid": "c8cb3eeb-0dfc-4e71-ad2b-ef734a6c1b78", "pod_replaced": false, "container_restart_count_before": 0, "container_restart_count_after": 1, "identical_record_count": 8, "records_sha256": "ea1536b90673ab60392da748215da585071f140315e84ff6a66ba61b0dcba23e", "evidence": "node attempt-19/dedicated-db-persistence-attempt-02/report.json"},
+    "post_restart_main_flow": {"execution": "env-85ec691ef9424b8b", "run_id": "175e6bb3-0720-418b-a02d-7f6ccc447032", "run_state": "SUCCEEDED", "workspace_uid": "52508ce7-9591-4971-a3a1-971cb4cded01", "train_job_uid": "9ee5184b-caaf-4ebe-ab35-1bf987d4bf94", "cpu_pod_uid": "babef277-00b5-4542-b045-61bffe091599", "cpu_exit_code": 0, "client_exit_code": 0, "reader_node": "ani-02", "model_sha256": "8f3875da8b3ed5c1db4816fc17cd2ad42bd542ddbd28132967dc9683a7591cce", "mlmd_dataset_id": 24, "mlmd_training_execution_id": 24, "mlmd_link_id": 27, "mlmd_metrics_id": 28, "mlmd_model_id": 29, "s3_read_only_export": "ARTIFACTS_READ_BACK"},
+    "execution_isolation": "distinct PVC creation UIDs and execution-bound input/model/unique/correlation hashes; B1 exported before cleanup; B2 and B3 retained and independently read",
+    "retained_file_exports": "node attempt-19/workspace-{b02,b03,fail-a01,stop-a02}-export-attempt-01; whitelist file bytes, hashes and creation UIDs; S3 Model/Link bytes exported separately",
+    "external_terminal_checkpoint": {"path": "/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/integration-terminal-c-checkpoint-attempt-02.tar", "sha256": "f3a15118de93ec1d9ae1c7963d99bc8515fd9674cae5c1f8953d9713e3112d89", "target_and_fedora_hashes_match": true},
+    "scope": "development only; no snapshot restore; final EAC not inherited"
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt", "records/integration-attempts.md"],
   "blocked_items": [

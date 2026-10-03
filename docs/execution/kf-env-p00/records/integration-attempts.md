@@ -61,10 +61,27 @@
 
 独立普通只读 reader 在 ani-02 对第二次 B 工作卷回读，退出码 0，FILES_READ_BACK；输入 SHA256 `709f9c339a8f3724660e7fa9143a587e2d95c5ccc5be27f78623e1074a8550ab`，模型 SHA256 `b2074e00c22f4f9f28bc96221be71e6c0ecf2c78591ffdbc5336acc39727edcf`，训练输入和 reader 写入均得到 EROFS=30。实际 MySQL/MLMD 只读查询证实 Run context 5、数据集 artifact 10 到 prepare execution 11 和 training execution 12 的事件，以及 Link 13/Metrics 14/Model 15 到同一 training execution 的输出事件。Model/Link 属性中的执行、Run、TrainJob UID、PVC UID 均匹配创建响应；这不代替独立 S3 工件读取。
 
-当前停在 ENV05 的剩余联调：实际 exit-42/停止保留、不同执行隔离、独立 S3 读取与越权拒绝、完整 HTTP/gRPC 身份矩阵、普通 Pod 防旁路及数据库持久化。C/D 未通过，快照恢复和最终统一首装均 NOT_RUN。
+该检查点之后完成下述真实联调；最终统一首装仍独立 NOT_RUN。
+
+## ENV05 联调通过与候选冻结
+
+- 失败执行 `env-18fb0137b8a242f9`：Run `7e6cf92d-a49d-400b-a989-0862099f350c` 实际 FAILED，CPU Pod `35b18954-7a4d-451c-8550-245381399433` 在 ani-02 实际退出 42，TrainJob Failed、JobSet Failed/restarts=0。独立 ani-03 reader 退出 0，输入、unique 和 correlation 保留，无模型。PVC UID `9dcc36ce-fbdb-4290-b7cf-b40a55ded162`。
+- 停止执行 `env-1e36e66d582d4070`：Run `7eff9b74-55ec-4347-9bb1-caca563d2b44` 原生历史 PENDING→RUNNING→CANCELING→FAILED；固定 KFP e4ebca3 的终止通过 Workflow activeDeadlineSeconds=0 实现，终态真实为 FAILED，未伪写 CANCELED。TrainJob UID `53ea5559-5d17-4727-887f-cf193acc094e` 和 JobSet 实际 Suspended；原 CPU Pod UID `469a9180-4c14-49e3-9ad1-d950f0ffb134` 已消失，无替换 Pod。两项停止请求均确认成功。原客户端因错误预期 CANCELED 退出 1，保留原报告；`34c3271` 只读对账同一对象、真实历史与物理终止，退出 0、无新写入。独立 ani-02 reader 退出 0，停止文件保留。
+- S3 实际 I/O：三个既有 scoped 身份各写入一个唯一对象并回读原字节；15 个显式 403 越权拒绝，未知结果 0。B2 Model/Link 实际读取并匹配 PVC 模型和执行、Run、TrainJob/PVC 创建 UID。首次负向 rc put 返回 7、结果 UNKNOWN，保留原失败；仅用 root HEAD 对该精确键只读确认不存在，随后 scoped rc pipe 返回显式 403；未重写已确认的正向对象。证据 `integration-attempt-19/s3-data-attempt-02/report.json`。
+- HTTP/gRPC 身份矩阵：`a26e88f` 的实际 62 请求退出 0；两身份本租户允许、互访拒绝，缺失/无效/错 audience/重复 Authorization 拒绝，六种保护身份头的大小写、下划线及重复变体拒绝。HTTP 与原生固定 Go gRPC 客户端均 TLS 校验；探针身份不是 CPU02 正式服务授权。
+- 普通工作负载：`ef171df` 的 attempt-04 退出 0，实际 Pod UID `36f4e343-b268-4042-867e-45fd7dc7f07f`，无 token/Secret/客户端证书。10 个真实 Ready 的 KFP 原口、MLMD、数据库 Service/Pod 端口均超时拒绝；Kubernetes 创建干运行的三个地址传输拒绝，ani-02 API 返回明确 403。TLS 使用公共服务器 CA，未跳验证。attempt-02 原失败保留；attempt-03 产品锁到期，在创建前退出。
+- 独立数据库持久化：`e580f4a` attempt-02 对本任务专用 MySQL 执行一次 mysqladmin graceful shutdown。实际 Pod UID `be7bdfb8-b6c0-4d3f-939f-dc99a51e952d`、PVC UID `c8cb3eeb-0dfc-4e71-ad2b-ef734a6c1b78` 未变，容器 restartCount 0→1；重启前后实际 KFP/MLMD 8 行完全相同，SHA256 `ea1536b90673ab60392da748215da585071f140315e84ff6a66ba61b0dcba23e`。共享 PostgreSQL 未重启。attempt-01 锁已到期，在数据库操作前退出。
+- 重启后新主链：`env-85ec691ef9424b8b`，Run `175e6bb3-0720-418b-a02d-7f6ccc447032` 实际 SUCCEEDED，客户端退出 0；PVC UID `52508ce7-9591-4971-a3a1-971cb4cded01`，TrainJob UID `9ee5184b-caaf-4ebe-ab35-1bf987d4bf94` Complete，CPU Pod UID `babef277-00b5-4542-b045-61bffe091599` 在 ani-03 退出 0。独立 ani-02 reader 原字节导出/摘要/EROFS=30 通过。真实 MLMD Dataset 24→prepare 23/training 24；Link 27/Metrics 28/Model 29→training 24 输出事件。独立 S3 scoped Model/Link 读取退出 0，与模型 SHA256 `8f3875da8b3ed5c1db4816fc17cd2ad42bd542ddbd28132967dc9683a7591cce` 和创建 UID 一致。
+- 隔离与恢复文件：B1/B2/B3 不同执行的 PVC UID 和 input/model/unique/correlation 摘要各自绑定，互不覆盖。B1 全部唯一字节及终态资源先导出 Fedora，归档 SHA256 `ebe7761ca608c69af188d9254b844dc8366dbbc08ef2b7c02c435fd08715383c`；随后按创建 UID 删除其终态 TrainJob/Workflow、只读 reader 和 PVC，每项 body dryRun+原 UID 存续核实+实际 UID 条件删除，均确认消失。B2/B3/失败/停止卷仍保留，`452214e` 将受限 reader 的实际白名单文件字节随原摘要导出；`dee542a` 增加只读 S3 Model/Link 导出，不重跑已通过的 S3 写入矩阵。
+
+C 必需联调通过；代码候选 `dee542af0122e9f95bded2f349849df3a1a53e4a`，13 项源绑定审批 SHA256 `ede18d55e6579ed752a5df1559afbbc2903597b64dadb28274d996a4fe809f57`。阶段 D 在 Fedora 干净独立 checkout 运行既有统一门禁及同源构建；D 通过前不恢复快照。最终首装和 EAC01～EAC14 均不继承 C 的 PASS。
+
+外部终态检查点 `/home/chabking/ani-installer-runs/kf-env-p00-20261003/probes/integration-terminal-c-checkpoint-attempt-02.tar` 与目标端 SHA256 均为 `f3a15118de93ec1d9ae1c7963d99bc8515fd9674cae5c1f8953d9713e3112d89`。包含角色 14～19 原始日志、控制检查、删除条件与回执、数据库前后记录、S3/权限/边界报告，以及 B2/B3/失败/停止卷白名单唯一文件和 B2/B3 Model/Link 原字节；短期身份 token 和 Secret 配置未入包。首次 archive-attempt-01 因 sh 不展开 brace 而缺角色日志，保留部分包，未用于恢复门禁。
 
 ## 执行偏差及证据限制
 
+- 早期诊断清理曾把 dryRun 放在 raw DELETE URL query，同时提供 DeleteOptions body；kubectl 原生 RawDelete 此时未传递 query 意图，A1 的拟 dry-run 实际删除了本任务已完整导出的 reader/工作卷，意图记录晚于这两个首个效果。原后续 404/等待超时保留并只读对账，未清理其他对象。已改为 DeleteOptions body 的 dryRun=[All]，并在实际删除前核实同 UID 未出现 deletionTimestamp；后续删除请求均先记 UNKNOWN、使用服务端 UID 条件、只发一次。未移除 finalizer、未强制删 Pod。
+- B3 第一次客户端因 output 目录预存在 mkdir 处退出，尚未创建任何 API 客户端或资源。保留首次 rc/log，用同一输入、不同日志和新的子目录启动后实际退出 0。
 - 开发阶段使用明确的 HTTP registry 和 `ctr --plain-http` 缓存准备；没有修改 containerd 配置或重启服务。三节点 15 镜像 pull/CRI inspect 验证只属于开发准备。最终新集群必须独立证明正常 kubelet 拉取，不能使用继承缓存作为 PASS。
 - `e2fc071` helper 在 ani-01 的第三次缓存准备先于该提交推送完成。Git TLS EOF 后只读核对远端，再推送并验证同一 SHA；之后其他节点动作使用已发布源码。该提前执行不进入最终发布/验收证据。
 - 首次图表门禁误设 `ANI_CHART_CACHE_DIR`，实际变量为 `ANI_CHART_CACHE`，共享缓存被填充；保留原缓存，后续使用任务目录，未清理他人缓存。
