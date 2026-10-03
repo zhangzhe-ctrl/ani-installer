@@ -143,18 +143,19 @@ deploymentSpec:
           \                \"metadata\": {\"labels\": {\"ani.io/execution-id\": execution}},\n\
           \                \"spec\": {\"serviceAccountName\": \"trainer-workload\"\
           , \"nodeSelector\": {\"kubernetes.io/hostname\": trainer_node},\n      \
-          \              \"volumes\": [{\"name\": \"workspace\", \"persistentVolumeClaim\"\
-          : {\"claimName\": claim}}],\n                    \"containers\": [{\"name\"\
-          : \"node\", \"volumeMounts\": [\n                        {\"name\": \"workspace\"\
-          , \"mountPath\": \"/input\", \"subPath\": \"input\", \"readOnly\": True},\n\
-          \                        {\"name\": \"workspace\", \"mountPath\": \"/output\"\
-          , \"subPath\": \"output\", \"readOnly\": False}]}]}}]}}\n    try:\n    \
-          \    custom.get_namespaced_custom_object(\"trainer.kubeflow.org\", \"v1alpha1\"\
-          , namespace, \"trainjobs\", name)\n    except ApiException as error:\n \
-          \       if error.status != 404:\n            raise\n    else:\n        raise\
-          \ RuntimeError(\"probe name occupied; never delete/recreate by name\")\n\
-          \    custom.create_namespaced_custom_object(\"trainer.kubeflow.org\", \"\
-          v1alpha1\", namespace, \"trainjobs\", job, dry_run=\"All\")\n    correlation\
+          \              \"volumes\": [{\"name\": name, \"persistentVolumeClaim\"\
+          : {\"claimName\": claim}}\n                                for name in (\"\
+          workspace-input\", \"workspace-output\")],\n                    \"containers\"\
+          : [{\"name\": \"node\", \"volumeMounts\": [\n                        {\"\
+          name\": \"workspace-input\", \"mountPath\": \"/input\", \"subPath\": \"\
+          input\", \"readOnly\": True},\n                        {\"name\": \"workspace-output\"\
+          , \"mountPath\": \"/output\", \"subPath\": \"output\", \"readOnly\": False}]}]}}]}}\n\
+          \    try:\n        custom.get_namespaced_custom_object(\"trainer.kubeflow.org\"\
+          , \"v1alpha1\", namespace, \"trainjobs\", name)\n    except ApiException\
+          \ as error:\n        if error.status != 404:\n            raise\n    else:\n\
+          \        raise RuntimeError(\"probe name occupied; never delete/recreate\
+          \ by name\")\n    custom.create_namespaced_custom_object(\"trainer.kubeflow.org\"\
+          , \"v1alpha1\", namespace, \"trainjobs\", job, dry_run=\"All\")\n    correlation\
           \ = {\"schema\": \"ani.kubeflow.handoff-probe.v1\", \"execution\": execution,\
           \ \"kfpRunId\": run_id,\n                   \"namespace\": namespace, \"\
           workspace\": {\"name\": claim, \"uid\": claim_uid},\n                  \
