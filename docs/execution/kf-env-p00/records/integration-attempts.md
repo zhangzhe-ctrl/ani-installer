@@ -23,6 +23,10 @@
 
 控制器原 Pod UID：JobSet `f6b035f0-cd2e-4800-b8e2-826d6f15f025`、Trainer `d0453fc7-82cf-4d06-a794-c123e9d1365c`；第三次调用前两者 Running、重启数 0。此观察不证明 TrainJob、入口或业务验收通过。
 
+第七次最终按 600 秒等待上限退出，真实退出码 1、确认 116 次写入；S3/数据库/KFP 消费者仍未写入。外存归档 `integration-seventh-failure.tar` SHA256 `33f3260f8591cd975aec993dd9fe90ebc5663fb3bbd36ec9908826044a9ec84c`。`d8c404c` 在当前两租户实际执行十二次 PVC server dry-run，允许各自 5Gi RWX 无 ownerRef 的受管卷，明确由工作卷策略拒绝 6Gi、其他 StorageClass、错误命名、RWO 和 Workflow ownerReference；无持久创建。十四项回归及源绑定配置/默认关闭/物料定向 Go 检查退出码 0。
+
+第八次源 `d8c404c1b35fb66d6b5b2c8182f6d317da48e2e8`；独立开发包 SHA256 `9cd7a7442fdd3605104506d3e4524a4fa9c5d6de61358125f78155f1a57426e0`、站点 SHA256 `7fb94e0abda502764a39f89d5b2b8ef94bd84b164cb9b81705bbbe15935ca877`。目标逐项清单核验、整组十次准入 dry-run 与十二次 PVC 正负向 dry-run 均通过后持产品锁调用同一角色。安装进行中，结果待实际落盘；不是正式同源发布物冻结或最终验收。
+
 前两次原始日志已移出 VM：Fedora `integration-first-failures.tar`，SHA256 `0ecb1cee90ee2143e42d80af266f579692812b36fa8b30ce5fb1e401f4dd16ed`。第三次外存归档 SHA256 `f7bcc1797fc594670dc5410a4cc12629a801fb1ece7148729142de934ab43ad1`。
 
 `985f003eb6dd76301d9c515bb14defb0bae3db44` 的远程回归实际运行六项，退出码 0，日志 `targeted-webhook-replay-attempt-03.log`。回归覆盖两类 webhook 原子规则的 API 默认 scope 重入、显式 Namespaced scope 保留，以及既有四项证书保护。源绑定审批只变更 common.py 摘要和生成源码引用；新审批 SHA256 `f7eb88958ae20cc27477ec2d9f4e6209c7333d47a8cece9e9f0f614c8254380c`。修复后现场重入尚未执行。
