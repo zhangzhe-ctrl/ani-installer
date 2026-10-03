@@ -66,10 +66,16 @@
   },
   "evidence": ["records/cluster-record.json", "records/lab-vm-inventory.txt"],
   "blocked_items": [
-    {"scope": "time-preflight", "reason": "ani-01 NTP unsynchronized; chrony has no source and uses local stratum 10"},
-    {"scope": "snapshot-restore", "reason": "current ANI services/PVC data boundary awaiting clarification; no restore performed"},
+    {"scope": "external-time-verification", "reason": "existing installer-isolated master ani-01 uses local stratum 10; ani-02/03 sync to it at stratum 11 with observed microsecond offsets; external UTC source NOT_VERIFIED"},
     {"scope": "storage-acceptance", "reason": "Ceph HEALTH_WARN includes authentication warnings and BlueStore slow operation; task PVC write/read not yet run"}
   ],
+  "lab_restore": {
+    "data_authorization": "user: 无需保留，直接还原",
+    "targets": [{"vmid": 8, "name": "ani-01", "ip": "172.16.101.10", "snapshot_id": 2}, {"vmid": 9, "name": "ani-02", "ip": "172.16.101.11", "snapshot_id": 2}, {"vmid": 10, "name": "ani-03", "ip": "172.16.101.12", "snapshot_id": 2}],
+    "disk_coverage": "both 200GiB persistent disks per VM are snapshot-backed",
+    "execution_status": "NOT_RUN",
+    "gate": "after integration and candidate freeze; direct revert only, no extra power operation"
+  },
   "tests": [
     {
       "id": "EAC01",

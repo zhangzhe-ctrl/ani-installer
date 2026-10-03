@@ -10,6 +10,29 @@ metadata:
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
   updatedAt: '2026-09-29'
 tasks:
+- id: ENV00
+  title: Kubeflow 统一首装目标与准备路径核实
+  dependsOn: []
+  selected: true
+  status: in_progress
+  stages:
+    code: not_changed
+    materials: source_candidates_fixed
+    remoteBuild: not_run
+    liveInventory: pass
+    liveSmoke: not_run
+    cleanOffline: not_run
+    aniIntegration: not_run
+  evidence:
+  - docs/execution/kf-env-p00/README.md
+  - docs/execution/kf-env-p00/records/cluster-record.json
+  - docs/execution/kf-env-p00/records/lab-vm-inventory.txt
+  - docs/execution/kf-env-p00/records/environment-handoff.json
+  notes:
+  - 2026-10-03 独立任务分支 feat/kubeflow-cpu-p00；本轮只交付统一首装，不扩展追加入口。
+  - 现有集群保留联调；全部 Kubeflow 安装及验收 NOT_RUN，未恢复快照。
+  - 时间为 installer 既有离线主从：ani-01 local stratum 10，ani-02/03 同步 ani-01；可靠外部时间未验证。
+  - 快照 Id2/VMID 8/9/10 与每台两块快照覆盖磁盘已只读核实；用户确认当前数据无需保留、直接还原。恢复在联调与冻结通过后执行，不额外电源操作。
 - id: R00
   title: 冻结工作树、校准旧文档和执行环境
   dependsOn: []

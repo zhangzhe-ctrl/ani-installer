@@ -23,9 +23,9 @@ ENV00 调查进行中，ENV01～ENV06 未完成。没有安装或恢复快照，
 
 Kube-OVN v1.16.6 运行参数开启 `--enable-np=true`、`--np-enforcement=standard`；7 项现有 NetworkPolicy 不是本轮防旁路验收。CoreDNS Service 为 `coredns`（10.96.0.3），已有两个 EndpointSlice endpoint。KFP、Argo、Trainer、JobSet 的相关 CRD 未发现；其缺失是本任务安装前提。现有 cert-manager v1.21.2、RustFS 1.0.0、PostgreSQL 17.11、Harbor 和 ANI 服务须保持所有权边界。
 
-时间前置尚未满足：ani-01 `NTPSynchronized=no`，chrony 无源、local stratum 10；ani-02/03 显示 synchronized，仍须核实实际源及三机一致性。证书到期检查显示集群证书有效至 2027-09-29，不等于时间同步完成。
+时间基线是 installer 既有离线主从：ani-01 `NTPSynchronized=no`，chrony 无外部源、local stratum 10；ani-02/03 实际同步 ani-01、stratum 11，观测偏差分别约 29/17 微秒。该布局与当前 `KubeKeyConfig.native.ntp` 一致，不将未接外部时间源误判成两从节点未同步；UTC 外部可靠性仍未验证，Ceph 节点间同步继续核实。证书到期检查显示集群证书有效至 2027-09-29。
 
-ESXi 已通过既有受管凭据、严格主机密钥验证只读核实：VMID 8/9/10 分别为 ani-01/02/03，guest IP 与本轮目标一致。三个 `iso-install-complete` snapshot Id2 存在；Id3 是旧 kcn/RGW 环境，不能作最终干净快照。见 `records/lab-vm-inventory.txt`。恢复尚未执行；仍需检查每块磁盘的快照覆盖、当前唯一数据与外部后端影响。旧恢复脚本有 .20～.22 白名单及额外 power.on，本轮不运行其恢复入口、不放宽白名单。
+ESXi 已通过既有受管凭据、严格主机密钥验证只读核实：VMID 8/9/10 分别为 ani-01/02/03，guest IP 与本轮目标一致。三个 `iso-install-complete` snapshot Id2 存在，每台两块 200 GiB persistent 磁盘均被快照覆盖；Id3 是旧 kcn/RGW 环境，不能作最终干净快照。见 `records/lab-vm-inventory.txt`。用户已明确当前实验数据无需保留、直接还原；恢复尚未执行，仍须先完成联调和候选冻结。旧恢复脚本有 .20～.22 白名单及额外 power.on，本轮不运行其恢复入口、不放宽白名单。
 
 ## 后续次序
 

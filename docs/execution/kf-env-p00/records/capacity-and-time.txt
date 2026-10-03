@@ -1,0 +1,44 @@
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource                       Requests      Limits
+  --------                       --------      ------
+  cpu                            2135m (13%)   8200m (52%)
+  memory                         3006Mi (10%)  7160Mi (23%)
+  ephemeral-storage              4Gi (2%)      4Gi (2%)
+  hugepages-1Gi                  0 (0%)        0 (0%)
+  hugepages-2Mi                  0 (0%)        0 (0%)
+  devices.kubevirt.io/kvm        0             0
+  devices.kubevirt.io/sev        0             0
+  devices.kubevirt.io/tun        0             0
+  devices.kubevirt.io/vhost-net  0             0
+Events:                          <none>
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource                       Requests          Limits
+  --------                       --------          ------
+  cpu                            2900m (18%)       11415m (73%)
+  memory                         5570956993 (17%)  9253914368 (29%)
+  ephemeral-storage              4344967296 (2%)   4Gi (2%)
+  hugepages-1Gi                  0 (0%)            0 (0%)
+  hugepages-2Mi                  0 (0%)            0 (0%)
+  devices.kubevirt.io/kvm        1                 1
+  devices.kubevirt.io/sev        0                 0
+  devices.kubevirt.io/tun        1                 1
+  devices.kubevirt.io/vhost-net  1                 1
+Events:                          <none>
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource                       Requests      Limits
+  --------                       --------      ------
+  cpu                            2590m (16%)   9200m (58%)
+  memory                         5192Mi (17%)  14924Mi (49%)
+  ephemeral-storage              4Gi (2%)      4Gi (2%)
+  hugepages-1Gi                  0 (0%)        0 (0%)
+  hugepages-2Mi                  0 (0%)        0 (0%)
+  devices.kubevirt.io/kvm        0             0
+  devices.kubevirt.io/sev        0             0
+  devices.kubevirt.io/tun        0             0
+  devices.kubevirt.io/vhost-net  0             0
+Events:                          <none>
+
+{"time_skew_status":{"a":{"skew":0,"latency":0,"health":"HEALTH_OK"},"b":{"skew":0,"latency":0.0056804289816463288,"health":"HEALTH_OK"},"c":{"skew":0,"latency":0.0020411926134159372,"health":"HEALTH_OK"}},"timechecks":{"epoch":18,"round":2164,"round_status":"finished"}}/var/lib/ani-installer/ani-install.lock 0
