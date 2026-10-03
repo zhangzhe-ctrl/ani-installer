@@ -1,6 +1,7 @@
 """Task-scoped KFP RustFS identities; no mutation of existing ANI credentials."""
 import hashlib
 import hmac
+import copy
 import json
 import os
 import pathlib
@@ -11,6 +12,42 @@ import time
 
 from common import atomic, decode
 from resources import obj
+
+
+def same_policy(actual, desired):
+    # RustFS serializes IAM set-valued arrays in a different order. Compare
+    # only those documented sets without dropping duplicates or any fields;
+    # extra permissions, resources, conditions and statements remain unequal.
+    def normalized(value):
+        value = copy.deepcopy(value)
+        if not isinstance(value, dict) or not isinstance(value.get("Statement"), list):
+            raise ValueError("policy shape differs")
+        for statement in value["Statement"]:
+            arrays = [(statement, "Action"), (statement, "Resource")]
+            condition = statement.get("Condition", {}).get("StringLike", {})
+            if "s3:prefix" in condition:
+                arrays.append((condition, "s3:prefix"))
+            for parent, key in arrays:
+                if key not in parent:
+                    continue
+                if not isinstance(parent[key], list) or any(not isinstance(item, str) for item in parent[key]):
+                    raise ValueError("policy set shape differs")
+                parent[key] = sorted(parent[key])
+        return value
+    try:
+        return normalized(actual) == normalized(desired)
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def same_identity(info, key, parent, policy):
+    try:
+        actual = json.loads(info["policy"])
+    except (KeyError, ValueError, TypeError):
+        return False
+    return (info.get("accessKey") == key and info.get("parentUser") == parent
+            and info.get("userType") == "Service Account" and info.get("accountStatus") == "on"
+            and info.get("impliedPolicy") is False and same_policy(actual, policy))
 
 
 def scoped_storage(cluster, ca):
@@ -109,8 +146,7 @@ def scoped_storage(cluster, ca):
                     raise RuntimeError("scoped S3 account exists without its owned bucket")
                 if account.returncode == 0:
                     info = json.loads(account.stdout)
-                    if (info.get("accessKey") != key or info.get("parentUser") != access or info.get("userType") != "Service Account"
-                            or info.get("accountStatus") != "on" or info.get("impliedPolicy") is not False or json.loads(info["policy"]) != policy):
+                    if not same_identity(info, key, access, policy):
                         raise RuntimeError("S3 identity scope differs")
                     if not old:
                         raise RuntimeError("S3 account exists without its managed Secret")
@@ -123,7 +159,7 @@ def scoped_storage(cluster, ca):
                     rc(["--json", "admin", "service-account", "create", "root", key, password,
                         "--policy", str(work / "policy.json"), "--name", key], mutation="create-account:" + key)
                 final = json.loads(rc(["--json", "admin", "access-key", "info", "root", key]).stdout)
-                if final.get("parentUser") != access or final.get("impliedPolicy") is not False or json.loads(final["policy"]) != policy:
+                if not same_identity(final, key, access, policy):
                     raise RuntimeError("scoped S3 readback differs")
                 rc(["--json", "bucket", "list", "app/" + bucket + "/" + prefix + "/"])
                 atomic(cluster.directory / (target + "-s3-binding.json"), {**marker, "secret": target + "/" + secret_name, "status": "IDENTITY_AUTHENTICATED", "crossTenantProbe": "NOT_RUN", "writeReadProbe": "NOT_RUN"})

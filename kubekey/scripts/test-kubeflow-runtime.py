@@ -10,6 +10,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import Cluster
 from install import checked_policy
+from storage import same_policy, same_identity
 
 
 class ExistingSecret(Cluster):
@@ -177,6 +178,49 @@ class PolicyTypeCheckCompletion(unittest.TestCase):
         value["metadata"]["managedFields"] = []
         value["status"]["typeChecking"] = {}
         self.assertTrue(checked_policy(value))
+
+
+class ScopedStorageReadback(unittest.TestCase):
+    def policy(self):
+        return {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:PutObject"], "Resource": ["arn:aws:s3:::owned/artifacts/*"],
+            "Condition": {"StringLike": {"s3:prefix": ["artifacts", "artifacts/", "artifacts/*"]}}}]}
+
+    def test_equivalent_iam_sets_survive_actual_server_reordering(self):
+        desired = self.policy()
+        actual = copy.deepcopy(desired)
+        actual["Statement"][0]["Action"].reverse()
+        actual["Statement"][0]["Condition"]["StringLike"]["s3:prefix"].reverse()
+        self.assertTrue(same_policy(actual, desired))
+
+    def test_broader_prefix_or_resource_and_missing_condition_are_rejected(self):
+        for change in (
+            lambda s: s["Condition"]["StringLike"].update({"s3:prefix": ["*"]}),
+            lambda s: s.update(Resource=["arn:aws:s3:::owned/*"]),
+            lambda s: s.pop("Condition"),
+        ):
+            actual = self.policy()
+            change(actual["Statement"][0])
+            self.assertFalse(same_policy(actual, self.policy()))
+
+    def test_extra_permission_statement_or_duplicate_is_rejected(self):
+        for change in (
+            lambda p: p["Statement"][0]["Action"].append("s3:DeleteObject"),
+            lambda p: p["Statement"].append({"Effect": "Allow", "Action": ["s3:*"], "Resource": ["*"]}),
+            lambda p: p["Statement"][0]["Action"].append("s3:GetObject"),
+        ):
+            actual = self.policy()
+            change(actual)
+            self.assertFalse(same_policy(actual, self.policy()))
+
+    def test_account_identity_status_and_explicit_scope_are_required(self):
+        info = {"accessKey": "task-key", "parentUser": "root-key", "userType": "Service Account",
+                "accountStatus": "on", "impliedPolicy": False, "policy": json.dumps(self.policy())}
+        self.assertTrue(same_identity(info, "task-key", "root-key", self.policy()))
+        for key, invalid in (("accessKey", "other"), ("parentUser", "other"), ("userType", "Regular"),
+                             ("accountStatus", "off"), ("impliedPolicy", True), ("policy", "not-json")):
+            actual = dict(info, **{key: invalid})
+            self.assertFalse(same_identity(actual, "task-key", "root-key", self.policy()))
 
 
 if __name__ == "__main__":
