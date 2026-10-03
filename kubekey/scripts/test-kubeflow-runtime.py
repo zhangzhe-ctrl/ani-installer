@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import Cluster
@@ -368,6 +369,38 @@ class APIWorkflowConfigurationReplay(unittest.TestCase):
     def test_foreign_api_spec_manager_is_rejected_before_any_request(self):
         with self.assertRaisesRegex(RuntimeError, "foreign API deployment spec manager"):
             self.update(manager="foreign-operator")
+
+
+class DeploymentPodConvergence(unittest.TestCase):
+    def converge(self, first):
+        healthy = {"metadata": {"uid": "new-pod", "name": "new"}, "spec": {"nodeName": "ani-03"},
+                   "status": {"conditions": [{"type": "Ready", "status": "True"}]}}
+        class Rolling(Cluster):
+            def read(self, value):
+                return {"metadata": {"uid": "api-uid", "generation": 3},
+                    "spec": {"replicas": 1, "selector": {"matchLabels": {"app": "ml-pipeline"}}},
+                    "status": {"observedGeneration": 3, "updatedReplicas": 1, "availableReplicas": 1, "readyReplicas": 1, "replicas": 1}}
+
+            def call(self, args):
+                self.lookups += 1
+                return json.dumps({"items": first if self.lookups == 1 else [healthy]})
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = Rolling({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            cluster.lookups = 0
+            with mock.patch("common.time.sleep") as sleep:
+                observed = cluster.deployment({"kind": "Deployment", "metadata": {"namespace": "kubeflow", "name": "ml-pipeline"}})
+                self.assertEqual(sleep.call_count, 1)
+            self.assertEqual([p["uid"] for p in observed["pods"]], ["new-pod"])
+
+    def test_terminating_old_pod_waits_for_current_ready_pod(self):
+        self.converge([{"metadata": {"uid": "old-pod", "deletionTimestamp": "2026-10-03T12:32:00Z"},
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]}}])
+
+    def test_empty_pod_observation_does_not_accept_deployment_available(self):
+        self.converge([])
+
+    def test_unready_pod_waits_within_the_same_deadline(self):
+        self.converge([{"metadata": {"uid": "new-pod"}, "status": {"conditions": [{"type": "Ready", "status": "False"}]}}])
 
 
 if __name__ == "__main__":

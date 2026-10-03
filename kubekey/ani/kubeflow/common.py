@@ -212,17 +212,22 @@ class Cluster:
         raise TimeoutError("deadline exceeded: " + identity(obj))
 
     def deployment(self, obj):
+        pods = []
         def ready(value):
             status = value.get("status", {})
             replicas = value["spec"].get("replicas", 1)
-            return (status.get("observedGeneration", 0) >= value["metadata"].get("generation", 0)
+            if not (status.get("observedGeneration", 0) >= value["metadata"].get("generation", 0)
                     and status.get("updatedReplicas", 0) == replicas and status.get("availableReplicas", 0) == replicas
-                    and status.get("readyReplicas", 0) == replicas and status.get("replicas", 0) == replicas)
+                    and status.get("readyReplicas", 0) == replicas and status.get("replicas", 0) == replicas):
+                return False
+            selector = ",".join(k + "=" + v for k, v in value["spec"]["selector"]["matchLabels"].items())
+            pods[:] = json.loads(self.call(["get", "pods", "-n", obj["metadata"]["namespace"], "-l", selector, "-o", "json"]))["items"]
+            # Deployment status may exclude the terminating old ReplicaSet's
+            # Pod before it disappears from the list. Wait for both views to
+            # agree within the same deadline; never accept only Available.
+            return len(pods) == replicas and all(not p["metadata"].get("deletionTimestamp")
+                and any(c["type"] == "Ready" and c["status"] == "True" for c in p.get("status", {}).get("conditions", [])) for p in pods)
         value = self.wait(obj, ready)
-        selector = ",".join(k + "=" + v for k, v in value["spec"]["selector"]["matchLabels"].items())
-        pods = json.loads(self.call(["get", "pods", "-n", obj["metadata"]["namespace"], "-l", selector, "-o", "json"]))["items"]
-        if not pods or any(p.get("metadata", {}).get("deletionTimestamp") or not any(c["type"] == "Ready" and c["status"] == "True" for c in p.get("status", {}).get("conditions", [])) for p in pods):
-            raise RuntimeError("Deployment conditions disagree with current Pod conditions: " + identity(obj))
         return {"uid": value["metadata"]["uid"], "generation": value["metadata"].get("generation"),
                 "pods": [{"uid": p["metadata"]["uid"], "name": p["metadata"]["name"], "node": p["spec"].get("nodeName"),
                           "containers": [{"name": c["name"], "imageID": c.get("imageID"), "restarts": c.get("restartCount")} for c in p["status"].get("containerStatuses", [])]} for p in pods]}
