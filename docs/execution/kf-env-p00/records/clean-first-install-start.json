@@ -1,0 +1,46 @@
+{
+  "status": "RESTORED_CLEAN_BARE_HOSTS_INSTALL_STARTED",
+  "sourceCommit": "dee542af0122e9f95bded2f349849df3a1a53e4a",
+  "snapshotId": 2,
+  "extraPowerOperations": 0,
+  "nodes": [
+    {
+      "name": "ani-01",
+      "ip": "172.16.101.10",
+      "bootId": "63017eac-d07b-4ecc-a045-c15b6e0e192e",
+      "dataDisk": "sdb",
+      "size": "200G",
+      "filesystem": null,
+      "oldAdminConfigPresent": false,
+      "oldInstallRecordPresent": false,
+      "publicTcpBlocked": true,
+      "privateArtifactTcpReachable": true
+    },
+    {
+      "name": "ani-02",
+      "ip": "172.16.101.11",
+      "bootId": "6a3dbeb8-2773-4cbc-9986-69537c27ce50",
+      "dataDisk": "sdb",
+      "size": "200G",
+      "filesystem": null,
+      "oldAdminConfigPresent": false,
+      "oldInstallRecordPresent": false,
+      "publicTcpBlocked": true,
+      "privateArtifactTcpReachable": true
+    },
+    {
+      "name": "ani-03",
+      "ip": "172.16.101.12",
+      "bootId": "6c95cc81-2a74-44d8-a45e-9d8c4ba38471",
+      "dataDisk": "sdb",
+      "size": "200G",
+      "filesystem": null,
+      "oldAdminConfigPresent": false,
+      "oldInstallRecordPresent": false,
+      "publicTcpBlocked": true,
+      "privateArtifactTcpReachable": true
+    }
+  ],
+  "installationEntry": "kk ani install --config site.private.yaml --package-root materials-frozen-dee542a-attempt-01",
+  "finalEac": "NOT_RUN"
+}

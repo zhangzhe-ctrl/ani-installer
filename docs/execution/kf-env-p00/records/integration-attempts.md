@@ -82,6 +82,12 @@ C 必需联调通过；代码候选 `dee542af0122e9f95bded2f349849df3a1a53e4a`�
 
 发布传输包 SHA256 `c1f00b7af44a5cea649a0c97d65657231f82dde69dff0580163b35d892b30a61` 在 Fedora/当前 ani-01 一致；ani-01 代码和材料 SHA256SUMS 全部逐项通过，正式 site 原文件/归一化 digest 与 Fedora 一致。目标核包/配置日志已在节点外保存，归档 `release/target-freeze-dee542a-attempt-01.tar` SHA256 `507a22ea00581ab5888e484cf7713256741176361b9046dad2bc069b4c9fd3ae`。不将 config-validation 记录当 install-success。三 VM UUID、guest IP、Id2 及两块 200GiB persistent backing 已重新核实；尚未恢复。下一步仅按授权直接 revert Id2，再重发现身份，以同一发布物进行最终统一首装。
 
+阶段 E 已启动：三次原生 `vim-cmd vmsvc/snapshot.revert VMID 2 0` 均退出 0；参数 suppressPowerOn=0 由原生 help 核实，没有额外 power/reboot/reset 命令。所有三台重新可达，记录实际新 boot ID、原 VM 绑定 IP/主机名；旧 admin.conf 和 install-success 记录均不存在，指定 by-path 指向空的 200GiB sdb。ani-03 初次 banner 等待超时，只读等待后可达，未再次 revert。完整同一发布包在恢复后 ani-01 再次传输摘要一致、代码/材料全部校验通过；正式私有配置摘要保持 `7ef5167952f2a9e04ce18ad181592c8d02535c3baacf999a24b2c47d7406093c`。
+
+实验室公网阻断随快照清除，已在实际产品锁下恢复既有脚本的 IPv4/IPv6 ANI-OFFLINE 私网保留规则；三台新 TCP 到公网 1.1.1.1:443 超时 rc=124，私网 Fedora 制品 TCP 可达。首次操作复制函数时缺闭合花括号，bash 在 apply 前退出 2；只读核实两族规则均未变，再在 Fedora bash -n 核实完整原始函数后执行，原失败与对账保留于 `release/clean-offline-boundary-dee542a-attempt-02`。未改 installer 源码或用公网阻断代替后续内部 NetworkPolicy 验收。该准备锁的实际 holder 2859/timeout 2860 经 cmdline 核实后终止，锁释放；正式 installer 实际 kernel FLOCK holder 为 3601。
+
+正式唯一入口 `kk ani install --config site.private.yaml --package-root materials-frozen-dee542a-attempt-01` 在 2026-10-03T16:25:38Z 启动，产品 run `ani-ani-lab-20261003-162500`。目标根 `/home/ubuntu/ani-kubeflow-first-install-dee542a-20261004`，stdout/退出码分别 `logs/formal-install.log`/`logs/formal-install.rc`；当前运行中，未预填退出码或 install-success。最终 EAC01～EAC14 全部仍待新环境独立执行。
+
 ## 执行偏差及证据限制
 
 - 早期诊断清理曾把 dryRun 放在 raw DELETE URL query，同时提供 DeleteOptions body；kubectl 原生 RawDelete 此时未传递 query 意图，A1 的拟 dry-run 实际删除了本任务已完整导出的 reader/工作卷，意图记录晚于这两个首个效果。原后续 404/等待超时保留并只读对账，未清理其他对象。已改为 DeleteOptions body 的 dryRun=[All]，并在实际删除前核实同 UID 未出现 deletionTimestamp；后续删除请求均先记 UNKNOWN、使用服务端 UID 条件、只发一次。未移除 finalizer、未强制删 Pod。

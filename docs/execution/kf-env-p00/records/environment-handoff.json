@@ -1,9 +1,9 @@
 {
   "schema": "ani.cpu-p00.environment.v1",
   "status": "IN_PROGRESS",
-  "checkpoint": "ENV05-real-integration-pass; candidate-frozen-and-target-rechecked; clean-install-not-run",
+  "checkpoint": "ENV05-real-integration-pass; candidate-frozen; authorized-Id2-restore-complete; clean-unified-install-in-progress",
   "integration_status": "PASS",
-  "final_first_install_status": "NOT_RUN",
+  "final_first_install_status": "IN_PROGRESS",
   "business_p01_status": "NOT_RUN",
   "cluster": {
     "context": "kubernetes-admin@ani-lab",
@@ -135,7 +135,9 @@
     "data_authorization": "user: 无需保留，直接还原",
     "targets": [{"vmid": 8, "name": "ani-01", "ip": "172.16.101.10", "snapshot_id": 2}, {"vmid": 9, "name": "ani-02", "ip": "172.16.101.11", "snapshot_id": 2}, {"vmid": 10, "name": "ani-03", "ip": "172.16.101.12", "snapshot_id": 2}],
     "disk_coverage": "both 200GiB persistent disks per VM are snapshot-backed",
-    "execution_status": "NOT_RUN",
+    "execution_status": "RESTORED_TO_VERIFIED_CLEAN_BARE_HOSTS",
+    "clean_baseline_record": "records/clean-first-install-start.json",
+    "extra_power_operations": 0,
     "gate": "after integration and candidate freeze; direct revert only, no extra power operation"
   },
   "tests": [
