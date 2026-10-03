@@ -12,7 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubefl
 from common import Cluster
 from install import checked_policy, materialize, entry_ports_available
 from storage import same_policy, same_identity
-from resources import NGINX
+from resources import NGINX, tenant
 
 
 class ExistingSecret(Cluster):
@@ -369,6 +369,41 @@ class APIWorkflowConfigurationReplay(unittest.TestCase):
     def test_foreign_api_spec_manager_is_rejected_before_any_request(self):
         with self.assertRaisesRegex(RuntimeError, "foreign API deployment spec manager"):
             self.update(manager="foreign-operator")
+
+
+class TenantRunStopAuthorization(unittest.TestCase):
+    def test_terminate_is_limited_to_runs_in_the_requested_tenant(self):
+        role = next(v for v in tenant({}, "tenant-a", []) if v["kind"] == "Role" and v["metadata"]["name"] == "ani-kfp-api-client")
+        self.assertEqual(role["metadata"]["namespace"], "tenant-a")
+        self.assertEqual([r for r in role["rules"] if "terminate" in r["verbs"]],
+                         [{"apiGroups": ["pipelines.kubeflow.org"], "resources": ["runs"], "verbs": ["terminate"]}])
+
+    def update(self, manager="kubectl-create"):
+        class ExistingRole(Cluster):
+            def read(self, value):
+                live = copy.deepcopy(value)
+                live["rules"] = live["rules"][:-1]
+                live["metadata"].update(uid="role-create-uid", resourceVersion="42",
+                    labels={"ani.io/managed-by": "ani-lab"}, annotations={"retained": "keep"},
+                    managedFields=[{"manager": manager, "fieldsV1": {"f:rules": {}}}])
+                return live
+
+            def call(self, args, value, **kwargs):
+                if args[0] != "replace" or value["metadata"]["uid"] != "role-create-uid" or value["metadata"]["resourceVersion"] != "42" or value["metadata"]["annotations"]["retained"] != "keep":
+                    raise AssertionError("tenant rules update must preserve identity/version and metadata")
+                return json.dumps(value)
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = ExistingRole({"owner": "ani-lab", "tenants": ["tenant-a"], "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            role = next(v for v in tenant({}, "tenant-a", []) if v["kind"] == "Role" and v["metadata"]["name"] == "ani-kfp-api-client")
+            cluster.apply([role])
+            self.assertEqual(cluster.writes[0]["uid"], "role-create-uid")
+
+    def test_old_owned_rules_use_uid_and_version(self):
+        self.update()
+
+    def test_foreign_rules_owner_rejected_before_request(self):
+        with self.assertRaisesRegex(RuntimeError, "foreign tenant API rules manager"):
+            self.update("another-operator")
 
 
 class DeploymentPodConvergence(unittest.TestCase):
