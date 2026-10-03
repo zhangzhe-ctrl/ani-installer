@@ -13,7 +13,7 @@
 
 - name: ANI Kubeflow | Render this run's configuration
   template:
-    src: site.json
+    src: site.yaml
     dest: /etc/kubernetes/ani/kubeflow/site.json
 
 - name: ANI Kubeflow | Render installer

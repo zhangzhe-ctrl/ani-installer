@@ -34,6 +34,7 @@ func TestKubeflowSelectionAndDefaultOffDigest(t *testing.T) {
 	for _, row := range effectiveSelection(c) { if row.Name == "kubeflow" { t.Fatal("disabled selection adds a Kubeflow row") } }
 	c = kubeflowTestConfig()
 	if err := Validate(c); err != nil { t.Fatal(err) }
+	if _, err := KubeKeyConfig(c, "/offline/packages/kubekey-artifact.tgz", "/offline", r08FullTable(t)); err != nil { t.Fatal(err) }
 	if !c.EffectiveComponents().CertManager.Enabled || c.Components.CertManager.Enabled { t.Fatal("certificate dependency was not derived without mutating the site") }
 	manifest, err := BuildRunManifest(c)
 	if err != nil { t.Fatal(err) }
@@ -59,7 +60,7 @@ func TestKubeflowRejectsUnsupportedSiteBeforeRendering(t *testing.T) {
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
 			c := kubeflowTestConfig(); mutate(&c)
-			if _, err := KubeKeyConfig(c, "/offline/packages/kubekey-artifact.tgz", "/offline", nil); err == nil { t.Fatal("unsupported site reached the deployment context") }
+			if err := Validate(c); err == nil { t.Fatal("unsupported site passed validation") }
 		})
 	}
 }
