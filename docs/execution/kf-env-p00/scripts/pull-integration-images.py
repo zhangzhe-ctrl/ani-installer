@@ -19,7 +19,9 @@ data = pathlib.Path(args.site).read_bytes()
 if hashlib.sha256(data).hexdigest() != "dddf711c5217afff54536096f57bcbe07648f1c1f02ef5cde4786aa867b2da27":
     raise ValueError("development site differs from the reviewed binding")
 images = json.loads(data)["images"]
-if len(images) != 15 or any(not v.startswith("172.16.101.10:5001/ani-kubeflow/") or "@sha256:" not in v for v in images.values()):
+if len(images) != 15 or any(not v.startswith("172.16.101.10:5001/") or "@sha256:" not in v or
+    (not v.startswith("172.16.101.10:5001/ani-kubeflow/") and k != "ani.local/kubeflow-execution:26.03-v1")
+    for k, v in images.items()):
     raise ValueError("development image scope differs")
 output = pathlib.Path(args.output)
 output.mkdir(mode=0o700)
