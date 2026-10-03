@@ -93,5 +93,42 @@ class WebhookRuleDefaults(unittest.TestCase):
         self.apply_webhook("ValidatingWebhookConfiguration", "Namespaced")
 
 
+class ExistingPolicy(Cluster):
+    def __init__(self, site, directory, manager):
+        super().__init__(site, directory)
+        self.manager = manager
+        self.calls = []
+
+    def read(self, value):
+        return {"metadata": {**value["metadata"], "uid": "policy-create-uid", "resourceVersion": "23",
+                "labels": {"ani.io/managed-by": "ani-lab"},
+                "managedFields": [{"manager": self.manager, "fieldsV1": {"f:spec": {}}}]}}
+
+    def call(self, args, value, **kwargs):
+        self.calls.append(args)
+        if "--field-manager=kubectl-create" not in args or "--force-conflicts" in args:
+            raise AssertionError("legacy owned policy must keep its original creator")
+        if value["metadata"].get("uid") != "policy-create-uid" or value["metadata"].get("resourceVersion") != "23":
+            raise AssertionError("policy identity/version conditions must survive replay")
+        return json.dumps(value)
+
+
+class PolicyCreatorReplay(unittest.TestCase):
+    def apply_policy(self, manager):
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = ExistingPolicy({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt", manager)
+            cluster.apply([{"apiVersion": "admissionregistration.k8s.io/v1", "kind": "ValidatingAdmissionPolicy",
+                            "metadata": {"name": "ani-kfp-workspace"}, "spec": {"validations": [{"expression": "true"}]}}])
+            self.assertEqual(len(cluster.calls), 2)
+            self.assertEqual(cluster.writes[0]["uid"], "policy-create-uid")
+
+    def test_legacy_task_policy_keeps_creator_and_uid_version_conditions(self):
+        self.apply_policy("kubectl-create")
+
+    def test_foreign_policy_spec_manager_is_refused_before_a_request(self):
+        with self.assertRaisesRegex(RuntimeError, "foreign policy spec manager"):
+            self.apply_policy("foreign-operator")
+
+
 if __name__ == "__main__":
     unittest.main()
