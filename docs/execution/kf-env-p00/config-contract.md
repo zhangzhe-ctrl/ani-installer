@@ -20,7 +20,9 @@
 
 一个版本化 Runtime，当前为单节点单进程 CPU，固定镜像和 entrypoint、Never restart、JobSet 有界失败策略；不批量开放 upstream CUDA runtime。AdmissionPolicy 拒绝多节点/GPU/未获准 Runtime 和任意覆盖存储的请求。
 
-先测试 KFP 原生 Workspace：每个 Workflow 自动创建独立 PVC，显式把 claim 身份传到外部 TrainJob，并验证只读输入/独立输出、跨 Pod/必要跨节点读写、失败与停止后的保留。固定源码 `GetWorkspacePVC` 会应用用户 PVC patch，再用用户 size 覆盖默认 requests；所以只有默认值不满足管理员约束。必须以受限 Namespace 的 admission 与 ResourceQuota 限定 StorageClass、容量、卷数量和策略。若原生 GC/owner 不能满足保留，再在安装前固定受管单执行 PVC；不运行时自动换方案，不另造 modeldev 工作区 owner。
+固定本轮工作区为 `managed-execution-pvc-v1`：环境 probe 程序为单执行 create-only 创建独立 PVC，捕获响应 UID，无 Workflow ownerReference，显式把 claim 名称/UID 传到外部 TrainJob。人不逐 Run 建卷；这不是 modeldev 的正式工作区 owner。需真实验证只读输入/独立输出、跨 Pod/必要跨节点交接、两执行隔离及失败/停止保留。
+
+选择依据来自固定 KFP 源：`GetWorkspacePVC` 会应用用户 PVC patch，再用用户 size 覆盖默认 requests；原生卷由 Argo Workflow 管理。`backend/src/apiserver/resource/resource_manager.go:ReportWorkflowResource` 会删除已持久终态的 Workflow，持久化 agent 默认一天后再次上报；该生命周期不能保证发布未成的唯一文件继续保留。不能把 agent TTL 设置为 0 当作关闭 GC，0 会立即越过 TTL。故安装前固定上述独立卷方案，保留上游 Workflow GC，不运行失败后切换。原生 Workspace 的运行行为仍为 NOT_RUN，不声称实机复现。管理员以 admission 和 ResourceQuota 强制限定 StorageClass、容量、卷数量与 owner 策略。
 
 ## 初始容量核算（尚未冻结）
 

@@ -95,7 +95,7 @@ def patch(obj):
     if kind == "ConfigMap" and name == "workflow-controller-configmap":
         # Each managed tenant supplies an explicit credentials-scoped repository.
         obj["data"].pop("artifactRepository", None)
-        obj["data"]["executor"] = json.dumps({"imagePullPolicy": "IfNotPresent", "securityContext": {
+        obj["data"]["executor"] = json.dumps({"image": "ANI_IMAGE_quay.io/argoproj/argoexec:v3.7.3", "imagePullPolicy": "IfNotPresent", "securityContext": {
             "runAsNonRoot": True, "runAsUser": 1000, "allowPrivilegeEscalation": False,
             "capabilities": {"drop": ["ALL"]}, "seccompProfile": {"type": "RuntimeDefault"}}})
     if kind == "ConfigMap" and name.startswith("pipeline-api-server-config-"):
@@ -137,11 +137,8 @@ def patch(obj):
             elif name == "metadata-grpc-deployment":
                 env(container, "DBCONFIG_USER", secret="ani-kfp-mlmd-db", key="username")
                 env(container, "DBCONFIG_PASSWORD", secret="ani-kfp-mlmd-db", key="password")
-            elif name == "ml-pipeline-persistenceagent":
-                # Failure output/workspace retention is explicit; no one-day workflow GC.
-                env(container, "TTL_SECONDS_AFTER_WORKFLOW_FINISH", "0")
-            elif name == "workflow-controller":
-                env(container, "ARGO_EXECUTOR_IMAGE", "ANI_IMAGE_quay.io/argoproj/argoexec:v3.7.3")
+            # Preserve upstream workflow GC. Workspace retention uses managed
+            # per-execution PVCs without Workflow ownerReferences instead.
     return obj
 
 

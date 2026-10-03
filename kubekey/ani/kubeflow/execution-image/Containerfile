@@ -1,0 +1,12 @@
+# Build on the remote host after all wheel and base-image bytes are locked.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY wheels/ /opt/wheels/
+COPY requirements.lock /opt/requirements.lock
+RUN python -m pip install --no-index --find-links=/opt/wheels --require-hashes -r /opt/requirements.lock \
+    && python -m pip check \
+    && rm -r /opt/wheels
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+USER 1000:1000
+WORKDIR /tmp
+CMD ["python", "--version"]

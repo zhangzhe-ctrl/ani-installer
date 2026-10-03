@@ -537,15 +537,15 @@ type ClusterConfig struct {
 	//                 observability components after the network stack)
 	//   "base"      — stop after the base cluster: kubernetes + CNI network
 	//                 stack (kcn batch incl. envoy+smoke, or kubeovn)
-	Profile        string         `yaml:"profile"`
-	InstallerNode  string         `yaml:"installerNode"`
-	SSH            SSHConfig      `yaml:"ssh"`
-	Nodes          []NodeConfig   `yaml:"nodes"`
-	Network        Network        `yaml:"network"`
-	RegistryConfig Registry       `yaml:"registry"`
-	Components     Components     `yaml:"components"`
-	Storage        Storage        `yaml:"storage"`
-	ObjectStorage  *ObjectStorage `yaml:"objectStorage"`
+	Profile        string          `yaml:"profile"`
+	InstallerNode  string          `yaml:"installerNode"`
+	SSH            SSHConfig       `yaml:"ssh"`
+	Nodes          []NodeConfig    `yaml:"nodes"`
+	Network        Network         `yaml:"network"`
+	RegistryConfig Registry        `yaml:"registry"`
+	Components     Components      `yaml:"components"`
+	Storage        Storage         `yaml:"storage"`
+	ObjectStorage  *ObjectStorage  `yaml:"objectStorage"`
 	Kubeflow       *KubeflowConfig `yaml:"kubeflow" json:",omitempty"`
 }
 

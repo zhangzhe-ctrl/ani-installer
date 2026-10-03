@@ -1,0 +1,19 @@
+# Merge this section into a validated profile: full site with Kube-OVN,
+# persistent storage and declared RustFS. This is not a standalone site file.
+# Status: candidate contract; final offline install and EAC acceptance NOT_RUN.
+kubeflow:
+  enabled: true
+  release: 26.03-kfp2.16-trainer2.1-v1
+  entryAddress: 172.16.101.10
+  httpPort: 30443
+  grpcPort: 30444
+  database:
+    storageClass: ani-block
+    storageSize: 20Gi
+  workspace:
+    storageClass: ani-cephfs
+    maxSize: 5Gi
+    maxClaimsPerTenant: 2
+  tenants:
+    - ani-kfp-probe-a
+    - ani-kfp-probe-b

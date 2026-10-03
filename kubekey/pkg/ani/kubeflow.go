@@ -14,25 +14,25 @@ const KubeflowRelease = "26.03-kfp2.16-trainer2.1-v1"
 // Kubeflow belongs to the first-install chain, outside Components. It is not
 // an addition target; omitting this pointer preserves legacy config digests.
 type KubeflowConfig struct {
-	Enabled bool `yaml:"enabled"`
-	Release string `yaml:"release"`
-	EntryAddress string `yaml:"entryAddress"`
-	HTTPPort int `yaml:"httpPort"`
-	GRPCPort int `yaml:"grpcPort"`
-	Database KubeflowDatabase `yaml:"database"`
-	Workspace KubeflowWorkspace `yaml:"workspace"`
-	Tenants []string `yaml:"tenants"`
+	Enabled      bool              `yaml:"enabled"`
+	Release      string            `yaml:"release"`
+	EntryAddress string            `yaml:"entryAddress"`
+	HTTPPort     int               `yaml:"httpPort"`
+	GRPCPort     int               `yaml:"grpcPort"`
+	Database     KubeflowDatabase  `yaml:"database"`
+	Workspace    KubeflowWorkspace `yaml:"workspace"`
+	Tenants      []string          `yaml:"tenants"`
 }
 
 type KubeflowDatabase struct {
 	StorageClass string `yaml:"storageClass"`
-	StorageSize string `yaml:"storageSize"`
+	StorageSize  string `yaml:"storageSize"`
 }
 
 type KubeflowWorkspace struct {
-	StorageClass string `yaml:"storageClass"`
-	MaxSize string `yaml:"maxSize"`
-	MaxClaimsPerTenant int `yaml:"maxClaimsPerTenant"`
+	StorageClass       string `yaml:"storageClass"`
+	MaxSize            string `yaml:"maxSize"`
+	MaxClaimsPerTenant int    `yaml:"maxClaimsPerTenant"`
 }
 
 func (c ClusterConfig) KubeflowEnabled() bool {
