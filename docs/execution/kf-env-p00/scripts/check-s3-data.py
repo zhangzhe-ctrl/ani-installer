@@ -36,7 +36,7 @@ output = pathlib.Path(args.output)
 if not output.is_absolute() or not re.fullmatch(r"[a-f0-9]{64}", args.model_sha256):
     raise ValueError("absolute output and actual model hash required")
 cluster = Cluster(site, output)
-    report = {"schema": "ani.kubeflow.s3-data.v1", "status": "IN_PROGRESS", "lock": product_lock(),
+report = {"schema": "ani.kubeflow.s3-data.v1", "status": "IN_PROGRESS", "lock": product_lock(),
           "requests": [], "retainedObjects": [], "cleanup": "NOT_REQUESTED",
           "sourceSha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()}
 atomic(output / "report.json", report)
