@@ -65,7 +65,15 @@ def scoped_storage(cluster, ca):
                     atomic(cluster.directory / "s3-writes.json", mutations)
                 result = subprocess.run([str(executable)] + arguments, text=True, capture_output=True, timeout=60, env=environment)
                 if result.returncode not in accepted:
-                    # rc may include credentials; do not copy stdout/stderr to public logs.
+                    # Retain the first cause without logging credentials or
+                    # effective signed URLs. Do not repeat an unknown mutation.
+                    def sanitized(value):
+                        for credential in (access, secret, key, password):
+                            value = value.replace(credential, "<redacted>")
+                        value = re.sub(r"https?://[^\s\"']+", lambda m: m.group(0).split("?", 1)[0], value)
+                        return value[:8192]
+                    atomic(cluster.directory / "rustfs-first-error.json", {"exit_code": result.returncode,
+                        "operation": mutation or arguments[:3], "stdout": sanitized(result.stdout), "stderr": sanitized(result.stderr)})
                     raise RuntimeError("RustFS scoped operation failed rc=" + str(result.returncode))
                 if mutation:
                     pending["result"] = "CONFIRMED"

@@ -138,6 +138,7 @@ def install(cluster, root, report):
     for value in crds:
         cluster.wait(value, lambda v: any(c["type"] == "Established" and c["status"] == "True" for c in v.get("status", {}).get("conditions", [])))
     report["completedPhases"].append("CRDS_ESTABLISHED")
+    report["changesStarted"] = bool(cluster.writes)
     atomic(cluster.directory / "report.json", report)
 
     fixed = [v for v in values if v["kind"] not in ("Namespace", "CustomResourceDefinition", "Deployment", "PersistentVolumeClaim", "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration")]
@@ -226,6 +227,7 @@ def main():
         cluster.evidence()
         raise
     report["changesStarted"] = bool(cluster.writes)
+    report["completedWrites"] = sum(v["result"] == "CONFIRMED" for v in cluster.writes)
     atomic(cluster.directory / "report.json", report)
     print(json.dumps({"status": report["status"], "report": str(cluster.directory / "report.json")}))
 

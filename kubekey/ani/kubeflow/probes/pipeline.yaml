@@ -90,9 +90,15 @@ deploymentSpec:
           \ import client, config\n    from kubernetes.client.exceptions import ApiException\n\
           \n    if mode not in (\"success\", \"fail\", \"stop\") or not execution.startswith(\"\
           env-\"):\n        raise ValueError(\"bounded environment probe mode or identity\
-          \ differs\")\n    config.load_incluster_config()\n    core, custom = client.CoreV1Api(),\
-          \ client.CustomObjectsApi()\n    live_claim = core.read_namespaced_persistent_volume_claim(claim,\
-          \ namespace)\n    if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:\n\
+          \ differs\")\n    config.load_incluster_config()\n    configuration = client.Configuration.get_default_copy()\n\
+          \    configuration.retries = 0\n    api = client.ApiClient(configuration)\n\
+          \    api.rest_client.pool_manager.connection_pool_kw[\"retries\"] = 0\n\
+          \    original_call = api.call_api\n    def bounded(*arguments, **keywords):\n\
+          \        keywords[\"_request_timeout\"] = keywords.get(\"_request_timeout\"\
+          ) or (5, 30)\n        return original_call(*arguments, **keywords)\n   \
+          \ api.call_api = bounded\n    core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)\n\
+          \    live_claim = core.read_namespaced_persistent_volume_claim(claim, namespace)\n\
+          \    if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:\n\
           \        raise RuntimeError(\"workspace UID/lifecycle differs from the create\
           \ response\")\n    workspace = pathlib.Path(\"/workspace\")\n    input_dir,\
           \ output_dir = workspace / \"input\", workspace / \"output\"\n    input_dir.mkdir(mode=0o755)\n\
@@ -111,29 +117,31 @@ deploymentSpec:
           \ mount was writable')\nunique = pathlib.Path('/output/unique.json')\nwith\
           \ unique.open('x') as stream:\n    json.dump({'execution': execution, 'inputSha256':\
           \ expected, 'readonlyErrno': readonly_errno}, stream)\n    stream.flush();\
-          \ os.fsync(stream.fileno())\nif mode == 'fail':\n    sys.exit(42)\nif mode\
-          \ == 'stop':\n    time.sleep(600)\n    raise RuntimeError('stop probe was\
-          \ not stopped before its deadline')\ndata = json.loads(payload)\nw, b =\
-          \ 0.0, 0.0\nfor _ in range(100):\n    residuals = [w*x+b-y for x,y in zip(data['x'],\
-          \ data['y'])]\n    w -= 0.02 * 2 * sum(r*x for r,x in zip(residuals,data['x']))/len(residuals)\n\
-          \    b -= 0.02 * 2 * sum(residuals)/len(residuals)\nloss = sum((w*x+b-y)**2\
-          \ for x,y in zip(data['x'],data['y']))/len(data['x'])\nassert loss < 0.1\n\
-          result = {'execution': execution, 'weight': w, 'bias': b, 'loss': loss,\
-          \ 'inputSha256': expected}\nwith pathlib.Path('/output/model.json').open('x')\
-          \ as stream:\n    json.dump(result, stream, sort_keys=True); stream.flush();\
-          \ os.fsync(stream.fileno())\nprint(json.dumps({'execution': execution, 'loss':\
-          \ loss, 'inputSha256': expected}))\n'''\n    name = \"ani-kfp-train-\" +\
-          \ execution\n    job = {\"apiVersion\": \"trainer.kubeflow.org/v1alpha1\"\
-          , \"kind\": \"TrainJob\",\n        \"metadata\": {\"name\": name, \"namespace\"\
-          : namespace,\n            \"labels\": {\"ani.io/execution-id\": execution},\n\
-          \            \"annotations\": {\"ani.io/kfp-run-id\": run_id, \"ani.io/workspace-name\"\
-          : claim, \"ani.io/workspace-uid\": claim_uid}},\n        \"spec\": {\"runtimeRef\"\
-          : {\"name\": runtime_name}, \"trainer\": {\"numNodes\": 1, \"numProcPerNode\"\
-          : 1,\n            \"command\": [\"python\", \"-c\", training], \"args\"\
-          : [mode, execution, input_hash]},\n            \"labels\": {\"ani.io/execution-id\"\
-          : execution},\n            \"podTemplateOverrides\": [{\"targetJobs\": [{\"\
-          name\": \"node\"}],\n                \"metadata\": {\"labels\": {\"ani.io/execution-id\"\
-          : execution}},\n                \"spec\": {\"serviceAccountName\": \"trainer-workload\"\
+          \ os.fsync(stream.fileno())\nprint(json.dumps({'execution': execution, 'checkpoint':\
+          \ 'unique-output-fsynced', 'inputSha256': expected}), flush=True)\nif mode\
+          \ == 'fail':\n    sys.exit(42)\nif mode == 'stop':\n    time.sleep(600)\n\
+          \    raise RuntimeError('stop probe was not stopped before its deadline')\n\
+          data = json.loads(payload)\nw, b = 0.0, 0.0\nfor _ in range(100):\n    residuals\
+          \ = [w*x+b-y for x,y in zip(data['x'], data['y'])]\n    w -= 0.02 * 2 *\
+          \ sum(r*x for r,x in zip(residuals,data['x']))/len(residuals)\n    b -=\
+          \ 0.02 * 2 * sum(residuals)/len(residuals)\nloss = sum((w*x+b-y)**2 for\
+          \ x,y in zip(data['x'],data['y']))/len(data['x'])\nassert loss < 0.1\nresult\
+          \ = {'execution': execution, 'weight': w, 'bias': b, 'loss': loss, 'inputSha256':\
+          \ expected}\nwith pathlib.Path('/output/model.json').open('x') as stream:\n\
+          \    json.dump(result, stream, sort_keys=True); stream.flush(); os.fsync(stream.fileno())\n\
+          print(json.dumps({'execution': execution, 'loss': loss, 'inputSha256': expected}))\n\
+          '''\n    name = \"ani-kfp-train-\" + execution\n    job = {\"apiVersion\"\
+          : \"trainer.kubeflow.org/v1alpha1\", \"kind\": \"TrainJob\",\n        \"\
+          metadata\": {\"name\": name, \"namespace\": namespace,\n            \"labels\"\
+          : {\"ani.io/execution-id\": execution},\n            \"annotations\": {\"\
+          ani.io/kfp-run-id\": run_id, \"ani.io/workspace-name\": claim, \"ani.io/workspace-uid\"\
+          : claim_uid}},\n        \"spec\": {\"runtimeRef\": {\"name\": runtime_name},\
+          \ \"trainer\": {\"numNodes\": 1, \"numProcPerNode\": 1,\n            \"\
+          command\": [\"python\", \"-c\", training], \"args\": [mode, execution, input_hash]},\n\
+          \            \"labels\": {\"ani.io/execution-id\": execution},\n       \
+          \     \"podTemplateOverrides\": [{\"targetJobs\": [{\"name\": \"node\"}],\n\
+          \                \"metadata\": {\"labels\": {\"ani.io/execution-id\": execution}},\n\
+          \                \"spec\": {\"serviceAccountName\": \"trainer-workload\"\
           , \"nodeSelector\": {\"kubernetes.io/hostname\": trainer_node},\n      \
           \              \"volumes\": [{\"name\": \"workspace\", \"persistentVolumeClaim\"\
           : {\"claimName\": claim}}],\n                    \"containers\": [{\"name\"\
@@ -157,35 +165,38 @@ deploymentSpec:
           \   job_uid = created[\"metadata\"][\"uid\"]\n    correlation[\"trainJob\"\
           ].update(uid=job_uid, creationResult=\"CONFIRMED\")\n    (output_dir / \"\
           correlation.json\").write_text(json.dumps(correlation, sort_keys=True))\n\
-          \    deadline = time.monotonic() + 480\n    while time.monotonic() < deadline:\n\
-          \        current = custom.get_namespaced_custom_object(\"trainer.kubeflow.org\"\
-          , \"v1alpha1\", namespace, \"trainjobs\", name)\n        if current[\"metadata\"\
-          ][\"uid\"] != job_uid:\n            raise RuntimeError(\"TrainJob UID changed\
-          \ during the probe\")\n        conditions = {c[\"type\"]: c[\"status\"]\
-          \ for c in current.get(\"status\", {}).get(\"conditions\", [])}\n      \
-          \  correlation[\"trainJob\"][\"conditions\"] = conditions\n        (output_dir\
-          \ / \"correlation.json\").write_text(json.dumps(correlation, sort_keys=True))\n\
-          \        if conditions.get(\"Failed\") == \"True\":\n            raise RuntimeError(\"\
-          external TrainJob failed; retain this execution PVC and unique output\"\
-          )\n        if conditions.get(\"Complete\") == \"True\":\n            break\n\
-          \        time.sleep(3)\n    else:\n        raise TimeoutError(\"external\
-          \ TrainJob deadline; preserve and reconcile, no blind replacement\")\n \
-          \   if core.read_namespaced_persistent_volume_claim(claim, namespace).metadata.uid\
-          \ != claim_uid:\n        raise RuntimeError(\"workspace identity changed\
-          \ across Pods\")\n    pods = core.list_namespaced_pod(namespace, label_selector=\"\
-          ani.io/execution-id=\" + execution).items\n    train_pods = [p for p in\
-          \ pods if p.spec.service_account_name == \"trainer-workload\"]\n    if len(train_pods)\
-          \ != 1 or train_pods[0].status.phase != \"Succeeded\":\n        raise RuntimeError(\"\
-          expected one successful external training Pod\")\n    training_pod = train_pods[0]\n\
-          \    if training_pod.spec.automount_service_account_token is not False or\
-          \ training_pod.spec.node_name != trainer_node:\n        raise RuntimeError(\"\
-          training token/node contract differs\")\n    if any(v.secret or v.projected\
-          \ for v in training_pod.spec.volumes):\n        raise RuntimeError(\"ordinary\
-          \ training Pod acquired a Secret/projected token\")\n    mounts = {v.mount_path:\
-          \ v for v in training_pod.spec.containers[0].volume_mounts}\n    if not\
-          \ mounts[\"/input\"].read_only or mounts[\"/input\"].sub_path != \"input\"\
-          \ or mounts[\"/output\"].sub_path != \"output\":\n        raise RuntimeError(\"\
-          training mount contract differs\")\n    claims = [v.persistent_volume_claim.claim_name\
+          \    print(\"ANI_TRAINJOB_CREATE_RESPONSE \" + json.dumps({\"execution\"\
+          : execution, \"kfpRunId\": run_id,\n        \"namespace\": namespace, \"\
+          workspaceUid\": claim_uid, \"trainJobName\": name, \"trainJobUid\": job_uid}),\
+          \ flush=True)\n    deadline = time.monotonic() + 480\n    while time.monotonic()\
+          \ < deadline:\n        current = custom.get_namespaced_custom_object(\"\
+          trainer.kubeflow.org\", \"v1alpha1\", namespace, \"trainjobs\", name)\n\
+          \        if current[\"metadata\"][\"uid\"] != job_uid:\n            raise\
+          \ RuntimeError(\"TrainJob UID changed during the probe\")\n        conditions\
+          \ = {c[\"type\"]: c[\"status\"] for c in current.get(\"status\", {}).get(\"\
+          conditions\", [])}\n        correlation[\"trainJob\"][\"conditions\"] =\
+          \ conditions\n        (output_dir / \"correlation.json\").write_text(json.dumps(correlation,\
+          \ sort_keys=True))\n        if conditions.get(\"Failed\") == \"True\":\n\
+          \            raise RuntimeError(\"external TrainJob failed; retain this\
+          \ execution PVC and unique output\")\n        if conditions.get(\"Complete\"\
+          ) == \"True\":\n            break\n        time.sleep(3)\n    else:\n  \
+          \      raise TimeoutError(\"external TrainJob deadline; preserve and reconcile,\
+          \ no blind replacement\")\n    if core.read_namespaced_persistent_volume_claim(claim,\
+          \ namespace).metadata.uid != claim_uid:\n        raise RuntimeError(\"workspace\
+          \ identity changed across Pods\")\n    pods = core.list_namespaced_pod(namespace,\
+          \ label_selector=\"ani.io/execution-id=\" + execution).items\n    train_pods\
+          \ = [p for p in pods if p.spec.service_account_name == \"trainer-workload\"\
+          ]\n    if len(train_pods) != 1 or train_pods[0].status.phase != \"Succeeded\"\
+          :\n        raise RuntimeError(\"expected one successful external training\
+          \ Pod\")\n    training_pod = train_pods[0]\n    if training_pod.spec.automount_service_account_token\
+          \ is not False or training_pod.spec.node_name != trainer_node:\n       \
+          \ raise RuntimeError(\"training token/node contract differs\")\n    if any(v.secret\
+          \ or v.projected for v in training_pod.spec.volumes):\n        raise RuntimeError(\"\
+          ordinary training Pod acquired a Secret/projected token\")\n    mounts =\
+          \ {v.mount_path: v for v in training_pod.spec.containers[0].volume_mounts}\n\
+          \    if not mounts[\"/input\"].read_only or mounts[\"/input\"].sub_path\
+          \ != \"input\" or mounts[\"/output\"].sub_path != \"output\":\n        raise\
+          \ RuntimeError(\"training mount contract differs\")\n    claims = [v.persistent_volume_claim.claim_name\
           \ for v in training_pod.spec.volumes if v.persistent_volume_claim]\n   \
           \ if claims != [claim]:\n        raise RuntimeError(\"training Pod mounted\
           \ a different execution claim\")\n    value = json.loads((output_dir / \"\

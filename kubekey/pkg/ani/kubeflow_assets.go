@@ -59,7 +59,7 @@ func verifyKubeflowWheels(artifactRoot string) error {
 	var approval struct {
 		Schema string `json:"schema"`
 		Wheels []struct {
-			File string `json:"file"`
+			File   string `json:"file"`
 			SHA256 string `json:"sha256"`
 		} `json:"wheels"`
 	}

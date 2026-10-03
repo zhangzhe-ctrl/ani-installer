@@ -17,6 +17,7 @@ FILES = {
     "probe-run.py": "ani/kubeflow/probes/run.py",
     "probe-pipeline.py": "ani/kubeflow/probes/pipeline.py",
     "probe-pipeline.yaml": "ani/kubeflow/probes/pipeline.yaml",
+    "probe-compile.lock.json": "ani/kubeflow/probes/compile.lock.json",
 }
 RELEASE = "26.03-kfp2.16-trainer2.1-v1"
 parser = argparse.ArgumentParser()

@@ -1,0 +1,12 @@
+{
+  "schema": "ani.kubeflow.probe-compilation.v1",
+  "sourceCommit": "a4ead21a0c77fbbe5e8688d2602baaa7f09ed555",
+  "pipelineSourceSha256": "6bafa83588658bacbfa1d0b37bd84daef5ab959dc9d782cbd309e6a6dec37b7b",
+  "compiledSha256": "b2a66a271b21ab3b461db816aa02699859f7506a286f918f7b67879cae2f4b90",
+  "sdkVersion": "kfp-2.16.0",
+  "compilerImage": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb",
+  "compilerImageSourceCommit": "abfc9dcfc842e8356853da4b75c8266af7ba763b",
+  "exitCode": 0,
+  "network": "none",
+  "runtimeAcceptance": "NOT_RUN"
+}

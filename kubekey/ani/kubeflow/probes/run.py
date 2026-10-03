@@ -174,6 +174,21 @@ def execute(args, report, record):
     expected = {"success": "SUCCEEDED", "fail": "FAILED", "stop": "CANCELED"}[args.mode]
     if observed.state != expected or not record.get("trainJob") or not record.get("creationReceipt") or (args.mode == "stop" and not stopped):
         raise RuntimeError("actual run state/correlation differs")
+    conditions = {c["type"]: c["status"] for c in record["trainJob"]["conditions"]}
+    if args.mode == "success" and (conditions.get("Complete") != "True" or len(record.get("trainPods", [])) != 1 or record["trainPods"][0]["phase"] != "Succeeded"):
+        raise RuntimeError("successful Run lacks the actual successful external CPU Pod")
+    if args.mode == "fail" and (conditions.get("Failed") != "True" or not any(c.get("exitCode") == 42 for p in record.get("trainPods", []) for c in p["containers"])):
+        raise RuntimeError("failed Run lacks the external CPU process exit 42")
+    if args.mode == "stop":
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            current = core.list_namespaced_pod(args.namespace, label_selector="ani.io/execution-id=" + execution, _request_timeout=30).items
+            if not set(record["stop"]["podUids"]) & {p.metadata.uid for p in current}:
+                record["stop"].update(actualExternalPodsGone=True, remainingPodUids=[p.metadata.uid for p in current])
+                break
+            time.sleep(3)
+        else:
+            raise TimeoutError("actual external training Pod termination deadline")
     details = observed.run_details
     record["run"]["details"] = details.to_dict() if details else None
     # Artifact records may contain signed URLs. Keep these private; the caller
