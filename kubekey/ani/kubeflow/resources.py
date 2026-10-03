@@ -179,7 +179,10 @@ def admission(site, runtime_name, image):
         "ani-kfp-workspace": ("", "v1", "persistentvolumeclaims", [
             ("object.metadata.name.startsWith('ani-kfp-workspace-')", "Use a managed per-execution workspace claim"),
             ("has(object.spec.storageClassName) && object.spec.storageClassName == params.data.storageClass", "Workspace StorageClass is administrator-controlled"),
-            ("quantity(string(object.spec.resources.requests['storage'])).compareTo(quantity('0')) > 0 && quantity(string(object.spec.resources.requests['storage'])).compareTo(quantity(params.data.maxSize)) <= 0", "Workspace storage exceeds the administrator bound"),
+            # Core Quantity's oneOf(string, number) is omitted by the current
+            # API's static resolver. Cast only this resource subtree to dyn;
+            # the actual quantity still has the same positive/upper bound.
+            ("quantity(string(dyn(object.spec.resources).requests['storage'])).compareTo(quantity('0')) > 0 && quantity(string(dyn(object.spec.resources).requests['storage'])).compareTo(quantity(params.data.maxSize)) <= 0", "Workspace storage exceeds the administrator bound"),
             ("object.spec.accessModes == ['ReadWriteMany']", "Workspace requires declared RWX storage"),
             ("!has(object.metadata.ownerReferences) || size(object.metadata.ownerReferences) == 0", "Workspace must survive Workflow garbage collection"),
         ]),
@@ -206,7 +209,7 @@ def admission(site, runtime_name, image):
     for name, (group, version, resource, expressions) in policies.items():
         output.append(obj("ValidatingAdmissionPolicy", name, api="admissionregistration.k8s.io/v1", spec={
             "failurePolicy": "Fail", "paramKind": {"apiVersion": "v1", "kind": "ConfigMap"},
-            "matchConstraints": {"resourceRules": [{"apiGroups": [group], "apiVersions": [version], "operations": ["CREATE", "UPDATE"], "resources": [resource]}]},
+            "matchConstraints": {"resourceRules": [{"apiGroups": [group], "apiVersions": [version], "operations": ["CREATE", "UPDATE"], "resources": [resource], "scope": "*"}]},
             "validations": [{"expression": expression, "message": message} for expression, message in expressions]}))
         output.append(obj("ValidatingAdmissionPolicyBinding", name, api="admissionregistration.k8s.io/v1", spec={
             "policyName": name, "paramRef": {"name": "ani-workspace-policy", "parameterNotFoundAction": "Deny"},

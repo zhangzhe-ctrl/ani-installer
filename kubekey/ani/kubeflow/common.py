@@ -124,7 +124,17 @@ class Cluster:
             if old:
                 obj["metadata"].update(uid=old["metadata"]["uid"], resourceVersion=old["metadata"]["resourceVersion"])
             secret = obj["kind"] == "Secret"
-            verb = ["apply", "--server-side", "--field-manager=ani-kubeflow", "--validate=strict"] if old else ["create", "--validate=strict"]
+            manager = "ani-kubeflow"
+            if old and obj["kind"] == "ValidatingAdmissionPolicy" and obj["metadata"]["name"] in ("ani-kfp-workspace", "ani-kfp-trainjob"):
+                # Earlier role attempts created these owned policies with
+                # kubectl's default manager. Replay their atomic validation
+                # lists through that creator, never force a foreign manager.
+                spec_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:spec" in m.get("fieldsV1", {})}
+                if spec_managers - {"kubectl-create", "ani-kubeflow"}:
+                    raise RuntimeError("foreign policy spec manager; refusing mutation: " + identity(obj))
+                if "kubectl-create" in spec_managers:
+                    manager = "kubectl-create"
+            verb = ["apply", "--server-side", "--field-manager=" + manager, "--validate=strict"] if old else ["create", "--field-manager=ani-kubeflow", "--validate=strict"]
             self.call(verb + ["--dry-run=server", "-f", "-", "-o", "json"], obj, sensitive=secret)
             prepared.append((obj, verb, secret))
         for obj, verb, secret in prepared:
