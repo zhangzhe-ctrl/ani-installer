@@ -6,6 +6,7 @@ import json
 import pathlib
 import shutil
 import subprocess
+import yaml
 
 FILES = {
     "common.py": "ani/kubeflow/common.py", "resources.py": "ani/kubeflow/resources.py",
@@ -24,6 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--source-root", type=pathlib.Path, required=True)
 parser.add_argument("--overlay-dir", type=pathlib.Path, help="same-commit generated overlay for an approval proposal only")
 parser.add_argument("--wheels-dir", type=pathlib.Path, help="actual closed SDK wheel directory, required when packaging")
+parser.add_argument("--grpc-source-archive", type=pathlib.Path, help="actual pinned client source archive, required when packaging")
 group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument("--approval-output", type=pathlib.Path)
 group.add_argument("--output", type=pathlib.Path)
@@ -54,9 +56,13 @@ else:
         name = wheel["file"]
         if pathlib.Path(name).name != name or hashlib.sha256((args.wheels_dir / name).read_bytes()).hexdigest() != wheel["sha256"]:
             raise ValueError("wheel digest differs from the source-bound image approval")
+    tool = yaml.safe_load((root / "ani/components.lock.yaml").read_text())["tools"]["ani-kfp-grpc-check"]
+    if not args.grpc_source_archive or hashlib.sha256(args.grpc_source_archive.read_bytes()).hexdigest() != tool["sourceTarballSha256"]:
+        raise ValueError("gRPC client source archive differs from the reviewed material lock")
     args.output.mkdir(mode=0o700)
     for name, source in FILES.items():
         shutil.copyfile(root / source, args.output / name)
     shutil.copyfile(approval, args.output / "assets.lock.json")
     shutil.copytree(args.wheels_dir, args.output / "wheels")
+    shutil.copyfile(args.grpc_source_archive, args.output / "grpc-source.tar")
     print(json.dumps({"release": RELEASE, "files": len(FILES), "wheels": len(image["wheels"]), "approvalSha256": hashlib.sha256(approval.read_bytes()).hexdigest()}))

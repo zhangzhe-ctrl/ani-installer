@@ -52,6 +52,7 @@ tools:
   ani-kfp-grpc-check:
     version: 26.03-v1
     source: https://github.com/zhangzhe-ctrl/ani-installer/tree/e2fc0711d7af43aebdc5bed6694b3e3296825705/kubekey/cmd/ani-kfp-grpc-check
+    sourceTarballSha256: 8bca0512d96bfd2dc2d78cd5204188554e56ce2fad4156387c23cb54a0881cca
     binarySha256: d1838246f171e155086bafaf99ac352463d2ae16a7a62b691f8318642436e38b
     artifactPath: bin/ani-kfp-grpc-check
     purpose: bounded TLS and native authorization environment client; no proxy service

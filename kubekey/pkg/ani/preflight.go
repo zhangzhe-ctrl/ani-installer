@@ -402,6 +402,9 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		if err := VerifyFileMaterialDigest(filepath.Join(input.ArtifactRoot, "bin", "ani-kfp-grpc-check"), tool.BinarySHA256); err != nil {
 			return report, fail("Kubeflow gRPC client digest", err)
 		}
+		if err := VerifyFileMaterialDigest(filepath.Join(input.ArtifactRoot, "manifests", "kubeflow", KubeflowRelease, "grpc-source.tar"), tool.SourceTarballSHA256); err != nil {
+			return report, fail("Kubeflow gRPC source archive digest", err)
+		}
 	}
 
 	// Required artifact files. Beyond metadata, the binaries the install will

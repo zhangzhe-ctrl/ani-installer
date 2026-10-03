@@ -45,6 +45,7 @@ HELM_BIN="${HELM_BIN:?set HELM_BIN to the Linux amd64 helm binary used for the f
 RUSTFS_RC_BIN="${RUSTFS_RC_BIN:-}"
 KUBEFLOW_WHEELS_DIR="${KUBEFLOW_WHEELS_DIR:-}"
 KUBEFLOW_GRPC_CHECK_BIN="${KUBEFLOW_GRPC_CHECK_BIN:-}"
+KUBEFLOW_GRPC_SOURCE_ARCHIVE="${KUBEFLOW_GRPC_SOURCE_ARCHIVE:-}"
 VIRTCTL_BIN="${VIRTCTL_BIN:-}"
 KUBEVIRT_GUEST="${KUBEVIRT_GUEST:-}"
 TRIVY_DB_FILE="${TRIVY_DB_FILE:-}"
@@ -268,7 +269,8 @@ copy_material() {
 if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
   mkdir -p "$OUTPUT/manifests/kubeflow"
   python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
-    --wheels-dir "$KUBEFLOW_WHEELS_DIR" --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+    --wheels-dir "$KUBEFLOW_WHEELS_DIR" --grpc-source-archive "$KUBEFLOW_GRPC_SOURCE_ARCHIVE" \
+    --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
 fi
 
 echo "[1/6] placing KubeKey artifact"
