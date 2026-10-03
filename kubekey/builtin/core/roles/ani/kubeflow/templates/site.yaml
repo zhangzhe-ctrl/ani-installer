@@ -5,6 +5,8 @@
   "connections_dir": "{{ .ani.run.connections_dir }}",
   "artifact_root": "{{ .ani.artifact_root }}",
   "registry": "{{ .ani.registry }}",
+  "owner": {{ toJson .kubernetes.cluster_name }},
+  "node_addresses": {{ toJson .ani.node_addresses }},
   "entry_address": "{{ .ani.kubeflow.entry_address }}",
   "http_port": {{ .ani.kubeflow.http_port }},
   "grpc_port": {{ .ani.kubeflow.grpc_port }},
@@ -13,5 +15,7 @@
   "workspace_class": "{{ .ani.kubeflow.workspace_class }}",
   "workspace_max_size": "{{ .ani.kubeflow.workspace_max_size }}",
   "workspace_max_claims": {{ .ani.kubeflow.workspace_max_claims }},
+  "workspace_quota_size": "{{ .ani.kubeflow.workspace_quota_size }}",
+  "workspace_mode": "{{ .ani.kubeflow.workspace_mode }}",
   "tenants": {{ toJson .ani.kubeflow.tenants }}
 }

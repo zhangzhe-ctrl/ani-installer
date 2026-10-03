@@ -177,11 +177,13 @@ for component, expected in INPUT_SHA256.items():
         if obj is None:
             inventory.append({"identity": identity, "action": "replace", "reason": "managed isolated identities replace upstream constant credentials"})
             continue
+        if obj["metadata"]["name"] == "mysql" and obj["kind"] == "Deployment":
+            obj["spec"]["template"]["spec"]["containers"][0]["image"] = "docker.io/library/mysql:8.4.11"
+        if obj["kind"] == "Deployment":
+            obj["spec"]["template"]["metadata"].setdefault("labels", {})["ani.io/kfp-role"] = obj["metadata"]["name"]
         changed = obj != original
         inventory.append({"identity": identity, "action": "replace" if changed else "keep",
                           "reason": "ANI authentication/storage/credential/dependency policy" if changed else "fixed required backend/controller/API resource"})
-        if obj["metadata"]["name"] == "mysql" and obj["kind"] == "Deployment":
-            obj["spec"]["template"]["spec"]["containers"][0]["image"] = "docker.io/library/mysql:8.4.11"
         images(obj, references)
         obj["metadata"].setdefault("labels", {})["ani.io/kubeflow-release"] = "26.03-kfp2.16-trainer2.1-v1"
         resources.append(obj)

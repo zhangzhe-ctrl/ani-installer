@@ -3,6 +3,7 @@ package ani
 import (
 	"fmt"
 	"net"
+	"math"
 	"regexp"
 	"strings"
 
@@ -92,6 +93,10 @@ func validateKubeflow(c ClusterConfig) error {
 	if k.Workspace.MaxClaimsPerTenant < 1 || k.Workspace.MaxClaimsPerTenant > 4 {
 		return fmt.Errorf("kubeflow.workspace.maxClaimsPerTenant must be within 1..4; retained failed runs count against this bound")
 	}
+	workspaceSize := resource.MustParse(k.Workspace.MaxSize).Value()
+	if workspaceSize <= 0 || workspaceSize > math.MaxInt64 / int64(k.Workspace.MaxClaimsPerTenant) {
+		return fmt.Errorf("kubeflow.workspace.maxSize exceeds the supported aggregate quota quantity")
+	}
 	if len(k.Tenants) < 1 || len(k.Tenants) > 8 {
 		return fmt.Errorf("kubeflow.tenants requires 1..8 explicitly managed namespaces")
 	}
@@ -122,6 +127,8 @@ func kubeflowSpec(c ClusterConfig) map[string]any {
 	spec["workspace_class"] = k.Workspace.StorageClass
 	spec["workspace_max_size"] = k.Workspace.MaxSize
 	spec["workspace_max_claims"] = k.Workspace.MaxClaimsPerTenant
+	spec["workspace_quota_size"] = fmt.Sprint(resource.MustParse(k.Workspace.MaxSize).Value() * int64(k.Workspace.MaxClaimsPerTenant))
+	spec["workspace_mode"] = "managed-execution-pvc-v1"
 	spec["tenants"] = k.Tenants
 	return spec
 }

@@ -1171,6 +1171,9 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		"network":     true,
 		"images":      true,
 		"storage":     true,
+		// First-install-only block; its enabled and disabled contexts are also
+		// rendered by TestKubeflowUsesProductionRenderContext.
+		"kubeflow":    true,
 		// C07's run scope. Not whitelisted on trust: the loop below proves
 		// KubeKeyConfig actually emits .ani.run with the fields roles read, so
 		// this entry cannot drift into a key nobody builds.
@@ -1188,7 +1191,7 @@ func TestRoleTasksUseTheContextKeysTheInstallerProvides(t *testing.T) {
 		t.Fatalf("build the config spec the roles are validated against: %v", err)
 	}
 	aniBlock, _ := generated["ani"].(map[string]any)
-	for _, key := range []string{"components", "images", "storage", "registry", "network", "run"} {
+	for _, key := range []string{"components", "images", "storage", "registry", "network", "run", "kubeflow"} {
 		if _, present := aniBlock[key]; !present {
 			t.Fatalf("the installer does not build .ani.%s at all, yet roles are allowed to read it", key)
 		}
