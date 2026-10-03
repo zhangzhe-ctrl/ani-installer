@@ -68,8 +68,8 @@ func TestMaterialsLockParsesShippedFile(t *testing.T) {
 	for _, tool := range lock.Tools {
 		byName[tool.Name] = tool
 	}
-	if len(lock.Tools) != 4 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" || byName["virtctl"].Name != "virtctl" || byName["rustfs-rc"].Name != "rustfs-rc" {
-		t.Fatalf("the shipped lock must approve helm, hauler, virtctl, and rustfs-rc, got %d tools: %v", len(lock.Tools), lock.Tools)
+	if len(lock.Tools) != 5 || byName["helm"].Name != "helm" || byName["hauler"].Name != "hauler" || byName["virtctl"].Name != "virtctl" || byName["rustfs-rc"].Name != "rustfs-rc" || byName["ani-kfp-grpc-check"].Name != "ani-kfp-grpc-check" {
+		t.Fatalf("the shipped lock must approve helm, hauler, virtctl, rustfs-rc and ani-kfp-grpc-check, got %d tools: %v", len(lock.Tools), lock.Tools)
 	}
 	for name, tool := range byName {
 		if !digestPattern.MatchString("sha256:" + tool.BinarySHA256) {
