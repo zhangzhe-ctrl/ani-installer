@@ -52,7 +52,14 @@ func verifyKubeflowAssets(artifactRoot string) error {
 // though deployed steps consume the already-built SDK image without pip.
 func verifyKubeflowWheels(artifactRoot string) error {
 	root := filepath.Join(artifactRoot, "manifests", "kubeflow", KubeflowRelease)
-	data, err := os.ReadFile(filepath.Join(root, "execution-image.lock.json"))
+	if err := verifyKubeflowWheelSet(root, "execution-image.lock.json", "wheels", "ani.kubeflow.execution-image.v1"); err != nil {
+		return err
+	}
+	return verifyKubeflowWheelSet(root, "workspace-image.lock.json", "workspace-wheels", "ani.kubeflow.workspace-image.v1")
+}
+
+func verifyKubeflowWheelSet(root, lockFile, directory, schema string) error {
+	data, err := os.ReadFile(filepath.Join(root, lockFile))
 	if err != nil {
 		return fmt.Errorf("required SDK wheel approval: %w", err)
 	}
@@ -66,10 +73,10 @@ func verifyKubeflowWheels(artifactRoot string) error {
 	if err := json.Unmarshal(data, &approval); err != nil {
 		return fmt.Errorf("decode SDK wheel approval: %w", err)
 	}
-	if approval.Schema != "ani.kubeflow.execution-image.v1" || len(approval.Wheels) == 0 {
+	if approval.Schema != schema || len(approval.Wheels) == 0 {
 		return fmt.Errorf("SDK wheel approval is empty or unsupported")
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "wheels"))
+	entries, err := os.ReadDir(filepath.Join(root, directory))
 	if err != nil || len(entries) != len(approval.Wheels) {
 		return fmt.Errorf("physical SDK wheel set differs from source approval: %v", err)
 	}
@@ -79,7 +86,7 @@ func verifyKubeflowWheels(artifactRoot string) error {
 			return fmt.Errorf("unsafe or duplicate wheel binding %q", wheel.File)
 		}
 		seen[wheel.File] = true
-		path := filepath.Join(root, "wheels", wheel.File)
+		path := filepath.Join(root, directory, wheel.File)
 		info, err := os.Lstat(path)
 		if err != nil || !info.Mode().IsRegular() {
 			return fmt.Errorf("required wheel is not a regular file: %s", wheel.File)

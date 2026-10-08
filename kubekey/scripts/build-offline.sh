@@ -270,7 +270,8 @@ if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
   mkdir -p "$OUTPUT/manifests/kubeflow"
   python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
     --wheels-dir "$KUBEFLOW_WHEELS_DIR" --grpc-source-archive "$KUBEFLOW_GRPC_SOURCE_ARCHIVE" \
-    --output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+    --workspace-wheels-dir "${KUBEFLOW_WORKSPACE_WHEELS_DIR:?supply closed Notebook workspace wheels}" \
+    --output "$OUTPUT/manifests/kubeflow/26.03-kubeflow-stage2-v1"
 fi
 
 echo "[1/6] placing KubeKey artifact"
@@ -474,7 +475,7 @@ if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
   # This fixed directory is offline material, approved against source bytes;
   # unknown manifests, additional releases or regenerated approvals fail.
   python3 "$ROOT/ani/kubeflow/prepare-bundle.py" --source-root "$ROOT" \
-    --verify-output "$OUTPUT/manifests/kubeflow/26.03-kfp2.16-trainer2.1-v1"
+    --verify-output "$OUTPUT/manifests/kubeflow/26.03-kubeflow-stage2-v1"
 elif [[ -e "$OUTPUT/manifests" ]]; then
   echo "artifact output carries undeclared manifest material" >&2
   exit 1

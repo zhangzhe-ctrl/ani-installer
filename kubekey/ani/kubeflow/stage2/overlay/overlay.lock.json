@@ -1,0 +1,301 @@
+{
+  "schema": "ani.kubeflow.stage2-overlay.v1",
+  "release": "26.03-kubeflow-stage2-v1",
+  "sources": {
+    "kserve": "5b033a4024429302440b72180472ae2d26b44086",
+    "notebooks": "90e987bf87d3e7c900926310b00bfa16b59e41eb"
+  },
+  "upstream_render_sha256": {
+    "notebooks": "9332566791ecd692a177cf89c1f47438f404fc40f1bc4e3f2d2ce783ac334b20",
+    "kserve-crds": "82135f9dfd0c48e94aebbd866835c27528f1ba6781c33a364afe317a291bad7f",
+    "kserve-controller": "048df23c2be85457139eeff26a589dd2c864bad788dd3de5a6ad98065abc071d",
+    "kserve-runtime": "41671ccec9ded476ec83d3d72ea696acc5b5ba67c328920455f38aa9cf8896b0"
+  },
+  "resources_sha256": "8b17296f5164b170604ef346e0386d663dd510f48efed41238edaaea6d2c9786",
+  "resource_count": 44,
+  "inventory": [
+    {
+      "kind": "Namespace",
+      "name": "notebook-controller-system",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "notebooks.kubeflow.org",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ServiceAccount",
+      "name": "notebook-controller-service-account",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "Role",
+      "name": "notebook-controller-leader-election-role",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "notebook-controller-kubeflow-notebooks-admin",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "notebook-controller-kubeflow-notebooks-edit",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "notebook-controller-kubeflow-notebooks-view",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "notebook-controller-role",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "RoleBinding",
+      "name": "notebook-controller-leader-election-rolebinding",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRoleBinding",
+      "name": "notebook-controller-role-binding",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ConfigMap",
+      "name": "notebook-controller-config-h659mh255b",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "Service",
+      "name": "notebook-controller-service",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "Deployment",
+      "name": "notebook-controller-deployment",
+      "namespace": "notebook-controller-system",
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "clusterservingruntimes.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "clusterstoragecontainers.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "inferencegraphs.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "inferenceservices.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "localmodelcaches.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "localmodelnodegroups.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "localmodelnodes.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "servingruntimes.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "trainedmodels.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "Certificate",
+      "name": "serving-cert",
+      "namespace": "kserve",
+      "action": "replace"
+    },
+    {
+      "kind": "Issuer",
+      "name": "selfsigned-issuer",
+      "action": "exclude",
+      "reason": "reuse the installed ani-ca ClusterIssuer"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "kserve-proxy-role",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "kserve-manager-role",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRoleBinding",
+      "name": "kserve-proxy-rolebinding",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterRoleBinding",
+      "name": "kserve-manager-rolebinding",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ConfigMap",
+      "name": "inferenceservice-config",
+      "namespace": "kserve",
+      "action": "replace"
+    },
+    {
+      "kind": "Deployment",
+      "name": "kserve-controller-manager",
+      "namespace": "kserve",
+      "action": "replace"
+    },
+    {
+      "kind": "Role",
+      "name": "kserve-leader-election-role",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "RoleBinding",
+      "name": "kserve-leader-election-rolebinding",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "Service",
+      "name": "kserve-webhook-server-service",
+      "namespace": "kserve",
+      "action": "replace"
+    },
+    {
+      "kind": "Service",
+      "name": "kserve-controller-manager-service",
+      "namespace": "kserve",
+      "action": "replace"
+    },
+    {
+      "kind": "ServiceAccount",
+      "name": "kserve-controller-manager",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "MutatingWebhookConfiguration",
+      "name": "inferenceservice.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "inferenceservice.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "trainedmodel.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "inferencegraph.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "clusterservingruntime.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "servingruntime.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "localmodelcache.serving.kserve.io",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "llminferenceservice.serving.kserve.io",
+      "action": "exclude",
+      "reason": "endpoint is absent from the selected v0.16 Standard manager"
+    },
+    {
+      "kind": "ValidatingWebhookConfiguration",
+      "name": "llminferenceserviceconfig.serving.kserve.io",
+      "action": "exclude",
+      "reason": "endpoint is absent from the selected v0.16 Standard manager"
+    },
+    {
+      "kind": "ClusterStorageContainer",
+      "name": "default",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "ClusterServingRuntime",
+      "name": "kserve-sklearnserver",
+      "namespace": null,
+      "action": "replace"
+    },
+    {
+      "kind": "Namespace",
+      "name": "kserve",
+      "namespace": null,
+      "action": "replace"
+    }
+  ],
+  "runtime_status": "NOT_RUN"
+}

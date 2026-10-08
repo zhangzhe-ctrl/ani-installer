@@ -1,0 +1,54 @@
+# Full, three-node site. Replace SSH access before use; verify each data path.
+name: ani-kf-stage2
+profile: full
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - {name: node1, address: 172.16.101.20}
+  - {name: node2, address: 172.16.101.21}
+  - {name: node3, address: 172.16.101.22}
+network:
+  stack: kubeovn
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kubeovn:
+    defaultGateway: 10.16.0.1
+    joinCIDR: 172.19.0.0/16
+registry:
+  port: 5001
+storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+    - {name: node2, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+    - {name: node3, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+objectStorage:
+  provider: rustfs
+  rustfs:
+    mode: standalone
+    storageClass: ani-block
+    storageSize: 20Gi
+components:
+  certManager:
+    enabled: true
+kubeflow:
+  enabled: true
+  release: 26.03-kubeflow-stage2-v1
+  entryAddress: 172.16.101.20
+  httpPort: 30443
+  grpcPort: 30444
+  database:
+    storageClass: ani-block
+    storageSize: 20Gi
+  workspace:
+    storageClass: ani-cephfs
+    maxSize: 5Gi
+    maxClaimsPerTenant: 2
+    mode: managed-execution-pvc-v1
+  tenants: [ani-kfp-probe-a, ani-kfp-probe-b]
