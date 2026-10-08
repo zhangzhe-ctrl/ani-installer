@@ -54,6 +54,8 @@ func TestKubeflowAssetsRejectCrossValidArtifact(t *testing.T) {
 			source = filepath.Join("..", "..", "ani", "kubeflow", "stage2", "overlay", strings.TrimPrefix(name, "stage2-"))
 		} else if name == "workspace-image.lock.json" {
 			source = filepath.Join("..", "..", "ani", "kubeflow", "stage2", name)
+		} else if name == "stage2-probe-main.py" {
+			source = filepath.Join("..", "..", "ani", "kubeflow", "stage2", "probe-main.py")
 		} else if name == "workspace-requirements.lock" || name == "kernel-probe.py" || name == "model.py" {
 			source = filepath.Join("..", "..", "ani", "kubeflow", "stage2", "workspace", strings.TrimPrefix(name, "workspace-"))
 		}
