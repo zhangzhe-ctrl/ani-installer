@@ -11,7 +11,7 @@
     "kserve-controller": "048df23c2be85457139eeff26a589dd2c864bad788dd3de5a6ad98065abc071d",
     "kserve-runtime": "41671ccec9ded476ec83d3d72ea696acc5b5ba67c328920455f38aa9cf8896b0"
   },
-  "resources_sha256": "e1eb96a90b60af98fad1331e8d674227659f9a5033c0d2abc25a8548b8a9ddf7",
+  "resources_sha256": "81f117b3c0b0b6856d0e9d82838a7d9ec7725055bd3495064d9a0662d5706f84",
   "resource_count": 44,
   "inventory": [
     {
