@@ -50,5 +50,4 @@ kubeflow:
     storageClass: ani-cephfs
     maxSize: 5Gi
     maxClaimsPerTenant: 2
-    mode: managed-execution-pvc-v1
   tenants: [ani-kfp-probe-a, ani-kfp-probe-b]

@@ -13,6 +13,8 @@ from common import Cluster
 from install import checked_policy, materialize, entry_ports_available
 from storage import same_policy, same_identity
 from resources import NGINX, tenant
+import stage2
+from storage import model_policy
 
 
 class ExistingSecret(Cluster):
@@ -436,6 +438,37 @@ class DeploymentPodConvergence(unittest.TestCase):
 
     def test_unready_pod_waits_within_the_same_deadline(self):
         self.converge([{"metadata": {"uid": "new-pod"}, "status": {"conditions": [{"type": "Ready", "status": "False"}]}}])
+
+
+class Stage2Protection(unittest.TestCase):
+    def test_model_roles_cannot_reverse_their_storage_responsibility(self):
+        writer = model_policy("bucket-a", "models", "model-writer")
+        reader = model_policy("bucket-a", "models", "model-reader")
+        def actions(policy):
+            return {action for s in policy["Statement"] for action in s["Action"]}
+        self.assertIn("s3:PutObject", actions(writer))
+        self.assertNotIn("s3:GetObject", actions(writer))
+        self.assertNotIn("s3:ListBucket", actions(writer))
+        self.assertIn("s3:GetObject", actions(reader))
+        self.assertNotIn("s3:PutObject", actions(reader))
+        for policy in (writer, reader):
+            object_scopes = [s["Resource"] for s in policy["Statement"] if any(v in s["Action"] for v in ("s3:GetObject", "s3:PutObject"))]
+            self.assertEqual(object_scopes, [["arn:aws:s3:::bucket-a/models/*"]])
+
+    def test_native_workload_contract_does_not_inherit_pipeline_permissions(self):
+        site = {"workspace_class": "ani-cephfs", "workspace_max_size": "5Gi", "images": {stage2.WORKSPACE_IMAGE: "registry/jupyter@sha256:" + "a" * 64}}
+        pvc, notebook = stage2.notebook(site, stage2.NAMESPACES[0], "native", "case-a")
+        pod = notebook["spec"]["template"]["spec"]
+        self.assertFalse(pod["automountServiceAccountToken"])
+        self.assertEqual(pod["serviceAccountName"], "notebook-workload")
+        self.assertFalse(pvc["metadata"].get("ownerReferences"))
+        secrets = {v["valueFrom"]["secretKeyRef"]["name"] for v in pod["containers"][0]["env"] if "valueFrom" in v}
+        self.assertEqual(secrets, {"ani-jupyter-auth", "ani-model-writer"})
+        values = stage2.namespace_contract(site, stage2.NAMESPACES[0])
+        self.assertFalse(any(v["kind"] in ("Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding") for v in values))
+        default = next(v for v in values if v["kind"] == "NetworkPolicy" and v["metadata"]["name"] == "ani-stage2-default")
+        self.assertEqual(default["spec"]["ingress"], [])
+        self.assertEqual({p["port"] for rule in default["spec"]["egress"] for p in rule["ports"]}, {53})
 
 
 if __name__ == "__main__":

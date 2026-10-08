@@ -24,6 +24,7 @@
 # The real render gates (template FuncMap, Chart values, connection docs) live
 # in pkg/ani's Go tests and are therefore already part of step 3.
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
