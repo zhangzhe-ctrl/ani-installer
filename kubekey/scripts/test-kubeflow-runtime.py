@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression for observed webhook bootstrap replay, preserving rotation guards."""
+import ast
 import pathlib
 import copy
 import json
@@ -587,6 +588,69 @@ class ExplicitResourceScope(unittest.TestCase):
         self.assertEqual(endpoint(value), "/api/v1/namespaces/kserve/serviceaccounts/controller")
         value["metadata"]["namespace"] = "default"
         self.assertEqual(endpoint(value), "/api/v1/namespaces/default/serviceaccounts/controller")
+
+
+class PipelineStorageInitializationReads(unittest.TestCase):
+    class ApiError(Exception):
+        def __init__(self, status, headers=None):
+            self.status, self.headers = status, headers
+
+    def wrapper(self, original):
+        path = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/probes/pipeline.py"
+        component = next(n for n in ast.parse(path.read_text()).body
+                         if isinstance(n, ast.FunctionDef) and n.name == "external_training")
+        function = next(n for n in component.body if isinstance(n, ast.FunctionDef) and n.name == "bounded")
+        clock = mock.Mock()
+        scope = {"original_call": original, "ApiException": self.ApiError, "time": clock}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), scope)
+        return scope["bounded"], clock
+
+    def test_jobset_get_recovers_from_actual_storage_initializing_response(self):
+        response = {"items": [{"metadata": {"uid": "original-jobset-uid"}}]}
+        call = mock.Mock(side_effect=[self.ApiError(429, {"Retry-After": "1"}), response])
+        bounded, clock = self.wrapper(call)
+        self.assertIs(bounded("/apis/jobset.x-k8s.io/v1alpha2/namespaces/probe/jobsets", "GET"), response)
+        self.assertEqual(call.call_count, 2)
+        clock.sleep.assert_called_once_with(1)
+        self.assertTrue(all(c.kwargs["_request_timeout"] == (5, 30) for c in call.call_args_list))
+
+    def test_persistent_requests_are_never_replayed_on_429(self):
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            error = self.ApiError(429, {"Retry-After": "1"})
+            call = mock.Mock(side_effect=error)
+            bounded, clock = self.wrapper(call)
+            with self.assertRaises(self.ApiError) as raised:
+                bounded("/apis/trainer.kubeflow.org/v1alpha1/namespaces/probe/trainjobs", method)
+            self.assertIs(raised.exception, error)
+            self.assertEqual(call.call_count, 1)
+            clock.sleep.assert_not_called()
+
+    def test_authorization_and_other_read_failures_are_not_retried(self):
+        for status in (401, 403, 404, 500):
+            call = mock.Mock(side_effect=self.ApiError(status))
+            bounded, clock = self.wrapper(call)
+            with self.assertRaises(self.ApiError):
+                bounded("/original-resource", "GET")
+            self.assertEqual(call.call_count, 1)
+            clock.sleep.assert_not_called()
+
+    def test_read_initialization_has_a_finite_attempt_limit(self):
+        error = self.ApiError(429, {"Retry-After": "120"})
+        call = mock.Mock(side_effect=error)
+        bounded, clock = self.wrapper(call)
+        with self.assertRaises(self.ApiError) as raised:
+            bounded("/original-resource", "GET")
+        self.assertIs(raised.exception, error)
+        self.assertEqual(call.call_count, 5)
+        self.assertEqual(clock.sleep.call_args_list, [mock.call(5)] * 4)
+
+    def test_successful_read_preserves_caller_timeout_and_arguments(self):
+        response = object()
+        call = mock.Mock(return_value=response)
+        bounded, clock = self.wrapper(call)
+        self.assertIs(bounded("/original-resource", "GET", _request_timeout=(2, 9), _preload_content=False), response)
+        call.assert_called_once_with("/original-resource", "GET", _request_timeout=(2, 9), _preload_content=False)
+        clock.sleep.assert_not_called()
 
 
 if __name__ == "__main__":

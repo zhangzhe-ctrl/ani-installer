@@ -40,7 +40,22 @@ def external_training(claim: str, claim_uid: str, execution: str, run_id: str,
     original_call = api.call_api
     def bounded(*arguments, **keywords):
         keywords["_request_timeout"] = keywords.get("_request_timeout") or (5, 30)
-        return original_call(*arguments, **keywords)
+        method = arguments[1] if len(arguments) > 1 else keywords.get("method")
+        # A fresh API server can answer the first CRD list with 429 while its
+        # storage initializes. Retry only this safe read response; never replay
+        # a create/update/delete whose mutation result might be unknown.
+        for attempt in range(5):
+            try:
+                return original_call(*arguments, **keywords)
+            except ApiException as error:
+                if method != "GET" or error.status != 429 or attempt == 4:
+                    raise
+                headers = error.headers or {}
+                try:
+                    delay = int(headers.get("Retry-After", headers.get("retry-after", "1")))
+                except (TypeError, ValueError):
+                    delay = 1
+                time.sleep(max(1, min(delay, 5)))
     api.call_api = bounded
     core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)
     live_claim = core.read_namespaced_persistent_volume_claim(claim, namespace)
