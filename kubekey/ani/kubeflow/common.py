@@ -58,6 +58,11 @@ def endpoint(obj):
     version = obj["apiVersion"]
     prefix = "/api/v1" if version == "v1" else "/apis/" + version
     namespace = obj["metadata"].get("namespace")
+    cluster_kinds = {"Namespace", "ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition", "PriorityClass",
+                     "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration", "ValidatingAdmissionPolicy",
+                     "ValidatingAdmissionPolicyBinding", "ClusterTrainingRuntime", "ClusterServingRuntime", "ClusterStorageContainer"}
+    if obj["kind"] not in cluster_kinds and not namespace:
+        raise ValueError("namespaced resource requires explicit namespace: " + obj["kind"])
     if namespace:
         prefix += "/namespaces/" + namespace
     return prefix + "/" + PLURALS[obj["kind"]] + "/" + obj["metadata"]["name"]

@@ -68,6 +68,11 @@ def main():
     for value in resources:
         original = copy.deepcopy(value)
         kind, name = value["kind"], value["metadata"]["name"]
+        # Helm's --namespace supplies .Release.Namespace; it does not inject
+        # metadata.namespace into templates that omit it. Never let kubectl's
+        # current namespace decide the scope of these controller identities.
+        if kind in ("ServiceAccount", "Role", "RoleBinding", "ConfigMap", "Service", "Deployment", "Certificate", "Issuer"):
+            value["metadata"].setdefault("namespace", "kserve")
         if kind == "Issuer" and name == "selfsigned-issuer":
             inventory.append({"kind": kind, "name": name, "action": "exclude", "reason": "reuse the installed ani-ca ClusterIssuer"})
             continue

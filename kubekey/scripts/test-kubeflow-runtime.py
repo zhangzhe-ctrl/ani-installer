@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
-from common import Cluster
+from common import Cluster, endpoint
 from install import checked_policy, materialize, entry_ports_available
 from storage import same_policy, same_identity
 from resources import NGINX, tenant
@@ -469,6 +469,19 @@ class Stage2Protection(unittest.TestCase):
         default = next(v for v in values if v["kind"] == "NetworkPolicy" and v["metadata"]["name"] == "ani-stage2-default")
         self.assertEqual(default["spec"]["ingress"], [])
         self.assertEqual({p["port"] for rule in default["spec"]["egress"] for p in rule["ports"]}, {53})
+
+
+class ExplicitResourceScope(unittest.TestCase):
+    def test_missing_controller_identity_namespace_is_rejected_before_lookup(self):
+        for kind, api in (("ServiceAccount", "v1"), ("Role", "rbac.authorization.k8s.io/v1"), ("RoleBinding", "rbac.authorization.k8s.io/v1")):
+            with self.assertRaisesRegex(ValueError, "requires explicit namespace"):
+                endpoint({"apiVersion": api, "kind": kind, "metadata": {"name": "controller"}})
+
+    def test_same_named_service_accounts_resolve_to_different_scopes(self):
+        value = {"apiVersion": "v1", "kind": "ServiceAccount", "metadata": {"name": "controller", "namespace": "kserve"}}
+        self.assertEqual(endpoint(value), "/api/v1/namespaces/kserve/serviceaccounts/controller")
+        value["metadata"]["namespace"] = "default"
+        self.assertEqual(endpoint(value), "/api/v1/namespaces/default/serviceaccounts/controller")
 
 
 if __name__ == "__main__":
