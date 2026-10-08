@@ -15,7 +15,7 @@
 - Native workspaces: Notebook Controller 1.10.0 standalone (`USE_ISTIO=false`), locked JupyterLab image; independent probe namespaces `ani-kf-stage2-a/b`, SA `notebook-workload`, no mounted Kubernetes token or pipeline-runner privileges.
 - Notebook contract: dedicated RWX PVC `ani-notebook-workspace`, {{ .ani.kubeflow.workspace_class }} / {{ .ani.kubeflow.workspace_max_size }}, mount `/home/jovyan`, UID/GID/fsGroup 1000; Notebook CR owns StatefulSet/Pod/Service, while the PVC has an independent lifecycle. Stop/resume via the Notebook's `kubeflow-resource-stopped` annotation, preserving the PVC.
 - Native Jupyter: Service `<notebook>` port 80 maps to container 8888; base path `/notebook/<namespace>/<notebook>/`. Restricted administrator port-forward binds only `127.0.0.1`; token reference `<namespace>/ani-jupyter-auth` key `token`. No token values are included here.
-- Model storage: HTTPS `ani-rustfs-svc.ani-platform.svc.cluster.local:9000`, region `us-east-1`, path-style; bucket `ani-kf-stage2-<namespace>`, prefix `models/`. Separate Secrets `ani-model-writer` (PutObject) and `ani-model-reader` (GetObject and prefix-scoped ListBucket); public CA ConfigMap `ani-model-ca` key `ca.crt`, consumed as `/etc/ani-model-ca/ca.crt` through `AWS_CA_BUNDLE`.
+- Model storage: HTTPS `ani-rustfs-svc.ani-platform.svc.cluster.local:9000`, region `us-east-1`, path-style; bucket `ani-kf-stage2-<namespace>`, prefix `models/`. Separate Secrets `ani-model-writer` (PutObject) and `ani-model-reader` (GetObject and prefix-scoped ListBucket). Notebook consumes `ani-model-ca/ca.crt` at `/etc/ani-model-ca/ca.crt`. KServe reads `kserve/ani-model-ca/cabundle.crt`, propagates `global-ca-bundle` into the workload namespace and consumes `/etc/ani-model-ca/cabundle.crt` through `AWS_CA_BUNDLE`.
 - Serving: KServe 0.16.0 Standard, single CPU `kserve-sklearnserver` ClusterServingRuntime, predictor SA `predictor-workload`, no Kubernetes token. InferenceService owns `<name>-predictor` Deployment/Service; restricted local port-forward to Service port 80, `POST /v1/models/<name>:predict`. Fixed sklearn 1.5.2 / joblib 1.4.2 model; current model object/hash and prediction are recorded by the native main-flow probe, not attested by control-plane smoke.
 - These namespaces are environment probe identities. Product workspace ownership, user/tenant binding, management UI, IAM, business Gateway/WebSocket proxy and GPU acceptance remain outside this installer contract.
 # Native Notebook and Standard serving contract
@@ -41,8 +41,9 @@ Model endpoint: HTTPS ani-rustfs-svc.ani-platform.svc.cluster.local:9000,
 us-east-1, path-style, verified TLS. Each probe namespace has bucket
 ani-kf-stage2-<namespace> and models/ prefix. Notebook receives only Secret
 ani-model-writer (PutObject); storage-initializer consumes ani-model-reader
-(GetObject and prefix-scoped ListBucket). ConfigMap ani-model-ca mounts ca.crt at
-/etc/ani-model-ca/ca.crt and AWS_CA_BUNDLE points there. Credentials are absent
+(GetObject and prefix-scoped ListBucket). Notebook ConfigMap ani-model-ca mounts
+ca.crt at /etc/ani-model-ca/ca.crt. KServe propagates the controller's cabundle.crt
+to global-ca-bundle and consumes /etc/ani-model-ca/cabundle.crt. Credentials are absent
 from these connection facts.
 
 Only kserve-sklearnserver ClusterServingRuntime is registered. InferenceService

@@ -18,7 +18,7 @@ KFP 2.16.0、Trainer 2.1.0、JobSet 0.10.1 沿用 BASE_SHA 锁定字节。Notebo
 
 工作区镜像固定 Python 3.11.14、sklearn 1.5.2、joblib 1.4.2、JupyterLab 4.4.10，全部 wheel 与 OCI 镜像字节闭合。摘要在源锁和 `ani/images.tsv`；运行时不安装依赖。固定生成代码在 `workspace/model.py`，DecisionTreeClassifier、random_seed=42、joblib 模型文件 `model.joblib`；实际主链记录模型 SHA256 与 S3 key。固定输入 `[[0,0],[10,10],[20,20]]`，期望 `[0,1,2]`。
 
-S3 为 HTTPS `ani-rustfs-svc.ani-platform.svc.cluster.local:9000`、region `us-east-1`、path-style。每个 Namespace 的 bucket 为 `ani-kf-stage2-<namespace>`，只开放 `models/`。Notebook 的 `ani-model-writer` 允许 PutObject；KServe 的 `ani-model-reader` 允许 GetObject 与前缀限定的 ListBucket。两者不是同一个凭据。`ani-model-ca` 的 `ca.crt` 挂载到 `/etc/ani-model-ca/ca.crt`，由真实 `AWS_CA_BUNDLE` 消费；不关闭 TLS 校验。
+S3 为 HTTPS `ani-rustfs-svc.ani-platform.svc.cluster.local:9000`、region `us-east-1`、path-style。每个 Namespace 的 bucket 为 `ani-kf-stage2-<namespace>`，只开放 `models/`。Notebook 的 `ani-model-writer` 允许 PutObject；KServe 的 `ani-model-reader` 允许 GetObject 与前缀限定的 ListBucket。两者不是同一个凭据。Notebook 的 `ani-model-ca` 使用 `ca.crt`，挂载 `/etc/ani-model-ca/ca.crt`。KServe 0.16 从控制器命名空间 `kserve/ani-model-ca` 读取 `cabundle.crt`，传播到工作负载命名空间的 `global-ca-bundle`，下载器的 `AWS_CA_BUNDLE` 指向 `/etc/ani-model-ca/cabundle.crt`。两种路径均消费同一安装公共 CA；不关闭 TLS 校验。
 
 InferenceService 显式 Standard，生成 `<name>-predictor` Deployment/内部 Service。实际请求 `POST /v1/models/<name>:predict`，body 为 `{"instances":[[0,0],[10,10],[20,20]]}`；必须断言 predictions，Ready/HTTP 200 不替代结果。主链探针用不同只读身份独立核对 kernel 上传对象的摘要。
 

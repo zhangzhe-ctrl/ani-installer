@@ -479,6 +479,14 @@ class Stage2Protection(unittest.TestCase):
 
 
 class MainProbeResume(unittest.TestCase):
+    def test_predictor_delete_refuses_replaced_uid_before_dry_run_or_mutation(self):
+        delete = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-contracts.py"))["delete_owned_pod"]
+        cluster = mock.Mock()
+        cluster.owned.return_value = {"metadata": {"uid": "replacement", "resourceVersion": "19"}}
+        with self.assertRaisesRegex(ValueError, "identity differs"):
+            delete(cluster, {"kind": "Pod", "metadata": {"name": "predictor", "namespace": stage2.NAMESPACES[0]}}, "original")
+        cluster.call.assert_not_called()
+
     def test_prediction_reconciliation_rejects_another_cluster_before_any_workload_call(self):
         reconcile = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["reconcile_prediction"]
         cluster = mock.Mock()
