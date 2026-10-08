@@ -8,7 +8,7 @@ import shutil
 import subprocess
 
 p = argparse.ArgumentParser()
-for key in ("source-root", "base-store", "blobs", "workspace", "source-evidence", "output"):
+for key in ("source-root", "base-store", "base-evidence", "blobs", "workspace", "source-evidence", "output"):
     p.add_argument("--" + key, type=pathlib.Path, required=True)
 a = p.parse_args()
 table = {}
@@ -37,8 +37,18 @@ base_refs = [d.get("annotations", {}).get("org.opencontainers.image.ref.name") f
 if len(base_refs) != len(set(base_refs)) or set(base_refs) != expected_base:
     raise ValueError("cumulative store contains unknown, duplicate or missing baseline images")
 for d in index["manifests"]:
-    if d["digest"] != by_ref[d["annotations"]["org.opencontainers.image.ref.name"]]:
-        raise ValueError("baseline image identity changed")
+    pin = by_ref[d["annotations"]["org.opencontainers.image.ref.name"]]
+    if d["digest"] != pin:
+        # The baseline TSV pins some multi-arch indexes. Resolve exactly its
+        # reviewed amd64 entry from preserved, content-addressed source bytes;
+        # never treat an arbitrary platform manifest as equivalent to the pin.
+        raw_source = (a.base_evidence / (pin.removeprefix("sha256:") + ".json")).read_bytes()
+        verify(raw_source, pin)
+        source_index = json.loads(raw_source)
+        selected = [v for v in source_index.get("manifests", [])
+                    if v.get("platform", {}).get("os") == "linux" and v.get("platform", {}).get("architecture") == "amd64"]
+        if len(selected) != 1 or selected[0]["digest"] != d["digest"]:
+            raise ValueError("baseline platform differs from the approved source index")
     raw = (a.base_store / "blobs/sha256" / d["digest"].removeprefix("sha256:")).read_bytes()
     verify(raw, d["digest"], d["size"])
     manifest = json.loads(raw)

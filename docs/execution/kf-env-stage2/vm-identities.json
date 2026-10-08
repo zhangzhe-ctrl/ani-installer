@@ -1,0 +1,62 @@
+[
+  {
+    "vmid": 14,
+    "guest": [
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.20\"",
+      "ipAddress = \"172.16.101.20\"",
+      "ipAddress = \"fe80::20c:29ff:fe76:ab17\"",
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.1\""
+    ],
+    "config": [
+      "guestFullName = \"Ubuntu Linux (64-bit)\",",
+      "uuid = \"564ddbd2-e7d1-c45d-fef0-6fb36e76ab17\",",
+      "instanceUuid = \"52b6ca7d-558b-7f7e-9d2c-45f67fe54701\",",
+      "key = \"scsi0:0.redo\",",
+      "key = \"scsi0:1.redo\","
+    ],
+    "snapshots": "Get Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 1\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 11:58:6\n--Snapshot State       : powered on\n",
+    "power": "Retrieved runtime info\nPowered on\n"
+  },
+  {
+    "vmid": 15,
+    "guest": [
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.21\"",
+      "ipAddress = \"172.16.101.21\"",
+      "ipAddress = \"fe80::20c:29ff:fee9:4dda\"",
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.1\""
+    ],
+    "config": [
+      "guestFullName = \"Ubuntu Linux (64-bit)\",",
+      "uuid = \"564d7633-9030-eaaa-76f9-2705aee94dda\",",
+      "instanceUuid = \"527c9cc2-6a10-65bf-b8fa-5f9583befa35\",",
+      "key = \"scsi0:1.redo\",",
+      "key = \"scsi0:0.redo\","
+    ],
+    "snapshots": "Get Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 2\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 12:11:27\n--Snapshot State       : powered on\n",
+    "power": "Retrieved runtime info\nPowered on\n"
+  },
+  {
+    "vmid": 16,
+    "guest": [
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.22\"",
+      "ipAddress = \"172.16.101.22\"",
+      "ipAddress = \"fe80::20c:29ff:fec0:e3a9\"",
+      "hostName = \"ani-01\"",
+      "ipAddress = \"172.16.101.1\""
+    ],
+    "config": [
+      "guestFullName = \"Ubuntu Linux (64-bit)\",",
+      "uuid = \"564d6acc-d0b6-5f01-e3cc-77c9cec0e3a9\",",
+      "instanceUuid = \"5281ee9b-61df-3427-0bd1-8e20024cbcd9\",",
+      "key = \"scsi0:0.redo\",",
+      "key = \"scsi0:1.redo\","
+    ],
+    "snapshots": "Get Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 2\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 12:11:34\n--Snapshot State       : powered on\n",
+    "power": "Retrieved runtime info\nPowered on\n"
+  }
+]

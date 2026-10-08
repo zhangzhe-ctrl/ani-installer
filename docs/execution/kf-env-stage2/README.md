@@ -17,9 +17,15 @@
 - Fedora：`ssh fedora` → `chabking@172.16.101.31`；已核实 hostname `fedora`、Fedora 44、Go 1.26.7、Python、Podman、Skopeo。本机只编辑/读取和操作 Git；生成、格式化、构建、测试与物料准备在 Fedora。
 - Fedora 任务根：`/home/chabking/ani-installer-runs/kf-env-stage2-20261008`，仅使用本任务目录。
 
-## 环境核实中的断点
+## 当前环境与断点
 
-目标仅为 `.20`～`.22`。Fedora 以严格主机密钥校验连接三个地址均返回 255，受管 known_hosts 与当前返回的密钥不同；尚未确认 VM/集群/快照身份。未写目标节点，未还原快照。待可信身份与访问配置核实后再推进环境动作；不复用 `.10`～`.12` 的 kubeconfig、私有站点配置或历史 PASS。
+目标仅为 `.20`～`.22`。用户确认已重装这三台可信实验 VM；新密钥只保存到任务私有 known_hosts，严格 SSH 登录通过。ESXi 的当前 guest IP 与 BIOS UUID 对应已核实，见 `vm-identities.json`；磁盘和快照映射见 `vm-disks.json`。三台均为 Ubuntu 24.04.4、8 vCPU/16GiB，无 K8s；各自稳定 by-path 数据设备指向空白 200GiB sdb，实际正式 Ceph 只读预检退出码均 0。未还原快照。
+
+基础安装代码绑定已推送 `b74640caacc6609044bd1efbc5f2962e881e42bc`，Fedora 正式 `build-code.sh` 退出码 0；源码指纹 `bc6174e1272f66c267d083eecf6c9f5d2545f8ffda3fe6ff1b1fba410ac73be9` 在门禁、编译与打包间一致。首错是测试生成 pycache 导致发布保护拒绝；保留首错后用禁止字节码写入的同源重跑通过。基础物料正在从既有锁定字节重新打包、实际 registry 内容门禁核验；基础集群尚未安装。
+
+新增 Jupyter 镜像 `sha256:231029b0c72de5c4fecd2ef899f1948c980ac51b7e65fe3cf627bb28f8aafb62` 在 Fedora 从已推送 `ae5ce46b0da47ed9859a22c2a6d993861772a02c` 构建并核验镜像层，100 个 wheel 全部闭合。固定模型生成验证通过，不等于原生 kernel 或集群 PASS。改动对应 Kubeflow Go 测试与 Python 运行保护测试在 `b94adef` 退出码均 0。主链探针已编写，真实链路仍 `NOT_RUN`；后续先运行主链再补行为约束。
+
+完整站点示例为 `site.example.yaml`。私有站点从当前公开合同及既有受管 SSH 凭据生成，未继承 `.10`～`.12` 的私有配置、kubeconfig、入口或历史 PASS。
 
 不安装 Notebooks WebApp、Dashboard、Profiles/KFAM、PodDefaults、Dex、oauth2-proxy、Istio、Knative、LWS 或 GPU。管理前端、BFF/modeldev、产品租户、IAM/业务网关均属于后续接入。
 

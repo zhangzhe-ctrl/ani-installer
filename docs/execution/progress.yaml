@@ -10,6 +10,22 @@ metadata:
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
   updatedAt: '2026-09-29'
 tasks:
+- id: KF-STAGE2
+  title: Kubeflow 二阶段固定组合统一首装
+  dependsOn: []
+  selected: true
+  status: in_progress
+  stages:
+    baseline: pass
+    liveInventory: pass
+    code: implementation_in_progress
+    remoteChecks: targeted_pass_final_candidate_NOT_RUN
+    integration: not_run
+    cleanOffline: not_run
+  evidence:
+  - docs/execution/kf-env-stage2/README.md
+  notes:
+  - 本轮仅 .20-.22，新的 26.03-kubeflow-stage2-v1；不继承第一阶段或旧集群 PASS。
 - id: ENV00
   title: Kubeflow 统一首装目标与准备路径核实
   dependsOn: []

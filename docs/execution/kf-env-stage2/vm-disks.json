@@ -1,0 +1,101 @@
+[
+  {
+    "vmid": 14,
+    "disks": [
+      [
+        "key = 2000,",
+        "label = \"Hard disk 1\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-01/test-01-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C295-054a-c2c3-9fcf-b7b9b9d6528b\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-01/test-01.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C295-054a-c2c3-9fcf-b7b9b9d6528b\",",
+        "controllerKey = 1000,",
+        "unitNumber = 0,",
+        "capacityInKB = 209715200,"
+      ],
+      [
+        "key = 2001,",
+        "label = \"Hard disk 2\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-01/test-01_1-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C292-9d99-bba5-474b-de50ab760e99\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-01/test-01_1.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C292-9d99-bba5-474b-de50ab760e99\",",
+        "controllerKey = 1000,",
+        "unitNumber = 1,",
+        "capacityInKB = 209715200,"
+      ]
+    ]
+  },
+  {
+    "vmid": 15,
+    "disks": [
+      [
+        "key = 2000,",
+        "label = \"Hard disk 1\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-02/test-02-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C29a-9ba4-0656-fa81-b52264031659\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-02/test-02.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C29a-9ba4-0656-fa81-b52264031659\",",
+        "controllerKey = 1000,",
+        "unitNumber = 0,",
+        "capacityInKB = 209715200,"
+      ],
+      [
+        "key = 2001,",
+        "label = \"Hard disk 2\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-02/test-02_1-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C297-224a-568d-8eaa-e603152fb8fd\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-02/test-02_1.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C297-224a-568d-8eaa-e603152fb8fd\",",
+        "controllerKey = 1000,",
+        "unitNumber = 1,",
+        "capacityInKB = 209715200,"
+      ]
+    ]
+  },
+  {
+    "vmid": 16,
+    "disks": [
+      [
+        "key = 2000,",
+        "label = \"Hard disk 1\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-03/test-03-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C293-1fa4-b938-6c2e-37d6ab89c0ef\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-03/test-03.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C293-1fa4-b938-6c2e-37d6ab89c0ef\",",
+        "controllerKey = 1000,",
+        "unitNumber = 0,",
+        "capacityInKB = 209715200,"
+      ],
+      [
+        "key = 2001,",
+        "label = \"Hard disk 2\",",
+        "summary = \"209,715,200 KB\"",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-03/test-03_1-000001.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C296-252d-443b-1628-55f5e9ab674c\",",
+        "fileName = \"[\u5bb9\u91cf\u5b58\u50a8 (1)] test-03/test-03_1.vmdk\",",
+        "diskMode = \"persistent\",",
+        "uuid = \"6000C296-252d-443b-1628-55f5e9ab674c\",",
+        "controllerKey = 1000,",
+        "unitNumber = 1,",
+        "capacityInKB = 209715200,"
+      ]
+    ]
+  }
+]

@@ -179,7 +179,34 @@ def check(cluster, root, report):
     runtime_list = json.loads(cluster.call(["get", "clusterservingruntimes", "-o", "json"]))["items"]
     if [v["metadata"]["name"] for v in runtime_list] != [RUNTIME]:
         raise RuntimeError("the environment has runtimes beyond the fixed sklearn contract")
+    identities = []
+    for namespace in NAMESPACES:
+        for value in namespace_contract(cluster.site, namespace):
+            existing = cluster.owned(value)
+            if not existing:
+                raise RuntimeError("stage2 workload protection is absent: " + identity(value))
+            if value["kind"] == "ServiceAccount":
+                if existing.get("automountServiceAccountToken") is not False:
+                    raise RuntimeError("stage2 workload SA token automount differs")
+                if value["metadata"]["name"] == "predictor-workload" and existing.get("secrets") != [{"name": "ani-model-reader"}]:
+                    raise RuntimeError("predictor SA model reader binding differs")
+            elif value["kind"] != "Namespace":
+                dry = json.loads(cluster.call(["apply", "--server-side", "--field-manager=ani-kubeflow",
+                    "--dry-run=server", "--validate=strict", "-f", "-", "-o", "json"], value))
+                if existing["spec"] != dry["spec"]:
+                    raise RuntimeError("stage2 workload protection differs: " + identity(value))
+        reader = cluster.owned(obj("Secret", "ani-model-reader", namespace))
+        writer = cluster.owned(obj("Secret", "ani-model-writer", namespace))
+        if not reader or not writer or any(set(v.get("data", {})) != {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} for v in (reader, writer)):
+            raise RuntimeError("stage2 model credential fields differ")
+        if decode(reader, "AWS_ACCESS_KEY_ID") == decode(writer, "AWS_ACCESS_KEY_ID"):
+            raise RuntimeError("model writer and reader share one identity")
+        ca = cluster.owned(obj("ConfigMap", "ani-model-ca", namespace))
+        if not ca or not ca.get("data", {}).get("ca.crt"):
+            raise RuntimeError("stage2 model CA is absent")
+        identities.append({"namespace": namespace, "writer_secret": "ani-model-writer", "reader_secret": "ani-model-reader",
+                           "bucket": "ani-kf-stage2-" + namespace, "prefix": "models/", "ca_configmap": "ani-model-ca"})
     report["stage2"] = {"status": "CONTROLLERS_CHECKED", "main_flow": "NOT_ATTESTED",
-                         "namespaces": list(NAMESPACES), "runtime": RUNTIME,
+                         "namespaces": list(NAMESPACES), "runtime": RUNTIME, "model_identities": identities,
                          "notebook_workspace": {"storage_class": cluster.site["workspace_class"],
                                                 "size": cluster.site["workspace_max_size"], "uid_gid": "1000:1000"}}
