@@ -77,6 +77,35 @@ def resume_workspace(cluster, previous, namespace, run_id, pvc, notebook):
     return claim
 
 
+def resume_notebook_image(cluster, notebook):
+    live = cluster.owned(notebook)
+    actual = live["spec"]["template"]["spec"]["containers"]
+    desired = notebook["spec"]["template"]["spec"]["containers"]
+    if len(actual) != 1 or len(desired) != 1 or actual[0]["name"] != desired[0]["name"]:
+        raise ValueError("original Notebook container identity differs")
+    if actual[0]["image"] == desired[0]["image"]:
+        return
+    # CRD containers are atomic. The create manager's Update ownership cannot
+    # be overwritten through SSA, even using the same manager name. Patch only
+    # the approved image on the original UID/version; preserve all other data.
+    patch = [{"op": "test", "path": "/metadata/uid", "value": live["metadata"]["uid"]},
+             {"op": "test", "path": "/metadata/resourceVersion", "value": live["metadata"]["resourceVersion"]},
+             {"op": "test", "path": "/spec/template/spec/containers/0/name", "value": actual[0]["name"]},
+             {"op": "test", "path": "/spec/template/spec/containers/0/image", "value": actual[0]["image"]},
+             {"op": "replace", "path": "/spec/template/spec/containers/0/image", "value": desired[0]["image"]}]
+    args = ["patch", "notebooks", notebook["metadata"]["name"], "-n", notebook["metadata"]["namespace"],
+            "--type=json", "--patch", json.dumps(patch), "-o", "json"]
+    cluster.call(args + ["--dry-run=server"])
+    pending = {"identity": identity(notebook), "uid": live["metadata"]["uid"], "action": "patch-approved-image", "result": "UNKNOWN"}
+    cluster.writes.append(pending)
+    atomic(cluster.directory / "writes.json", cluster.writes)
+    response = json.loads(cluster.call(args))
+    if response["metadata"]["uid"] != live["metadata"]["uid"]:
+        raise RuntimeError("Notebook patch response identity differs")
+    pending["result"] = "CONFIRMED"
+    atomic(cluster.directory / "writes.json", cluster.writes)
+
+
 def execute(cluster, root, run_id, report, previous=None):
     report["lock"] = product_lock()
     namespace = stage2.NAMESPACES[0]
@@ -101,7 +130,10 @@ def execute(cluster, root, run_id, report, previous=None):
     report["workspace"] = {"name": pvc["metadata"]["name"], "uid": observed_pvc["metadata"]["uid"],
                            "class": observed_pvc["spec"]["storageClassName"], "size": observed_pvc["spec"]["resources"]["requests"]["storage"]}
     atomic(cluster.directory / "report.json", report)
-    cluster.apply([notebook])
+    if previous is None:
+        cluster.apply([notebook])
+    else:
+        resume_notebook_image(cluster, notebook)
     observed_nb = cluster.read(notebook)
     report["notebook"] = {"name": name, "uid": observed_nb["metadata"]["uid"]}
     atomic(cluster.directory / "report.json", report)

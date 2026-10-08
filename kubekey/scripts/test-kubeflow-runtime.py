@@ -473,6 +473,25 @@ class Stage2Protection(unittest.TestCase):
 
 
 class MainProbeResume(unittest.TestCase):
+    def test_resume_image_change_is_conditioned_and_does_not_replace_atomic_containers(self):
+        change = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["resume_notebook_image"]
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = Cluster({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            live = {"apiVersion": "kubeflow.org/v1", "kind": "Notebook", "metadata": {"name": "native", "namespace": stage2.NAMESPACES[0],
+                    "uid": "original-notebook", "resourceVersion": "17", "labels": {"ani.io/managed-by": "ani-lab"}},
+                    "spec": {"template": {"spec": {"containers": [{"name": "native", "image": "old@sha256:aaa"}]}}}}
+            desired = copy.deepcopy(live); desired["spec"]["template"]["spec"]["containers"][0]["image"] = "fixed@sha256:bbb"
+            def server(args, **kwargs):
+                self.assertEqual(args[0], "patch")
+                patch = json.loads(args[args.index("--patch") + 1])
+                self.assertEqual([v["path"] for v in patch if v["op"] == "replace"], ["/spec/template/spec/containers/0/image"])
+                self.assertEqual(patch[0], {"op": "test", "path": "/metadata/uid", "value": "original-notebook"})
+                self.assertEqual(patch[1], {"op": "test", "path": "/metadata/resourceVersion", "value": "17"})
+                return json.dumps(desired)
+            with mock.patch.object(cluster, "read", return_value=live), mock.patch.object(cluster, "call", side_effect=server):
+                change(cluster, desired)
+            self.assertEqual(cluster.writes, [{"identity": "Notebook/ani-kf-stage2-a/native", "uid": "original-notebook", "action": "patch-approved-image", "result": "CONFIRMED"}])
+
     def test_resume_keeps_original_uids_and_rejects_replacement_or_kernel_outputs(self):
         resume = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["resume_workspace"]
         site = {"workspace_class": "ani-cephfs", "workspace_max_size": "5Gi", "images": {stage2.WORKSPACE_IMAGE: "registry/jupyter@sha256:" + "a" * 64}}
