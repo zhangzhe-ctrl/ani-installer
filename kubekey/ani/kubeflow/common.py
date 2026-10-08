@@ -187,6 +187,21 @@ class Cluster:
                 if "immutable" in old:
                     obj["immutable"] = old["immutable"]
                 replace_owned = True
+            if (old and obj["kind"] == "ConfigMap" and obj["metadata"].get("namespace") == "kserve"
+                    and obj["metadata"]["name"] == "inferenceservice-config" and obj.get("data") != old.get("data")):
+                # The first create owns these JSON strings with Update. Only
+                # this fixed installer configuration may move to new reviewed
+                # bytes, conditioned on its UID/version; never force SSA.
+                data_managers = {m["manager"] for m in old["metadata"].get("managedFields", []) if "f:data" in m.get("fieldsV1", {})}
+                if data_managers != {manager} or set(old.get("data", {})) != set(obj.get("data", {})) or old.get("binaryData"):
+                    raise RuntimeError("foreign KServe configuration; refusing mutation: " + identity(obj))
+                metadata = {**old["metadata"], **obj["metadata"]}
+                metadata["labels"] = {**old["metadata"].get("labels", {}), **obj["metadata"].get("labels", {})}
+                metadata.pop("managedFields", None)
+                obj["metadata"] = metadata
+                if "immutable" in old:
+                    obj["immutable"] = old["immutable"]
+                replace_owned = True
             if old and obj["kind"] == "Deployment" and obj["metadata"].get("namespace") == "kubeflow" and obj["metadata"]["name"] == "ml-pipeline":
                 def workflow_patch(value):
                     return next((e.get("value") for c in value.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])

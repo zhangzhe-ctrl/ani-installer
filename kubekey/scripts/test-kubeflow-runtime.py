@@ -531,6 +531,28 @@ class MainProbeResume(unittest.TestCase):
 
 
 class ExplicitResourceScope(unittest.TestCase):
+    def test_kserve_configuration_update_requires_our_original_field_owner_and_version(self):
+        value = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "inferenceservice-config", "namespace": "kserve"},
+                 "data": {"credentials": "reviewed-ca-filename"}}
+        old = copy.deepcopy(value); old["data"]["credentials"] = "old-ca-filename"
+        old["metadata"].update(uid="original-config", resourceVersion="19", labels={"ani.io/managed-by": "ani-lab"},
+                               managedFields=[{"manager": "ani-kubeflow", "fieldsV1": {"f:data": {}}}])
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = Cluster({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            def server(args, body, **kwargs):
+                self.assertEqual(args[0], "replace")
+                self.assertEqual(body["metadata"]["uid"], "original-config")
+                self.assertEqual(body["metadata"]["resourceVersion"], "19")
+                self.assertNotIn("--force-conflicts", args)
+                return json.dumps(body)
+            with mock.patch.object(cluster, "read", return_value=old), mock.patch.object(cluster, "call", side_effect=server):
+                cluster.apply([value])
+            old["metadata"]["managedFields"][0]["manager"] = "another-owner"
+            with mock.patch.object(cluster, "read", return_value=old), mock.patch.object(cluster, "call") as call:
+                with self.assertRaisesRegex(RuntimeError, "foreign KServe configuration"):
+                    cluster.apply([value])
+                call.assert_not_called()
+
     def test_replay_preserves_controller_computed_aggregate_rules(self):
         value = {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "notebook-admin"},
                  "aggregationRule": {"clusterRoleSelectors": [{"matchLabels": {"aggregate": "true"}}]}, "rules": []}
