@@ -28,6 +28,7 @@ FILES = {
     "model.py": "ani/kubeflow/stage2/workspace/model.py",
     "stage2-probe-main.py": "ani/kubeflow/stage2/probe-main.py",
     "stage2-probe-contracts.py": "ani/kubeflow/stage2/probe-contracts.py",
+    "stage2-probe-protection.py": "ani/kubeflow/stage2/probe-protection.py",
 }
 RELEASE = "26.03-kubeflow-stage2-v1"
 parser = argparse.ArgumentParser()
