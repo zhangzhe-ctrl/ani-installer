@@ -20,12 +20,13 @@ tasks:
     liveInventory: pass
     code: implementation_in_progress
     remoteChecks: targeted_pass_final_candidate_NOT_RUN
-    integration: not_run
+    integration: native_main_persistence_failure_protection_and_first_stage_regression_pass
     cleanOffline: not_run
   evidence:
   - docs/execution/kf-env-stage2/README.md
   notes:
   - 本轮仅 .20-.22，新的 26.03-kubeflow-stage2-v1；不继承第一阶段或旧集群 PASS。
+  - 联调主链已实际返回 [0,1,2]；Notebook 原生停止/恢复和预测 Pod 重建通过，错误路径/凭据可归因失败，基础保护与第一阶段回归通过。干净完整首装仍 NOT_RUN，尚未 ENV_READY。
 - id: ENV00
   title: Kubeflow 统一首装目标与准备路径核实
   dependsOn: []
