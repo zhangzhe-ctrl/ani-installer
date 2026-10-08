@@ -1,9 +1,9 @@
 {
   "schema": "ani.kubeflow.assets.v1",
   "release": "26.03-kubeflow-stage2-v1",
-  "generatedFromCommit": "e8152fa202907fb57cb633826fe6893bb1687dc0",
+  "generatedFromCommit": "a4519d774d9a031e2638dd77975ba5c108c487ee",
   "files": {
-    "common.py": "f533ba122f9ae9ab1b6522bbf3d53a81ab74f6fbeada8637dc5a30559c294517",
+    "common.py": "8e4394d67b944d742b96e5219f6d83f7cb256ea923cbc8398f4ffe68fda5a69d",
     "resources.py": "3e23e38caf49533b9575f1dbb70da93a62da9862d853551da95e040dedd5716d",
     "storage.py": "87a86b00128026fd3bffb4f82446f083b7566ba2b0a3a8cdddfce660740d5126",
     "install.py": "a54e2ddf25b3a274b46e1725eaf1862f3f1b54e5dc55d802b62b8205d7ed0a50",
@@ -17,8 +17,8 @@
     "probe-pipeline.yaml": "bf31a9457392d25da911d06220a048ad83c6810b5969e93a01d6165e81797134",
     "probe-compile.lock.json": "9e82f861ba18bb4b4b60a00a30d05222f77b3bf2f4a52de9862e8ef804240dc8",
     "stage2.py": "4e91f82f60da96b27d919103ff8b44ca0d66a2ba7834e92289d8cd666eb8e363",
-    "stage2-resources.json": "8b17296f5164b170604ef346e0386d663dd510f48efed41238edaaea6d2c9786",
-    "stage2-overlay.lock.json": "fd5f643bcc1bbb2b861fc46c18779815b376432cd3603d3339313613cf46e3f1",
+    "stage2-resources.json": "e1eb96a90b60af98fad1331e8d674227659f9a5033c0d2abc25a8548b8a9ddf7",
+    "stage2-overlay.lock.json": "de91d98956ee3f987d0d61e22efcabb4b33db969bad7182f07adafd50d982a35",
     "workspace-image.lock.json": "bf15a198265a1fb7580dd3f2fa05574bd74bd2fd7d17a4e5ce0fc8417f08b766",
     "workspace-requirements.lock": "c87f9081a22c398b50b599f7ffaeb9907a89394bd12f66c31bdb0cdffaf79b47",
     "kernel-probe.py": "3cf6ae0e33f0c01d1478b03ceceacf557582ac4a1518d8124901d484b81beb7a",

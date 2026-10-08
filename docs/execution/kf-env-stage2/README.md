@@ -19,9 +19,11 @@
 
 ## 当前环境与断点
 
-目标仅为 `.20`～`.22`。用户确认已重装这三台可信实验 VM；新密钥只保存到任务私有 known_hosts，严格 SSH 登录通过。ESXi 的当前 guest IP 与 BIOS UUID 对应已核实，见 `vm-identities.json`；磁盘和快照映射见 `vm-disks.json`。三台均为 Ubuntu 24.04.4、8 vCPU/16GiB，无 K8s；各自稳定 by-path 数据设备指向空白 200GiB sdb，实际正式 Ceph 只读预检退出码均 0。未还原快照。
+目标仅为 `.20`～`.22`。用户确认已重装这三台可信实验 VM；新密钥只保存到任务私有 known_hosts，严格 SSH 登录通过。ESXi 的当前 guest IP 与 BIOS UUID 对应已核实，见 `vm-identities.json`；磁盘和快照映射见 `vm-disks.json`。首装前均为 Ubuntu 24.04.4、8 vCPU/16GiB，无 K8s；各自稳定 by-path 数据设备指向空白 200GiB sdb，实际正式 Ceph 只读预检退出码均 0。未还原快照。
 
-基础安装代码绑定已推送 `b74640caacc6609044bd1efbc5f2962e881e42bc`，Fedora 正式 `build-code.sh` 退出码 0；源码指纹 `bc6174e1272f66c267d083eecf6c9f5d2545f8ffda3fe6ff1b1fba410ac73be9` 在门禁、编译与打包间一致。首错是测试生成 pycache 导致发布保护拒绝；保留首错后用禁止字节码写入的同源重跑通过。基础物料正在从既有锁定字节重新打包、实际 registry 内容门禁核验；基础集群尚未安装。
+基础安装代码绑定已推送 `b74640caacc6609044bd1efbc5f2962e881e42bc`，Fedora 正式 `build-code.sh` 退出码 0；源码指纹 `bc6174e1272f66c267d083eecf6c9f5d2545f8ffda3fe6ff1b1fba410ac73be9` 在门禁、编译与打包间一致。首错是测试生成 pycache 导致发布保护拒绝；保留首错后用禁止字节码写入的同源重跑通过。基础物料重新核验后，`kk ani install` 于 2026-10-08T14:53:14Z 直接退出 0，run 为 `ani-ani-kf-stage2-20261008-143528`，集群 UID 为 `bc286cf0-db38-4e03-b3d4-9645657a1f09`。基础准备时关闭 Kubeflow，不作为完整二阶段统一首装验收。CephFS/RBD、内部 CA、RustFS 已就绪；Ceph 20.2.4 存在密钥类型兼容性 HEALTH_WARN，未修改共享组件配置来隐藏告警。
+
+联调物料 `materials-integration-f44ed3e-attempt-01` 已通过 112 镜像实际内容门禁，启用完整站点渲染退出码 0。为续用基础环境，联调仅在三台节点预加载同摘要的 8 个新增镜像；正式干净首装仍使用完整包和正常 registry 拉取。首次真实角色部署停在 KServe：Helm 省略三个资源的 namespace，导致它们落到 default，控制器无法创建 Pod。保存 FailedCreate 与原始写入 UID 后中断当前安装器（直接退出 130）；仅以 UID/resourceVersion 条件删除这三个本任务误置资源。修复显式 namespace 与查找前作用域保护，续用原集群，不恢复快照。证据均在上述 Fedora 任务根，分别为 `integration-first-error-kserve-namespace.json`、`integration-install-attempt-01.json` 和 `namespace-recovery-attempt-01.log`。
 
 新增 Jupyter 镜像 `sha256:231029b0c72de5c4fecd2ef899f1948c980ac51b7e65fe3cf627bb28f8aafb62` 在 Fedora 从已推送 `ae5ce46b0da47ed9859a22c2a6d993861772a02c` 构建并核验镜像层，100 个 wheel 全部闭合。固定模型生成验证通过，不等于原生 kernel 或集群 PASS。改动对应 Kubeflow Go 测试与 Python 运行保护测试在 `b94adef` 退出码均 0。主链探针已编写，真实链路仍 `NOT_RUN`；后续先运行主链再补行为约束。
 
