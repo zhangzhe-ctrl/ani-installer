@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-const KubeflowRelease = "26.03-kfp2.16-trainer2.1-v1"
+const KubeflowRelease = "26.03-kubeflow-stage2-v1"
 
 func kubeflowImageKeys() []ImageKey {
 	return []ImageKey{
@@ -29,6 +29,14 @@ func kubeflowImageKeys() []ImageKey {
 		{Group: "kubeflow", Name: "mysql", Original: "docker.io/library/mysql:8.4.11"},
 		{Group: "kubeflow", Name: "entry", Original: "docker.io/library/nginx:1.30.5"},
 		{Group: "kubeflow", Name: "execution", Original: "ani.local/kubeflow-execution:26.03-v1"},
+		{Group: "kubeflow", Name: "notebookController", Original: "ghcr.io/kubeflow/kubeflow/notebook-controller:v1.10.0"},
+		{Group: "kubeflow", Name: "jupyter", Original: "ani.local/kubeflow-jupyter:26.03-stage2-v1"},
+		{Group: "kubeflow", Name: "kserveController", Original: "docker.io/kserve/kserve-controller:v0.16.0"},
+		{Group: "kubeflow", Name: "kserveStorage", Original: "docker.io/kserve/storage-initializer:v0.16.0"},
+		{Group: "kubeflow", Name: "kserveAgent", Original: "docker.io/kserve/agent:v0.16.0"},
+		{Group: "kubeflow", Name: "kserveRouter", Original: "docker.io/kserve/router:v0.16.0"},
+		{Group: "kubeflow", Name: "sklearn", Original: "docker.io/kserve/sklearnserver:v0.16.0"},
+		{Group: "kubeflow", Name: "kserveRBACProxy", Original: "quay.io/brancz/kube-rbac-proxy:v0.18.0"},
 	}
 }
 

@@ -17,6 +17,7 @@ import secrets
 from common import Cluster, assets, atomic, decode, identity, load_site
 from resources import RELEASE, admission, entry, isolation, obj, runtime, tenant
 from storage import scoped_storage
+import stage2
 
 
 def product_lock():
@@ -169,6 +170,7 @@ def install(cluster, root, report):
     site = cluster.site
     report["lock"] = product_lock()
     values = materialize(root, site)
+    stage2.preflight(cluster, root)
     entry_ports_available(cluster)
     # Check collisions for all fixed upstream identities before any mutation.
     for value in values:
@@ -245,6 +247,12 @@ def install(cluster, root, report):
         if value["kind"] == "ValidatingAdmissionPolicy":
             cluster.wait(value, checked_policy)
     cluster.apply(isolation(site))
+    # These are independent probe identities and claims; no relaxation of the
+    # training namespaces' admission or exhausted workspace quota is needed.
+    for namespace in stage2.NAMESPACES:
+        contracts = stage2.namespace_contract(site, namespace, ca)
+        cluster.apply(contracts[:1])
+        cluster.apply(contracts[1:])
     scoped_storage(cluster, ca)
     config = next(v["data"] for v in values if v["kind"] == "ConfigMap" and v["metadata"]["name"] == "pipeline-install-config")
     database_secrets(cluster, config)
@@ -280,6 +288,7 @@ def install(cluster, root, report):
     report["runtime"] = {"name": approved_runtime["metadata"]["name"], "uid": cluster.read(approved_runtime)["metadata"]["uid"],
                          "image": site["images"]["ani.local/kubeflow-execution:26.03-v1"], "workspaceMode": site["workspace_mode"]}
     report["completedPhases"].append("KFP_CONSUMERS_ENTRY_RUNTIME_INSTALLED")
+    stage2.install(cluster, root, report, ca)
     report["status"] = "INSTALLED_PENDING_CURRENT_CHECK"
 
 

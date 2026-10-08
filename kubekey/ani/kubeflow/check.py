@@ -18,6 +18,7 @@ import urllib.request
 from common import Cluster, assets, atomic, identity, load_site
 from install import checked_policy, materialize
 from resources import RELEASE, entry, obj, runtime
+import stage2
 
 
 def check(cluster, root, report):
@@ -103,6 +104,7 @@ def check(cluster, root, report):
         policy = cluster.owned(obj("ValidatingAdmissionPolicy", name, api="admissionregistration.k8s.io/v1"))
         if not policy or not checked_policy(policy):
             raise RuntimeError("admission expression type checking differs: " + name)
+    stage2.check(cluster, root, report)
     report.update(status="CONTROL_PLANE_CHECKED", httpRequests=requests, grpcTls="h2_verified / grpc_authorization_NOT_RUN",
                   runtime={"name": installed["metadata"]["name"], "uid": installed["metadata"]["uid"]},
                   acceptance="EAC01-EAC14_NOT_ATTESTED_BY_THIS_CHECK")

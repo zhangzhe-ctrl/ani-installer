@@ -6,7 +6,7 @@ module; generated objects must pass the actual API's strict dry-run first.
 import hashlib
 import json
 
-RELEASE = "26.03-kfp2.16-trainer2.1-v1"
+RELEASE = "26.03-kubeflow-stage2-v1"
 EXECUTION_IMAGE = "ani.local/kubeflow-execution:26.03-v1"
 
 

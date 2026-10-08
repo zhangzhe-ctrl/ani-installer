@@ -14,6 +14,19 @@ from common import atomic, decode
 from resources import obj
 
 
+def model_policy(bucket, prefix, mode):
+    if mode not in ("model-reader", "model-writer"):
+        raise ValueError("unsupported model storage responsibility")
+    statements = [{"Effect": "Allow", "Action": ["s3:GetBucketLocation"],
+                   "Resource": ["arn:aws:s3:::" + bucket]}]
+    if mode == "model-reader":
+        statements.append({"Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::" + bucket],
+            "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "/", prefix + "/*"]}}})
+    statements.append({"Effect": "Allow", "Action": ["s3:GetObject" if mode == "model-reader" else "s3:PutObject"],
+                       "Resource": ["arn:aws:s3:::" + bucket + "/" + prefix + "/*"]})
+    return {"Version": "2012-10-17", "Statement": statements}
+
+
 def same_policy(actual, desired):
     # RustFS serializes IAM set-valued arrays in a different order. Compare
     # only those documented sets without dropping duplicates or any fields;
@@ -64,8 +77,12 @@ def scoped_storage(cluster, ca):
     if not re.fullmatch(r"[a-f0-9]{32}", access) or not re.fullmatch(r"[a-f0-9]{64}", secret):
         raise ValueError("declared RustFS root identity has an unexpected format")
     executable = pathlib.Path(site["artifact_root"]) / "bin/rc"
-    bindings = [("kubeflow", "ani-kfp-control", "ani-kfp-control-s3", "pipelines")]
-    bindings += [(tenant, "ani-kfp-" + tenant, "mlpipeline-minio-artifact", "artifacts") for tenant in site["tenants"]]
+    bindings = [("kubeflow", "ani-kfp-control", "ani-kfp-control-s3", "pipelines", "kfp")]
+    bindings += [(tenant, "ani-kfp-" + tenant, "mlpipeline-minio-artifact", "artifacts", "kfp") for tenant in site["tenants"]]
+    from stage2 import NAMESPACES
+    for tenant in NAMESPACES:
+        bindings += [(tenant, "ani-kf-stage2-" + tenant, "ani-model-writer", "models", "model-writer"),
+                     (tenant, "ani-kf-stage2-" + tenant, "ani-model-reader", "models", "model-reader")]
     with tempfile.TemporaryDirectory(prefix="rustfs-private-", dir=cluster.directory) as temporary:
         work = pathlib.Path(temporary)
         (work / "ca.crt").write_text(ca)
@@ -118,9 +135,10 @@ def scoped_storage(cluster, ca):
                 return result
 
             mutations = []
-            for target, bucket, secret_name, prefix in bindings:
-                key = "ani-kfp-" + hashlib.sha256((site["owner"] + ":" + target).encode()).hexdigest()[:16]
-                password = hmac.new(secret.encode(), ("ani-kfp-s3-v1:" + site["owner"] + ":" + target).encode(), hashlib.sha256).hexdigest()[:40]
+            for target, bucket, secret_name, prefix, mode in bindings:
+                binding = target if mode == "kfp" else target + ":" + secret_name
+                key = "ani-kfp-" + hashlib.sha256((site["owner"] + ":" + binding).encode()).hexdigest()[:16]
+                password = hmac.new(secret.encode(), ("ani-kfp-s3-v1:" + site["owner"] + ":" + binding).encode(), hashlib.sha256).hexdigest()[:40]
                 configure(key, password)
                 rc(["ready", "root"])
                 marker = {"schema": "ani.kubeflow.s3.v1", "owner": site["owner"], "namespace": target, "bucket": bucket, "prefix": prefix}
@@ -130,10 +148,13 @@ def scoped_storage(cluster, ca):
                     {"Effect": "Allow", "Action": ["s3:GetBucketLocation"], "Resource": ["arn:aws:s3:::" + bucket]},
                     {"Effect": "Allow", "Action": ["s3:ListBucket", "s3:ListBucketMultipartUploads"], "Resource": ["arn:aws:s3:::" + bucket], "Condition": {"StringLike": {"s3:prefix": [prefix, prefix + "/", prefix + "/*"]}}},
                     {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"], "Resource": ["arn:aws:s3:::" + bucket + "/" + prefix + "/*"]}]}
+                if mode != "kfp":
+                    policy = model_policy(bucket, prefix, mode)
                 (work / "policy.json").write_text(json.dumps(policy, separators=(",", ":")))
-                desired = obj("Secret", secret_name, target, type="Opaque", stringData={"accesskey": key, "secretkey": password})
+                access_field, secret_field = ("accesskey", "secretkey") if mode == "kfp" else ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+                desired = obj("Secret", secret_name, target, type="Opaque", stringData={access_field: key, secret_field: password})
                 old = cluster.owned(desired)
-                if old and (decode(old, "accesskey") != key or decode(old, "secretkey") != password or old.get("type") != "Opaque"):
+                if old and (decode(old, access_field) != key or decode(old, secret_field) != password or old.get("type") != "Opaque"):
                     raise RuntimeError("existing scoped S3 identity differs; no rotation")
                 buckets = json.loads(rc(["--json", "bucket", "list", "root/"]).stdout)["items"]
                 exists = bucket in [item["key"] for item in buckets]
@@ -161,8 +182,12 @@ def scoped_storage(cluster, ca):
                 final = json.loads(rc(["--json", "admin", "access-key", "info", "root", key]).stdout)
                 if not same_identity(final, key, access, policy):
                     raise RuntimeError("scoped S3 readback differs")
-                rc(["--json", "bucket", "list", "app/" + bucket + "/" + prefix + "/"])
-                atomic(cluster.directory / (target + "-s3-binding.json"), {**marker, "secret": target + "/" + secret_name, "status": "IDENTITY_AUTHENTICATED", "crossTenantProbe": "NOT_RUN", "writeReadProbe": "NOT_RUN"})
+                if mode != "model-writer":
+                    rc(["--json", "bucket", "list", "app/" + bucket + "/" + prefix + "/"])
+                status = "IDENTITY_POLICY_READBACK" if mode == "model-writer" else "IDENTITY_AUTHENTICATED"
+                suffix = "" if mode == "kfp" else "-" + mode
+                atomic(cluster.directory / (target + suffix + "-s3-binding.json"), {**marker, "secret": target + "/" + secret_name,
+                    "status": status, "responsibility": mode, "crossTenantProbe": "NOT_RUN", "writeReadProbe": "NOT_RUN"})
         finally:
             forward.terminate()
             try:

@@ -21,6 +21,9 @@ PLURALS = {
     "LimitRange": "limitranges", "ValidatingAdmissionPolicy": "validatingadmissionpolicies",
     "ValidatingAdmissionPolicyBinding": "validatingadmissionpolicybindings", "ClusterTrainingRuntime": "clustertrainingruntimes",
     "Pod": "pods", "Job": "jobs", "TrainJob": "trainjobs", "Workflow": "workflows",
+    "Notebook": "notebooks", "StatefulSet": "statefulsets", "InferenceService": "inferenceservices",
+    "Issuer": "issuers", "ClusterServingRuntime": "clusterservingruntimes",
+    "ClusterStorageContainer": "clusterstoragecontainers",
 }
 
 
@@ -244,7 +247,8 @@ class Cluster:
 
     def evidence(self):
         # No Secret, pod environment or arbitrary ConfigMap content in diagnostics.
-        for namespace in ("kubeflow", "kubeflow-system", *self.site["tenants"]):
+        for namespace in ("kubeflow", "kubeflow-system", "notebook-controller-system", "kserve",
+                          "ani-kf-stage2-a", "ani-kf-stage2-b", *self.site["tenants"]):
             for resource in ("events", "pods", "endpointslices", "persistentvolumeclaims"):
                 result = subprocess.run(self.command + ["get", resource, "-n", namespace, "-o", "json"], text=True, capture_output=True, timeout=45)
                 if result.returncode == 0:

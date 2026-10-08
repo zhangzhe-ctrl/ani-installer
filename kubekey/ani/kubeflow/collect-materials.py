@@ -13,7 +13,12 @@ import subprocess
 
 def raw(ref):
     result = subprocess.run(["skopeo", "inspect", "--raw", "docker://" + ref],
-                            check=True, capture_output=True, timeout=180)
+                            capture_output=True, timeout=180)
+    if result.returncode:
+        (args.output / "first-error.json").write_text(json.dumps({"operation": "source-manifest-read",
+            "reference": ref, "exit_code": result.returncode,
+            "stderr": result.stderr.decode(errors="replace")[:8192]}, indent=2) + "\n")
+        raise RuntimeError("source image read failed rc=%d; preserve first-error.json" % result.returncode)
     return result.stdout
 
 
