@@ -110,6 +110,11 @@ class Cluster:
         # Preflight the whole dependency group before its first mutation.
         prepared = []
         for obj in objects:
+            # Aggregated RBAC rules are written by Kubernetes, not by the
+            # installer. Upstream's empty bootstrap list must not erase or
+            # conflict with the controller's computed permission set on replay.
+            if obj["kind"] == "ClusterRole" and obj.get("aggregationRule") and obj.get("rules") == []:
+                obj.pop("rules")
             # ObjectFieldSelector is atomic for SSA. Creation defaults its
             # apiVersion to v1; replay must explicitly retain that same value
             # instead of conflicting with the initial create operation.

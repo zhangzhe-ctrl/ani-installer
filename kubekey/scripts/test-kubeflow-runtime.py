@@ -472,6 +472,22 @@ class Stage2Protection(unittest.TestCase):
 
 
 class ExplicitResourceScope(unittest.TestCase):
+    def test_replay_preserves_controller_computed_aggregate_rules(self):
+        value = {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "notebook-admin"},
+                 "aggregationRule": {"clusterRoleSelectors": [{"matchLabels": {"aggregate": "true"}}]}, "rules": []}
+        with tempfile.TemporaryDirectory() as temporary:
+            cluster = Cluster({"owner": "ani-lab", "kubeconfig": "/unused"}, pathlib.Path(temporary) / "attempt")
+            live = {**copy.deepcopy(value), "rules": [{"apiGroups": ["kubeflow.org"], "resources": ["notebooks"], "verbs": ["get"]}]}
+            live["metadata"].update(uid="aggregate-role-uid", resourceVersion="17", labels={"ani.io/managed-by": "ani-lab"})
+            def server(args, body, **kwargs):
+                if "rules" in body:
+                    raise RuntimeError("conflict with clusterrole-aggregation-controller")
+                self.assertEqual(body["aggregationRule"], live["aggregationRule"])
+                return json.dumps(live)
+            with mock.patch.object(cluster, "read", return_value=live), mock.patch.object(cluster, "call", side_effect=server):
+                cluster.apply([value])
+            self.assertEqual(cluster.writes[0]["uid"], live["metadata"]["uid"])
+
     def test_missing_controller_identity_namespace_is_rejected_before_lookup(self):
         for kind, api in (("ServiceAccount", "v1"), ("Role", "rbac.authorization.k8s.io/v1"), ("RoleBinding", "rbac.authorization.k8s.io/v1")):
             with self.assertRaisesRegex(ValueError, "requires explicit namespace"):
