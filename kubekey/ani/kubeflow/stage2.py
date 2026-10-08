@@ -12,6 +12,15 @@ RUNTIME = "kserve-sklearnserver"
 S3_ENDPOINT = "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000"
 
 
+def controller_ca(ca=None):
+    # KServe 0.16 reads this source in its controller namespace, then copies
+    # cabundle.crt to global-ca-bundle in the InferenceService namespace.
+    value = obj("ConfigMap", "ani-model-ca", "kserve")
+    if ca is not None:
+        value["data"] = {"cabundle.crt": ca}
+    return value
+
+
 def materialize(root, site):
     lock = json.loads((root / "stage2-overlay.lock.json").read_text())
     raw = (root / "stage2-resources.json").read_bytes()
@@ -98,10 +107,11 @@ def inference(namespace, name, model_uri, run_id, secret="ani-model-reader"):
 
 def preflight(cluster, root):
     values = materialize(root, cluster.site)
+    cluster.owned(controller_ca())
     for value in values:
         cluster.owned(value)
     for namespace in NAMESPACES:
-        for value in namespace_contract(cluster.site, namespace):
+        for value in namespace_contract(cluster.site, namespace) + [obj("ConfigMap", "ani-model-ca", namespace)]:
             cluster.owned(value)
         for name in ("ani-jupyter-auth", "ani-model-writer", "ani-model-reader"):
             cluster.owned(obj("Secret", name, namespace))
@@ -120,6 +130,7 @@ def install(cluster, root, report, ca):
             "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration",
             "ClusterServingRuntime", "ClusterStorageContainer")
     cluster.apply([v for v in values if v["kind"] not in late])
+    cluster.apply([controller_ca(ca)])
     certificates = [v for v in values if v["kind"] == "Certificate"]
     cluster.apply(certificates)
     for value in certificates:
@@ -180,6 +191,10 @@ def check(cluster, root, report):
     if [v["metadata"]["name"] for v in runtime_list] != [RUNTIME]:
         raise RuntimeError("the environment has runtimes beyond the fixed sklearn contract")
     identities = []
+    public_ca = cluster.owned(obj("ConfigMap", "ani-kfp-ca", "kubeflow"))["data"]["ca.crt"]
+    source_ca = cluster.owned(controller_ca())
+    if not source_ca or source_ca.get("data") != {"cabundle.crt": public_ca}:
+        raise RuntimeError("KServe controller model CA source differs from the installed public CA")
     for namespace in NAMESPACES:
         for value in namespace_contract(cluster.site, namespace):
             existing = cluster.owned(value)
@@ -202,11 +217,13 @@ def check(cluster, root, report):
         if decode(reader, "AWS_ACCESS_KEY_ID") == decode(writer, "AWS_ACCESS_KEY_ID"):
             raise RuntimeError("model writer and reader share one identity")
         ca = cluster.owned(obj("ConfigMap", "ani-model-ca", namespace))
-        if not ca or not ca.get("data", {}).get("ca.crt"):
-            raise RuntimeError("stage2 model CA is absent")
+        if not ca or ca.get("data") != {"ca.crt": public_ca}:
+            raise RuntimeError("stage2 model CA differs from the installed public CA")
         identities.append({"namespace": namespace, "writer_secret": "ani-model-writer", "reader_secret": "ani-model-reader",
                            "bucket": "ani-kf-stage2-" + namespace, "prefix": "models/", "ca_configmap": "ani-model-ca"})
     report["stage2"] = {"status": "CONTROLLERS_CHECKED", "main_flow": "NOT_ATTESTED",
                          "namespaces": list(NAMESPACES), "runtime": RUNTIME, "model_identities": identities,
+                         "kserve_ca_source": {"namespace": "kserve", "name": "ani-model-ca", "key": "cabundle.crt",
+                                              "sha256": hashlib.sha256(public_ca.encode()).hexdigest()},
                          "notebook_workspace": {"storage_class": cluster.site["workspace_class"],
                                                 "size": cluster.site["workspace_max_size"], "uid_gid": "1000:1000"}}

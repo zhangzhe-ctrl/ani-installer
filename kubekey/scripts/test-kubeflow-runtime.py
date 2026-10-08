@@ -442,6 +442,12 @@ class DeploymentPodConvergence(unittest.TestCase):
 
 
 class Stage2Protection(unittest.TestCase):
+    def test_kserve_source_ca_uses_the_controller_namespace_and_upstream_filename(self):
+        self.assertEqual(stage2.controller_ca("public-ca")["data"], {"cabundle.crt": "public-ca"})
+        self.assertEqual(stage2.controller_ca()["metadata"]["namespace"], "kserve")
+        workspace = stage2.namespace_contract({"workspace_max_size": "5Gi"}, stage2.NAMESPACES[0], "public-ca")
+        self.assertEqual(next(v for v in workspace if v["kind"] == "ConfigMap")["data"], {"ca.crt": "public-ca"})
+
     def test_model_roles_cannot_reverse_their_storage_responsibility(self):
         writer = model_policy("bucket-a", "models", "model-writer")
         reader = model_policy("bucket-a", "models", "model-reader")
@@ -473,6 +479,17 @@ class Stage2Protection(unittest.TestCase):
 
 
 class MainProbeResume(unittest.TestCase):
+    def test_prediction_reconciliation_rejects_another_cluster_before_any_workload_call(self):
+        reconcile = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["reconcile_prediction"]
+        cluster = mock.Mock()
+        previous = {"status": "FAIL", "run_id": "case-a", "namespace": stage2.NAMESPACES[0], "cluster_uid": "other-cluster",
+                    "kernel": {"status": "REAL_JUPYTER_KERNEL_MODEL_UPLOADED"}, "s3": {"status": "PASS"},
+                    "inference_service": {"uid": "original-is"}}
+        with self.assertRaisesRegex(ValueError, "original cluster"):
+            reconcile(cluster, "case-a", previous, {"cluster_uid": "current-cluster"})
+        cluster.owned.assert_not_called()
+        cluster.call.assert_not_called()
+
     def test_resume_image_change_is_conditioned_and_does_not_replace_atomic_containers(self):
         change = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["resume_notebook_image"]
         with tempfile.TemporaryDirectory() as temporary:

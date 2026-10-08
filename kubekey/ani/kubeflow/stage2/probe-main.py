@@ -106,8 +106,76 @@ def resume_notebook_image(cluster, notebook):
     atomic(cluster.directory / "writes.json", cluster.writes)
 
 
-def execute(cluster, root, run_id, report, previous=None):
+def finish_prediction(cluster, namespace, name, inference, report):
+    observed_is = cluster.owned(inference)
+    if not observed_is or observed_is["metadata"]["uid"] != report["inference_service"]["uid"]:
+        raise ValueError("original InferenceService identity differs")
+    deployment = obj("Deployment", name + "-predictor", namespace, api="apps/v1")
+    cluster.wait(deployment, lambda v: any(o["uid"] == observed_is["metadata"]["uid"] for o in v["metadata"].get("ownerReferences", [])), timeout=180)
+    report["predictor"] = cluster.deployment(deployment)
+    report["prediction"] = predict(cluster, namespace, name)
+    report.update(status="PASS", main_flow="NATIVE_KERNEL_S3_SAME_MODEL_CORRECT_PREDICTION", persistence="NOT_RUN", negative_cases="NOT_RUN", first_stage="NOT_RUN")
+
+
+def reconcile_prediction(cluster, run_id, previous, report):
+    """Continue a recorded model handoff without training or creating objects."""
+    namespace = stage2.NAMESPACES[0]
+    name = "native-" + run_id
+    model_name = "sklearn-" + run_id
+    bucket = "ani-kf-stage2-" + namespace
+    key = "models/" + run_id + "/model.joblib"
+    uri = "s3://" + bucket + "/models/" + run_id + "/"
+    if (previous.get("status") != "FAIL" or previous.get("run_id") != run_id
+            or previous.get("namespace") != namespace or previous.get("cluster_uid") != report["cluster_uid"]
+            or previous.get("kernel", {}).get("status") != "REAL_JUPYTER_KERNEL_MODEL_UPLOADED"
+            or previous.get("s3", {}).get("status") != "PASS"
+            or not previous.get("inference_service", {}).get("uid")):
+        raise ValueError("prediction reconciliation requires the failed original cluster/kernel/S3/InferenceService handoff")
+    kernel, s3 = previous["kernel"], previous["s3"]
+    if (s3.get("bucket") != bucket or s3.get("key") != key
+            or s3.get("sha256") != kernel["model"].get("sha256")
+            or previous["inference_service"].get("name") != model_name
+            or previous["inference_service"].get("storage_uri") != uri):
+        raise ValueError("original model handoff differs")
+    pvc, notebook = stage2.notebook(cluster.site, namespace, name, run_id)
+    # Reuse the persistence/UID guard while deliberately checking the already
+    # completed kernel/S3 phase separately, rather than replaying that phase.
+    workspace = {k: previous[k] for k in ("status", "namespace", "run_id", "workspace", "notebook")}
+    resume_workspace(cluster, workspace, namespace, run_id, pvc, notebook)
+    live_nb = cluster.owned(notebook)
+    if live_nb["spec"]["template"]["spec"]["containers"][0]["image"] != cluster.site["images"][stage2.WORKSPACE_IMAGE]:
+        raise ValueError("original Notebook approved image differs")
+    inference = stage2.inference(namespace, model_name, uri, run_id)
+    live_is = cluster.owned(inference)
+    if (not live_is or live_is["metadata"]["uid"] != previous["inference_service"]["uid"]
+            or live_is["spec"]["predictor"]["model"]["storageUri"] != uri
+            or live_is["metadata"].get("annotations", {}).get("serving.kserve.io/deploymentMode") != "Standard"):
+        raise ValueError("original InferenceService identity or model differs")
+    reader = obj("Pod", "model-readback-" + run_id, namespace)
+    live_reader = cluster.owned(reader)
+    receipt = next((v for v in previous.get("writes", []) if v["identity"] == identity(reader) and v["result"] == "CONFIRMED"), None)
+    if (not live_reader or not receipt or receipt["uid"] != live_reader["metadata"]["uid"]
+            or live_reader.get("status", {}).get("phase") != "Succeeded"):
+        raise ValueError("original independent S3 readback identity differs")
+    readback = json.loads(cluster.call(["-n", namespace, "exec", "pod/" + name + "-0", "-c", name, "--", "python",
+        "/opt/ani/kernel-probe.py", "--run-id", run_id, "--model-key", key, "--readback"], sensitive=True, timeout=90))
+    if readback.get("model_sha256") != s3["sha256"] or readback.get("marker_sha256") != kernel["marker_sha256"]:
+        raise ValueError("preserved original workspace bytes differ")
+    independent = json.loads(cluster.call(["-n", namespace, "logs", reader["metadata"]["name"]], sensitive=True))
+    if independent.get("sha256") != s3["sha256"] or independent.get("bytes") != s3["bytes"]:
+        raise ValueError("original independent S3 readback bytes differ")
+    for field in ("workspace", "notebook", "native_resources", "kernel", "s3", "inference_service"):
+        report[field] = previous[field]
+    report["resumption"] = {"phase": "PREDICTION", "new_workspace_creates": 0, "new_model_uploads": 0,
+                            "new_inference_service_creates": 0, "workspace_readback": readback}
+    atomic(cluster.directory / "report.json", report)
+    finish_prediction(cluster, namespace, model_name, inference, report)
+
+
+def execute(cluster, root, run_id, report, previous=None, reconcile=False):
     report["lock"] = product_lock()
+    if reconcile:
+        return reconcile_prediction(cluster, run_id, previous, report)
     namespace = stage2.NAMESPACES[0]
     name = "native-" + run_id
     model_name = "sklearn-" + run_id
@@ -185,11 +253,7 @@ def execute(cluster, root, run_id, report, previous=None):
     observed_is = cluster.read(inference)
     report["inference_service"] = {"name": model_name, "uid": observed_is["metadata"]["uid"], "storage_uri": inference["spec"]["predictor"]["model"]["storageUri"]}
     atomic(cluster.directory / "report.json", report)
-    deployment = obj("Deployment", model_name + "-predictor", namespace, api="apps/v1")
-    cluster.wait(deployment, lambda v: any(o["uid"] == observed_is["metadata"]["uid"] for o in v["metadata"].get("ownerReferences", [])), timeout=180)
-    report["predictor"] = cluster.deployment(deployment)
-    report["prediction"] = predict(cluster, namespace, model_name)
-    report.update(status="PASS", main_flow="NATIVE_KERNEL_S3_SAME_MODEL_CORRECT_PREDICTION", persistence="NOT_RUN", negative_cases="NOT_RUN", first_stage="NOT_RUN")
+    finish_prediction(cluster, namespace, model_name, inference, report)
 
 
 def main():
@@ -197,7 +261,9 @@ def main():
     p.add_argument("--site", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--report-dir", type=pathlib.Path, required=True)
-    p.add_argument("--resume-report", type=pathlib.Path, help="resume only recorded failed pre-kernel Notebook/PVC UIDs; never replace data")
+    recovery = p.add_mutually_exclusive_group()
+    recovery.add_argument("--resume-report", type=pathlib.Path, help="resume only recorded failed pre-kernel Notebook/PVC UIDs; never replace data")
+    recovery.add_argument("--reconcile-report", type=pathlib.Path, help="continue the original completed kernel/S3 handoff at prediction; no training or creates")
     a = p.parse_args()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,35}", a.run_id): raise ValueError("invalid bounded run id")
     os.umask(0o077)
@@ -207,14 +273,14 @@ def main():
     report = {"schema": "ani.kubeflow.stage2-main.v1", "release": site["release"], "run_id": a.run_id,
               "namespace": stage2.NAMESPACES[0], "status": "IN_PROGRESS", "started": datetime.datetime.now(datetime.timezone.utc).isoformat()}
     previous = None
-    if a.resume_report:
-        source = a.resume_report.read_bytes()
+    if a.resume_report or a.reconcile_report:
+        source = (a.resume_report or a.reconcile_report).read_bytes()
         previous = json.loads(source)
         report["original_report_sha256"] = hashlib.sha256(source).hexdigest()
     atomic(cluster.directory / "report.json", report)
     try:
         report["cluster_uid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
-        execute(cluster, root, a.run_id, report, previous)
+        execute(cluster, root, a.run_id, report, previous, bool(a.reconcile_report))
     except BaseException as error:
         report.update(status="FAIL", error=str(error), writes=cluster.writes)
         atomic(cluster.directory / "report.json", report)
