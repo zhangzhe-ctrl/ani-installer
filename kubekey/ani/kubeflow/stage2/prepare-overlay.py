@@ -100,7 +100,7 @@ def main():
             credentials["s3"].update(s3Endpoint="ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
                                      s3UseHttps="1", s3VerifySSL="1", s3Region="us-east-1",
                                      s3UseVirtualBucket="0", s3UseAnonymousCredential="false",
-                                     s3CABundle="/etc/ani-model-ca/ca.crt")
+                                     s3CABundle="/etc/ani-model-ca/cabundle.crt")
             data["credentials"] = json.dumps(credentials)
         if kind == "Deployment":
             for container in value["spec"]["template"]["spec"]["containers"]:

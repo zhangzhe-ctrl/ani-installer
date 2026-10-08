@@ -169,6 +169,21 @@ def reconcile_prediction(cluster, run_id, previous, report):
     report["resumption"] = {"phase": "PREDICTION", "new_workspace_creates": 0, "new_model_uploads": 0,
                             "new_inference_service_creates": 0, "workspace_readback": readback}
     atomic(cluster.directory / "report.json", report)
+    # The failed original IS may be in controller exponential backoff. A
+    # conditional metadata event reconciles it immediately after a source fix;
+    # no predictor/controller restart or model replacement is involved.
+    patch = [{"op": "test", "path": "/metadata/uid", "value": live_is["metadata"]["uid"]},
+             {"op": "test", "path": "/metadata/resourceVersion", "value": live_is["metadata"]["resourceVersion"]},
+             {"op": "add", "path": "/metadata/annotations/ani.io~1model-reconcile",
+              "value": datetime.datetime.now(datetime.timezone.utc).isoformat()}]
+    args = ["patch", "inferenceservices", model_name, "-n", namespace, "--type=json", "--patch", json.dumps(patch), "-o", "json"]
+    cluster.call(args + ["--dry-run=server"])
+    receipt = {"identity": identity(inference), "uid": live_is["metadata"]["uid"], "action": "reconcile-model-metadata", "result": "UNKNOWN"}
+    cluster.writes.append(receipt); atomic(cluster.directory / "writes.json", cluster.writes)
+    result = json.loads(cluster.call(args))
+    if result["metadata"]["uid"] != live_is["metadata"]["uid"]:
+        raise ValueError("reconciliation event identity differs")
+    receipt["result"] = "CONFIRMED"; atomic(cluster.directory / "writes.json", cluster.writes)
     finish_prediction(cluster, namespace, model_name, inference, report)
 
 
