@@ -904,8 +904,8 @@ kubeflow:
     use: 'Kubeflow standalone Notebook/Standard serving: quay.io/brancz/kube-rbac-proxy:v0.18.0'
   - original: ani.local/kubeflow-jupyter:26.03-stage2-v1
     haulerRef: 127.0.0.1:5000/ani/kubeflow-jupyter:26.03-stage2-v1
-    sourceManifestDigest: sha256:231029b0c72de5c4fecd2ef899f1948c980ac51b7e65fe3cf627bb28f8aafb62
-    amd64ManifestDigest: sha256:231029b0c72de5c4fecd2ef899f1948c980ac51b7e65fe3cf627bb28f8aafb62
+    sourceManifestDigest: sha256:8a8d9a3eb0f4ed63702e873ba9658c49fa2e147c8f927a3fba196768f5d8e712
+    amd64ManifestDigest: sha256:8a8d9a3eb0f4ed63702e873ba9658c49fa2e147c8f927a3fba196768f5d8e712
     platform: linux/amd64
     use: Native Jupyter kernel, fixed sklearn/joblib model and scoped S3 upload
   sdk:
@@ -1078,7 +1078,7 @@ kubeflow:
       sha256: e1a673830a9c7bfa47b1cd3d5e4178f4c9651d80a4eab02c9c23a1c3ec6250ce
   stage2:
     sourceIdentitiesCommit: 24345577b19073e168600896843b19da1c04eddc
-    workspaceImageBuildCommit: ae5ce46b0da47ed9859a22c2a6d993861772a02c
+    workspaceImageBuildCommit: 912748731c931946c5d2b3fc9d943188ec950be0
     workspace:
       python: 3.11.14
       sklearn: 1.5.2

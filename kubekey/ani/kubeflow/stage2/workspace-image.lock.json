@@ -1,6 +1,6 @@
 {
   "schema": "ani.kubeflow.workspace-image.v1",
-  "source_commit": "ae5ce46b0da47ed9859a22c2a6d993861772a02c",
+  "source_commit": "912748731c931946c5d2b3fc9d943188ec950be0",
   "original_ref": "ani.local/kubeflow-jupyter:26.03-stage2-v1",
   "status": "REMOTE_IMAGE_BUILT_BLOBS_VERIFIED",
   "base_index_digest": "sha256:65a93d69fa75478d554f4ad27c85c1e69fa184956261b4301ebaf6dbb0a3543d",
@@ -20,6 +20,11 @@
       "name": "verify-model",
       "exit_code": 0,
       "log": "verify-model.log"
+    },
+    {
+      "name": "verify-native-server",
+      "exit_code": 0,
+      "log": "verify-native-server.log"
     },
     {
       "name": "save-image",
@@ -636,5 +641,5 @@
   ],
   "runtime_pull": "NOT_RUN",
   "reused_download": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/workspace-image-attempt-01",
-  "amd64_manifest_digest": "sha256:231029b0c72de5c4fecd2ef899f1948c980ac51b7e65fe3cf627bb28f8aafb62"
+  "amd64_manifest_digest": "sha256:8a8d9a3eb0f4ed63702e873ba9658c49fa2e147c8f927a3fba196768f5d8e712"
 }
