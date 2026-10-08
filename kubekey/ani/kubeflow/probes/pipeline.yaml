@@ -95,10 +95,21 @@ deploymentSpec:
           \    api.rest_client.pool_manager.connection_pool_kw[\"retries\"] = 0\n\
           \    original_call = api.call_api\n    def bounded(*arguments, **keywords):\n\
           \        keywords[\"_request_timeout\"] = keywords.get(\"_request_timeout\"\
-          ) or (5, 30)\n        return original_call(*arguments, **keywords)\n   \
-          \ api.call_api = bounded\n    core, custom = client.CoreV1Api(api), client.CustomObjectsApi(api)\n\
-          \    live_claim = core.read_namespaced_persistent_volume_claim(claim, namespace)\n\
-          \    if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:\n\
+          ) or (5, 30)\n        method = arguments[1] if len(arguments) > 1 else keywords.get(\"\
+          method\")\n        # A fresh API server can answer the first CRD list with\
+          \ 429 while its\n        # storage initializes. Retry only this safe read\
+          \ response; never replay\n        # a create/update/delete whose mutation\
+          \ result might be unknown.\n        for attempt in range(5):\n         \
+          \   try:\n                return original_call(*arguments, **keywords)\n\
+          \            except ApiException as error:\n                if method !=\
+          \ \"GET\" or error.status != 429 or attempt == 4:\n                    raise\n\
+          \                headers = error.headers or {}\n                try:\n \
+          \                   delay = int(headers.get(\"Retry-After\", headers.get(\"\
+          retry-after\", \"1\")))\n                except (TypeError, ValueError):\n\
+          \                    delay = 1\n                time.sleep(max(1, min(delay,\
+          \ 5)))\n    api.call_api = bounded\n    core, custom = client.CoreV1Api(api),\
+          \ client.CustomObjectsApi(api)\n    live_claim = core.read_namespaced_persistent_volume_claim(claim,\
+          \ namespace)\n    if live_claim.metadata.uid != claim_uid or live_claim.metadata.owner_references:\n\
           \        raise RuntimeError(\"workspace UID/lifecycle differs from the create\
           \ response\")\n    workspace = pathlib.Path(\"/workspace\")\n    input_dir,\
           \ output_dir = workspace / \"input\", workspace / \"output\"\n    input_dir.mkdir(mode=0o755)\n\
