@@ -1,0 +1,64 @@
+{
+  "schema": "ani.kubeflow.stage2-clean-restore.v1",
+  "status": "CLEAN_HOST_IDENTITIES_REVERIFIED",
+  "candidate_source": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "discarded_cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+  "time": "2026-10-08T18:37:00.732356+00:00",
+  "unique_output_preservation": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/unique-output-preservation-current941",
+  "reason": "First clean candidate installed successfully and stage2 acceptance passed, but real first-stage JobSet GET failed on cold storage initialization 429. Same-source GET-only bounded fix passed red/green and real success/fail/stop recovery before a newly frozen final-candidate clean acceptance.",
+  "permitted_loss": "Only task-created first clean cluster941, its original failed execution and later task probes, all required unique output verified on Fedora. No other namespace/PVC accepted.",
+  "operations": [
+    {
+      "name": "test-02",
+      "host": "172.16.101.21",
+      "vmid": 15,
+      "snapshot_id": 2,
+      "command": "vim-cmd vmsvc/snapshot.revert 15 2 0",
+      "exit_code": 0,
+      "stdout": "Revert Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 2\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 12:11:27\n--Snapshot State       : powered on\n",
+      "stderr": ""
+    },
+    {
+      "name": "test-03",
+      "host": "172.16.101.22",
+      "vmid": 16,
+      "snapshot_id": 2,
+      "command": "vim-cmd vmsvc/snapshot.revert 16 2 0",
+      "exit_code": 0,
+      "stdout": "Revert Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 2\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 12:11:34\n--Snapshot State       : powered on\n",
+      "stderr": ""
+    },
+    {
+      "name": "test-01",
+      "host": "172.16.101.20",
+      "vmid": 14,
+      "snapshot_id": 1,
+      "command": "vim-cmd vmsvc/snapshot.revert 14 1 0",
+      "exit_code": 0,
+      "stdout": "Revert Snapshot:\n|-ROOT\n--Snapshot Name        : Snapshot 1\n--Snapshot Id        : 1\n--Snapshot Desciption  : \n--Snapshot Created On  : 10/8/2026 11:58:6\n--Snapshot State       : powered on\n",
+      "stderr": ""
+    }
+  ],
+  "vms": [
+    {
+      "name": "test-01",
+      "host": "172.16.101.20",
+      "vmid": 14,
+      "snapshot_id": 1
+    },
+    {
+      "name": "test-02",
+      "host": "172.16.101.21",
+      "vmid": 15,
+      "snapshot_id": 2
+    },
+    {
+      "name": "test-03",
+      "host": "172.16.101.22",
+      "vmid": 16,
+      "snapshot_id": 2
+    }
+  ],
+  "post_restore_kubernetes": "ABSENT",
+  "completed": "2026-10-08T18:38:48.689594+00:00"
+}

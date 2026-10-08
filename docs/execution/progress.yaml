@@ -14,19 +14,28 @@ tasks:
   title: Kubeflow 二阶段固定组合统一首装
   dependsOn: []
   selected: true
-  status: in_progress
+  status: ENV_READY
   stages:
     baseline: pass
     liveInventory: pass
-    code: implementation_in_progress
-    remoteChecks: targeted_pass_final_candidate_NOT_RUN
+    code: code_ready_frozen_f8ca074
+    remoteChecks: final_full_release_gate_materials_and_render_pass
     integration: native_main_persistence_failure_protection_and_first_stage_regression_pass
-    cleanOffline: not_run
+    cleanOffline: final_candidate_unified_first_install_and_independent_acceptance_pass
+    environment: ENV_READY
   evidence:
   - docs/execution/kf-env-stage2/README.md
+  - docs/execution/kf-env-stage2/records/candidate-freeze.json
+  - docs/execution/kf-env-stage2/records/clean-first-install-start.json
+  - docs/execution/kf-env-stage2/records/environment-handoff.json
+  - docs/execution/kf-env-stage2/records/evidence-index.json
+  - docs/execution/kf-env-stage2/records/unified-first-install.json
+  - docs/execution/kf-env-stage2/records/cluster-identity.json
+  - docs/execution/kf-env-stage2/records/first-clean-attempt.json
   notes:
   - 本轮仅 .20-.22，新的 26.03-kubeflow-stage2-v1；不继承第一阶段或旧集群 PASS。
-  - 联调主链已实际返回 [0,1,2]；Notebook 原生停止/恢复和预测 Pod 重建通过，错误路径/凭据可归因失败，基础保护与第一阶段回归通过。干净完整首装仍 NOT_RUN，尚未 ENV_READY。
+  - f8ca074 最终同一候选正式门禁/代码包/物料包/渲染及完整统一首装 rc=0，新集群 UID a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa；真实 Jupyter/kernel/S3/KServe 预测、持久化、失败、保护及第一阶段必要回归全部通过，ENV_READY。
+  - 首次 ff7c14e 训练后 JobSet GET 冷存储 429 失败与唯一输出保留；有界 GET 修复经红/绿及真实回归后重新冻结，再按核实快照直接还原，无额外电源操作。Ceph 三类 auth key HEALTH_WARN 如实保留；UI/业务用户租户/owner/IAM/网关/CPU-P01/GPU 均非本轮验收。
 - id: ENV00
   title: Kubeflow 统一首装目标与准备路径核实
   dependsOn: []

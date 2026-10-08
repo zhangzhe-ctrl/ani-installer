@@ -1,0 +1,86 @@
+{
+  "cluster_uid": "a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa",
+  "context": "kubernetes-admin@ani-kf-stage2",
+  "api": "https://lb.kubesphere.local:6443",
+  "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "nodes": [
+    {
+      "name": "node1",
+      "uid": "24a219f0-2534-4f59-a761-c292ff8622fb",
+      "addresses": [
+        {
+          "address": "172.16.101.20",
+          "type": "InternalIP"
+        },
+        {
+          "address": "node1",
+          "type": "Hostname"
+        }
+      ],
+      "nodeInfo": {
+        "architecture": "amd64",
+        "bootID": "5598c43a-d15b-4e81-a501-61503775c02c",
+        "containerRuntimeVersion": "containerd://2.3.4",
+        "kernelVersion": "6.8.0-146-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.8",
+        "machineID": "c2f396506d3046b7a3e00f4fa5dbaaf1",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "systemUUID": "d2db4d56-d1e7-5dc4-fef0-6fb36e76ab17"
+      }
+    },
+    {
+      "name": "node2",
+      "uid": "dde3802a-7a6d-4ff5-8cca-2198e1240869",
+      "addresses": [
+        {
+          "address": "172.16.101.21",
+          "type": "InternalIP"
+        },
+        {
+          "address": "node2",
+          "type": "Hostname"
+        }
+      ],
+      "nodeInfo": {
+        "architecture": "amd64",
+        "bootID": "473692a9-b09d-4a00-93ae-3364ffd69b33",
+        "containerRuntimeVersion": "containerd://2.3.4",
+        "kernelVersion": "6.8.0-146-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.8",
+        "machineID": "84131dc6818543829bf60a76f5cd13b2",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "systemUUID": "33764d56-3090-aaea-76f9-2705aee94dda"
+      }
+    },
+    {
+      "name": "node3",
+      "uid": "4b024f26-8949-444d-9e08-e64816105ffe",
+      "addresses": [
+        {
+          "address": "172.16.101.22",
+          "type": "InternalIP"
+        },
+        {
+          "address": "node3",
+          "type": "Hostname"
+        }
+      ],
+      "nodeInfo": {
+        "architecture": "amd64",
+        "bootID": "1f49e39e-33c0-427f-bd76-688f791af66d",
+        "containerRuntimeVersion": "containerd://2.3.4",
+        "kernelVersion": "6.8.0-146-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.8",
+        "machineID": "573d30ba4dd5451da02971fedbf47053",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "systemUUID": "cc6a4d56-b6d0-015f-e3cc-77c9cec0e3a9"
+      }
+    }
+  ]
+}

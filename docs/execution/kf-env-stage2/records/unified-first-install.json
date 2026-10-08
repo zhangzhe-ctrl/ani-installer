@@ -1,0 +1,15 @@
+{
+  "schema": "ani.kubeflow.stage2-clean-install.v1",
+  "status": "PASS",
+  "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "target": "/home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02",
+  "started": "2026-10-08T18:40:19.306957+00:00",
+  "config_sha256": "bb5d85ae96a78ecf7f69557d727a667d8cd3b58d80812bed932965107354f472",
+  "code_sha256": "33b5bfce4caf5a7411ab967aee8779084350d01e1cf1f554f8aacdda0ff86378",
+  "material_checksums_sha256": "136c793ea4f7d7bea7dcd462fa610753d8ae00b598621c8723776c89606fde37",
+  "transfer_verification": "PASS",
+  "install_started": "2026-10-08T18:42:54.326494+00:00",
+  "command": "sudo env PYTHONDONTWRITEBYTECODE=1 /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/code/kk ani install --config /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/site.private.yaml --package-root /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/materials",
+  "exit_code": 0,
+  "completed": "2026-10-08T19:05:50.141410+00:00"
+}

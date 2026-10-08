@@ -1,0 +1,2294 @@
+{
+  "schema": "ani.kubeflow.stage2.environment.v1",
+  "status": "ENV_READY",
+  "created": "2026-10-08T19:32:15.280594+00:00",
+  "meaning": "Installer native component environment acceptance only; product tenant/user/backend/gateway/GPU acceptance NOT_RUN",
+  "repository": {
+    "remote": "ssh://git@ssh.github.com:443/zhangzhe-ctrl/ani-installer.git",
+    "branch": "codex/kubeflow-stage2",
+    "base_sha": "cf54a5c129e6a7d003ef1e148ff85fc23fd40a37",
+    "runtime_source_sha": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+    "source_tree_fingerprint": "7a7dbe516ebc59a302eed36db2c685b648f069563b784e222e9fd77fae17b753",
+    "original_worktree": "/home/chabking/workspace/ani-installer",
+    "original_branch": "release",
+    "task_worktree": "/home/chabking/.codex/worktrees/kubeflow-stage2/ani-installer"
+  },
+  "build": {
+    "host": "chabking@172.16.101.31",
+    "root": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008",
+    "source": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/source-read429",
+    "code_entry": "kubekey/scripts/build-code.sh",
+    "materials_entry": "kubekey/scripts/build-offline.sh",
+    "generation_test_build_location": "Fedora",
+    "full_release_gate": "PASS",
+    "code": {
+      "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/code-candidate-f8ca074-attempt-01",
+      "kk_sha256": "33b5bfce4caf5a7411ab967aee8779084350d01e1cf1f554f8aacdda0ff86378",
+      "sha256sums": "cac6799602c6b4b95bb8a274675d4f357f9803ee052c5ba9a0ae71b74604976e",
+      "gate_exit_code": 0
+    },
+    "materials": {
+      "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/materials-candidate-f8ca074-attempt-01",
+      "sha256sums": "136c793ea4f7d7bea7dcd462fa610753d8ae00b598621c8723776c89606fde37",
+      "image_archive_sha256": "d83f4506b9e8b5e5dd6368bcaa5e7e72dcc0b315a86405b270262b2416ec74fa",
+      "images_tsv_sha256": "a217d42bf3ad9010a47524c7b05e06ab10bf041ca326bc15dee60e4a23e74875",
+      "components_lock_sha256": "d5e6393bf575fee2dc6027359abbb4d7c942d08e9cf1792f4645046c1c7293a9",
+      "assets_lock_sha256": "8593d8066ed39cfa8e4645a4fc433dd2c2ddef3a06f0a8a73301056948827912",
+      "build_exit_code": 0,
+      "actual_image_content_gate": "PASS",
+      "image_count": 112
+    },
+    "render": {
+      "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/render-candidate-f8ca074-attempt-01",
+      "exit_code": 0,
+      "file_count": 37,
+      "files": {
+        "ceph-ceph-preflight.sh": "6fb7ac664c9d61d58edbf4a04661f9bee92f72be053e40495f2f3928226bf49e",
+        "ceph-ceph-verify.sh": "f938dc40b6315a079452a975a5bc85839366085e8ef91d8e23be33c25a3d43d0",
+        "ceph-ceph-wait.sh": "a433c3bbf04647fa19acf9a70008d9ef2499d9888d4bee965a69536072baaa89",
+        "ceph-cluster.yaml": "4f4bda66d902370b0fd1b459377028addede6d8d4e9998b06648408efa8d9c2c",
+        "ceph-common.yaml": "2d59b3093446dcf7dd69c73ebaef2d41e8cdfd14af564c2e885d49ab8d190457",
+        "ceph-crds.yaml": "7fa7462d44b35d636703a03a88120030692a06a05ac91ec253200cb4ae8c37cf",
+        "ceph-csi-operator.yaml": "636cd7ead4f2b7f577ddf2bd0d1e82985dc88da2560591ca6f5a1a46a905640d",
+        "ceph-filesystem.yaml": "eb1e6f8e51f3c0baebc02829da77dab866bbd8bd84710c8c52337a65245926f7",
+        "ceph-object.yaml": "2f2545c1a598ada4a1eff7b111fdb35e480b62b5f7aece888b467bf60638c16f",
+        "ceph-operator.yaml": "4e725a8e539017962640e76f841b11c7e395d9fdef5521d92a46682894013fe1",
+        "ceph-rgw-tls.sh": "61edbeb33599f93b766f027968ce00097516b853fec341a6250e8af3b4a06f14",
+        "ceph-storage-devices.txt": "0905d8669a526668c0ce507eb6ff4526fa5e265c9b0dc92651336c8cbffc9c59",
+        "ceph-storageclass-cephfs.yaml": "82d949bda7dd57643f909375bebcaa3f076ebab3e6135cbce3e27f4c7be83ac9",
+        "ceph-storageclass-rbd.yaml": "f8d9154647a1e3a455b590820ad2b01ea71de63f789cb3627f60d0e5d8858b5c",
+        "ceph-tasks-main.yaml": "867a5e64f163647f42855f3d6ca7ce6003cb2f27644518eff7584e5bf31a0366",
+        "ceph-toolbox.yaml": "5961bec06b4f63819a2f44b92034d1e55ab006cc00121f65f116450ce26fe77f",
+        "cert-manager-connection.md": "354fa42a48c7f7ab3fc8f0995404fd7c6d28ada35eb0badd6024360b2bee96f7",
+        "cert-manager-internal-ca.yaml": "4db5b211673fc7c3d63de900552ffe592ec5a84434e205730e59008ba63a164a",
+        "cert-manager-tasks-main.yaml": "e53d25ad89e854ac65717f244eca96cc1c7c80b0ab9f88c58e0a60b2682575f4",
+        "cert-manager-values.yaml": "476242516d12dfe057533f763892d7d6767ba915e521ef26b62eadf244c5efea",
+        "cert-manager-verify.sh": "c357c1e1180a6018adb0fd93837524488472edd8f801a31dcb665ac4a2313051",
+        "kubeflow-connection.md": "4ee9a2be69c76dc8b322a9503e81b3c4c2e69fb8cb3861b496af16ae1036bb3f",
+        "kubeflow-install.sh": "5196e08f5dbe4bfbd2915bb736b88c857a99b6c6a5e34bc73842da67e0af7cc5",
+        "kubeflow-site.yaml": "1ce922029bdd254cf9eb4de904260d27a7792004ed927dbd3bc559799ff6624e",
+        "kubeflow-tasks-main.yaml": "bf55ea41d23fc457f2e0ed1752ac938aeb4f853cc2650d3adc11e4d1ae43c0d7",
+        "kubeflow-verify.sh": "1a86eddda59b8f220577f33772ac088d1fb6f682e8f589a6d7e98a105524a204",
+        "kubeovn-README.md": "1fd016b81b207fc07313df920bb3d4804884d17aae999e07ea8e64d57aedb3a6",
+        "kubeovn-host-preflight.sh": "6c10625bd5538f485d04dc1530043ff4fedac41ba222596da822560d45abc995",
+        "kubeovn-kubeovn-install.yaml": "ead8aabd0392d5704094890ef2fed28908b775e58f8a266c300dae66ee2613b4",
+        "kubeovn-tasks-main.yaml": "ba923982405d11d1af3b53b8f0b854e448315591489650e9424d906bdf58f367",
+        "rustfs-connection.md": "6be15f425cf74743f96835f960d0f81febeaaab509e8178f3f83ea8b95c553a9",
+        "rustfs-native-tls.yaml": "7f1fb903e764c5179e953dd293a79bbd6540220a827140554df4048e0d77ca7e",
+        "rustfs-post-render.sh": "702e52d521cd8287f13b303c750339b92b32754e28ae0930d5ad5ccb9dca8c83",
+        "rustfs-prepare.sh": "3a9112de55649de7e234dcc2a037a7d911837431cc0f7c4444d5a9241e053ae6",
+        "rustfs-tasks-main.yaml": "c1a57f7731cdfb24b38612ba35fbd17fa23184b187f5f30dc5d65f2138fe90f1",
+        "rustfs-values.yaml": "b80850799af2340033d14fc7c3c81a98c24ac162d421fc04122a865a53c835b3",
+        "rustfs-verify.sh": "f75fcf6caeaaa9241061124bce5e5f1934ba005c6da0035f1d6fa76c232a290f"
+      }
+    },
+    "acceptance_sources": {
+      "docs/execution/kf-env-p00/scripts/inspect-workspace.py": "14253e57c107d64d9331ee619a66373634ee693d148e63e5bfb926435c8390b7",
+      "docs/execution/kf-env-p00/scripts/check-workload-boundary.py": "f67756ee450f1cc22870d69c929ce78a2c434cb86f16c80039c88e24185711bd",
+      "docs/execution/kf-env-p00/scripts/check-entry-matrix.py": "9fb2000c163e99989fdbae90a50e06d2b25004a3204dc84d248de1cca997a0d7",
+      "docs/execution/kf-env-p00/scripts/check-s3-data.py": "106bed3956248e8a24a81cdc92049f9a54bb475df8337a69cf30eeb5d1453f3d"
+    },
+    "acceptance_orchestration": {
+      "stage2-final-runner.py": "80af62739bd129fad60e1c7bb0485e15e8cb8b507512b7351abfffa583275ace",
+      "stage1-final-runner.py": "4d441a3574444e360f5c5b95569105ba6e63605ea6aa74530a0cdf19e8c0aa82",
+      "supplemental-final-runner.py": "d7da250f7bb948ae30429af4fe10864c5f653eb84406a51413a1dd90e93f53da",
+      "stage1-admission-regression-attempt-03.py": "f29efa9e59662bbdaa02602c70020fd185a73fa78fdc9aaa2c6e06f0856403b5"
+    }
+  },
+  "site": {
+    "sha256": "bb5d85ae96a78ecf7f69557d727a667d8cd3b58d80812bed932965107354f472",
+    "public_example_sha256": "fb652abefae16642369642e6a84b5d99045fc1b3bf36b52a26f16bd8d58ec46b",
+    "targets": [
+      "172.16.101.20",
+      "172.16.101.21",
+      "172.16.101.22"
+    ]
+  },
+  "cluster": {
+    "cluster_uid": "a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa",
+    "context": "kubernetes-admin@ani-kf-stage2",
+    "api": "https://lb.kubesphere.local:6443",
+    "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+    "nodes": [
+      {
+        "name": "node1",
+        "uid": "24a219f0-2534-4f59-a761-c292ff8622fb",
+        "addresses": [
+          {
+            "address": "172.16.101.20",
+            "type": "InternalIP"
+          },
+          {
+            "address": "node1",
+            "type": "Hostname"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "5598c43a-d15b-4e81-a501-61503775c02c",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-146-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "c2f396506d3046b7a3e00f4fa5dbaaf1",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "d2db4d56-d1e7-5dc4-fef0-6fb36e76ab17"
+        }
+      },
+      {
+        "name": "node2",
+        "uid": "dde3802a-7a6d-4ff5-8cca-2198e1240869",
+        "addresses": [
+          {
+            "address": "172.16.101.21",
+            "type": "InternalIP"
+          },
+          {
+            "address": "node2",
+            "type": "Hostname"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "473692a9-b09d-4a00-93ae-3364ffd69b33",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-146-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "84131dc6818543829bf60a76f5cd13b2",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "33764d56-3090-aaea-76f9-2705aee94dda"
+        }
+      },
+      {
+        "name": "node3",
+        "uid": "4b024f26-8949-444d-9e08-e64816105ffe",
+        "addresses": [
+          {
+            "address": "172.16.101.22",
+            "type": "InternalIP"
+          },
+          {
+            "address": "node3",
+            "type": "Hostname"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "1f49e39e-33c0-427f-bd76-688f791af66d",
+          "containerRuntimeVersion": "containerd://2.3.4",
+          "kernelVersion": "6.8.0-146-generic",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.35.8",
+          "machineID": "573d30ba4dd5451da02971fedbf47053",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04.4 LTS",
+          "systemUUID": "cc6a4d56-b6d0-015f-e3cc-77c9cec0e3a9"
+        }
+      }
+    ],
+    "namespace_uids": {
+      "ani-cert-test": "0c7399c4-6952-4d87-af36-133081733a2f",
+      "ani-kf-stage2-a": "357c08b8-cc3c-4799-8316-67f1298e79e7",
+      "ani-kf-stage2-b": "4744cd34-3fd0-47d8-a1dd-bbeb97a4f14c",
+      "ani-kfp-probe-a": "751cfff2-6ec1-4d4b-bf55-0204c4c70eb3",
+      "ani-kfp-probe-b": "2a38feb3-b5ea-48af-ae3a-e1f3da77c4dc",
+      "ani-platform": "28b548d0-7ecb-4051-a725-ce9c00c83e95",
+      "cert-manager": "14e5b6c0-79e0-4f6d-8a60-28c6d43a722d",
+      "default": "4ebfb674-3e9b-4b6a-88ac-d44fceaf1827",
+      "kserve": "c7dfebce-b360-40e5-aa92-de69cf442c78",
+      "kube-node-lease": "b10ddcf4-f916-4bab-87c0-7984a3b115a7",
+      "kube-public": "5cb0c41f-1fe9-483c-a8b0-3489b2f03bc8",
+      "kube-system": "a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa",
+      "kubeflow": "db427c57-093c-4aa1-ac2d-3e11d34ee1e3",
+      "kubeflow-system": "2657e9ec-8943-4131-a5d8-8975405fd08d",
+      "notebook-controller-system": "35489678-9a92-4eec-96c0-3b8f94a8010d",
+      "rook-ceph": "e5e05054-92f9-4699-b035-51e4c0e92c85"
+    },
+    "kubeconfig_reference": "/etc/kubernetes/admin.conf",
+    "registry": "172.16.101.20:5001",
+    "ordinary_workloads_receive_admin_credentials": false
+  },
+  "unified_first_install": {
+    "status": "PASS",
+    "direct_exit_code": 0,
+    "command": "sudo env PYTHONDONTWRITEBYTECODE=1 /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/code/kk ani install --config /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/site.private.yaml --package-root /home/ubuntu/kf-env-stage2/frozen-f8ca074-attempt-02/materials",
+    "started": "2026-10-08T18:42:54.326494+00:00",
+    "completed": "2026-10-08T19:05:50.141410+00:00",
+    "run_id": "ani-ani-kf-stage2-20261008-184255",
+    "record_kind": "install-success",
+    "persistent_identity": {
+      "sourceTreeFingerprint": "7a7dbe516ebc59a302eed36db2c685b648f069563b784e222e9fd77fae17b753",
+      "codeCommit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+      "codeBinaryDigest": "33b5bfce4caf5a7411ab967aee8779084350d01e1cf1f554f8aacdda0ff86378",
+      "siteConfigDigest": "e6a15c2b700fc54ff86d49e357e0ad952a302e8aa1e60b2b98c0f8157abf3446",
+      "materialsLockDigest": "d5e6393bf575fee2dc6027359abbb4d7c942d08e9cf1792f4645046c1c7293a9",
+      "packageConfigDigest": "50ff2faae7f3f922a58d4407f9bf2d07380e33540a1f08f8ecd1de48b88ed924",
+      "clusterUid": "a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa",
+      "nodeCount": 3,
+      "readyNodes": [
+        "node1",
+        "node2",
+        "node3"
+      ]
+    },
+    "run_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/run.json",
+    "run_state": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/run-state.json",
+    "restore_record": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/clean-restore-attempt-02/index.json",
+    "restore_scope": "Three reverified snapshot reverts only; no extra guest reboot/reset/off/on"
+  },
+  "versions": {
+    "release": "26.03-kubeflow-stage2-v1",
+    "kfp": "2.16.0",
+    "trainer": "2.1.0",
+    "jobset": "0.10.1",
+    "notebook_controller": "1.10.0 / standalone USE_ISTIO=false",
+    "kserve": "0.16.0 / Standard",
+    "workspace_python": "3.11.14",
+    "jupyterlab": "4.4.10",
+    "sklearn": "1.5.2",
+    "joblib": "1.4.2",
+    "shared_component_versions": "Unchanged from BASE_SHA; actual Kubernetes/containerd per nodeInfo; storage image below"
+  },
+  "packaged_images": {
+    "docker.io/library/haproxy:2.9.6-alpine": "sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5",
+    "docker.io/plndr/kube-vip:v0.7.2": "sha256:9d12df52ee3d95d4bc28fe19fcddb970f10705ac59566070d8dc142f593c4277",
+    "registry.k8s.io/kube-apiserver:v1.35.8": "sha256:cc20b3167f36d432c121a477e82b0bbd4d48e1609004b7fd73916ad62018924c",
+    "registry.k8s.io/kube-controller-manager:v1.35.8": "sha256:544ad10d3bb84c52e612cdccd73ec1a803eb1700face93cdc75753ca89e914ff",
+    "registry.k8s.io/kube-proxy:v1.35.8": "sha256:f0174bfc4bf1afaa6ec1b575c478498d8dd4fb4e375ca4db527beb41f09b0190",
+    "registry.k8s.io/kube-scheduler:v1.35.8": "sha256:9e9432917144239709bea763461d44c281566f281588e24a0fd060f107d9b7d3",
+    "registry.k8s.io/pause:3.10.1": "sha256:3b040af9bc594a02f1bb068d329d95c13f8d0139e3cc8b224737f0bf2c93bd87",
+    "registry.k8s.io/coredns/coredns:v1.13.1": "sha256:a0f0a739ccd102b7ea7ecf9b0c2bd0af9520a3b2e16d6718065660e954924ea6",
+    "registry.k8s.io/dns/k8s-dns-node-cache:1.26.4": "sha256:55470ded85dfacf7ddd0f9bcf541a3d9654002bc3cac654e62a63d0c1f1d62fe",
+    "registry.k8s.io/etcd:v3.6.6": "sha256:da34fe69aa499157f3c9fb018ade396ed1ef1095998443ec44e7db96d2134848",
+    "docker.changqingyun.cn/kubercloud/kc-networking:dev": "sha256:05ea46f8cdcb033158cd0c80eac41b88a63eeb87ee4e9f5823be97c94171563a",
+    "docker.io/kubeovn/kube-ovn:v1.16.6": "sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2",
+    "docker.io/kubeovn/vpc-nat-gateway:v1.16.6": "sha256:4f8f71b1ab5ee8b0dc2fa645539e997845bbfca7a06035afafada1847432064a",
+    "docker.changqingyun.cn/kubercloud/gateway:v1.8.3": "sha256:3c3b5b6132002462b5c652cb9f1f72f532d3c848110e669f49690d9e11d9ce6e",
+    "docker.changqingyun.cn/kubercloud/gateway-dev:latest": "sha256:82df373256bb31c9fdbbf4a5e26696276e56bf06f29902f8608b3e52b0cf3c44",
+    "docker.changqingyun.cn/kubercloud/envoy:distroless-v1.38.3": "sha256:c8fecdf5574f1752be5de7d05c8161aca51ce81969e15e7ec6cafaad555ff065",
+    "docker.io/library/busybox:1.37.0": "sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+    "docker.io/rustfs/rustfs:1.0.0": "sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b",
+    "docker.changqingyun.cn/kubercloud/ratelimit:1e50889b": "sha256:1a98dadfce8da0aab0c10bfcba0049c9aa17f22b89bc5d7fe51c552889c3fc35",
+    "docker.io/rook/ceph:v1.20.7": "sha256:2f970c4256179d56fa9f7867a634701f533103908c4e2ad43cf3954c1f7e33f9",
+    "quay.io/ceph/ceph:v20.2.4": "sha256:6bb1c8a42fbc0bf87938946990b65174466997bc11c31eb5a323225a779fd8f9",
+    "quay.io/cephcsi/ceph-csi-operator:v1.0.4": "sha256:c62933fd4083635f969f8a61932af45dba9902d48867e2b5d98a69d8e4344eb6",
+    "quay.io/cephcsi/cephcsi:v3.17.1": "sha256:0b62db8afc9b174619186c87084a8952157daa719415c598603be22b63cc1293",
+    "quay.io/csiaddons/k8s-sidecar:v0.14.0": "sha256:69092d026323307933fba2bed9c57d864f2a92cfd385d644b478442ded0d2886",
+    "registry.k8s.io/sig-storage/csi-provisioner:v6.2.0": "sha256:6be9f63ca4caa6c46aae55aa372500949d8a21473d72f819da1f746076b32d4e",
+    "registry.k8s.io/sig-storage/csi-attacher:v4.12.0": "sha256:b9dc9a714a484ccdeeb6f86d88d4db9b7a5ecfc5a55da6db3a60bb3fa33c278a",
+    "registry.k8s.io/sig-storage/csi-resizer:v2.1.0": "sha256:589e525cddef6d768e68da1f0bc9ffd0a24bf3add3dd010648eb7189976fde79",
+    "registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0": "sha256:da081c27e8a6d91f36042c1942362d0515ced8d06e18c11b8f893e58c4d6d797",
+    "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.17.0": "sha256:f9de845b170155199f2a2a3f9531cf13d78e31235e9db6b6582a8b0db0a50dad",
+    "gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:v0.2.2": "sha256:c7166a73a303c43c8c1dca3e81aacf2fa85e98b46bcab0b64249cde19fa67979",
+    "quay.io/ceph/cosi:v0.1.4": "sha256:8939634644dc270e8a9c3ae1e4dd5adb03973e9f31db649638c33828bfcefc0b",
+    "docker.io/alpine/openssl:3.5.4": "sha256:b3a40181a3234df05d3702c48fd1c3690261b4d90b5ef418a2e84b9bf533ad37",
+    "quay.io/jetstack/cert-manager-controller:v1.21.2": "sha256:57bb397c639e0e94184ba67848e5dad04284f24645e521e764a0ee5f5002f286",
+    "quay.io/jetstack/cert-manager-webhook:v1.21.2": "sha256:b929259301ee75270ab4651d5e6bd4ba7b6624b1ce48ba767d064295a9312101",
+    "quay.io/jetstack/cert-manager-cainjector:v1.21.2": "sha256:aa2bc58725d92a643f5069dde58abc93b65566ded8951348873ac9ee7efef66c",
+    "quay.io/jetstack/cert-manager-startupapicheck:v1.21.2": "sha256:ed347b0ab607058f139b83f41567109456b9776330b63da8086a120afb7f1729",
+    "quay.io/jetstack/cert-manager-acmesolver:v1.21.2": "sha256:dc5c5b8456d1a50af47a240987e85afce352b5c1155a8a4698b7c91eac19f407",
+    "docker.io/library/postgres:17.11-bookworm": "sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6",
+    "docker.io/valkey/valkey:8.1.10-alpine": "sha256:e55eb7bfbce02957d1a91fb1e26d69aa36eb18f77bf9f86ff6eff81f864b13b7",
+    "docker.io/library/nats:2.14.6-alpine": "sha256:065e8355c20a5575b3c77224be1855e8103fd148b68fba05130b9b8ddfa40ccc",
+    "docker.io/natsio/nats-server-config-reloader:0.23.0": "sha256:1418d42cea39ea729c1d34ca26ba33d967abdf040bad45ec1314c807bfacc56f",
+    "docker.io/natsio/nats-box:0.19.7": "sha256:40c8442312af09e36818ea3500244ab5c18ce22fa2678885940e6a97f93f96ff",
+    "quay.io/prometheus-operator/prometheus-operator:v0.90.1": "sha256:c8aed26b2a0858b4beed8d6bc2215f7f6bdc6c96dd4de8e6e246c0a5b7a7876b",
+    "quay.io/prometheus-operator/prometheus-config-reloader:v0.90.1": "sha256:af7715ef28e2cc413a6a850b5f928f185245dbb38359156eca3d5f1eb676b93f",
+    "quay.io/prometheus/prometheus:v3.11.3-distroless": "sha256:a1868e471c843677013c5fa2f569011e70d49b9e8f690719ea750b458840ec6d",
+    "quay.io/prometheus/alertmanager:v0.32.1": "sha256:82c38dcc97cd0fbf5d5e31ddfb304dbb3a6e411194477de5de82ec71b328bb40",
+    "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0": "sha256:ad11a45eb9a69fa88a62df4de0959eda21531fd3263c25341d9d9d4da7730930",
+    "quay.io/prometheus/node-exporter:v1.11.1-distroless": "sha256:19bafa75a9de0c9562adf4af595c99c5fe316bb94a297e611495f2dd2ed44a9c",
+    "ghcr.io/jkroepke/kube-webhook-certgen:1.8.3": "sha256:44063cb072c85da7a0f33244b3054ab44b29a2b7416a319a90456bff21bebb18",
+    "docker.io/grafana/loki:3.7.8": "sha256:81a6802ec4bd1b88c564494f06376889ed022998a188826190d26d2754ac2aae",
+    "docker.io/opensearchproject/opensearch:3.8.0": "sha256:68a688de28fb9bb66601552650b91a52a9fd5e7eac5481dd2b225ecb66fd09b0",
+    "cr.fluentbit.io/fluent/fluent-bit:5.1.2": "sha256:71cda445290efc2d45d565c12e0de4b15aa0182510276ad50c317aae1423d7ee",
+    "docker.io/library/python:3.13.11-alpine3.23": "sha256:0d8324e4e3453ec8586b886b95e8fc901689f936c413fdf6ae7d93a32a95956e",
+    "docker.io/milvusdb/milvus:v2.6.24": "sha256:692f183d6b6471f0835dab13d83923defcc7790b8fc31044e25a36af9193a62b",
+    "docker.io/milvusdb/etcd:3.5.25-r1": "sha256:3145506ab5eb3152effc2f6a32a8011216dc11f648584d63926905cd440b6c60",
+    "docker.io/amazon/aws-cli:2.31.30": "sha256:8985de534bb334a12972f2e51afcfa958703c297630d21a99a034c8cbc9e39ba",
+    "registry.k8s.io/metrics-server/metrics-server:v0.9.0": "sha256:25d291fde59974547bac6f07fa9d6cf6f5bedd1f19d60c893311c5e741e0a42f",
+    "ani.local/milvus-checker:v1": "sha256:0f197f3d0e30215238dd52bee6b8838b118a2c87fdf8173b8905929fb4de84d5",
+    "registry.k8s.io/sig-storage/snapshot-controller:v8.5.0": "sha256:c6ed5c488dc72a01e7d69caf4d6efe44cb5fecd08fac1a037626171bf90482d1",
+    "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.3.1-thick": "sha256:d3a3e029a27cd9c23aa904e8c881af5f2db01245419f8e1147f08238dd85f764",
+    "docker.io/volcanosh/vc-controller-manager:v1.15.2": "sha256:d12095f864b0d617cf9b0b7df8c14d662923b041b6b6e90755b28220398309ce",
+    "docker.io/volcanosh/vc-scheduler:v1.15.2": "sha256:836554c1c3286742fb6fcc721f5d3515e0e3e304a30d9cb733635f555f5ef671",
+    "docker.io/volcanosh/vc-webhook-manager:v1.15.2": "sha256:5b2e35b0e3872291bbeb902acbdde7c520c8d9102145333db911bb08cc47606c",
+    "quay.io/kubevirt/virt-operator:v1.9.0": "sha256:bac92f1ee2dca92e8d29e0868d3abafb95623970c799192e0ae09c5c7122b370",
+    "quay.io/kubevirt/virt-api:v1.9.0": "sha256:9eaa0c1a913d701916d31fb2e7177d697e3ce24975225214f22ee6b391bbe9b3",
+    "quay.io/kubevirt/virt-controller:v1.9.0": "sha256:83ef2f9a4fa7769f76bda755b19d5e2142cab7c85aaa5a834f283eb44088c302",
+    "quay.io/kubevirt/virt-handler:v1.9.0": "sha256:e4a80ca9d9693d0d785b1928bd3edafe81a5d00771169723db57c4be2f8cfe06",
+    "quay.io/kubevirt/virt-launcher:v1.9.0": "sha256:2a47dceaa6ed4176175f58f4f7d927064f55d935fdd56e3999ac4dbe7d3a8e6a",
+    "quay.io/kubevirt/virt-exportproxy:v1.9.0": "sha256:afd7933d0a8158bff9752b202722f110f4a1a88bcfb8e7340ccd406567a5cd64",
+    "quay.io/kubevirt/virt-exportserver:v1.9.0": "sha256:cbd0cfc0a5d9b56df4477971ac80b96f40bd2c96219e65b193f7ef0b9e4a3386",
+    "quay.io/kubevirt/virt-synchronization-controller:v1.9.0": "sha256:842c8b7d15f64b90331ed4e0eca5ba9101d2ba6fe5ba4ae1c9762c8186bab54b",
+    "quay.io/kubevirt/pr-helper:v1.9.0": "sha256:b6294f0cd53beae81e6aa00249d785886e9202848aec294f005a27702b6cfaea",
+    "quay.io/kubevirt/sidecar-shim:v1.9.0": "sha256:8b557fc5f5840ba55e18941c741a32c6b22c5f53863c27b137719337b669c682",
+    "quay.io/kubevirt/cdi-operator:v1.66.1": "sha256:c9b02c6180e05495f525d9158a92048f18bac9dd47b7020b01e11cab1538af23",
+    "quay.io/kubevirt/cdi-controller:v1.66.1": "sha256:6e701b16cea88a6761df8ef83b56d369d28a9c6c6f1c472d222994debdb2744f",
+    "quay.io/kubevirt/cdi-importer:v1.66.1": "sha256:28134acc24521d9bc8c9250fb29a9bfe0278b771139d32ea5b162d8f3af5ee05",
+    "quay.io/kubevirt/cdi-cloner:v1.66.1": "sha256:7e825919b39450db45829b41f840132fbb76c9e5ac67601fcc8a7c0ae7332a7c",
+    "quay.io/kubevirt/cdi-apiserver:v1.66.1": "sha256:8e086971c01ab28f56e2f9d890178c679af3dfd8b179a1f12e6cac936564a42c",
+    "quay.io/kubevirt/cdi-uploadserver:v1.66.1": "sha256:3050dd110803123a3a9fa3d4b69ed61b2fdc6589ce9396b77db2ec2bdf63e1c5",
+    "quay.io/kubevirt/cdi-uploadproxy:v1.66.1": "sha256:fb1fc948056b9c35a1bc53fb6a8ddae78c815d9c1df7b13b88e4fd9c8586b5d9",
+    "docker.io/goharbor/nginx-photon:v2.15.2": "sha256:0ccc1eca228ecea120d7ad9e4386b8e86ced200212f00060a9abc753dbe7f17f",
+    "docker.io/goharbor/harbor-portal:v2.15.2": "sha256:b811b67f7a7f6f1614e4bdf7478b207d13e8aa3f815ff6ad84f216a5098d213d",
+    "docker.io/goharbor/harbor-core:v2.15.2": "sha256:d7b780d23721a000f0fb8e181add6675eafa336de5d033b77fd7da0c171ff7f7",
+    "docker.io/goharbor/harbor-jobservice:v2.15.2": "sha256:f71a4452a095bcd2a8f0683648a3ae28415432df87ccfb00ec7625f3e340a598",
+    "docker.io/goharbor/registry-photon:v2.15.2": "sha256:c4ebef61ceb50a3d8bc21d149bc280422db20a1e69df317b64b74098c3615855",
+    "docker.io/goharbor/harbor-registryctl:v2.15.2": "sha256:223d5cb49d5dbf0ba4ae022e7dd9775fa459904112dc12084d3aaa36c1408362",
+    "docker.io/goharbor/trivy-adapter-photon:v2.15.2": "sha256:215c07b71c37fc7fc16e02d9185d936dcb8884a80e810817c2cd058bbd7c4e98",
+    "docker.io/goharbor/harbor-db:v2.15.2": "sha256:5ebfb345b33d673fa8483ffc997013113b7d14ea56abfa65cfcb621b4acf3039",
+    "docker.io/goharbor/valkey-photon:v2.15.2": "sha256:7337783e8148f01a25b113f5c7b1d640f78b1860fcaf80a33d0dbb294f7b99d0",
+    "ghcr.io/kubeflow/kfp-api-server:2.16.0": "sha256:5f9d674f75dbd9c056ad31a1d8c5432e1bdc1f0597dfefe6f58d00af983fbe22",
+    "ghcr.io/kubeflow/kfp-metadata-envoy:2.16.0": "sha256:ae854892d51ac29bbab8a1cddd9a5beadd2e84b27b1a6bfbdf1871c9438e8763",
+    "ghcr.io/kubeflow/kfp-metadata-writer:2.16.0": "sha256:0aabb7e4af425a622b502ff9a32add14e147f0408e127a129b118053b80d270f",
+    "ghcr.io/kubeflow/kfp-persistence-agent:2.16.0": "sha256:7d44250d37fd8026740d1640cb91313580c05c875bd72ccbd66bc0ed44e3ed2b",
+    "ghcr.io/kubeflow/kfp-scheduled-workflow-controller:2.16.0": "sha256:87851f90101b078defee70e19d0ff1b1fd485dcc99fb66298193c2545c4b0fc5",
+    "ghcr.io/kubeflow/kfp-driver:2.16.0": "sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd",
+    "ghcr.io/kubeflow/kfp-launcher:2.16.0": "sha256:6b2d6c5733d957c9f7831cafe12aebcf9ef8ec503f57b74ed2ab00d5db113d29",
+    "gcr.io/tfx-oss-public/ml_metadata_store_server:1.14.0": "sha256:51404ef4419c1426da80f3e14a83dcb55f65bb5a971371d36d14cec1e50af830",
+    "quay.io/argoproj/workflow-controller:v3.7.3": "sha256:5c8f5b6e5a2134dafdeadf758f230e4cc08db78f813e52d928e8f4f4541f243d",
+    "quay.io/argoproj/argoexec:v3.7.3": "sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a",
+    "ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0": "sha256:aa5949fc4ccbbed2537fa05f08ca330bc83b40aef930d2a0d44970922f197a73",
+    "registry.k8s.io/jobset/jobset:v0.10.1": "sha256:a018e2ca9b2a73645e108930a1a1795392fe8b765e4c81f5240f640b854436c4",
+    "docker.io/library/mysql:8.4.11": "sha256:80f4933e3835f9dc4d35a28ec500d7986cb4414e6c6821c5461239cb7beb8995",
+    "docker.io/library/nginx:1.30.5": "sha256:3d2f995522ddb52c3a4eb8008b8fa26f184f7146851df1da831f88885ac40aae",
+    "ani.local/kubeflow-execution:26.03-v1": "sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb",
+    "docker.io/kserve/agent:v0.16.0": "sha256:2a460b5e88fd92ec6ad1234b22dd13d189c380de29add5ed8c35a586cdac0940",
+    "docker.io/kserve/kserve-controller:v0.16.0": "sha256:63be9b379fbd19b300564c85fdd68963866ed19fd98abac670941bf8f7337671",
+    "docker.io/kserve/router:v0.16.0": "sha256:eccb7cac3a9b040e4243377d58a61c17660e611ec4634b76a954f76a1aede7f8",
+    "docker.io/kserve/sklearnserver:v0.16.0": "sha256:75d24f17ea0c158c5c8169ed178c4942a8ebe888e45fc0100be64665ce4cd03e",
+    "docker.io/kserve/storage-initializer:v0.16.0": "sha256:b1b719a157232b0927dea75ae27126a2f235a08d92b41f2459f25eea8bd6c039",
+    "ghcr.io/kubeflow/kubeflow/notebook-controller:v1.10.0": "sha256:a0dda5d62845057c73f2984d599770ea05f5067d50583fbd388687069e843bd9",
+    "quay.io/brancz/kube-rbac-proxy:v0.18.0": "sha256:62eeb8a0aaa13a8d886de07e5805940cec079ffbaf1d74483e26ad4a84952dce",
+    "ani.local/kubeflow-jupyter:26.03-stage2-v1": "sha256:8a8d9a3eb0f4ed63702e873ba9658c49fa2e147c8f927a3fba196768f5d8e712"
+  },
+  "native_notebook": {
+    "status": "PASS",
+    "namespace": "ani-kf-stage2-a",
+    "run_id": "clean-20261009-02",
+    "object": {
+      "name": "native-clean-20261009-02",
+      "namespace": "ani-kf-stage2-a",
+      "uid": "84ff414a-145d-415f-b5aa-005076b0018e",
+      "owner_references": [],
+      "managed_by": "ani-kf-stage2"
+    },
+    "pvc": {
+      "name": "ani-notebook-workspace",
+      "namespace": "ani-kf-stage2-a",
+      "uid": "e3d1098d-a258-41f6-bd95-481e85678427",
+      "owner_references": [],
+      "managed_by": "ani-kf-stage2"
+    },
+    "storage": {
+      "name": "ani-notebook-workspace",
+      "uid": "e3d1098d-a258-41f6-bd95-481e85678427",
+      "class": "ani-cephfs",
+      "size": "5Gi"
+    },
+    "access_modes": [
+      "ReadWriteMany"
+    ],
+    "mount": "/home/jovyan",
+    "uid_gid_fs_group": 1000,
+    "requests": {
+      "cpu": "500m",
+      "memory": "512Mi"
+    },
+    "limits": {
+      "cpu": "2",
+      "memory": "2Gi"
+    },
+    "service_account": "notebook-workload",
+    "kubernetes_token_automount": false,
+    "internal_service": "native-clean-20261009-02.ani-kf-stage2-a.svc.cluster.local:80",
+    "container_port": 8888,
+    "base_path": "/notebook/ani-kf-stage2-a/native-clean-20261009-02/",
+    "authentication_secret_reference": "ani-kf-stage2-a/ani-jupyter-auth:token",
+    "admin_connection": "Managed loopback-only port-forward; token authenticated native REST/kernel/WebSocket",
+    "stop_resume": {
+      "mechanism": "Notebook kubeflow-resource-stopped annotation; resume removes annotation",
+      "original_pod_uid": "050cc0ef-5e90-42bf-bb78-9c295019454d",
+      "resumed_pod_uid": "4dca6461-824b-4ad1-a213-4e5a9453f3be",
+      "pvc_uid": "e3d1098d-a258-41f6-bd95-481e85678427",
+      "file_digests_before": {
+        "main-flow.ipynb": "2106fa2874715e77c794973becd48f2463724c3f49d2898f007550fbe50f3167",
+        "fixed-content.txt": "22cd7a4f14e2038f11902b9c7ae64c6ece8e7e7a91cf155a787a59d773a036b8",
+        "model.joblib": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+        "model-contract.json": "08343806c20680845a7d7854bd0b3fda82afa4e27ab5dba48a048613b27d2ad7"
+      },
+      "file_digests_after": {
+        "main-flow.ipynb": "2106fa2874715e77c794973becd48f2463724c3f49d2898f007550fbe50f3167",
+        "fixed-content.txt": "22cd7a4f14e2038f11902b9c7ae64c6ece8e7e7a91cf155a787a59d773a036b8",
+        "model.joblib": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+        "model-contract.json": "08343806c20680845a7d7854bd0b3fda82afa4e27ab5dba48a048613b27d2ad7"
+      },
+      "native_readback": {
+        "status": "NATIVE_CONTENT_READBACK",
+        "marker_sha256": "22cd7a4f14e2038f11902b9c7ae64c6ece8e7e7a91cf155a787a59d773a036b8",
+        "model_sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+        "base_path": "/notebook/ani-kf-stage2-a/native-clean-20261009-02/"
+      }
+    },
+    "pvc_lifecycle": "Independent PVC, no Notebook/Workflow ownerReference; deletion/data retention are separate owner decisions"
+  },
+  "model_handoff": {
+    "status": "PASS",
+    "generated_by": "Actual Jupyter kernel executing the committed model.py",
+    "source": "kubekey/ani/kubeflow/stage2/workspace/model.py",
+    "random_seed": 42,
+    "model_format": "joblib 1.4.2 / sklearn 1.5.2 DecisionTreeClassifier",
+    "sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+    "s3": {
+      "bucket": "ani-kf-stage2-ani-kf-stage2-a",
+      "key": "models/clean-20261009-02/model.joblib",
+      "sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+      "bytes": 1761,
+      "status": "PASS"
+    },
+    "kernel_model": {
+      "format": "joblib",
+      "sklearn": "1.5.2",
+      "joblib": "1.4.2",
+      "random_seed": 42,
+      "file": "model.joblib",
+      "sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+      "input": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          10.0,
+          10.0
+        ],
+        [
+          20.0,
+          20.0
+        ]
+      ],
+      "expected": [
+        0,
+        1,
+        2
+      ],
+      "s3": {
+        "bucket": "ani-kf-stage2-ani-kf-stage2-a",
+        "key": "models/clean-20261009-02/model.joblib",
+        "sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292"
+      }
+    },
+    "fixed_inputs": [
+      [
+        0,
+        0
+      ],
+      [
+        10,
+        10
+      ],
+      [
+        20,
+        20
+      ]
+    ],
+    "expected": [
+      0,
+      1,
+      2
+    ],
+    "actual_prediction": {
+      "predictions": [
+        0,
+        1,
+        2
+      ]
+    }
+  },
+  "native_serving": {
+    "status": "PASS",
+    "mode": "Standard",
+    "runtime": {
+      "name": "kserve-sklearnserver",
+      "namespace": null,
+      "uid": "3ac9dce1-2f48-4ad8-b7e0-6c04693508dc",
+      "owner_references": [],
+      "managed_by": "ani-kf-stage2"
+    },
+    "inference_service": {
+      "name": "sklearn-clean-20261009-02",
+      "namespace": "ani-kf-stage2-a",
+      "uid": "6a41178d-f156-46fb-ba61-7c955e047fd2",
+      "owner_references": [],
+      "managed_by": "ani-kf-stage2"
+    },
+    "storage_uri": "s3://ani-kf-stage2-ani-kf-stage2-a/models/clean-20261009-02/",
+    "service_account": "predictor-workload",
+    "kubernetes_token_automount": false,
+    "internal_service": "sklearn-clean-20261009-02-predictor.ani-kf-stage2-a.svc.cluster.local:80",
+    "protocol": "POST /v1/models/sklearn-clean-20261009-02:predict",
+    "request": {
+      "instances": [
+        [
+          0,
+          0
+        ],
+        [
+          10,
+          10
+        ],
+        [
+          20,
+          20
+        ]
+      ]
+    },
+    "predictor_before": {
+      "uid": "5c58830b-5bb1-4066-846e-d68ac981fd3c",
+      "generation": 1,
+      "pods": [
+        {
+          "uid": "7b3454e4-eb85-4f73-8dcd-5d4694692bf6",
+          "name": "sklearn-clean-20261009-02-predictor-78bc48c949-5schd",
+          "node": "node1",
+          "containers": [
+            {
+              "name": "kserve-container",
+              "imageID": "172.16.101.20:5001/ani-kubeflow/kserve/sklearnserver@sha256:75d24f17ea0c158c5c8169ed178c4942a8ebe888e45fc0100be64665ce4cd03e",
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    "predictor_after": {
+      "uid": "5c58830b-5bb1-4066-846e-d68ac981fd3c",
+      "generation": 1,
+      "pods": [
+        {
+          "uid": "299d293c-d4f4-45f6-9f39-65c3fbc8d26d",
+          "name": "sklearn-clean-20261009-02-predictor-78bc48c949-k6gnw",
+          "node": "node3",
+          "containers": [
+            {
+              "name": "kserve-container",
+              "imageID": "172.16.101.20:5001/ani-kubeflow/kserve/sklearnserver@sha256:75d24f17ea0c158c5c8169ed178c4942a8ebe888e45fc0100be64665ce4cd03e",
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    "prediction_after_recreate": {
+      "input": {
+        "instances": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            10.0,
+            10.0
+          ],
+          [
+            20.0,
+            20.0
+          ]
+        ]
+      },
+      "response": {
+        "predictions": [
+          0,
+          1,
+          2
+        ]
+      },
+      "status": "PASS"
+    },
+    "negative_tests": {
+      "model-path": {
+        "status": "PASS",
+        "inference_service": {
+          "name": "bad-path-clean-20261009-02",
+          "uid": "a75ae3ff-41df-4b2c-a795-206dded56dab",
+          "storage_uri": "s3://ani-kf-stage2-ani-kf-stage2-a/models/clean-20261009-02/missing-model/"
+        },
+        "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage2-contract-model-path-clean-attempt-02/report.json"
+      },
+      "model-credential": {
+        "status": "PASS",
+        "inference_service": {
+          "name": "bad-credential-clean-20261009-02",
+          "uid": "3f3b7d3f-6621-4677-bccd-18becf8b74d2",
+          "storage_uri": "s3://ani-kf-stage2-ani-kf-stage2-a/models/clean-20261009-02/"
+        },
+        "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage2-contract-model-credential-clean-attempt-02/report.json"
+      }
+    }
+  },
+  "storage_and_credentials": {
+    "endpoint": "https://ani-rustfs-svc.ani-platform.svc.cluster.local:9000",
+    "region": "us-east-1",
+    "path_style": true,
+    "writer": "ani-model-writer / PutObject within own models/ prefix",
+    "reader": "ani-model-reader / GetObject plus models/-scoped ListBucket",
+    "scopes": [
+      {
+        "namespace": "ani-kf-stage2-a",
+        "writer_secret": "ani-model-writer",
+        "reader_secret": "ani-model-reader",
+        "bucket": "ani-kf-stage2-ani-kf-stage2-a",
+        "prefix": "models/",
+        "ca_configmap": "ani-model-ca"
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "writer_secret": "ani-model-writer",
+        "reader_secret": "ani-model-reader",
+        "bucket": "ani-kf-stage2-ani-kf-stage2-b",
+        "prefix": "models/",
+        "ca_configmap": "ani-model-ca"
+      }
+    ],
+    "tls_verification": "Enabled",
+    "notebook_ca": "ani-model-ca:ca.crt -> /etc/ani-model-ca/ca.crt",
+    "kserve_ca": "kserve/ani-model-ca:cabundle.crt -> workload global-ca-bundle -> AWS_CA_BUNDLE /etc/ani-model-ca/cabundle.crt",
+    "ca_source": {
+      "namespace": "kserve",
+      "name": "ani-model-ca",
+      "key": "cabundle.crt",
+      "sha256": "b36e5397ae06b93193866e8665b6429eb3b454e55eb84b878293088d78501257"
+    },
+    "storage_classes": [
+      {
+        "name": "ani-block",
+        "uid": "53dc4285-0a84-405c-8f26-7f277861da98",
+        "provisioner": "rook-ceph.rbd.csi.ceph.com",
+        "reclaim_policy": "Delete"
+      },
+      {
+        "name": "ani-cephfs",
+        "uid": "b5e3729e-7a2f-4446-bb35-157b87930cab",
+        "provisioner": "rook-ceph.cephfs.csi.ceph.com",
+        "reclaim_policy": "Delete"
+      }
+    ],
+    "ceph": {
+      "uid": "99128f9b-6e81-441e-aa40-07b7c2e27564",
+      "status": {
+        "ceph": {
+          "capacity": {
+            "bytesAvailable": 641700495360,
+            "bytesTotal": 644245094400,
+            "bytesUsed": 2544599040,
+            "lastUpdated": "2026-10-08T19:24:15Z"
+          },
+          "details": {
+            "AUTH_INSECURE_CLIENT_KEY_TYPE": {
+              "message": "4 auth client entities with insecure key types",
+              "severity": "HEALTH_WARN"
+            },
+            "AUTH_INSECURE_KEYS_ALLOWED": {
+              "message": "Monitors are configured to allow auth using insecure key types",
+              "severity": "HEALTH_WARN"
+            },
+            "AUTH_INSECURE_KEYS_CREATABLE": {
+              "message": "Monitors are configured to allow creation of insecure key types",
+              "severity": "HEALTH_WARN"
+            }
+          },
+          "fsid": "84559b1c-a4af-4207-a902-84fe38eab9c8",
+          "health": "HEALTH_WARN",
+          "lastChecked": "2026-10-08T19:24:15Z",
+          "versions": {
+            "mds": {
+              "ceph version 20.2.4 (7f793731f1b39eb4f465e960113d2363c311b964) tentacle (stable - RelWithDebInfo)": 2
+            },
+            "mgr": {
+              "ceph version 20.2.4 (7f793731f1b39eb4f465e960113d2363c311b964) tentacle (stable - RelWithDebInfo)": 2
+            },
+            "mon": {
+              "ceph version 20.2.4 (7f793731f1b39eb4f465e960113d2363c311b964) tentacle (stable - RelWithDebInfo)": 3
+            },
+            "osd": {
+              "ceph version 20.2.4 (7f793731f1b39eb4f465e960113d2363c311b964) tentacle (stable - RelWithDebInfo)": 3
+            },
+            "overall": {
+              "ceph version 20.2.4 (7f793731f1b39eb4f465e960113d2363c311b964) tentacle (stable - RelWithDebInfo)": 10
+            }
+          }
+        },
+        "cephx": {
+          "admin": {},
+          "cephExporter": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1
+          },
+          "crashCollector": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1
+          },
+          "csi": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1,
+            "keyType": "aes"
+          },
+          "mgr": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1,
+            "keyType": "aes256k"
+          },
+          "mon": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1
+          },
+          "osd": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1,
+            "keyType": "aes256k"
+          },
+          "rbdMirrorPeer": {
+            "keyCephVersion": "20.2.4-0",
+            "keyGeneration": 1
+          }
+        },
+        "conditions": [
+          {
+            "lastHeartbeatTime": "2026-10-08T18:55:30Z",
+            "lastTransitionTime": "2026-10-08T18:55:30Z",
+            "message": "Cluster created successfully",
+            "reason": "ClusterCreated",
+            "status": "True",
+            "type": "Ready"
+          }
+        ],
+        "message": "Cluster created successfully",
+        "observedGeneration": 2,
+        "phase": "Ready",
+        "state": "Created",
+        "storage": {
+          "deviceClasses": [
+            {
+              "name": "hdd"
+            }
+          ],
+          "osd": {
+            "migrationStatus": {},
+            "storeType": {
+              "bluestore": 3
+            }
+          }
+        },
+        "version": {
+          "image": "172.16.101.20:5001/ceph/ceph:v20.2.4",
+          "version": "20.2.4-0"
+        }
+      },
+      "image": "172.16.101.20:5001/ceph/ceph:v20.2.4"
+    }
+  },
+  "basic_protection": {
+    "status": "PASS",
+    "scope": "Two isolated environment identities, not product tenant authorization",
+    "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage2-protection-clean-attempt-02/report.json",
+    "checks": "Positive TLS/DNS/control endpoints, ordinary tokenless Notebook/predictor denies KFP/MLMD/MySQL/API creation, SA SAR denies, four scoped S3 writer/reader identities with cross-scope denials",
+    "resource_identities": [
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "ServiceAccount",
+        "name": "bad-model-clean-20261009-02",
+        "uid": "27ea583a-3dee-49e2-aed0-14b9030275a3",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "ServiceAccount",
+        "name": "default",
+        "uid": "46882ace-d49f-4800-aa1b-7531c55a90f1",
+        "managed_by": null,
+        "token_automount": null
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "ServiceAccount",
+        "name": "notebook-workload",
+        "uid": "92bbf7ee-796f-4fdb-946c-ca9d900a4c8a",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "ServiceAccount",
+        "name": "predictor-workload",
+        "uid": "e19af601-dd9c-427e-8cea-c8fb9592ced1",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "NetworkPolicy",
+        "name": "ani-stage2-default",
+        "uid": "ff2d7009-3e99-43e0-b54e-a8fdd79a10ee",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "f4c3078fcdb42313880359cb8dc921c7d75b79b1adbec07ffbccaaa10dc5b5dc"
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "NetworkPolicy",
+        "name": "ani-stage2-s3",
+        "uid": "e9a0cae5-eb91-4c05-bd07-82d8f13c06e2",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "15f0bdfd7b0b8ca0ce3d7ae5f3ef5217a05cc55d880a095f20aa6be52250d0ec"
+      },
+      {
+        "namespace": "ani-kf-stage2-a",
+        "kind": "ResourceQuota",
+        "name": "ani-stage2-budget",
+        "uid": "a17e13bb-d11a-48a7-b8af-3b7827db1372",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "0cc668e9da1042b7ee925cedf111d39dae2d13622ccfed702d3a2308937cfc88"
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "ServiceAccount",
+        "name": "default",
+        "uid": "15d999c2-6985-4da3-b40d-4f49ebecea70",
+        "managed_by": null,
+        "token_automount": null
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "ServiceAccount",
+        "name": "notebook-workload",
+        "uid": "a9664090-d719-40bd-8abf-3cd9e5123dea",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "ServiceAccount",
+        "name": "predictor-workload",
+        "uid": "38c1347f-0749-4ae1-b2ad-257a292eea13",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "NetworkPolicy",
+        "name": "ani-stage2-default",
+        "uid": "56f63736-73cb-4a3f-a457-6e3f824eac90",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "f4c3078fcdb42313880359cb8dc921c7d75b79b1adbec07ffbccaaa10dc5b5dc"
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "NetworkPolicy",
+        "name": "ani-stage2-s3",
+        "uid": "de6605a8-9cbb-449b-a663-5fcbbfbb8278",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "15f0bdfd7b0b8ca0ce3d7ae5f3ef5217a05cc55d880a095f20aa6be52250d0ec"
+      },
+      {
+        "namespace": "ani-kf-stage2-b",
+        "kind": "ResourceQuota",
+        "name": "ani-stage2-budget",
+        "uid": "c276131c-6896-4b68-8d94-33246d5a102c",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "0cc668e9da1042b7ee925cedf111d39dae2d13622ccfed702d3a2308937cfc88"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "ServiceAccount",
+        "name": "api-client",
+        "uid": "666a1d86-82d8-4dec-bd5d-a60df4a70303",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "ServiceAccount",
+        "name": "default",
+        "uid": "73236b66-c071-404c-8c23-982ac8819f82",
+        "managed_by": null,
+        "token_automount": null
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "ServiceAccount",
+        "name": "pipeline-runner",
+        "uid": "9b439465-2adf-41bf-bdf0-db82f2d38290",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": true
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "ServiceAccount",
+        "name": "trainer-workload",
+        "uid": "001fb300-e4b4-4dda-b735-d1ae5eababb5",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "Role",
+        "name": "ani-kfp-api-client",
+        "uid": "60f66969-7e58-4b68-a05b-ed27536f37dd",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "Role",
+        "name": "ml-pipeline",
+        "uid": "11624445-226a-4d04-846a-da90be4ca4ff",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "Role",
+        "name": "pipeline-runner",
+        "uid": "4116b3ba-290a-4778-9e43-4c4c58858a70",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "RoleBinding",
+        "name": "ani-kfp-api-client",
+        "uid": "b1a15648-2778-4fff-8174-28fbf88a9e11",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "RoleBinding",
+        "name": "ani-kfp-runner-api",
+        "uid": "bd5f99d5-7bd4-4823-8048-d514c5e149a4",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "RoleBinding",
+        "name": "ml-pipeline",
+        "uid": "81f09ac4-10d9-4edd-af27-31d78fc097f9",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "RoleBinding",
+        "name": "pipeline-runner",
+        "uid": "3e0e0fe4-cf0c-4886-afee-e661515da4a9",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "NetworkPolicy",
+        "name": "ani-kfp-default",
+        "uid": "9c5f0992-c1f8-40b1-b01a-7638cdf418ee",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "f4c3078fcdb42313880359cb8dc921c7d75b79b1adbec07ffbccaaa10dc5b5dc"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "NetworkPolicy",
+        "name": "ani-kfp-pipeline",
+        "uid": "7cf6ed6b-807e-45e1-b13f-1f7c652050e2",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "2ddadbc21737f38ca84b36895998eff3c9db5c7aec9db507ec79d19471be3cd8"
+      },
+      {
+        "namespace": "ani-kfp-probe-a",
+        "kind": "ResourceQuota",
+        "name": "ani-kfp-execution-budget",
+        "uid": "c6d6e42e-488f-4971-b701-6f3509ea963d",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "41993a9589fab81ff1d8ab5bfe70974263f311e951c1828d247b30af2e386259"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "ServiceAccount",
+        "name": "api-client",
+        "uid": "d3aa0ee8-4c65-4ada-91fe-487c306e6a5b",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "ServiceAccount",
+        "name": "default",
+        "uid": "87e516bc-778e-4e0b-b878-46276c549009",
+        "managed_by": null,
+        "token_automount": null
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "ServiceAccount",
+        "name": "pipeline-runner",
+        "uid": "c4fafaab-7cad-4feb-b876-25b883aaaec1",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": true
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "ServiceAccount",
+        "name": "trainer-workload",
+        "uid": "c3870cab-c387-4ed2-8f03-61dddb3a88e1",
+        "managed_by": "ani-kf-stage2",
+        "token_automount": false
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "Role",
+        "name": "ani-kfp-api-client",
+        "uid": "d602c174-7012-43b3-a352-eb627a132c57",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "Role",
+        "name": "ml-pipeline",
+        "uid": "8e958d2e-3f50-45b6-a39c-76a52527a684",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "Role",
+        "name": "pipeline-runner",
+        "uid": "2bbce9bd-15c2-4404-b8e3-a1f4d568596d",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "RoleBinding",
+        "name": "ani-kfp-api-client",
+        "uid": "100f0a0f-ed1a-4295-8029-e9e971626030",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "RoleBinding",
+        "name": "ani-kfp-runner-api",
+        "uid": "e34c3c2b-3ef5-47bb-b08c-174bb0a4289c",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "RoleBinding",
+        "name": "ml-pipeline",
+        "uid": "2134fcfc-f8e9-4758-a96d-72c480f20750",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "RoleBinding",
+        "name": "pipeline-runner",
+        "uid": "1923c372-c719-4762-8371-67008a1c5f0d",
+        "managed_by": "ani-kf-stage2"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "NetworkPolicy",
+        "name": "ani-kfp-default",
+        "uid": "8bcbfa50-1c6a-4f76-a192-54a5d7f18f5f",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "f4c3078fcdb42313880359cb8dc921c7d75b79b1adbec07ffbccaaa10dc5b5dc"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "NetworkPolicy",
+        "name": "ani-kfp-pipeline",
+        "uid": "bd1777a5-e2de-4443-ad4b-4cc15063dbe3",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "2ddadbc21737f38ca84b36895998eff3c9db5c7aec9db507ec79d19471be3cd8"
+      },
+      {
+        "namespace": "ani-kfp-probe-b",
+        "kind": "ResourceQuota",
+        "name": "ani-kfp-execution-budget",
+        "uid": "0d1b0b17-2aa3-497a-bd58-c332b331074c",
+        "managed_by": "ani-kf-stage2",
+        "spec_sha256": "41993a9589fab81ff1d8ab5bfe70974263f311e951c1828d247b30af2e386259"
+      }
+    ],
+    "owner_label": "ani.io/managed-by=ani-kf-stage2",
+    "field_manager": "ani-kubeflow"
+  },
+  "first_stage_regression": {
+    "status": "PASS",
+    "runtime": {
+      "name": "ani-single-process-v1-7dd0ba78",
+      "uid": "b6d89092-b990-4e5c-a62d-174b4c3b5cc8"
+    },
+    "cases": {
+      "success": {
+        "status": "PASS",
+        "direct_exit_code": 0,
+        "namespace": "ani-kfp-probe-a",
+        "execution": "env-76209f4406ff4c6e",
+        "run_id": "3dc6fd6f-f2a7-4142-9fdd-2ee97178799a",
+        "actual_run_state": "SUCCEEDED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-76209f4406ff4c6e",
+          "uid": "7070f117-110e-49f7-97e9-bac2ed8ed22d"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-76209f4406ff4c6e",
+          "uid": "b3efd6d1-a948-4e41-a4b6-b75cdc448966"
+        },
+        "control_pod_uid": "c653037e-8f00-4877-b085-0d2a5478d92b",
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-46e97f20d8fc46a9",
+            "uid": "5e3fe66b-e3fa-4e68-b852-171a92a36731",
+            "creationResult": "CONFIRMED",
+            "node": "node3"
+          },
+          "file_digests": {
+            "input/dataset.json": "8d6c974a0ac2e48fb54546b9d837fc52549ceff3b46d6d56664de1bb7c5119e6",
+            "output/correlation.json": "505600f6e675bdba1cf45600162e8f8ed98f503c4b2e6ced7168de90d1a58ee6",
+            "output/model.json": "b76a88ae0d4b4abb0af580b599edb23a23356f2e39b7d52ea081138d1849a8b8",
+            "output/unique.json": "d41ce084b122fbf3d039431bbde118397865647b9f3165fcb13497775289f263"
+          },
+          "model_sha256": "b76a88ae0d4b4abb0af580b599edb23a23356f2e39b7d52ea081138d1849a8b8"
+        },
+        "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage1-workspace-success-clean-attempt-02/report.json",
+        "job_set": {
+          "name": "ani-kfp-train-env-76209f4406ff4c6e",
+          "uid": "6f413250-7ca1-4760-9e2d-94503d4d54d9",
+          "namespace": "ani-kfp-probe-a"
+        }
+      },
+      "fail": {
+        "status": "PASS",
+        "direct_exit_code": 0,
+        "namespace": "ani-kfp-probe-b",
+        "execution": "env-fda2630b4bd44c83",
+        "run_id": "78d189a7-65e1-4684-9e6e-239eb48d688e",
+        "actual_run_state": "FAILED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-fda2630b4bd44c83",
+          "uid": "299def3f-b523-4e86-9a2a-72fe64cd7a63"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-fda2630b4bd44c83",
+          "uid": "ff43dd32-1f33-4131-b655-1ddcc2ded1d2"
+        },
+        "control_pod_uid": "821eda4c-fd38-46cb-a7c0-66e3b3cc9d2f",
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-75934fb826b14ddf",
+            "uid": "d4ca90f6-7596-4d06-a53a-5e7dedc0f2e7",
+            "creationResult": "CONFIRMED",
+            "node": "node3"
+          },
+          "file_digests": {
+            "input/dataset.json": "b24fba9846f41b380d8897ae0a4fd640a5e2ed824b3e1fe7c9060316461b415d",
+            "output/correlation.json": "064988a2785c848126b61b56c43e4e4079ff66d4ab96ddebe1400f89f9776e09",
+            "output/unique.json": "76171fe2ec7513b0401278530873503f3c230851a3c5253a354f3f604bbf435a"
+          },
+          "model_sha256": null
+        },
+        "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage1-workspace-fail-clean-attempt-02/report.json",
+        "job_set": {
+          "name": "ani-kfp-train-env-fda2630b4bd44c83",
+          "uid": "3424137e-6d16-4939-aa32-e6ad28f22991",
+          "namespace": "ani-kfp-probe-b"
+        }
+      },
+      "stop": {
+        "status": "PASS",
+        "direct_exit_code": 0,
+        "namespace": "ani-kfp-probe-b",
+        "execution": "env-e730cb8b966b4f85",
+        "run_id": "e47b7f4d-e30a-44f0-b5e7-28762811e88e",
+        "actual_run_state": "FAILED",
+        "workspace": {
+          "name": "ani-kfp-workspace-env-e730cb8b966b4f85",
+          "uid": "2658489a-4bc6-4175-b075-b767985c2950"
+        },
+        "train_job": {
+          "name": "ani-kfp-train-env-e730cb8b966b4f85",
+          "uid": "7f88a9e4-5185-453a-b49a-2d07bf5fabdb"
+        },
+        "control_pod_uid": "e1b81fa6-23bf-4dbc-8207-01cae6396a8b",
+        "readback": {
+          "reader": {
+            "name": "ani-kfp-workspace-reader-9733257ae70743ff",
+            "uid": "f4638853-0b2e-470e-9668-b3de12f05df2",
+            "creationResult": "CONFIRMED",
+            "node": "node3"
+          },
+          "file_digests": {
+            "input/dataset.json": "d9dfbc859abc7f5e1a680ffbfd3f45a6f7c524be3b4378848f4e33e49733eb46",
+            "output/correlation.json": "d690217518bce61733f8918e157035d9c0863cdd8a8a24182c21075b6f7b9361",
+            "output/unique.json": "40462a96e8ecce576e7d7efeab1d122a3ba667cde35fb65d93a56613595cf75d"
+          },
+          "model_sha256": null
+        },
+        "report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage1-workspace-stop-clean-attempt-02/report.json",
+        "job_set": {
+          "name": "ani-kfp-train-env-e730cb8b966b4f85",
+          "uid": "bdb6fd02-c56d-4d92-97a9-1acfb017320e",
+          "namespace": "ani-kfp-probe-b"
+        }
+      }
+    },
+    "admission": {
+      "status": "PASS",
+      "requests": 22,
+      "persistent_writes": 0
+    },
+    "entry_identity_matrix": {
+      "status": "PASS",
+      "requests": 62
+    },
+    "workload_boundary": "PASS",
+    "scoped_s3_and_model_link_readback": "PASS",
+    "stop_terminal_semantics": "Actual KFP state retained in case; do not promote FAILED to CANCELED"
+  },
+  "evidence": {
+    "index": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/index.json",
+    "checks": {
+      "stage2-main-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-main-clean-attempt-02/report.json"
+      },
+      "stage2-contract-notebook-resume-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-contract-notebook-resume-clean-attempt-02/report.json"
+      },
+      "stage2-contract-predictor-recreate-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-contract-predictor-recreate-clean-attempt-02/report.json"
+      },
+      "stage2-contract-model-path-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-contract-model-path-clean-attempt-02/report.json"
+      },
+      "stage2-contract-model-credential-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-contract-model-credential-clean-attempt-02/report.json"
+      },
+      "stage2-protection-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage2-protection-clean-attempt-02/report.json"
+      },
+      "stage1-workspace-success-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "FILES_READ_BACK",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-workspace-success-clean-attempt-02/report.json"
+      },
+      "stage1-workspace-fail-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "FILES_READ_BACK",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-workspace-fail-clean-attempt-02/report.json"
+      },
+      "stage1-workspace-stop-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "FILES_READ_BACK",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-workspace-stop-clean-attempt-02/report.json"
+      },
+      "stage1-admission-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "PASS",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-admission-clean-attempt-02/report.json"
+      },
+      "stage1-workload-boundary-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "ORDINARY_WORKLOAD_CONTROL_DENIED",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-workload-boundary-clean-attempt-02/report.json"
+      },
+      "stage1-s3-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "SCOPED_IO_AND_ARTIFACT_READ_BACK",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-s3-clean-attempt-02/report.json"
+      },
+      "stage1-entry-matrix-clean-attempt-02": {
+        "status": "PASS",
+        "observed_status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED",
+        "direct_exit_code": 0,
+        "report": "logs/stage1-entry-matrix-clean-attempt-02/report.json"
+      }
+    },
+    "control_plane_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/kubeflow-check-20261008T190528.112521Z/report.json",
+    "control_plane_observed_status": "CONTROL_PLANE_CHECKED",
+    "main_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/final-evidence-export-attempt-02/logs/stage2-main-clean-attempt-02/report.json",
+    "original_first_clean_failure": {
+      "source_sha": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "run_id": "eaec1012-0609-45f9-8145-412639aa0a8f",
+      "status": "FAIL",
+      "cause": "GET JobSet returned 429 storage is (re)initializing, Retry-After 1 after training completed",
+      "redacted_error": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/stage1-clean-first-error-attempt-01/first-error-redacted.json",
+      "preservation": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/unique-output-preservation-current941/index.json",
+      "fix": "GET-only 429 bounded five attempts, Retry-After 1..5 seconds; no mutation or authorization retry",
+      "red_green": {
+        "red": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/storage-initialization-red.log",
+        "green": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/storage-initialization-green.log"
+      }
+    }
+  },
+  "retained_objects": [
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "bad-credential-clean-20261009-02-predictor-584d6584-9xrsf",
+      "uid": "6e6f3e73-73a0-4796-8611-20f12167b781",
+      "owners": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "bad-credential-clean-20261009-02-predictor-584d6584",
+          "uid": "2377a9a7-e79d-4b7c-8e25-260aa4034f0a"
+        }
+      ],
+      "phase": "Pending",
+      "node": "node2",
+      "service_account": "bad-model-clean-20261009-02",
+      "images": [
+        {
+          "name": "kserve-container",
+          "image_id": ""
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "bad-path-clean-20261009-02-predictor-958f66596-gw264",
+      "uid": "e726c61f-1f90-467a-af95-e2723d137700",
+      "owners": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "bad-path-clean-20261009-02-predictor-958f66596",
+          "uid": "fa734f54-9b83-406f-b127-bdee74bd951f"
+        }
+      ],
+      "phase": "Pending",
+      "node": "node1",
+      "service_account": "predictor-workload",
+      "images": [
+        {
+          "name": "kserve-container",
+          "image_id": ""
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "model-readback-clean-20261009-02",
+      "uid": "637623ba-1ad6-4feb-8ee5-1059822e5057",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "predictor-workload",
+      "images": [
+        {
+          "name": "readback",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "native-clean-20261009-02-0",
+      "uid": "4dca6461-824b-4ad1-a213-4e5a9453f3be",
+      "owners": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "StatefulSet",
+          "name": "native-clean-20261009-02",
+          "uid": "937e866f-d509-4ba3-8603-a6708c7ceab0"
+        }
+      ],
+      "phase": "Running",
+      "node": "node2",
+      "service_account": "notebook-workload",
+      "images": [
+        {
+          "name": "native-clean-20261009-02",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-jupyter@sha256:8a8d9a3eb0f4ed63702e873ba9658c49fa2e147c8f927a3fba196768f5d8e712"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "s3-reader-clean-20261009-02",
+      "uid": "efc39fbe-ad2d-4bb5-af5c-8db234f42e92",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "predictor-workload",
+      "images": [
+        {
+          "name": "probe",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "s3-writer-clean-20261009-02",
+      "uid": "f98130bf-372e-4e73-91b5-aac34e3363d0",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "notebook-workload",
+      "images": [
+        {
+          "name": "probe",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Pod",
+      "name": "sklearn-clean-20261009-02-predictor-78bc48c949-k6gnw",
+      "uid": "299d293c-d4f4-45f6-9f39-65c3fbc8d26d",
+      "owners": [
+        {
+          "apiVersion": "apps/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "ReplicaSet",
+          "name": "sklearn-clean-20261009-02-predictor-78bc48c949",
+          "uid": "cfeabf7b-fc87-4ac7-a3d5-ebb7ac49887a"
+        }
+      ],
+      "phase": "Running",
+      "node": "node3",
+      "service_account": "predictor-workload",
+      "images": [
+        {
+          "name": "kserve-container",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kserve/sklearnserver@sha256:75d24f17ea0c158c5c8169ed178c4942a8ebe888e45fc0100be64665ce4cd03e"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "PersistentVolumeClaim",
+      "name": "ani-notebook-workspace",
+      "uid": "e3d1098d-a258-41f6-bd95-481e85678427",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "Notebook",
+      "name": "native-clean-20261009-02",
+      "uid": "84ff414a-145d-415f-b5aa-005076b0018e",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "InferenceService",
+      "name": "bad-credential-clean-20261009-02",
+      "uid": "3f3b7d3f-6621-4677-bccd-18becf8b74d2",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "InferenceService",
+      "name": "bad-path-clean-20261009-02",
+      "uid": "a75ae3ff-41df-4b2c-a795-206dded56dab",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kf-stage2-a",
+      "kind": "InferenceService",
+      "name": "sklearn-clean-20261009-02",
+      "uid": "6a41178d-f156-46fb-ba61-7c955e047fd2",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kf-stage2-b",
+      "kind": "Pod",
+      "name": "s3-reader-clean-20261009-02",
+      "uid": "0133b499-6ec1-4072-9252-f432c21dbdf6",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "predictor-workload",
+      "images": [
+        {
+          "name": "probe",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kf-stage2-b",
+      "kind": "Pod",
+      "name": "s3-writer-clean-20261009-02",
+      "uid": "872a7b59-c146-479b-a6e6-2523ba6e116d",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "notebook-workload",
+      "images": [
+        {
+          "name": "probe",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-dsqnr-system-container-driver-232724658",
+      "uid": "457413d6-e130-428d-adf1-a99fd9a8da9c",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-dsqnr",
+          "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-dsqnr-system-container-driver-3002342272",
+      "uid": "9969a98e-9fe6-4eba-96c1-a128b20aa985",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-dsqnr",
+          "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-dsqnr-system-container-impl-2457316006",
+      "uid": "7bb49123-d772-434d-a9d5-8642298dab63",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-dsqnr",
+          "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-dsqnr-system-container-impl-3570408412",
+      "uid": "c653037e-8f00-4877-b085-0d2a5478d92b",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-dsqnr",
+          "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-dsqnr-system-dag-driver-3150480232",
+      "uid": "f10f672c-5c00-4f95-8606-1afc73c46e49",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-dsqnr",
+          "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-kfp-boundary-152d5ae26fae43e3",
+      "uid": "8f155e1e-63b7-4917-ac76-ccd27cb32e88",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node3",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "probe",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-kfp-train-env-76209f4406ff4c6e-node-0-0-rsmxr",
+      "uid": "b525b92b-3ff4-4868-b51b-000c0482ea1c",
+      "owners": [
+        {
+          "apiVersion": "batch/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Job",
+          "name": "ani-kfp-train-env-76209f4406ff4c6e-node-0",
+          "uid": "4629da41-5b4f-4241-baaa-a13ed0e6959e"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node2",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "node",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Pod",
+      "name": "ani-kfp-workspace-reader-46e97f20d8fc46a9",
+      "uid": "5e3fe66b-e3fa-4e68-b852-171a92a36731",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node3",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "reader",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "PersistentVolumeClaim",
+      "name": "ani-kfp-workspace-env-76209f4406ff4c6e",
+      "uid": "7070f117-110e-49f7-97e9-bac2ed8ed22d",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "TrainJob",
+      "name": "ani-kfp-train-env-76209f4406ff4c6e",
+      "uid": "b3efd6d1-a948-4e41-a4b6-b75cdc448966",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "JobSet",
+      "name": "ani-kfp-train-env-76209f4406ff4c6e",
+      "uid": "6f413250-7ca1-4760-9e2d-94503d4d54d9",
+      "owners": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "TrainJob",
+          "name": "ani-kfp-train-env-76209f4406ff4c6e",
+          "uid": "b3efd6d1-a948-4e41-a4b6-b75cdc448966"
+        }
+      ]
+    },
+    {
+      "namespace": "ani-kfp-probe-a",
+      "kind": "Workflow",
+      "name": "ani-environment-handoff-dsqnr",
+      "uid": "e88c87a1-5bb9-469f-828c-004edb1dbbdb",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-nmk86-system-container-driver-2247098588",
+      "uid": "b842cda4-77d2-4640-9710-f812fe661d57",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-nmk86",
+          "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-nmk86-system-container-driver-4269090806",
+      "uid": "125233d1-4a3c-40a3-869c-9ad9e4e8fc55",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-nmk86",
+          "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-nmk86-system-container-impl-177285216",
+      "uid": "e1b81fa6-23bf-4dbc-8207-01cae6396a8b",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-nmk86",
+          "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853"
+        }
+      ],
+      "phase": "Failed",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-nmk86-system-container-impl-2093566738",
+      "uid": "8eca6dd5-6896-46df-b9b8-be9ccc950e2f",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-nmk86",
+          "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-nmk86-system-dag-driver-758289092",
+      "uid": "ac645fec-693e-4d73-8dbc-de2c61e141fd",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-nmk86",
+          "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-qtct6-system-container-driver-2205986812",
+      "uid": "184ba9cc-c457-49a7-9cb3-2a0a42bcd65d",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-qtct6",
+          "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-qtct6-system-container-driver-85496470",
+      "uid": "7a209a30-84f6-4814-b921-57d4aad9dda6",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-qtct6",
+          "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-qtct6-system-container-impl-1479621632",
+      "uid": "821eda4c-fd38-46cb-a7c0-66e3b3cc9d2f",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-qtct6",
+          "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964"
+        }
+      ],
+      "phase": "Failed",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-qtct6-system-container-impl-810659122",
+      "uid": "5b659275-f514-4a20-a3de-8bee01b8f5f4",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-qtct6",
+          "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-environment-handoff-qtct6-system-dag-driver-3711124452",
+      "uid": "da8fc02d-bb4f-405b-aef6-d64d223b8305",
+      "owners": [
+        {
+          "apiVersion": "argoproj.io/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Workflow",
+          "name": "ani-environment-handoff-qtct6",
+          "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964"
+        }
+      ],
+      "phase": "Succeeded",
+      "node": "node1",
+      "service_account": "pipeline-runner",
+      "images": [
+        {
+          "name": "main",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/kubeflow/kfp-driver@sha256:249a0e2f2ce2ed078648c5bd3b90e61f202f4864d75376ba77853e81a53535cd"
+        },
+        {
+          "name": "wait",
+          "image_id": "172.16.101.20:5001/ani-kubeflow/argoproj/argoexec@sha256:427154a68a3b8ec22225bc46151db943a3d579d69baed2c0eec8c25920f1215a"
+        }
+      ],
+      "token_automount": null
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-kfp-train-env-fda2630b4bd44c83-node-0-0-pfmtm",
+      "uid": "002aa0c0-a131-435b-b1e5-51e4a0922136",
+      "owners": [
+        {
+          "apiVersion": "batch/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "Job",
+          "name": "ani-kfp-train-env-fda2630b4bd44c83-node-0",
+          "uid": "eb9d7337-4338-41bc-a1f6-7a48123eaf39"
+        }
+      ],
+      "phase": "Failed",
+      "node": "node2",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "node",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-kfp-workspace-reader-75934fb826b14ddf",
+      "uid": "d4ca90f6-7596-4d06-a53a-5e7dedc0f2e7",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node3",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "reader",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Pod",
+      "name": "ani-kfp-workspace-reader-9733257ae70743ff",
+      "uid": "f4638853-0b2e-470e-9668-b3de12f05df2",
+      "owners": [],
+      "phase": "Succeeded",
+      "node": "node3",
+      "service_account": "trainer-workload",
+      "images": [
+        {
+          "name": "reader",
+          "image_id": "172.16.101.20:5001/ani/kubeflow-execution@sha256:7dd0ba785e785449d77a67a093763fe536689837eac8aeee045e455ff12435cb"
+        }
+      ],
+      "token_automount": false
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "PersistentVolumeClaim",
+      "name": "ani-kfp-workspace-env-e730cb8b966b4f85",
+      "uid": "2658489a-4bc6-4175-b075-b767985c2950",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "PersistentVolumeClaim",
+      "name": "ani-kfp-workspace-env-fda2630b4bd44c83",
+      "uid": "299def3f-b523-4e86-9a2a-72fe64cd7a63",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "TrainJob",
+      "name": "ani-kfp-train-env-e730cb8b966b4f85",
+      "uid": "7f88a9e4-5185-453a-b49a-2d07bf5fabdb",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "TrainJob",
+      "name": "ani-kfp-train-env-fda2630b4bd44c83",
+      "uid": "ff43dd32-1f33-4131-b655-1ddcc2ded1d2",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "JobSet",
+      "name": "ani-kfp-train-env-e730cb8b966b4f85",
+      "uid": "bdb6fd02-c56d-4d92-97a9-1acfb017320e",
+      "owners": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "TrainJob",
+          "name": "ani-kfp-train-env-e730cb8b966b4f85",
+          "uid": "7f88a9e4-5185-453a-b49a-2d07bf5fabdb"
+        }
+      ]
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "JobSet",
+      "name": "ani-kfp-train-env-fda2630b4bd44c83",
+      "uid": "3424137e-6d16-4939-aa32-e6ad28f22991",
+      "owners": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "TrainJob",
+          "name": "ani-kfp-train-env-fda2630b4bd44c83",
+          "uid": "ff43dd32-1f33-4131-b655-1ddcc2ded1d2"
+        }
+      ]
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Workflow",
+      "name": "ani-environment-handoff-nmk86",
+      "uid": "62ada0cb-f44b-4d67-b5de-44c3f9ab6853",
+      "owners": []
+    },
+    {
+      "namespace": "ani-kfp-probe-b",
+      "kind": "Workflow",
+      "name": "ani-environment-handoff-qtct6",
+      "uid": "dcc4d5ad-5617-4145-8d57-399ef808e964",
+      "owners": []
+    }
+  ],
+  "cleanup": "NOT_REQUESTED; no automatic PVC/object/snapshot cleanup",
+  "unpassed_required_checks": [],
+  "outside_scope": {
+    "management_ui": "NOT_RUN",
+    "notebooks_management_webapp": "NOT_RUN",
+    "business_backend_bff_modeldev": "NOT_RUN",
+    "real_product_user_tenant_owner": "NOT_RUN",
+    "iam_sso": "NOT_RUN",
+    "business_gateway_cookie_xsrf_websocket_proxy": "NOT_RUN",
+    "long_term_workspace_gc": "NOT_RUN",
+    "model_publish_approval_billing": "NOT_RUN",
+    "CPU-P01_business_acceptance": "NOT_RUN",
+    "GPU_HAMi": "NOT_RUN"
+  },
+  "next_safe_action": "Read this handoff and config-contract.md; integrate business owner/auth/gateway against native resources in a separately authorized task. Keep retained PVCs, model and task negative objects until an explicit cleanup decision.",
+  "observed_warnings": {
+    "ceph_auth_key_health": {
+      "status": "HEALTH_WARN",
+      "details": {
+        "AUTH_INSECURE_CLIENT_KEY_TYPE": {
+          "message": "4 auth client entities with insecure key types",
+          "severity": "HEALTH_WARN"
+        },
+        "AUTH_INSECURE_KEYS_ALLOWED": {
+          "message": "Monitors are configured to allow auth using insecure key types",
+          "severity": "HEALTH_WARN"
+        },
+        "AUTH_INSECURE_KEYS_CREATABLE": {
+          "message": "Monitors are configured to allow creation of insecure key types",
+          "severity": "HEALTH_WARN"
+        }
+      },
+      "data_read_write_and_persistence": "PASS",
+      "shared_component_change": "NOT_REQUESTED / NOT_PERFORMED"
+    }
+  }
+}

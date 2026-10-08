@@ -1,0 +1,211 @@
+{
+  "schema": "ani.kubeflow.stage2-final-evidence.v1",
+  "cluster_uid": "a14b07e9-cf39-46cd-8bea-c2fb9d8c55aa",
+  "source_sha": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "files": {
+    "run.json": {
+      "sha256": "97314b0e996bb154113acd9083102ef849e94785ce6adefa6040d30a1236efb0",
+      "size": 2824
+    },
+    "run-state.json": {
+      "sha256": "25ade4775d92dcb86214a92976ced7293fe4ef4f04380e4283cd8f01f741f20a",
+      "size": 1050
+    },
+    "logs/stage1-workspace-success-clean-attempt-02/report.json": {
+      "sha256": "f9e104027e2a1f1845b4a3bfe9f8b9b15891f4e35a9dab836fab731240840c22",
+      "size": 3453
+    },
+    "logs/stage1-workspace-success-clean-attempt-02/writes.json": {
+      "sha256": "4b62983c40674565e04099510d337ebf7e42d3e5082103089a152fa2d9bfaddc",
+      "size": 234
+    },
+    "logs/stage1-workspace-stop-clean-attempt-02/report.json": {
+      "sha256": "c99ae88c04aad9fc5ee29f4f67ce0660e91126aa6bd0d55ed9382f6482efe530",
+      "size": 2883
+    },
+    "logs/stage1-workspace-stop-clean-attempt-02/writes.json": {
+      "sha256": "fcf98391fabb6e1c59c94d649e56dfd8b649478ecc69606f11a47e72ea4beb6f",
+      "size": 234
+    },
+    "logs/stage1-s3-clean-attempt-02/report.json": {
+      "sha256": "ff8e9d59a537a73c3942096ee51d6dacde98d8833216f0412637cf4fc824ef28",
+      "size": 15183
+    },
+    "logs/stage2-contract-notebook-resume-clean-attempt-02/report.json": {
+      "sha256": "83e781fe817ba88f41a2b9cbcf9d3f9a1ef40ca5baff19a7cd477e923b980212",
+      "size": 2229
+    },
+    "logs/stage2-contract-notebook-resume-clean-attempt-02/writes.json": {
+      "sha256": "61842ffffa0fbad77ab2a36db13446fa620e79a4451541898f5bf07e60415a6b",
+      "size": 359
+    },
+    "logs/stage1-workload-boundary-clean-attempt-02/report.json": {
+      "sha256": "a54527e6e6c75723f8e07303696ac8144828b13383f9f5640850b83c6f32afa7",
+      "size": 3933
+    },
+    "logs/stage1-workload-boundary-clean-attempt-02/writes.json": {
+      "sha256": "d0805ea95c29e9b422f19ff61b8254b11db64a6c1f8121649b8733dcd0a1c2dd",
+      "size": 226
+    },
+    "logs/stage1-entry-matrix-clean-attempt-02/report.json": {
+      "sha256": "7ff71947d4a09887fff9a851b5ef9a838746f9c8f17a298f304b3f2a39be5f64",
+      "size": 16810
+    },
+    "logs/kubeflow-install-20261008T185926.904791Z/report.json": {
+      "sha256": "9494f5cc823fbfbca0be84fe0df52f4d8965e2ed3e04d1bd7c213b3e5734aec6",
+      "size": 9265
+    },
+    "logs/kubeflow-install-20261008T185926.904791Z/writes.json": {
+      "sha256": "3509d944f941b0d7b47b141ec001ba481d0448a705a7055f416f837144f9f798",
+      "size": 51776
+    },
+    "logs/stage1-workspace-fail-clean-attempt-02/report.json": {
+      "sha256": "47aa3a05ee2da2e5402c6620f56aaca41f11ce21d2be0fa64256d7f7566e6c39",
+      "size": 2879
+    },
+    "logs/stage1-workspace-fail-clean-attempt-02/writes.json": {
+      "sha256": "6798a33b21647ccda1e0241c19ed5b726012463b8421511ffaef36b99818d15c",
+      "size": 234
+    },
+    "logs/stage2-main-clean-attempt-02/report.json": {
+      "sha256": "dad2e8bd4bea2ff8d3c25819ea53f245a4651894094c689f5cc87b34a132d7d7",
+      "size": 3587
+    },
+    "logs/stage2-main-clean-attempt-02/writes.json": {
+      "sha256": "bad3946ee702d91257b67e2c3bc7e88144f953cac8cb9f819d090fbdeb0a1272",
+      "size": 905
+    },
+    "logs/stage1-admission-clean-attempt-02/report.json": {
+      "sha256": "72737a5744227e3fbdfb4eb39e677befb8f30bf90f46f64041d621cc8d6e1b1f",
+      "size": 4097
+    },
+    "logs/stage2-contract-model-path-clean-attempt-02/report.json": {
+      "sha256": "b0dc72938a58d5cefae4ac3e86f1968f56eb698e8f766aabd767fcb556508ea0",
+      "size": 1886
+    },
+    "logs/stage2-contract-model-path-clean-attempt-02/first-error-redacted.log": {
+      "sha256": "9fc85b854713bf4b8ce2cdf57551c83eaba31972d5282a6d1d04bb8521f2d7cc",
+      "size": 2193
+    },
+    "logs/stage2-contract-model-path-clean-attempt-02/writes.json": {
+      "sha256": "7d83a38a8603415b95d34a7b169847c095d15882312d6b61a6c2fe192e852aa0",
+      "size": 232
+    },
+    "logs/stage2-contract-predictor-recreate-clean-attempt-02/report.json": {
+      "sha256": "d3ce762110adc25940f9ff2df1fa6e810e3ac11e7babf5eaf3dd7c322837158d",
+      "size": 2521
+    },
+    "logs/stage2-contract-predictor-recreate-clean-attempt-02/writes.json": {
+      "sha256": "7702a7d02d0b91c887385ac3246d893ce1ac56fa71ab66bbc3888d0c73b48454",
+      "size": 228
+    },
+    "logs/kubeflow-check-20261008T190528.112521Z/report.json": {
+      "sha256": "f1bb3aa4421ef946202764de87af75be4a24851c1a9ad57b1051aefaa889c663",
+      "size": 11397
+    },
+    "logs/stage2-contract-model-credential-clean-attempt-02/report.json": {
+      "sha256": "375c6fca6dd8a152d349ce487a4f724ae6be09fc65bb21c1d55c76d7ea21fd9b",
+      "size": 2382
+    },
+    "logs/stage2-contract-model-credential-clean-attempt-02/first-error-redacted.log": {
+      "sha256": "45ed34fef74f41cb51c027933631161dfc27bc24d8b543d39ae438e9faa0edc7",
+      "size": 3574
+    },
+    "logs/stage2-contract-model-credential-clean-attempt-02/writes.json": {
+      "sha256": "f9a8225d1ba1735ac86fcaecd5f4bbe3ea80ea4c0f56cf88c20763384b836bea",
+      "size": 692
+    },
+    "logs/stage2-protection-clean-attempt-02/report.json": {
+      "sha256": "22e59aae95ffaeff2addd8bada42049fc9af1d9c4cb94a82572591d17632f72f",
+      "size": 16866
+    },
+    "logs/stage2-protection-clean-attempt-02/writes.json": {
+      "sha256": "cec6f1e5d55fa2fe3db8ba4c0a62281569304c4559872bdbebfc4a8b35efb0fe",
+      "size": 871
+    },
+    "work/connections.d/kubeflow.md": {
+      "sha256": "4ee9a2be69c76dc8b322a9503e81b3c4c2e69fb8cb3861b496af16ae1036bb3f",
+      "size": 5710
+    }
+  },
+  "checks": {
+    "stage2-main-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-main-clean-attempt-02/report.json"
+    },
+    "stage2-contract-notebook-resume-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-contract-notebook-resume-clean-attempt-02/report.json"
+    },
+    "stage2-contract-predictor-recreate-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-contract-predictor-recreate-clean-attempt-02/report.json"
+    },
+    "stage2-contract-model-path-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-contract-model-path-clean-attempt-02/report.json"
+    },
+    "stage2-contract-model-credential-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-contract-model-credential-clean-attempt-02/report.json"
+    },
+    "stage2-protection-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage2-protection-clean-attempt-02/report.json"
+    },
+    "stage1-workspace-success-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "FILES_READ_BACK",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-workspace-success-clean-attempt-02/report.json"
+    },
+    "stage1-workspace-fail-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "FILES_READ_BACK",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-workspace-fail-clean-attempt-02/report.json"
+    },
+    "stage1-workspace-stop-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "FILES_READ_BACK",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-workspace-stop-clean-attempt-02/report.json"
+    },
+    "stage1-admission-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "PASS",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-admission-clean-attempt-02/report.json"
+    },
+    "stage1-workload-boundary-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "ORDINARY_WORKLOAD_CONTROL_DENIED",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-workload-boundary-clean-attempt-02/report.json"
+    },
+    "stage1-s3-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "SCOPED_IO_AND_ARTIFACT_READ_BACK",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-s3-clean-attempt-02/report.json"
+    },
+    "stage1-entry-matrix-clean-attempt-02": {
+      "status": "PASS",
+      "observed_status": "HTTP_GRPC_IDENTITY_MATRIX_CHECKED",
+      "direct_exit_code": 0,
+      "report": "logs/stage1-entry-matrix-clean-attempt-02/report.json"
+    }
+  }
+}

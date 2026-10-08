@@ -1,0 +1,121 @@
+{
+  "schema": "ani.kubeflow.stage2-candidate.v1",
+  "status": "REMOTE_CHECKED",
+  "created": "2026-10-08T18:35:58.054179+00:00",
+  "base_sha": "cf54a5c129e6a7d003ef1e148ff85fc23fd40a37",
+  "source_sha": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "source_tree_fingerprint": "7a7dbe516ebc59a302eed36db2c685b648f069563b784e222e9fd77fae17b753",
+  "branch": "codex/kubeflow-stage2",
+  "remote": "ssh://git@ssh.github.com:443/zhangzhe-ctrl/ani-installer.git",
+  "release": "26.03-kubeflow-stage2-v1",
+  "fedora_root": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008",
+  "host": "chabking@172.16.101.31",
+  "code": {
+    "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/code-candidate-f8ca074-attempt-01",
+    "kk_sha256": "33b5bfce4caf5a7411ab967aee8779084350d01e1cf1f554f8aacdda0ff86378",
+    "sha256sums": "cac6799602c6b4b95bb8a274675d4f357f9803ee052c5ba9a0ae71b74604976e",
+    "gate_exit_code": 0
+  },
+  "materials": {
+    "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/materials-candidate-f8ca074-attempt-01",
+    "sha256sums": "136c793ea4f7d7bea7dcd462fa610753d8ae00b598621c8723776c89606fde37",
+    "image_archive_sha256": "d83f4506b9e8b5e5dd6368bcaa5e7e72dcc0b315a86405b270262b2416ec74fa",
+    "images_tsv_sha256": "a217d42bf3ad9010a47524c7b05e06ab10bf041ca326bc15dee60e4a23e74875",
+    "components_lock_sha256": "d5e6393bf575fee2dc6027359abbb4d7c942d08e9cf1792f4645046c1c7293a9",
+    "assets_lock_sha256": "8593d8066ed39cfa8e4645a4fc433dd2c2ddef3a06f0a8a73301056948827912",
+    "build_exit_code": 0,
+    "actual_image_content_gate": "PASS",
+    "image_count": 112
+  },
+  "site": {
+    "sha256": "bb5d85ae96a78ecf7f69557d727a667d8cd3b58d80812bed932965107354f472",
+    "public_example_sha256": "fb652abefae16642369642e6a84b5d99045fc1b3bf36b52a26f16bd8d58ec46b",
+    "targets": [
+      "172.16.101.20",
+      "172.16.101.21",
+      "172.16.101.22"
+    ]
+  },
+  "render": {
+    "path": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/render-candidate-f8ca074-attempt-01",
+    "exit_code": 0,
+    "file_count": 37,
+    "files": {
+      "ceph-ceph-preflight.sh": "6fb7ac664c9d61d58edbf4a04661f9bee92f72be053e40495f2f3928226bf49e",
+      "ceph-ceph-verify.sh": "f938dc40b6315a079452a975a5bc85839366085e8ef91d8e23be33c25a3d43d0",
+      "ceph-ceph-wait.sh": "a433c3bbf04647fa19acf9a70008d9ef2499d9888d4bee965a69536072baaa89",
+      "ceph-cluster.yaml": "4f4bda66d902370b0fd1b459377028addede6d8d4e9998b06648408efa8d9c2c",
+      "ceph-common.yaml": "2d59b3093446dcf7dd69c73ebaef2d41e8cdfd14af564c2e885d49ab8d190457",
+      "ceph-crds.yaml": "7fa7462d44b35d636703a03a88120030692a06a05ac91ec253200cb4ae8c37cf",
+      "ceph-csi-operator.yaml": "636cd7ead4f2b7f577ddf2bd0d1e82985dc88da2560591ca6f5a1a46a905640d",
+      "ceph-filesystem.yaml": "eb1e6f8e51f3c0baebc02829da77dab866bbd8bd84710c8c52337a65245926f7",
+      "ceph-object.yaml": "2f2545c1a598ada4a1eff7b111fdb35e480b62b5f7aece888b467bf60638c16f",
+      "ceph-operator.yaml": "4e725a8e539017962640e76f841b11c7e395d9fdef5521d92a46682894013fe1",
+      "ceph-rgw-tls.sh": "61edbeb33599f93b766f027968ce00097516b853fec341a6250e8af3b4a06f14",
+      "ceph-storage-devices.txt": "0905d8669a526668c0ce507eb6ff4526fa5e265c9b0dc92651336c8cbffc9c59",
+      "ceph-storageclass-cephfs.yaml": "82d949bda7dd57643f909375bebcaa3f076ebab3e6135cbce3e27f4c7be83ac9",
+      "ceph-storageclass-rbd.yaml": "f8d9154647a1e3a455b590820ad2b01ea71de63f789cb3627f60d0e5d8858b5c",
+      "ceph-tasks-main.yaml": "867a5e64f163647f42855f3d6ca7ce6003cb2f27644518eff7584e5bf31a0366",
+      "ceph-toolbox.yaml": "5961bec06b4f63819a2f44b92034d1e55ab006cc00121f65f116450ce26fe77f",
+      "cert-manager-connection.md": "354fa42a48c7f7ab3fc8f0995404fd7c6d28ada35eb0badd6024360b2bee96f7",
+      "cert-manager-internal-ca.yaml": "4db5b211673fc7c3d63de900552ffe592ec5a84434e205730e59008ba63a164a",
+      "cert-manager-tasks-main.yaml": "e53d25ad89e854ac65717f244eca96cc1c7c80b0ab9f88c58e0a60b2682575f4",
+      "cert-manager-values.yaml": "476242516d12dfe057533f763892d7d6767ba915e521ef26b62eadf244c5efea",
+      "cert-manager-verify.sh": "c357c1e1180a6018adb0fd93837524488472edd8f801a31dcb665ac4a2313051",
+      "kubeflow-connection.md": "4ee9a2be69c76dc8b322a9503e81b3c4c2e69fb8cb3861b496af16ae1036bb3f",
+      "kubeflow-install.sh": "5196e08f5dbe4bfbd2915bb736b88c857a99b6c6a5e34bc73842da67e0af7cc5",
+      "kubeflow-site.yaml": "1ce922029bdd254cf9eb4de904260d27a7792004ed927dbd3bc559799ff6624e",
+      "kubeflow-tasks-main.yaml": "bf55ea41d23fc457f2e0ed1752ac938aeb4f853cc2650d3adc11e4d1ae43c0d7",
+      "kubeflow-verify.sh": "1a86eddda59b8f220577f33772ac088d1fb6f682e8f589a6d7e98a105524a204",
+      "kubeovn-README.md": "1fd016b81b207fc07313df920bb3d4804884d17aae999e07ea8e64d57aedb3a6",
+      "kubeovn-host-preflight.sh": "6c10625bd5538f485d04dc1530043ff4fedac41ba222596da822560d45abc995",
+      "kubeovn-kubeovn-install.yaml": "ead8aabd0392d5704094890ef2fed28908b775e58f8a266c300dae66ee2613b4",
+      "kubeovn-tasks-main.yaml": "ba923982405d11d1af3b53b8f0b854e448315591489650e9424d906bdf58f367",
+      "rustfs-connection.md": "6be15f425cf74743f96835f960d0f81febeaaab509e8178f3f83ea8b95c553a9",
+      "rustfs-native-tls.yaml": "7f1fb903e764c5179e953dd293a79bbd6540220a827140554df4048e0d77ca7e",
+      "rustfs-post-render.sh": "702e52d521cd8287f13b303c750339b92b32754e28ae0930d5ad5ccb9dca8c83",
+      "rustfs-prepare.sh": "3a9112de55649de7e234dcc2a037a7d911837431cc0f7c4444d5a9241e053ae6",
+      "rustfs-tasks-main.yaml": "c1a57f7731cdfb24b38612ba35fbd17fa23184b187f5f30dc5d65f2138fe90f1",
+      "rustfs-values.yaml": "b80850799af2340033d14fc7c3c81a98c24ac162d421fc04122a865a53c835b3",
+      "rustfs-verify.sh": "f75fcf6caeaaa9241061124bce5e5f1934ba005c6da0035f1d6fa76c232a290f"
+    }
+  },
+  "acceptance_sources": {
+    "docs/execution/kf-env-p00/scripts/inspect-workspace.py": "14253e57c107d64d9331ee619a66373634ee693d148e63e5bfb926435c8390b7",
+    "docs/execution/kf-env-p00/scripts/check-workload-boundary.py": "f67756ee450f1cc22870d69c929ce78a2c434cb86f16c80039c88e24185711bd",
+    "docs/execution/kf-env-p00/scripts/check-entry-matrix.py": "9fb2000c163e99989fdbae90a50e06d2b25004a3204dc84d248de1cca997a0d7",
+    "docs/execution/kf-env-p00/scripts/check-s3-data.py": "106bed3956248e8a24a81cdc92049f9a54bb475df8337a69cf30eeb5d1453f3d"
+  },
+  "model": {
+    "format": "joblib1.4.2/sklearn1.5.2",
+    "reference_integration_sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+    "fixed_inputs": [
+      [
+        0,
+        0
+      ],
+      [
+        10,
+        10
+      ],
+      [
+        20,
+        20
+      ]
+    ],
+    "expected": [
+      0,
+      1,
+      2
+    ]
+  },
+  "restore": "NOT_RUN",
+  "unified_clean_install": "NOT_RUN",
+  "new_cluster_acceptance": "NOT_RUN",
+  "acceptance_orchestration": {
+    "stage2-final-runner.py": "80af62739bd129fad60e1c7bb0485e15e8cb8b507512b7351abfffa583275ace",
+    "stage1-final-runner.py": "4d441a3574444e360f5c5b95569105ba6e63605ea6aa74530a0cdf19e8c0aa82",
+    "supplemental-final-runner.py": "d7da250f7bb948ae30429af4fe10864c5f653eb84406a51413a1dd90e93f53da",
+    "stage1-admission-regression-attempt-03.py": "f29efa9e59662bbdaa02602c70020fd185a73fa78fdc9aaa2c6e06f0856403b5"
+  }
+}

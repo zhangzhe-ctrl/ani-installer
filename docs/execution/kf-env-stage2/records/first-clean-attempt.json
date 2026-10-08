@@ -1,0 +1,93 @@
+{
+  "schema": "ani.kubeflow.stage2-first-clean-attempt.v1",
+  "source_sha": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+  "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+  "unified_first_install": {
+    "status": "PASS",
+    "direct_exit_code": 0,
+    "run_id": "ani-ani-kf-stage2-20261008-171805",
+    "completed": "2026-10-08T17:41:11.338122+00:00"
+  },
+  "stage2_checks": {
+    "stage2-main-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-main-clean-attempt-01/report.json"
+    },
+    "stage2-contract-notebook-resume-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-contract-notebook-resume-clean-attempt-01/report.json"
+    },
+    "stage2-contract-predictor-recreate-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-contract-predictor-recreate-clean-attempt-01/report.json"
+    },
+    "stage2-contract-model-path-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-contract-model-path-clean-attempt-01/report.json"
+    },
+    "stage2-contract-model-credential-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-contract-model-credential-clean-attempt-01/report.json"
+    },
+    "stage2-protection-clean-attempt-01": {
+      "source_commit": "ff7c14e9d29d96ed0f6deced7562d67211ff706c",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "exit_code": 0,
+      "report": "/var/lib/ani-installer/ani-kf-stage2/logs/stage2-protection-clean-attempt-01/report.json"
+    }
+  },
+  "first_stage_success_attempt": {
+    "status": "FAIL",
+    "actual_run_state": "FAILED",
+    "run_id": "eaec1012-0609-45f9-8145-412639aa0a8f",
+    "execution": "env-ebb120d26c564d9c",
+    "workspace": {
+      "name": "ani-kfp-workspace-env-ebb120d26c564d9c",
+      "uid": "97505183-c3ed-4d9b-9784-f92aae9e6e22"
+    },
+    "cause": "JobSet GET/list returned 429 storage is (re)initializing after actual training completed; Retry-After 1",
+    "original_identity_readback": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/stage1-clean-first-error-attempt-01/jobset-read-by-original-identity.json",
+    "redacted_error": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/stage1-clean-first-error-attempt-01/first-error-redacted.json"
+  },
+  "fix_source_sha": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+  "fix_semantics": "GET-only 429 retry, five attempts maximum, delay 1..5 seconds; mutations and authorization errors are not retried",
+  "real_fix_regression": {
+    "success": {
+      "mode": "success",
+      "namespace": "ani-kfp-probe-a",
+      "exit_code": 0,
+      "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "private_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/private/stage1-success-read429-integration-attempt-01/output/private-report.json"
+    },
+    "fail": {
+      "mode": "fail",
+      "namespace": "ani-kfp-probe-b",
+      "exit_code": 0,
+      "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "private_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/private/stage1-fail-read429-integration-attempt-01/output/private-report.json"
+    },
+    "stop": {
+      "mode": "stop",
+      "namespace": "ani-kfp-probe-b",
+      "exit_code": 0,
+      "source_commit": "f8ca074473e6413ba5027ab4a003a42f99cf33c1",
+      "cluster_uid": "941f4bfe-323d-4c05-ae8a-3515d7139066",
+      "private_report": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/private/stage1-stop-read429-integration-attempt-01/output/private-report.json"
+    }
+  },
+  "unique_output_preservation": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/unique-output-preservation-current941/index.json",
+  "later_restore": "/home/chabking/ani-installer-runs/kf-env-stage2-20261008/clean-restore-attempt-02/index.json",
+  "acceptance": "Original failed Run remains FAIL; final environment acceptance must use new UID and final candidate"
+}
