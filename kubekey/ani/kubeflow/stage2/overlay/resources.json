@@ -65236,6 +65236,7 @@
     "kind": "Role",
     "metadata": {
       "name": "kserve-leader-election-role",
+      "namespace": "kserve",
       "labels": {
         "ani.io/kubeflow-release": "26.03-kubeflow-stage2-v1"
       }
@@ -65303,6 +65304,7 @@
     "kind": "RoleBinding",
     "metadata": {
       "name": "kserve-leader-election-rolebinding",
+      "namespace": "kserve",
       "labels": {
         "ani.io/kubeflow-release": "26.03-kubeflow-stage2-v1"
       }
@@ -65378,7 +65380,8 @@
         "app.kubernetes.io/name": "kserve-controller-manager",
         "ani.io/kubeflow-release": "26.03-kubeflow-stage2-v1"
       },
-      "name": "kserve-controller-manager"
+      "name": "kserve-controller-manager",
+      "namespace": "kserve"
     }
   },
   {

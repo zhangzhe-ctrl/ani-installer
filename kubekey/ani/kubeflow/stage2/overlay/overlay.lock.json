@@ -11,7 +11,7 @@
     "kserve-controller": "048df23c2be85457139eeff26a589dd2c864bad788dd3de5a6ad98065abc071d",
     "kserve-runtime": "41671ccec9ded476ec83d3d72ea696acc5b5ba67c328920455f38aa9cf8896b0"
   },
-  "resources_sha256": "8b17296f5164b170604ef346e0386d663dd510f48efed41238edaaea6d2c9786",
+  "resources_sha256": "e1eb96a90b60af98fad1331e8d674227659f9a5033c0d2abc25a8548b8a9ddf7",
   "resource_count": 44,
   "inventory": [
     {
@@ -197,13 +197,13 @@
     {
       "kind": "Role",
       "name": "kserve-leader-election-role",
-      "namespace": null,
+      "namespace": "kserve",
       "action": "replace"
     },
     {
       "kind": "RoleBinding",
       "name": "kserve-leader-election-rolebinding",
-      "namespace": null,
+      "namespace": "kserve",
       "action": "replace"
     },
     {
@@ -221,7 +221,7 @@
     {
       "kind": "ServiceAccount",
       "name": "kserve-controller-manager",
-      "namespace": null,
+      "namespace": "kserve",
       "action": "replace"
     },
     {
