@@ -346,7 +346,7 @@ platforms:
             name: ANI_PROBE_NODE
           nodeSelector:
             labels:
-              kubernetes.io/hostname: ani-01
+              kubernetes.io/hostname: node1
           pvcMount:
           - componentInputParameter: claim
             mountPath: /workspace
