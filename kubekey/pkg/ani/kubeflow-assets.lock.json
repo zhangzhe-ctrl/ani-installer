@@ -1,7 +1,7 @@
 {
   "schema": "ani.kubeflow.assets.v1",
   "release": "26.03-kubeflow-stage2-v1",
-  "generatedFromCommit": "032044a5a21600b79abbed5219ea83abbdc87f51",
+  "generatedFromCommit": "0937f10b1eb28cf1f34144eca41e5135ed3d4c39",
   "files": {
     "common.py": "c766c6efdbff0f614a3bb7ab08b68be29f9bf9c66c120599ee48f13ac7c33d77",
     "resources.py": "3e23e38caf49533b9575f1dbb70da93a62da9862d853551da95e040dedd5716d",
@@ -24,6 +24,7 @@
     "kernel-probe.py": "0913c4e3e512ccc61c0834c36366803d5244e0bbe48d90ff60dc07cd5c391178",
     "model.py": "655f0edce6514b7cb963a1ce51e8eda5dd57399bbd987a76c5681f50c773fc3b",
     "stage2-probe-main.py": "140e2ee84f5226e2fec051523554ae2e6d35f1322fddffbc29c99b5f0b96838e",
-    "stage2-probe-contracts.py": "7e62af9d8de1882d3ae5f87b4afcc6e37e653ad551322ebdb2847243b77be734"
+    "stage2-probe-contracts.py": "7e62af9d8de1882d3ae5f87b4afcc6e37e653ad551322ebdb2847243b77be734",
+    "stage2-probe-protection.py": "46ab6d4a85029ae34838e067f173d11c75417e72da0f96ec890008e4150471b2"
   }
 }
