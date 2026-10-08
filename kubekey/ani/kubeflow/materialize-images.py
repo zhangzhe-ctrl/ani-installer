@@ -4,12 +4,14 @@ import argparse
 import hashlib
 import json
 import pathlib
+import shutil
 import subprocess
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--lock", type=pathlib.Path, required=True)
 parser.add_argument("--output", type=pathlib.Path, required=True)
 parser.add_argument("--source-commit", required=True)
+parser.add_argument("--reuse", type=pathlib.Path, help="reuse only completed entries after rechecking every byte")
 args = parser.parse_args()
 lock = json.loads(args.lock.read_text())
 if lock["status"] != "SOURCE_IDENTITIES_COLLECTED":
@@ -25,17 +27,25 @@ def persist():
 
 
 persist()
+reusable = {}
+if args.reuse:
+    previous = json.loads((args.reuse / "materialization.json").read_text())
+    reusable = {row["original_ref"]: row for row in previous["images"]}
 for row in lock["images"]:
     ref = row["original_ref"].rsplit(":", 1)[0] + "@" + row["amd64_manifest_digest"]
     directory = args.output / hashlib.sha256(row["original_ref"].encode()).hexdigest()[:16]
     print("materializing " + row["original_ref"], flush=True)
-    result = subprocess.run(["skopeo", "copy", "--preserve-digests", "docker://" + ref,
-                             "dir:" + str(directory)], capture_output=True, timeout=1200)
-    if result.returncode:
-        record.update(status="FAIL", first_error={"image": row["original_ref"],
-                                                   "exit_code": result.returncode})
-        persist()
-        raise RuntimeError("skopeo failed for " + row["original_ref"] + ": " + result.stderr.decode())
+    old = reusable.get(row["original_ref"])
+    if old and old["amd64_manifest_digest"] == row["amd64_manifest_digest"]:
+        shutil.copytree(args.reuse / old["directory"], directory)
+    else:
+        result = subprocess.run(["skopeo", "copy", "--retry-times", "2", "--preserve-digests", "docker://" + ref,
+                                 "dir:" + str(directory)], capture_output=True, timeout=1200)
+        if result.returncode:
+            record.update(status="FAIL", first_error={"image": row["original_ref"],
+                                                       "exit_code": result.returncode})
+            persist()
+            raise RuntimeError("skopeo failed for " + row["original_ref"] + ": " + result.stderr.decode())
     manifest = (directory / "manifest.json").read_bytes()
     if "sha256:" + hashlib.sha256(manifest).hexdigest() != row["amd64_manifest_digest"]:
         raise ValueError("copied manifest digest changed: " + ref)

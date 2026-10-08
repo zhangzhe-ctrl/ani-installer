@@ -1,0 +1,66 @@
+{
+  "schema": "ani.kubeflow.source-images.v1",
+  "source_commit": "24345577b19073e168600896843b19da1c04eddc",
+  "status": "SOURCE_IDENTITIES_COLLECTED",
+  "blob_materialization": "NOT_RUN",
+  "registry_readback": "NOT_RUN",
+  "runtime_pull": "NOT_RUN",
+  "images": [
+    {
+      "original_ref": "docker.io/kserve/agent:v0.16.0",
+      "source_manifest_digest": "sha256:0cd267870e575a22351f9028e5df88fac1151aa25e8c3f64b7ec337852792e0e",
+      "amd64_manifest_digest": "sha256:2a460b5e88fd92ec6ad1234b22dd13d189c380de29add5ed8c35a586cdac0940",
+      "platform": "linux/amd64",
+      "source_evidence": "573c214e1d1bd487.source.json",
+      "platform_evidence": "573c214e1d1bd487.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/kserve/kserve-controller:v0.16.0",
+      "source_manifest_digest": "sha256:4d89de192a7961a4fa456270e8d52de0b6f6d3e301fd16d150618f052653ddf6",
+      "amd64_manifest_digest": "sha256:63be9b379fbd19b300564c85fdd68963866ed19fd98abac670941bf8f7337671",
+      "platform": "linux/amd64",
+      "source_evidence": "51e35659af80a707.source.json",
+      "platform_evidence": "51e35659af80a707.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/kserve/router:v0.16.0",
+      "source_manifest_digest": "sha256:5705ec62b1347235994a59427cfe3fd7703c01dbcef3698f1c9841436188b619",
+      "amd64_manifest_digest": "sha256:eccb7cac3a9b040e4243377d58a61c17660e611ec4634b76a954f76a1aede7f8",
+      "platform": "linux/amd64",
+      "source_evidence": "6259d66050f54e02.source.json",
+      "platform_evidence": "6259d66050f54e02.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/kserve/sklearnserver:v0.16.0",
+      "source_manifest_digest": "sha256:8a056cec05d5b02c38cbcd7dfe6f16df8a55561eb9b0eebce1daf0da9557c37e",
+      "amd64_manifest_digest": "sha256:75d24f17ea0c158c5c8169ed178c4942a8ebe888e45fc0100be64665ce4cd03e",
+      "platform": "linux/amd64",
+      "source_evidence": "96804ac862010d3d.source.json",
+      "platform_evidence": "96804ac862010d3d.amd64.json"
+    },
+    {
+      "original_ref": "docker.io/kserve/storage-initializer:v0.16.0",
+      "source_manifest_digest": "sha256:a8014719af179c9f64114fea043bba4179ed21426c3f71448e8076db3edc2aea",
+      "amd64_manifest_digest": "sha256:b1b719a157232b0927dea75ae27126a2f235a08d92b41f2459f25eea8bd6c039",
+      "platform": "linux/amd64",
+      "source_evidence": "3703dcd8e0e50d20.source.json",
+      "platform_evidence": "3703dcd8e0e50d20.amd64.json"
+    },
+    {
+      "original_ref": "ghcr.io/kubeflow/kubeflow/notebook-controller:v1.10.0",
+      "source_manifest_digest": "sha256:a13f6056e7a6354df6426643ad38724bd08971a454109b622002ba3cf5593bb3",
+      "amd64_manifest_digest": "sha256:a0dda5d62845057c73f2984d599770ea05f5067d50583fbd388687069e843bd9",
+      "platform": "linux/amd64",
+      "source_evidence": "a6aa71a18ac1f413.source.json",
+      "platform_evidence": "a6aa71a18ac1f413.amd64.json"
+    },
+    {
+      "original_ref": "quay.io/brancz/kube-rbac-proxy:v0.18.0",
+      "source_manifest_digest": "sha256:754ab2a723c8fc7ea8e09ae1224f8af5be91849b8b2f2a3735c6237f1c534187",
+      "amd64_manifest_digest": "sha256:62eeb8a0aaa13a8d886de07e5805940cec079ffbaf1d74483e26ad4a84952dce",
+      "platform": "linux/amd64",
+      "source_evidence": "7b56ad257f7d6435.source.json",
+      "platform_evidence": "7b56ad257f7d6435.amd64.json"
+    }
+  ]
+}

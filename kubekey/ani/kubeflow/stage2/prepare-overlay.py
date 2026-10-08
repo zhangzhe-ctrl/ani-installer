@@ -64,11 +64,19 @@ def main():
     resources.append({"apiVersion": "v1", "kind": "Namespace", "metadata": {"name": "kserve"}})
     inventory = []
     references = set()
+    final = []
     for value in resources:
         original = copy.deepcopy(value)
         kind, name = value["kind"], value["metadata"]["name"]
         if kind == "Issuer" and name == "selfsigned-issuer":
             inventory.append({"kind": kind, "name": name, "action": "exclude", "reason": "reuse the installed ani-ca ClusterIssuer"})
+            continue
+        if kind == "ValidatingWebhookConfiguration" and name in (
+                "llminferenceservice.serving.kserve.io", "llminferenceserviceconfig.serving.kserve.io"):
+            # v0.16 cmd/manager/main.go registers neither endpoint. They belong
+            # to the separate, unselected LLM controller, not Standard serving.
+            inventory.append({"kind": kind, "name": name, "action": "exclude",
+                              "reason": "endpoint is absent from the selected v0.16 Standard manager"})
             continue
         if kind == "Certificate":
             value["spec"]["issuerRef"] = {"kind": "ClusterIssuer", "name": "ani-ca"}
@@ -126,7 +134,7 @@ def main():
         value["metadata"].setdefault("labels", {})["ani.io/kubeflow-release"] = RELEASE
         inventory.append({"kind": kind, "name": name, "namespace": value["metadata"].get("namespace"),
                           "action": "replace" if value != original else "keep"})
-    final = [v for v in resources if not (v["kind"] == "Issuer" and v["metadata"]["name"] == "selfsigned-issuer")]
+        final.append(value)
     raw = (json.dumps(final, indent=2) + "\n").encode()
     (args.output / "resources.json").write_bytes(raw)
     (args.output / "source-images.json").write_text(json.dumps(sorted(references), indent=2) + "\n")
