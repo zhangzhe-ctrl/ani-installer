@@ -1,8 +1,9 @@
 """The Notebook/KServe portion of the same first-install role."""
 import hashlib
 import json
+import secrets
 
-from common import identity
+from common import identity, decode
 from resources import obj, network, peers, ports
 
 WORKSPACE_IMAGE = "ani.local/kubeflow-jupyter:26.03-stage2-v1"
@@ -137,6 +138,15 @@ def install(cluster, root, report, ca):
         contracts = namespace_contract(cluster.site, namespace, ca)
         cluster.apply(contracts[:1])
         cluster.apply(contracts[1:])
+        auth = obj("Secret", "ani-jupyter-auth", namespace, type="Opaque")
+        old = cluster.owned(auth)
+        if old:
+            token = decode(old, "token")
+            if old.get("type") != "Opaque" or len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
+                raise ValueError("Jupyter token binding differs; no rotation")
+        else:
+            auth["stringData"] = {"token": secrets.token_hex(32)}
+            cluster.apply([auth])
     report["completedPhases"].append("NOTEBOOK_KSERVE_STANDARD_CONTROLLERS_WEBHOOKS_RUNTIME")
 
 

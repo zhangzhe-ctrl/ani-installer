@@ -9,8 +9,10 @@ RUN python -m pip install --no-index --find-links=/opt/wheels --require-hashes -
     && mkdir -p /home/jovyan /opt/ani \
     && chown 1000:1000 /home/jovyan
 COPY model.py /opt/ani/model.py
+COPY start.py /opt/ani/start.py
+COPY kernel-probe.py /opt/ani/kernel-probe.py
 ENV HOME=/home/jovyan PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/ani
 USER 1000:1000
 WORKDIR /home/jovyan
 EXPOSE 8888
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.root_dir=/home/jovyan"]
+CMD ["python", "/opt/ani/start.py"]

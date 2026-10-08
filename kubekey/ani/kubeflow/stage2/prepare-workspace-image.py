@@ -18,6 +18,8 @@ def main():
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--storage-root", type=pathlib.Path, required=True)
     parser.add_argument("--run-root", type=pathlib.Path, required=True)
+    parser.add_argument("--reuse-download", type=pathlib.Path,
+                        help="reuse a completed identical wheel download; bytes are rehashed and pip checks closure")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[3]
     head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
@@ -40,7 +42,7 @@ def main():
                        "\nrunroot=" + json.dumps(str(args.run_root)) + "\n")
     os.environ["CONTAINERS_STORAGE_CONF"] = str(storage)
     source = pathlib.Path(__file__).parent / "workspace"
-    for name in ("requirements.in", "Containerfile", "model.py"):
+    for name in ("requirements.in", "Containerfile", "model.py", "start.py", "kernel-probe.py"):
         shutil.copyfile(source / name, args.output / name)
     (args.output / "wheels").mkdir()
     tag = "localhost/ani-kubeflow-jupyter:stage2-" + head[:12]
@@ -64,16 +66,33 @@ def main():
 
     persist()
     run("pull-fixed-base", ["podman", "pull", "--arch=amd64", base])
-    run("resolve-wheels", ["podman", "run", "--rm", "--pull=never", "--network=host", "--user=0:0",
-        "-v", str(args.output) + ":/build:Z", base, "python", "-m", "pip", "download",
-        "--only-binary=:all:", "--dest=/build/wheels", "-r", "/build/requirements.in"])
+    if args.reuse_download:
+        if (args.reuse_download / "requirements.in").read_bytes() != (source / "requirements.in").read_bytes():
+            raise ValueError("wheel reuse has different requested requirements")
+        previous = json.loads((args.reuse_download / "workspace-image.lock.json").read_text())
+        if not any(v["name"] == "resolve-wheels" and v["exit_code"] == 0 for v in previous["steps"]):
+            raise ValueError("prior wheel download did not complete")
+        for path in (args.reuse_download / "wheels").iterdir():
+            if not path.is_file() or path.suffix != ".whl":
+                raise ValueError("wheel reuse contains a non-wheel entry")
+            shutil.copyfile(path, args.output / "wheels" / path.name)
+        record["reused_download"] = str(args.reuse_download)
+    else:
+        run("resolve-wheels", ["podman", "run", "--rm", "--pull=never", "--network=host", "--user=0:0",
+            "-v", str(args.output) + ":/build:Z", base, "python", "-m", "pip", "download",
+            "--only-binary=:all:", "--dest=/build/wheels", "-r", "/build/requirements.in"])
     requirements = []
+    seen = set()
     for path in sorted((args.output / "wheels").glob("*.whl")):
         with zipfile.ZipFile(path) as wheel:
-            names = [n for n in wheel.namelist() if n.endswith(".dist-info/METADATA")]
+            names = [n for n in wheel.namelist() if n.endswith(".dist-info/METADATA") and n.count("/") == 1]
             if len(names) != 1:
                 raise ValueError("ambiguous wheel metadata")
             metadata = email.message_from_bytes(wheel.read(names[0]))
+        canonical = metadata["Name"].lower().replace("_", "-")
+        if canonical in seen:
+            raise ValueError("duplicate package in workspace wheel set")
+        seen.add(canonical)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         record["wheels"].append({"name": metadata["Name"], "version": metadata["Version"],
                                 "file": path.name, "sha256": digest})
