@@ -5,6 +5,7 @@ import copy
 import json
 import sys
 import tempfile
+import runpy
 import unittest
 from unittest import mock
 
@@ -469,6 +470,28 @@ class Stage2Protection(unittest.TestCase):
         default = next(v for v in values if v["kind"] == "NetworkPolicy" and v["metadata"]["name"] == "ani-stage2-default")
         self.assertEqual(default["spec"]["ingress"], [])
         self.assertEqual({p["port"] for rule in default["spec"]["egress"] for p in rule["ports"]}, {53})
+
+
+class MainProbeResume(unittest.TestCase):
+    def test_resume_keeps_original_uids_and_rejects_replacement_or_kernel_outputs(self):
+        resume = runpy.run_path(str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow/stage2/probe-main.py"))["resume_workspace"]
+        site = {"workspace_class": "ani-cephfs", "workspace_max_size": "5Gi", "images": {stage2.WORKSPACE_IMAGE: "registry/jupyter@sha256:" + "a" * 64}}
+        pvc, notebook = stage2.notebook(site, stage2.NAMESPACES[0], "native", "case-a")
+        claim, native = copy.deepcopy(pvc), copy.deepcopy(notebook)
+        claim["metadata"]["uid"], native["metadata"]["uid"] = "original-pvc", "original-notebook"
+        claim["status"] = {"phase": "Bound"}
+        cluster = mock.Mock()
+        cluster.owned.side_effect = lambda value: claim if value["kind"] == "PersistentVolumeClaim" else native
+        previous = {"status": "FAIL", "namespace": stage2.NAMESPACES[0], "run_id": "case-a",
+                    "workspace": {"name": pvc["metadata"]["name"], "uid": claim["metadata"]["uid"]},
+                    "notebook": {"name": "native", "uid": native["metadata"]["uid"]}}
+        self.assertEqual(resume(cluster, previous, stage2.NAMESPACES[0], "case-a", pvc, notebook)["metadata"]["uid"], "original-pvc")
+        for key in ("workspace", "notebook"):
+            wrong = copy.deepcopy(previous); wrong[key]["uid"] = "replacement"
+            with self.assertRaisesRegex(ValueError, "identity differs"):
+                resume(cluster, wrong, stage2.NAMESPACES[0], "case-a", pvc, notebook)
+        with self.assertRaisesRegex(ValueError, "pre-kernel"):
+            resume(cluster, {**previous, "kernel": {}}, stage2.NAMESPACES[0], "case-a", pvc, notebook)
 
 
 class ExplicitResourceScope(unittest.TestCase):

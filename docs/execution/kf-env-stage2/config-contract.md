@@ -14,7 +14,7 @@ KFP 2.16.0、Trainer 2.1.0、JobSet 0.10.1 沿用 BASE_SHA 锁定字节。Notebo
 
 安装器准备两个独立环境探针 Namespace `ani-kf-stage2-a/b`、SA、配额、NetworkPolicy、Jupyter token Secret、模型 writer/reader Secret 与 CA ConfigMap。受限管理员探针另外创建 PVC 和 Notebook CR；这不是产品生命周期后端。Notebook 的工作负载与 KFP pipeline-runner 权限分开。
 
-每个探针 Namespace 一张独立 `ani-notebook-workspace` PVC，RWX、站点 workspace StorageClass/maxSize，挂载 `/home/jovyan`，UID/GID/fsGroup 1000。Notebook Controller 创建 StatefulSet/Pod/Service；原生 Jupyter 端口 8888，base path `/notebook/<namespace>/<name>/`。使用 Secret token 和受限管理员连接，port-forward 只绑定受管主机的 127.0.0.1。停止用 Notebook 的 `kubeflow-resource-stopped` 注解，恢复移除注解；不缩放子 StatefulSet。独立 PVC 不由 Notebook ownerReference 回收。
+每个探针 Namespace 一张独立 `ani-notebook-workspace` PVC，RWX、站点 workspace StorageClass/maxSize，挂载 `/home/jovyan`，UID/GID/fsGroup 1000。Notebook Controller 创建 StatefulSet/Pod/Service；内部 Service 的 80 端口映射容器原生 Jupyter 8888，base path `/notebook/<namespace>/<name>/`。使用 Secret token 和受限管理员连接，port-forward 只绑定受管主机的 127.0.0.1。停止用 Notebook 的 `kubeflow-resource-stopped` 注解，恢复移除注解；不缩放子 StatefulSet。独立 PVC 不由 Notebook ownerReference 回收。
 
 工作区镜像固定 Python 3.11.14、sklearn 1.5.2、joblib 1.4.2、JupyterLab 4.4.10，全部 wheel 与 OCI 镜像字节闭合。摘要在源锁和 `ani/images.tsv`；运行时不安装依赖。固定生成代码在 `workspace/model.py`，DecisionTreeClassifier、random_seed=42、joblib 模型文件 `model.joblib`；实际主链记录模型 SHA256 与 S3 key。固定输入 `[[0,0],[10,10],[20,20]]`，期望 `[0,1,2]`。
 

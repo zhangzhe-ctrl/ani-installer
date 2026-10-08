@@ -103,6 +103,44 @@ def main():
     run("verify-model", ["podman", "run", "--rm", "--pull=never", "--network=none", tag, "python", "-c",
         "import json,jupyterlab,ipykernel,model; print(json.dumps(model.generate('/tmp/model'))); "
         "assert jupyterlab.__version__ == '4.4.10'; assert ipykernel.__version__ == '6.30.1'"])
+    # Exercise the actual entry point and native authentication offline. An
+    # import/model check alone misses invalid Jupyter configuration traits.
+    smoke = r'''
+import json,os,subprocess,time,urllib.request,urllib.error
+token='offline-build-smoke-token'
+prefix='/notebook/build/smoke/'
+process=subprocess.Popen(['python','/opt/ani/start.py'],env=dict(os.environ,JUPYTER_TOKEN=token,NB_PREFIX=prefix))
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+def request(path,method='GET',value=None,authenticated=True):
+    headers={'Authorization':'token '+token} if authenticated else {}
+    headers['Content-Type']='application/json'
+    req=urllib.request.Request('http://127.0.0.1:8888'+prefix+path,headers=headers,method=method,
+        data=None if value is None else json.dumps(value).encode())
+    with opener.open(req,timeout=5) as response:return response.read()
+try:
+    deadline=time.monotonic()+45
+    while True:
+        if process.poll() is not None:raise RuntimeError('native Jupyter entry exited')
+        try:
+            assert request('lab');break
+        except urllib.error.URLError:
+            if time.monotonic()>deadline:raise
+            time.sleep(1)
+    try:
+        request('api/kernels',authenticated=False)
+        raise RuntimeError('native API admitted an unauthenticated request')
+    except urllib.error.HTTPError as error:
+        assert error.code==403
+    kernel=json.loads(request('api/kernels','POST',{'name':'python3'}))
+    assert kernel['name']=='python3'
+    request('api/kernels/'+kernel['id'],'DELETE')
+    print(json.dumps({'native_jupyter_startup':'PASS','token_auth':'PASS','kernel_creation':'PASS'}))
+finally:
+    process.terminate()
+    try:process.wait(timeout=10)
+    except subprocess.TimeoutExpired:process.kill();process.wait(timeout=10)
+'''
+    run("verify-native-server", ["podman", "run", "--rm", "--pull=never", "--network=none", tag, "python", "-c", smoke])
     run("save-image", ["podman", "save", "--format=oci-archive", "--output=" + str(args.output / "workspace.oci.tar"), tag])
     run("copy-image", ["skopeo", "copy", "--preserve-digests", "oci-archive:" + str(args.output / "workspace.oci.tar"),
                        "dir:" + str(args.output / "image")])

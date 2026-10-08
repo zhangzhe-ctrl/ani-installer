@@ -9,6 +9,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 import uuid
 
 import websocket
@@ -34,7 +35,15 @@ def main():
         with opener.open(req, timeout=30) as response:
             return response.read()
 
-    lab = request("lab").decode()
+    deadline = time.monotonic() + 45
+    while True:
+        try:
+            lab = request("lab").decode()
+            break
+        except urllib.error.URLError as error:
+            if isinstance(error, urllib.error.HTTPError) or time.monotonic() >= deadline:
+                raise
+            time.sleep(1)
     sources = re.findall(r'<script[^>]+src="([^"]+)"', lab)
     sources = [p for p in sources if "static/" in p]
     if not sources:

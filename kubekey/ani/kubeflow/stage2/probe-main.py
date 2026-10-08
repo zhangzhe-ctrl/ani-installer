@@ -59,7 +59,25 @@ def predict(cluster, namespace, name):
                 process.kill(); process.wait(timeout=10)
 
 
-def execute(cluster, root, run_id, report):
+def resume_workspace(cluster, previous, namespace, run_id, pvc, notebook):
+    if (previous.get("status") != "FAIL" or previous.get("namespace") != namespace
+            or previous.get("run_id") != run_id
+            or any(key in previous for key in ("kernel", "s3", "inference_service"))):
+        raise ValueError("only a failed pre-kernel main probe can resume its original workspace")
+    claim, native = cluster.owned(pvc), cluster.owned(notebook)
+    for key, live, desired in (("workspace", claim, pvc), ("notebook", native, notebook)):
+        recorded = previous.get(key, {})
+        if (not live or recorded.get("name") != desired["metadata"]["name"]
+                or recorded.get("uid") != live["metadata"]["uid"]):
+            raise ValueError("original resume resource identity differs: " + key)
+    if (claim.get("status", {}).get("phase") != "Bound" or claim["metadata"].get("ownerReferences")
+            or claim["spec"]["storageClassName"] != pvc["spec"]["storageClassName"]
+            or claim["spec"]["resources"]["requests"]["storage"] != pvc["spec"]["resources"]["requests"]["storage"]):
+        raise ValueError("original resume workspace persistence contract differs")
+    return claim
+
+
+def execute(cluster, root, run_id, report, previous=None):
     report["lock"] = product_lock()
     namespace = stage2.NAMESPACES[0]
     name = "native-" + run_id
@@ -71,10 +89,15 @@ def execute(cluster, root, run_id, report):
     pod = obj("Pod", name + "-0", namespace)
     inference = stage2.inference(namespace, model_name, "s3://ani-kf-stage2-" + namespace + "/models/" + run_id + "/", run_id)
     reader = obj("Pod", "model-readback-" + run_id, namespace)
-    for value in (pvc, notebook, inference, reader):
+    for value in ((pvc, notebook, inference, reader) if previous is None else (inference, reader)):
         if cluster.read(value): raise RuntimeError("fresh probe resource already exists: " + identity(value))
-    cluster.apply([pvc])
-    observed_pvc = cluster.wait(pvc, lambda v: v.get("status", {}).get("phase") == "Bound")
+    if previous is None:
+        cluster.apply([pvc])
+        observed_pvc = cluster.wait(pvc, lambda v: v.get("status", {}).get("phase") == "Bound")
+    else:
+        observed_pvc = resume_workspace(cluster, previous, namespace, run_id, pvc, notebook)
+        report["resumption"] = {"original_notebook_uid": previous["notebook"]["uid"],
+                                "original_workspace_uid": previous["workspace"]["uid"], "new_workspace_creates": 0}
     report["workspace"] = {"name": pvc["metadata"]["name"], "uid": observed_pvc["metadata"]["uid"],
                            "class": observed_pvc["spec"]["storageClassName"], "size": observed_pvc["spec"]["resources"]["requests"]["storage"]}
     atomic(cluster.directory / "report.json", report)
@@ -91,9 +114,10 @@ def execute(cluster, root, run_id, report):
     expected = cluster.site["images"][stage2.WORKSPACE_IMAGE].rsplit("@", 1)[1]
     if observed_pod["status"]["containerStatuses"][0]["imageID"].rsplit("@", 1)[-1] != expected:
         raise RuntimeError("Notebook running image digest differs")
-    observed_service = cluster.wait(service, lambda v: any(p["port"] == 8888 for p in v["spec"]["ports"]))
+    observed_service = cluster.wait(service, lambda v: any(p["port"] == 80 and p["targetPort"] == 8888 for p in v["spec"]["ports"]))
     report["native_resources"] = {"statefulset_uid": observed_sts["metadata"]["uid"], "pod_uid": observed_pod["metadata"]["uid"],
-                                  "service_uid": observed_service["metadata"]["uid"], "base_path": "/notebook/" + namespace + "/" + name + "/"}
+                                  "service_uid": observed_service["metadata"]["uid"], "service_port": 80, "container_port": 8888,
+                                  "base_path": "/notebook/" + namespace + "/" + name + "/"}
     atomic(cluster.directory / "report.json", report)
     # The image probe uses Jupyter REST + shell/iopub WebSocket channels. This
     # kubectl exec only starts that protocol client; it does not train directly.
@@ -141,6 +165,7 @@ def main():
     p.add_argument("--site", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--report-dir", type=pathlib.Path, required=True)
+    p.add_argument("--resume-report", type=pathlib.Path, help="resume only recorded failed pre-kernel Notebook/PVC UIDs; never replace data")
     a = p.parse_args()
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,35}", a.run_id): raise ValueError("invalid bounded run id")
     os.umask(0o077)
@@ -149,9 +174,15 @@ def main():
     cluster = Cluster(site, a.report_dir)
     report = {"schema": "ani.kubeflow.stage2-main.v1", "release": site["release"], "run_id": a.run_id,
               "namespace": stage2.NAMESPACES[0], "status": "IN_PROGRESS", "started": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    previous = None
+    if a.resume_report:
+        source = a.resume_report.read_bytes()
+        previous = json.loads(source)
+        report["original_report_sha256"] = hashlib.sha256(source).hexdigest()
     atomic(cluster.directory / "report.json", report)
     try:
-        execute(cluster, root, a.run_id, report)
+        report["cluster_uid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
+        execute(cluster, root, a.run_id, report, previous)
     except BaseException as error:
         report.update(status="FAIL", error=str(error), writes=cluster.writes)
         atomic(cluster.directory / "report.json", report)
