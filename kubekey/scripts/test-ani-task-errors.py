@@ -324,7 +324,7 @@ def test_ceph_apply_sequence(box: Sandbox, res: Result) -> None:
 # ---------------------------------------------------------------------------
 def test_pipeline_failure(box: Sandbox, res: Result) -> None:
     print("T-R03-02 管道前段失败、后段成功，整体必须非零")
-    block = role_task("envoy", "ANI Envoy | Write controller configuration")
+    block = role_task("envoy", "ANI Envoy | Apply final configuration before certificate or controller")
     box.reset()
     rc, _out, err = box.run(block, ANI_TEST_FAIL_SUBSTR="create configmap")
     rows = box.calls()
@@ -431,7 +431,11 @@ def test_every_multicommand_block_stops(box: Sandbox, res: Result) -> None:
             # The consumer of a pipeline always starts; there the exit status is
             # the property under test. A sequential first command must also be
             # the last thing that ran.
-            sequential = "|" not in real_command_lines(command)[0]
+            # Environment exports may precede the first external command. They
+            # do not turn a following producer/consumer pipeline into a sequence.
+            first_external = next(line for line in real_command_lines(command)
+                                  if re.search(r"\b" + re.escape(target[0]) + r"\b", line))
+            sequential = "|" not in first_external
             if not rows:
                 # No command reached the sandbox: either a template placeholder
                 # gates the whole block (this harness does not render templates)
