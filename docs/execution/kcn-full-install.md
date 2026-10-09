@@ -98,6 +98,13 @@ S3 writer/reader/prefix、HTTP/gRPC、TokenReview/audience 仍须正负例通过
 Kube-OVN 必需隔离合同和既有保护门禁保留，历史验收不提升为本轮 live PASS。
 Envoy 测试资源清理必须正常等待，覆盖已知 360 秒终止宽限，不强删。
 
+停止用例核对原 Run 的两个停止请求回执、Workflow
+`activeDeadlineSeconds=0` 与真实 Failed 终态、原 TrainJob Suspended、原训练 Pod
+消失且无替换，以及原工作区保持。KFP 持久化异步采样的 state history 可能跳过
+短暂 `CANCELING`；检查器保留实际历史并单独标记 `observed` / `not_observed`，
+不能把未采样状态补入历史或把 Failed 改写为 Canceled。仅有 FAILED、未确认的
+停止请求、身份错配、未终止 Workflow 或替换训练 Pod 均不能通过。
+
 Milvus 正式 `vector-verify.py` 保留默认 smoke（insert/flush/search/删除自身
 collection），并提供 `--mode write|readback|cleanup --receipt <文件>` 的持久化
 检查阶段。write 保留本次唯一 collection、服务端 collection ID 和原始向量摘要；

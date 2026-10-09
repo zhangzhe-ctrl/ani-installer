@@ -260,9 +260,14 @@ def verify_stopped(args, record, pipeline, core, custom, observed):
     states = [row["state"] for row in history or []]
     # KFP e4ebca3 terminates by activeDeadlineSeconds=0. Its IsTerminating
     # predicate excludes final Workflows, so persistence reports final Failed.
-    # Require the real CANCELING transition; never relabel this as CANCELED.
-    if observed.state not in ("FAILED", "CANCELED") or "CANCELING" not in states or states[-1] != observed.state:
-        raise RuntimeError("terminal Run lacks the actual cancellation transition")
+    # Persistence samples Workflow state asynchronously. A Workflow may reach
+    # Failed before CANCELING is sampled; the confirmed terminate request,
+    # activeDeadlineSeconds=0 and original suspended job/Pod prove the stop.
+    # Preserve the actual history and terminal state rather than inventing a
+    # missing CANCELING sample or relabeling Failed as Canceled.
+    if (observed.run_id != receipt["kfpRunId"] or observed.state not in ("FAILED", "CANCELED")
+            or not states or "RUNNING" not in states or states[-1] != observed.state):
+        raise RuntimeError("terminal Run identity or actual state history differs")
     pods = core.list_namespaced_pod(args.namespace, _request_timeout=30).items
     control = [p for p in pods if p.metadata.uid == receipt["controlPodUid"]]
     workflow_uid = workflows[0]["metadata"]["uid"]
@@ -275,7 +280,9 @@ def verify_stopped(args, record, pipeline, core, custom, observed):
             if current:
                 raise RuntimeError("controller created a replacement Pod after stop")
             stop.update(result="CONFIRMED", actualExternalPodsGone=True, remainingPodUids=[], workflowUid=workflow_uid,
-                        workflowActiveDeadlineSeconds=0, actualRunState=observed.state, stateHistory=history)
+                        workflowActiveDeadlineSeconds=0, actualRunState=observed.state, stateHistory=history,
+                        cancellationStateHistory="observed" if "CANCELING" in states else "not_observed",
+                        terminationProof="confirmed_requests_original_workflow_deadline_suspended_job_and_pods_gone")
             record["trainJob"]["conditions"] = job["status"]["conditions"]
             return
         time.sleep(3)
