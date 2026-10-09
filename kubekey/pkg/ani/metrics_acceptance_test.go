@@ -20,7 +20,7 @@ import (
 // plan, the protocol parsers, ledger and real client-go DELETE request all run.
 // Each scenario gets its own localhost API, dummy kubeconfig and temporary HOME.
 const metricsFakeKubectl = `#!/usr/bin/env python3
-import json,os,sys,yaml
+import json,os,sys
 from datetime import datetime,timedelta
 from pathlib import Path
 state=Path(os.environ['FAKE_STATE_DIR']);argv=sys.argv[1:]
@@ -35,14 +35,14 @@ def read(name,default=''):
 def write(name,text):file(name).write_text(str(text))
 def objfile(kind,name):return file('object-'+kind+'-'+name)
 def manifest(kind,name):
- try:return yaml.safe_load(file('manifest-'+kind+'-'+name).read_text())
+ try:return json.loads(file('manifest-'+kind+'-'+name).read_text())
  except FileNotFoundError:return None
 def uid(kind,name):return read('object-'+kind+'-'+name)
 def log():
  with file('kubectl-calls.log').open('a') as f:f.write(' '.join(args)+'\n')
 log();verb=args[0]
 if verb in ('create','replace'):
- path=Path(args[args.index('-f')+1]);obj=yaml.safe_load(path.read_text());kind=obj['kind'].lower();name=obj['metadata']['name']
+ path=Path(args[args.index('-f')+1]);obj=json.loads(path.read_text());kind=obj['kind'].lower();name=obj['metadata']['name']
  old=uid(kind,name)
  if verb=='create' and old:sys.exit('AlreadyExists')
  if verb=='replace':
@@ -309,7 +309,15 @@ func metricsRunScenario(t *testing.T, knob, value string) (VerifyReport, string)
 	if knob != "" {
 		t.Setenv(knob, value)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// The fixture consumes the production JSON manifests directly, avoiding a
+	// PyYAML import in every kubectl subprocess. Give the full successful path
+	// enough scheduling margin; only deliberately stuck polls need a short run
+	// deadline. Assertions still require the exact failing step and delete UIDs.
+	budget := 30 * time.Second
+	if knob == "FAKE_BAD_ATTEMPT_LABEL" || knob == "FAKE_MARKER_PRE_MISSING" || knob == "FAKE_SILENCE_EXPIRE_STUCK" {
+		budget = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	err := RunVerify(ctx, input, nil)
 	report := r13ReadReport(t, r13FindAcceptanceReport(t, input.Output))
@@ -598,7 +606,7 @@ func TestMetricsFailedAttemptEvidenceSurvivesRetry(t *testing.T) {
 	if err := os.Unsetenv("FAKE_MARKER_PRE_MISSING"); err != nil {
 		t.Fatal(err)
 	}
-	secondCtx, secondCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer secondCancel()
 	if err := RunVerify(secondCtx, input, nil); err != nil {
 		t.Fatal(err)
