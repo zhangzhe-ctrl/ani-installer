@@ -306,13 +306,16 @@ func (a *acceptanceAttempt) metricsDeleteOwned() error {
 		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 		err = client.Resource(gvr).Namespace(metricsNS).Delete(ctx, o.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid}})
 		cancel()
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("UID-bound cleanup of %s/%s uid=%s failed; remaining objects preserved: %w", o.Kind, o.Name, o.UID, err)
 		}
 		// A DELETE acceptance is asynchronous when finalizers are present. Do
 		// not call an object cleaned until this exact UID is gone; a different
 		// UID at the name is somebody else's object and is never touched.
-		goneCtx, stop := context.WithTimeout(a.ctx, 30*time.Second)
+		// These owned Pods and receiver templates use the normal 30-second
+		// Kubernetes grace. Allow removal and controller/finalizer propagation
+		// to finish after it; never shorten grace to satisfy a checker deadline.
+		goneCtx, stop := context.WithTimeout(a.ctx, 2*time.Minute)
 		err = metricsPoll(goneCtx, time.Second, func() (bool, error) {
 			current, getErr := client.Resource(gvr).Namespace(metricsNS).Get(goneCtx, o.Name, metav1.GetOptions{})
 			if apierrors.IsNotFound(getErr) {

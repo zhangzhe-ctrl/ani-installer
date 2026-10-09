@@ -1368,11 +1368,15 @@ func protocolWrite(ctx context.Context, runner kubectlRunner, target acceptanceT
 		return "", true
 	case acceptanceNATSJetStream:
 		// Publish one message into the JetStream file-storage stream and require
-		// the server PubAck, exactly like the component's own verify job.
+		// the server PubAck, exactly like the component's own verify job. The
+		// locked CLI reads NATS_TOKEN directly from its Secret-backed environment;
+		// JSON configuration avoids interactive prompts and unsupported add flags.
+		stream := "ANI_ACCEPT_" + token
 		program := "set -e\n" +
-			"NATS=\"nats -s nats://nats." + target.Namespace + ".svc:4222 --token \"$NATS_TOKEN\"\"\n" +
-			"$NATS stream add ANI_ACCEPT --subjects \"ani.accept.>\" --retention limits --storage file --discard old --replicas 1 --force >/dev/null 2>&1 || $NATS stream info ANI_ACCEPT >/dev/null\n" +
-			fmt.Sprintf("$NATS pub -J ani.accept.check \"%s\" | grep -q 'Stored in Stream'\n", token) +
+			"NATS=\"nats -s nats://nats." + target.Namespace + ".svc:4222\"\n" +
+			fmt.Sprintf("printf '{\"name\":\"%s\",\"subjects\":[\"ani.accept.%s\"],\"retention\":\"limits\",\"storage\":\"file\",\"num_replicas\":1,\"discard\":\"old\"}' > /tmp/stream.json\n", stream, token) +
+			"$NATS stream add --config /tmp/stream.json\n" +
+			fmt.Sprintf("$NATS pub -J ani.accept.%s \"%s\" 2>&1 | grep -Fq 'Stored in Stream: %s Sequence: 1'\n", token, token, stream) +
 			"echo ANI-NATS-PUBACK-OK\n"
 		out, err := runner.runCheckJob(ctx, target.Namespace, "ani-acc-natspub-"+token,
 			registry+"/"+strings.TrimPrefix(natsClientImageOriginal, "docker.io/"), nil,
@@ -1402,11 +1406,12 @@ func protocolReadBack(ctx context.Context, runner kubectlRunner, target acceptan
 	case acceptanceNATSJetStream:
 		// Consume+ack the persisted message through a durable pull consumer:
 		// this proves JetStream state, not a file cat.
+		stream := "ANI_ACCEPT_" + token
 		program := "set -e\n" +
-			"NATS=\"nats -s nats://nats." + target.Namespace + ".svc:4222 --token \"$NATS_TOKEN\"\"\n" +
-			fmt.Sprintf("printf '{\"durable_name\":\"ani-verify-%s\",\"filter_subject\":\"ani.accept.check\",\"ack_policy\":\"explicit\",\"deliver_policy\":\"all\",\"replay_policy\":\"instant\"}' > /tmp/consumer.json\n", token) +
-			"$NATS consumer add ANI_ACCEPT --config /tmp/consumer.json >/dev/null 2>&1 || true\n" +
-			fmt.Sprintf("got=\"$(%[1]s consumer next ANI_ACCEPT ani-verify-%[2]s --raw --ack --count 1)\"\n", "$NATS", token) +
+			"NATS=\"nats -s nats://nats." + target.Namespace + ".svc:4222\"\n" +
+			fmt.Sprintf("printf '{\"durable_name\":\"ani-verify-%s\",\"filter_subject\":\"ani.accept.%s\",\"ack_policy\":\"explicit\",\"deliver_policy\":\"all\",\"replay_policy\":\"instant\"}' > /tmp/consumer.json\n", token, token) +
+			fmt.Sprintf("$NATS consumer add %s --config /tmp/consumer.json\n", stream) +
+			fmt.Sprintf("got=\"$($NATS consumer next %s ani-verify-%s --raw --ack --count 1)\"\n", stream, token) +
 			fmt.Sprintf("[ \"$got\" = \"%s\" ] || { echo \"ANI-NATS-MISMATCH got=$got\"; exit 1; }\n", token) +
 			"echo ANI-NATS-CONSUMED-OK\n"
 		out, err := runner.runCheckJob(ctx, target.Namespace, "ani-acc-natsget-"+token,

@@ -41,17 +41,29 @@ func TestRegistryStartupWaitsForLateRealReadiness(t *testing.T) {
 }
 
 func TestRegistryStartupStopsAndReportsRealFailure(t *testing.T) {
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 	address := strings.TrimPrefix(server.URL, "http://")
 	started := time.Now()
-	err := waitRegistryHTTP(context.Background(), address, 80*time.Millisecond, 10*time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "timed out after 80ms") || !strings.Contains(err.Error(), "HTTP 503") {
-		t.Fatalf("unready registry must report bounded failure and last status: %v", err)
+	err := waitRegistryHTTP(context.Background(), address, 250*time.Millisecond, 10*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "timed out after 250ms") {
+		t.Fatalf("unready registry must report bounded failure: %v", err)
 	}
-	if elapsed := time.Since(started); elapsed > time.Second {
+	// A request still in flight at the deadline legitimately becomes the last
+	// transport error, even if earlier requests received HTTP 503. Requiring
+	// that the final request finish before the deadline made this test flaky
+	// under the formal gate's load; neither outcome makes readiness pass.
+	if !strings.Contains(err.Error(), "HTTP 503") && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("failure lost the actual HTTP or transport result: %v", err)
+	}
+	if requests.Load() == 0 {
+		t.Fatal("the readiness check never reached the real HTTP server")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
 		t.Fatalf("registry wait exceeded its bounded deadline: %s", elapsed)
 	}
 

@@ -105,6 +105,13 @@ Envoy 测试资源清理必须正常等待，覆盖已知 360 秒终止宽限，
 不能把未采样状态补入历史或把 Failed 改写为 Canceled。仅有 FAILED、未确认的
 停止请求、身份错配、未终止 Workflow 或替换训练 Pod 均不能通过。
 
+NATS acceptance 使用固定材料中的 CLI、Secret 引用的 `NATS_TOKEN` 和非交互
+JSON 创建本次独立 file-storage stream；只有对应 stream 的 Sequence 1 PubAck
+及计划内 Pod 重建后同一消息的 durable consume/ack 才能证明持久化。
+不能吞掉创建失败、复用旧 stream 的消息或用 marker 代替协议读回。
+metrics 清理核对本次登记的 UID，等待正常 Pod 宽限和异步删除完成；中断后
+已消失对象可以关闭登记，同名不同 UID 对象不能删除，不缩短 grace 或强删。
+
 Milvus 正式 `vector-verify.py` 保留默认 smoke（insert/flush/search/删除自身
 collection），并提供 `--mode write|readback|cleanup --receipt <文件>` 的持久化
 检查阶段。write 保留本次唯一 collection、服务端 collection ID 和原始向量摘要；
