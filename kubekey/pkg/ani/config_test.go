@@ -223,6 +223,9 @@ func TestKubeKeyConfigBaseProfileSkipsComponentImages(t *testing.T) {
 		}
 	}
 
+	// The selected base CNI is still required even when chart components are
+	// disabled; the image_parts contract below concerns chart groups only.
+	baseTable[KCNImageReference] = testImageTable()[KCNImageReference]
 	c := validConfig()
 	c.Profile = "base"
 	spec, err := KubeKeyConfig(c, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", baseTable)
