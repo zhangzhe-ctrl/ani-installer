@@ -2,15 +2,64 @@
 """Provider capability must survive the real runtime site boundary."""
 import json
 import copy
+import ast
+import contextlib
+import errno
+import io
 import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import load_site, Cluster
 from resources import RELEASE, isolation, network_resources, obj, NETWORK_IMAGE_DIGESTS, NETWORK_IMAGE_PINS
 import stage2
+
+
+class OrdinaryWorkloadCapability(unittest.TestCase):
+    def probe(self, policy, control_error=None, api_status=403, api_error=None):
+        path = pathlib.Path(__file__).resolve().parents[2] / "docs/execution/kf-env-p00/scripts/check-workload-boundary.py"
+        tree = ast.parse(path.read_text())
+        code = next(n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "command" for t in n.targets)
+                    and isinstance(n.value, ast.Constant))
+        target = {"name": "ml-pipeline", "address": "192.0.2.20", "port": 8888}
+        api = {"name": "kubernetes", "address": "10.96.0.1", "port": 443}
+        response = mock.Mock(status=api_status)
+        client = mock.Mock()
+        client.getresponse.return_value = response
+        client.request.side_effect = api_error
+        stream = io.StringIO()
+        argv = ["probe", json.dumps([target]), api["address"], "public-ca", json.dumps([api]),
+                "offline-image", "ani-kfp-a", policy]
+        with mock.patch.object(sys, "argv", argv), mock.patch.dict("os.environ", {}, clear=True), \
+                mock.patch("pathlib.Path.exists", return_value=False), \
+                mock.patch("socket.getaddrinfo", return_value=[(None, None, None, None, (api["address"], 443))]), \
+                mock.patch("socket.create_connection", side_effect=control_error, return_value=mock.MagicMock()), \
+                mock.patch("ssl.create_default_context"), \
+                mock.patch("http.client.HTTPSConnection", return_value=client), contextlib.redirect_stdout(stream):
+            exec(compile(code, str(path), "exec"), {})
+        return json.loads(stream.getvalue())
+
+    def test_kcn_records_reachability_and_actual_api_authorization_denial(self):
+        evidence = self.probe("unsupported")
+        self.assertEqual(evidence["targets"][0]["result"], "REACHABLE_NETWORKPOLICY_UNSUPPORTED")
+        self.assertEqual(evidence["networkIsolation"], "unsupported")
+        self.assertEqual(evidence["kubernetesCreateDryRuns"][0]["httpStatus"], 403)
+        for arguments in ({"api_status": 200}, {"api_error": TimeoutError()}, {"control_error": TimeoutError()}):
+            with self.subTest(arguments=arguments), self.assertRaises((AssertionError, TimeoutError)):
+                self.probe("unsupported", **arguments)
+
+    def test_kubeovn_still_requires_healthy_control_denial(self):
+        evidence = self.probe("required", control_error=TimeoutError())
+        self.assertEqual(evidence["targets"][0]["result"], "TIMEOUT_DENIED")
+        self.assertEqual(evidence["networkIsolation"], "denial_verified")
+        with self.assertRaisesRegex(RuntimeError, "reached control port"):
+            self.probe("required")
+        with self.assertRaisesRegex(AssertionError, "unavailable target"):
+            self.probe("required", control_error=OSError(errno.ECONNREFUSED, "not ready"))
 
 
 class NetworkCapability(unittest.TestCase):

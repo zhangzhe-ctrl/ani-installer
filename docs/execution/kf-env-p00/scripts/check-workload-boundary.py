@@ -31,6 +31,7 @@ report = {"status": "IN_PROGRESS", "lock": product_lock(), "cleanup": "NOT_REQUE
           "sourceSha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()}
 atomic(output / "report.json", report)
 try:
+    report["networkCapability"] = cluster.network_capability()
     node = json.loads(cluster.call(["get", "node", args.node, "-o", "json"]))
     if not any(v["type"] == "InternalIP" and v["address"] in site["node_addresses"] for v in node["status"]["addresses"]):
         raise ValueError("node differs from fixed targets")
@@ -61,12 +62,18 @@ try:
     command = r'''
 import errno,http.client,json,os,pathlib,socket,ssl,sys
 targets=json.loads(sys.argv[1])
+policy=sys.argv[7]
+assert policy in ('required','unsupported')
 assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
 assert not any(k in os.environ for k in ('AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','MYSQL_ROOT_PASSWORD'))
 dns=sorted({v[4][0] for v in socket.getaddrinfo('kubernetes.default.svc.cluster.local',443,type=socket.SOCK_STREAM)})
 assert sys.argv[2] in dns
 results=[]
 for target in targets:
+    if policy=='unsupported':
+        with socket.create_connection((target['address'],target['port']),timeout=5): pass
+        results.append({**target,'result':'REACHABLE_NETWORKPOLICY_UNSUPPORTED'})
+        continue
     try:
         with socket.create_connection((target['address'],target['port']),timeout=2):
             raise RuntimeError('ordinary workload reached control port: '+target['name']+':'+str(target['port']))
@@ -86,10 +93,12 @@ for target in json.loads(sys.argv[4]):
         assert response.status in (401,403), 'ordinary anonymous workload acquired Kubernetes create authorization'
         api_results.append({**target,'result':'AUTHORIZATION_DENIED','httpStatus':response.status})
     except (TimeoutError,socket.timeout):
+        assert policy=='required', 'KCN Kubernetes authorization must be reached and denied by the API'
         api_results.append({**target,'result':'TRANSPORT_DENIED'})
     finally:
         connection.close()
-print(json.dumps({'dns':dns,'targets':results,'kubernetesCreateDryRuns':api_results,'serviceAccountTokenPresent':False},sort_keys=True))
+print(json.dumps({'dns':dns,'targets':results,'kubernetesCreateDryRuns':api_results,'serviceAccountTokenPresent':False,
+    'networkIsolation':'unsupported' if policy=='unsupported' else 'denial_verified'},sort_keys=True))
 '''
     name = "ani-kfp-boundary-" + uuid.uuid4().hex[:16]
     image = site["images"]["ani.local/kubeflow-execution:26.03-v1"]
@@ -97,7 +106,7 @@ print(json.dumps({'dns':dns,'targets':results,'kubernetesCreateDryRuns':api_resu
         "nodeSelector": {"kubernetes.io/hostname": args.node}, "restartPolicy": "Never", "activeDeadlineSeconds": 120,
         "securityContext": {"runAsNonRoot": True, "runAsUser": 1000, "runAsGroup": 1000, "seccompProfile": {"type": "RuntimeDefault"}},
         "containers": [{"name": "probe", "image": image, "command": ["python", "-c", command],
-            "args": [json.dumps(targets), api_address, public_ca, json.dumps(api_targets), image, args.namespace],
+            "args": [json.dumps(targets), api_address, public_ca, json.dumps(api_targets), image, args.namespace, site["network_policy"]],
             "securityContext": {"allowPrivilegeEscalation": False, "capabilities": {"drop": ["ALL"]}, "readOnlyRootFilesystem": True},
             "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}, "limits": {"cpu": "500m", "memory": "256Mi"}}}]})
     if cluster.read(pod):
@@ -115,7 +124,8 @@ print(json.dumps({'dns':dns,'targets':results,'kubernetesCreateDryRuns':api_resu
     evidence = json.loads(cluster.call(["logs", name, "-n", args.namespace, "-c", "probe"]))
     if len(evidence["targets"]) != len(targets) or len(evidence["kubernetesCreateDryRuns"]) != len(api_targets):
         raise RuntimeError("boundary probe omitted targets")
-    report.update(status="ORDINARY_WORKLOAD_CONTROL_DENIED", evidence=evidence, imageID=states[0]["imageID"])
+    report.update(status="ORDINARY_WORKLOAD_AUTHORIZATION_CHECKED" if site["network_policy"] == "unsupported" else "ORDINARY_WORKLOAD_CONTROL_DENIED",
+                  evidence=evidence, imageID=states[0]["imageID"])
 except BaseException as error:
     report.update(status="FAIL", error=str(error))
     atomic(output / "report.json", report)
