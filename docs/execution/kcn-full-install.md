@@ -98,5 +98,13 @@ S3 writer/reader/prefix、HTTP/gRPC、TokenReview/audience 仍须正负例通过
 Kube-OVN 必需隔离合同和既有保护门禁保留，历史验收不提升为本轮 live PASS。
 Envoy 测试资源清理必须正常等待，覆盖已知 360 秒终止宽限，不强删。
 
+Milvus 正式 `vector-verify.py` 保留默认 smoke（insert/flush/search/删除自身
+collection），并提供 `--mode write|readback|cleanup --receipt <文件>` 的持久化
+检查阶段。write 保留本次唯一 collection、服务端 collection ID 和原始向量摘要；
+计划内 Pod 重建后 readback 只读取同一 ID 的原始向量并搜索，不重新插入。
+cleanup 也须核实相同 ID/向量后才删除该 collection。Pod 重建由验收驱动核对
+Deployment/ReplicaSet/Pod/PVC 归属及 UID 后，使用正式 UID 条件删除并正常等待；
+检查脚本自身不重建业务 Pod，不以磁盘 marker 代替 Milvus API 读回。
+
 本轮构建/材料/恢复/安装/验收命令与原始退出码按任务根文件索引保存；
 阶段结论只更新 `progress.yaml`。任一必验项 `fail` / `not_verified` 均不满足 Goal 完成。

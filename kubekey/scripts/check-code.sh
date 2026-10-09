@@ -212,7 +212,7 @@ step "behaviour suites in scripts/"
 for suite in test-lab-credentials.py test-ani-task-errors.py \
              test-ceph-storage-safety.py test-build-offline-materials.py \
              test-debian-repository.py test-kubeconfig-export.py \
-             test-b03-serving-csr.py test-kubeflow-runtime.py test-kubeflow-network-capability.py test-check-code.py; do
+             test-b03-serving-csr.py test-kubeflow-runtime.py test-kubeflow-network-capability.py test-milvus-persistence.py test-check-code.py; do
   if [[ ! -f "scripts/$suite" ]]; then
     fail "scripts/$suite is missing (the gate must not silently shrink)"
   fi

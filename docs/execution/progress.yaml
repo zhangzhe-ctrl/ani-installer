@@ -20,7 +20,7 @@ tasks:
     liveInventory: new_cluster_0b581f48_kcn_primary_ready_three_hosts_verified
     code: integration_540cbc1_formal_gate_pass_argo_kcn_naming_fix_targeted_pass
     materials: integration_540cbc1_full_112_images_offline_package_and_render_pass_final_candidate_pending
-    integration: retained_540cbc1_all_selected_roles_rc0_kfp_container_driver_name_limit_fail_fix_live_pending
+    integration: retained_all_selected_roles_pass_e9f85ce_kfp_stage1_stage2_and_protection_persistence_pass_final_freeze_pending
     cleanOffline: not_run
     behaviorAcceptance: not_verified
     noop: not_run
@@ -38,6 +38,8 @@ tasks:
   - 保留联调 540cbc1 已正常按 UID 删除旧失败探针；新建独立 KCN VPC/Subnet Ready，三节点委托检查及真实 B01 主/副接口/DNS 检查通过，net1=10.240.0.2/.3，primary 对端=10.16.0.5，新探针正常清理。Envoy certgen/实际 TLS Secret 校验及 HTTPRoute 内容/两个副本逐一 UID 绑定直连通过；原 0098790 统一首装 rc=1 保留。
   - 同一保留联调全部选中正式 roles 于 2026-10-09 10:29:49 UTC 以 rc=0 完成，包含 Volcano、metrics、OpenSearch、Fluent Bit 真实唯一日志命中和 Kubeflow 全组合控制面检查。此为联调检查，最终全组件验收/持久化补充项/正常清理尚未完成；不改写原统一首装 rc=1。
   - KFP 真实成功用例 Run 591f3da4-981b-4b2a-a4d5-b6e42c60fbb5 的 DAG driver 已完成；container driver 名长 64 字符，固定 KCN autoCreateVNic 使用该 Pod 名生成 annotation，API 拒绝 name 部分超过 63 字节。原 SDK rc=1/TimeoutError 和 controller 原始错误保留。installer 仅在 KCN 下使用 Argo 3.7.3 支持的 POD_NAMES=v1，正式 checker 校验；Fedora 回归先红后绿，runtime 与两提供方能力测试通过，真实新 Run 尚待复验。
+  - e9f85ce 同源开发 CLI/批准资产经目标 validate 和正式 Kubeflow role 重放/checker 后 rc=0；不重传未变镜像，不恢复集群，不修改 KCN 源码，不发布统一首装成功记录。新 driver 名 39～40 字符且成功退出，成功 Run d13b0256、exit-42 失败 Run 95de1b82、停止 Run 6461e0af 均实际关联 TrainJob/JobSet/训练 Pod；停止后外部 Pod 正常消失，后端真实状态 FAILED 保留。原失败 Run 经正常 KFP API 终止，原 rc=1 不改写。
+  - e9f85ce Notebook CR/StatefulSet/Service/Pod→Jupyter kernel/WebSocket→受限 TLS S3→KServe Standard 真实链 PASS，预测 [0,1,2]，模型摘要 4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292。Notebook 停止恢复四文件摘要相同、预测 Pod 重建后预测相同、模型路径/凭据错误归因和 stage2 保护均 PASS；stage1 三工作区字节、普通工作负载身份/可达性、S3 负例、HTTP/gRPC 矩阵和专用 MySQL 计划内容器重启持久化全部 rc=0。NetworkPolicy 单列 unsupported，不记隔离 PASS；最终干净首装和最终全组件验收仍 NOT_RUN。
   - MON c 的 MON_DISK_LOW 对应 .20 本任务旧重复传输 tar；确认原 SHA256/大小/文件归属和 Fedora 原包保留后，仅删除该目标副本，释放 12733378560 字节。随后 3 MON quorum、3 OSD up/in、81/81 PG active+clean，磁盘告警消失；AUTH_INSECURE_CLIENT_KEY_TYPE/KEYS_ALLOWED/KEYS_CREATABLE 仍存在并单列，不记 HEALTH_OK 或安全认证通过。
   - 17 CRD、34 对象由固定 2b9467c 源码归档在 Fedora 生成；使用用户供给 494432d2 镜像，旧 fix2 材料已退出当前源码选择。
   - Fedora 实际锁定 Envoy 镜像二进制 /ready 200→503→200、shutdown-manager /healthz、certgen CA/SAN/expiry/key-pair 通过；保留原生探针，正式 smoke 增加逐副本直连与坏副本负例。目标实装尚未运行。
