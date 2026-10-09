@@ -1,0 +1,938 @@
+{
+  "schema": "ani.kcn.final-evidence.v1",
+  "status": "ALL_REQUIRED_REAL_BEHAVIOR_AND_CLEANUP_PASS",
+  "created": "2026-10-09T17:22:40.161856+00:00",
+  "host": "fedora/172.16.101.31",
+  "scope": [
+    "172.16.101.20",
+    "172.16.101.21",
+    "172.16.101.22"
+  ],
+  "source_sha": "41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3",
+  "source_tree_fingerprint": "565824b438777a652a965f0ebf5d3e0c70176b0de693a7778c4e465573a9434b",
+  "toolchain": "go version go1.26.7-X:nodwarf5 linux/amd64",
+  "binary_sha256": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+  "cluster_uid": "3de961b2-8bdd-449c-9840-5939bbb023d4",
+  "install": {
+    "runId": "ani-ani-kcn-full-20261009-152856",
+    "result": "succeeded",
+    "recordKind": "install-success",
+    "identity": {
+      "sourceTreeFingerprint": "565824b438777a652a965f0ebf5d3e0c70176b0de693a7778c4e465573a9434b",
+      "codeCommit": "41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3",
+      "codeBinaryDigest": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+      "siteConfigDigest": "f28728102e5ab7097111e59a9518337e6b8497e419583cd8f478759dcd4f5771",
+      "materialsLockDigest": "fd516958eeac0db9dc6596c2a42409f0f12d37297660f91dd698e6bd4365e64e",
+      "packageConfigDigest": "50ff2faae7f3f922a58d4407f9bf2d07380e33540a1f08f8ecd1de48b88ed924",
+      "clusterUid": "3de961b2-8bdd-449c-9840-5939bbb023d4",
+      "nodeCount": 3,
+      "readyNodes": [
+        "node1",
+        "node2",
+        "node3"
+      ]
+    },
+    "profile": "full",
+    "networkStack": "kcn"
+  },
+  "target_nodes": [
+    {
+      "name": "node1",
+      "node_uid": "c455b8f6-c426-40d0-937a-184cf10f8f7d",
+      "internal_ips": [
+        "172.16.101.20"
+      ],
+      "system_uuid": "d2db4d56-d1e7-5dc4-fef0-6fb36e76ab17",
+      "os": "Ubuntu 24.04.4 LTS",
+      "kubelet": "v1.35.8",
+      "container_runtime": "containerd://2.3.4",
+      "capacity": {
+        "cpu": "8",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "1k",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "16375088Ki",
+        "pods": "110"
+      },
+      "allocatable": {
+        "cpu": "7600m",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "0",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "15405397594",
+        "pods": "110"
+      }
+    },
+    {
+      "name": "node2",
+      "node_uid": "04a895ff-06cf-4075-92cd-c3c247c1a976",
+      "internal_ips": [
+        "172.16.101.21"
+      ],
+      "system_uuid": "33764d56-3090-aaea-76f9-2705aee94dda",
+      "os": "Ubuntu 24.04.4 LTS",
+      "kubelet": "v1.35.8",
+      "container_runtime": "containerd://2.3.4",
+      "capacity": {
+        "cpu": "8",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "1k",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "16375080Ki",
+        "pods": "110"
+      },
+      "allocatable": {
+        "cpu": "7600m",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "0",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "15405389812",
+        "pods": "110"
+      }
+    },
+    {
+      "name": "node3",
+      "node_uid": "266b09fc-f6f2-464b-ab6a-6b2d57776e40",
+      "internal_ips": [
+        "172.16.101.22"
+      ],
+      "system_uuid": "cc6a4d56-b6d0-015f-e3cc-77c9cec0e3a9",
+      "os": "Ubuntu 24.04.4 LTS",
+      "kubelet": "v1.35.8",
+      "container_runtime": "containerd://2.3.4",
+      "capacity": {
+        "cpu": "8",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "1k",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "16375084Ki",
+        "pods": "110"
+      },
+      "allocatable": {
+        "cpu": "7600m",
+        "devices.kubevirt.io/kvm": "1k",
+        "devices.kubevirt.io/sev": "0",
+        "devices.kubevirt.io/tun": "1k",
+        "devices.kubevirt.io/vhost-net": "1k",
+        "ephemeral-storage": "101593080Ki",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "memory": "15405393703",
+        "pods": "110"
+      }
+    }
+  ],
+  "install_command": "sudo env PYTHONDONTWRITEBYTECODE=1 /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/code/kk ani install --config /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/kcn-full-site.private.yaml --package-root /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/materials",
+  "install_exit_code": 0,
+  "formal_verification": {
+    "smoke": {
+      "runId": "ani-ani-kcn-full-20261009-152856",
+      "recordKind": "install-success",
+      "installerCodeBinaryDigest": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+      "verifierCodeBinaryDigest": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+      "level": "smoke",
+      "overall": "pass",
+      "path": "/home/ubuntu/kcn-full/final-41fa6b7-attempt-01/verification-smoke/verify-smoke-ani-ani-kcn-full-20261009-152856.json",
+      "results": [
+        {
+          "component": "cert-manager",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "postgresql",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "valkey",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "nats",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "metrics",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "opensearch",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "fluent-bit",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "rustfs",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "milvus",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "metrics-server",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "snapshot-controller",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "kubevirt",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "volcano",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "harbor",
+          "status": "pass",
+          "steps": []
+        },
+        {
+          "component": "kubeflow",
+          "status": "pass",
+          "steps": []
+        }
+      ],
+      "notDeclared": []
+    },
+    "acceptance": {
+      "runId": "ani-ani-kcn-full-20261009-152856",
+      "recordKind": "install-success",
+      "installerCodeBinaryDigest": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+      "verifierCodeBinaryDigest": "e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b",
+      "level": "acceptance",
+      "overall": "pass",
+      "path": "/home/ubuntu/kcn-full/final-41fa6b7-attempt-01/verification-acceptance/verify-acceptance-ani-ani-kcn-full-20261009-152856-f64b6e8e7ede229c.json",
+      "results": [
+        {
+          "component": "postgresql",
+          "status": "pass",
+          "steps": [
+            {
+              "id": "PG-01",
+              "status": "pass"
+            }
+          ]
+        },
+        {
+          "component": "nats",
+          "status": "pass",
+          "steps": [
+            {
+              "id": "NATS-01",
+              "status": "pass"
+            }
+          ]
+        },
+        {
+          "component": "metrics",
+          "status": "pass",
+          "steps": [
+            {
+              "id": "METRICS-01",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-02",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-03",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-04",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-05",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-06",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-07",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-08",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-09",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-10",
+              "status": "pass"
+            },
+            {
+              "id": "METRICS-11",
+              "status": "pass"
+            }
+          ]
+        }
+      ],
+      "notDeclared": []
+    }
+  },
+  "kubeflow_cases": [
+    {
+      "case": "stage1-db-persistence-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-db-persistence-final-41fa6b7-attempt-01.json",
+      "sha256": "5c141dc2fa4ea91a019f99bb27379f09d5797015969942468ee783f5f1342f93"
+    },
+    {
+      "case": "stage1-entry-matrix-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-entry-matrix-final-41fa6b7-attempt-01.json",
+      "sha256": "bfe9b9ef0a176832647629745505db4efe02eb70fd016648dce93ea14ffe2859"
+    },
+    {
+      "case": "stage1-fail-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-fail-final-41fa6b7-attempt-01.json",
+      "sha256": "773cbab149e02118bbaf0d0bf9701099e6eb2dc67131fded4230e704212532a8"
+    },
+    {
+      "case": "stage1-s3-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-s3-final-41fa6b7-attempt-01.json",
+      "sha256": "4b863e1edeef42f3e6c55740409a8cbfd4509cf454b1827c66a108e3e62ad7b1"
+    },
+    {
+      "case": "stage1-stop-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-stop-final-41fa6b7-attempt-01.json",
+      "sha256": "c905920a4943b671485993589678cbcb5286f979be556718ab35627987d50381"
+    },
+    {
+      "case": "stage1-success-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-success-final-41fa6b7-attempt-01.json",
+      "sha256": "d6cee2aba4ae0da3d55d8191d0af50c82effc6182eb849066b0467172982151a"
+    },
+    {
+      "case": "stage1-workload-boundary-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-workload-boundary-final-41fa6b7-attempt-01.json",
+      "sha256": "fe89c540d6d425827eea2deab14c82cc8d17e76a6efcc6934beea0ce16e25cb3"
+    },
+    {
+      "case": "stage1-workspace-fail-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-workspace-fail-final-41fa6b7-attempt-01.json",
+      "sha256": "8633d8dff6b7309c10dca559a5e5897b6730b37f0f9707227e44e53a13e2826b"
+    },
+    {
+      "case": "stage1-workspace-stop-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-workspace-stop-final-41fa6b7-attempt-01.json",
+      "sha256": "528fed31326440569e40dcc805e465f2f1fb7c53457486d34e55c357f61685cc"
+    },
+    {
+      "case": "stage1-workspace-success-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage1-workspace-success-final-41fa6b7-attempt-01.json",
+      "sha256": "5f39469848d2816cecd3ce72814e4c2adeea4c30aea616cfebf114de297fd34e"
+    },
+    {
+      "case": "stage2-main-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-main-final-41fa6b7-attempt-01.json",
+      "sha256": "c9d166b9f555007d239f613af38cbe3da9f232c95154a4b5ecc962e56c8c114f"
+    },
+    {
+      "case": "stage2-model-credential-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-model-credential-final-41fa6b7-attempt-01.json",
+      "sha256": "b334e3166d6bbd13ac37d899da2a42a1d456a50c89801c068e2fcebe33a862cb"
+    },
+    {
+      "case": "stage2-model-path-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-model-path-final-41fa6b7-attempt-01.json",
+      "sha256": "d8399ec039a4be36fb635ebdb4cbbdf79617c26695e2c95547443129993dda71"
+    },
+    {
+      "case": "stage2-notebook-resume-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-notebook-resume-final-41fa6b7-attempt-01.json",
+      "sha256": "5ee9482240276cd9c734e4792af97ef29d72fa803900455ca6b232f6fc568873"
+    },
+    {
+      "case": "stage2-predictor-recreate-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-predictor-recreate-final-41fa6b7-attempt-01.json",
+      "sha256": "3df8c5d6d2f0767ec927b16ad7ed75ff2c59b3b885b0633234c75af1941f41c8"
+    },
+    {
+      "case": "stage2-protection-final-41fa6b7-attempt-01",
+      "exit_code": 0,
+      "status": "PASS",
+      "receipt": "/home/chabking/ani-installer-runs/kcn-full-20261009/stage2-protection-final-41fa6b7-attempt-01.json",
+      "sha256": "8c3a918f935603f80f79737467fd350bb97338f54da812c8289987850eb3c5e9"
+    }
+  ],
+  "orchestration_interruptions": [
+    {
+      "observed": "2026-10-09T16:41:17.177912+00:00",
+      "original_driver_process": "ABSENT",
+      "exit_code": null,
+      "last_completed_step": "formal-smoke",
+      "next_step_not_launched": "formal-declared-acceptance",
+      "preserved_record": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-validation-chain-41fa6b7-interrupted-after-smoke.json",
+      "continuation": "resume-validation-chain-41fa6b7.py"
+    }
+  ],
+  "postchain_reconciliation": {
+    "original_failed_record": "/home/chabking/ani-installer-runs/kcn-full-20261009/postchain-readback-final-41fa6b7.json",
+    "correction": "derive exact linux/amd64 digest from hash-and-size-verified frozen OCI index bytes; no runtime writes",
+    "status": "PASS_CLEANUP_PENDING",
+    "export_import_reconciliation": {
+      "preserved_failed_record": "/home/chabking/ani-installer-runs/kcn-full-20261009/postchain-readback-reconciled-final-41fa6b7-export-import-fail.json",
+      "workspace_readers_replayed": false,
+      "training_replayed": false,
+      "correction": "import common.identity; resume original Notebook/S3/prediction readback"
+    }
+  },
+  "sql_fixture_cleanup": {
+    "source_sha": "41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3",
+    "cluster_uid": "3de961b2-8bdd-449c-9840-5939bbb023d4",
+    "status": "PASS",
+    "install_log_sha256": "38406a2153becca15b1afdc0a35ac1ccef7e6a1440a0bcd4b285e7d055eb4c2a",
+    "initial_pg_verification_window_utc": [
+      "2026-10-09T15:47:41+00:00",
+      "2026-10-09T15:47:49+00:00"
+    ],
+    "steps": [
+      {
+        "name": "plan",
+        "status": "PASS",
+        "exit_code": 0,
+        "target_report": "/home/ubuntu/kcn-full/final-41fa6b7-attempt-01/sql-fixture-cleanup-reconciled-plan/report.json"
+      },
+      {
+        "name": "execute",
+        "status": "PASS",
+        "exit_code": 0,
+        "target_report": "/home/ubuntu/kcn-full/final-41fa6b7-attempt-01/sql-fixture-cleanup-reconciled-execute/report.json"
+      }
+    ],
+    "deleted_rows": 3,
+    "runtime_recreated": false,
+    "other_data": "UNCHANGED"
+  },
+  "kfp_original_runs": {
+    "success": {
+      "status": "RUN_STATE_CORRELATED",
+      "mode": "success",
+      "namespace": "ani-kfp-probe-a",
+      "workspaceRetained": true,
+      "acceptance": "EAC_NOT_ATTESTED",
+      "run": {
+        "id": "d1793a21-e59b-48e9-9cf1-d9ee437a55c3",
+        "state": "SUCCEEDED",
+        "creationResult": "CONFIRMED"
+      }
+    },
+    "fail": {
+      "status": "RUN_STATE_CORRELATED",
+      "mode": "fail",
+      "namespace": "ani-kfp-probe-b",
+      "workspaceRetained": true,
+      "acceptance": "EAC_NOT_ATTESTED",
+      "run": {
+        "id": "30e04209-ea94-4501-9808-b56532103a99",
+        "state": "FAILED",
+        "creationResult": "CONFIRMED"
+      }
+    },
+    "stop": {
+      "status": "RUN_STATE_CORRELATED",
+      "mode": "stop",
+      "namespace": "ani-kfp-probe-b",
+      "workspaceRetained": true,
+      "acceptance": "EAC_NOT_ATTESTED",
+      "run": {
+        "id": "2dfe2ea4-5af6-4b04-8987-d4a89c69fbd0",
+        "state": "FAILED",
+        "creationResult": "CONFIRMED"
+      },
+      "stop": {
+        "result": "CONFIRMED",
+        "trainJobUid": "0269e357-a5b1-4bbf-9f86-668363537b7d",
+        "podUids": [
+          "d49ae569-2e4b-421c-958e-23d6a8aa4e5f"
+        ],
+        "trainJobResult": "CONFIRMED",
+        "runResult": "CONFIRMED",
+        "actualExternalPodsGone": true,
+        "remainingPodUids": [],
+        "workflowUid": "b27c4768-6463-4962-9c0a-9da6ba8a9865",
+        "workflowActiveDeadlineSeconds": 0,
+        "actualRunState": "FAILED",
+        "stateHistory": [
+          {
+            "update_time": "2026-10-09T16:29:20+00:00",
+            "state": "PENDING"
+          },
+          {
+            "update_time": "2026-10-09T16:29:22+00:00",
+            "state": "RUNNING"
+          },
+          {
+            "update_time": "2026-10-09T16:30:34+00:00",
+            "state": "CANCELING"
+          },
+          {
+            "update_time": "2026-10-09T16:30:44+00:00",
+            "state": "FAILED"
+          }
+        ],
+        "cancellationStateHistory": "observed",
+        "terminationProof": "confirmed_requests_original_workflow_deadline_suspended_job_and_pods_gone"
+      }
+    }
+  },
+  "original_outputs_after_noop": {
+    "source_sha": "41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3",
+    "cluster_uid": "3de961b2-8bdd-449c-9840-5939bbb023d4",
+    "status": "PASS",
+    "workspaces": {
+      "success": {
+        "files_sha256": {
+          "input/dataset.json": "79efdbb3ca43b9a2680c05f945fc3254780c5538fa7d1f6faed4e11ef8774a7d",
+          "output/correlation.json": "01499c51ccb631b4ae8c5e1492c0c7240ff43072df8ace4cec3b959b733bc319",
+          "output/model.json": "5dcac9eb582639afab5ec93dd4407ecd323e36883f6bdcd15a09c15490d6b77e",
+          "output/unique.json": "373d162911ce54738ea29ece16fd592d1afc79a4db07844d02b7a9d62fdb6bdf"
+        },
+        "status": "ORIGINAL_BYTES_UNCHANGED"
+      },
+      "fail": {
+        "files_sha256": {
+          "input/dataset.json": "2e5ecb40680ff4c3f066ec2a4b94fe26ae7f40ba0c9c652eb636af6c30a91102",
+          "output/correlation.json": "3fc905c5bfdfa63f91da0bd34efb89b0bc95b787f9641b4e34488289bef8fff6",
+          "output/unique.json": "4f2561e42419a35d7efeaa529da795553b67d6e9e328ef73daf24129713c6d88"
+        },
+        "status": "ORIGINAL_BYTES_UNCHANGED"
+      },
+      "stop": {
+        "files_sha256": {
+          "input/dataset.json": "eda98cc73539bf453c6c0de3f87a2c10eeffea986103594049aa85a040976d49",
+          "output/correlation.json": "00f4f8bb55d4dbcb82266784bdc41bed08eb69ec66d5e07804098fe84b6d38d1",
+          "output/unique.json": "495d0ccbec863e12dc50ba5684c14ac58d5365efeef01c24ae83868f65a0a0ab"
+        },
+        "status": "ORIGINAL_BYTES_UNCHANGED"
+      }
+    },
+    "notebook": {
+      "cluster_uid": "3de961b2-8bdd-449c-9840-5939bbb023d4",
+      "status": "PASS",
+      "notebook_uid": "8f5d8488-46ea-4d9f-8f5a-4353c66d34dc",
+      "pvc_uid": "3b6a4f09-5080-46e7-8df9-8d41e3d7b21c",
+      "pod_uid": "b02885ab-7a58-4330-8872-980cbf5d0657",
+      "s3": {
+        "sha256": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+        "bytes": 1761
+      },
+      "prediction": {
+        "input": {
+          "instances": [
+            [
+              0.0,
+              0.0
+            ],
+            [
+              10.0,
+              10.0
+            ],
+            [
+              20.0,
+              20.0
+            ]
+          ]
+        },
+        "response": {
+          "predictions": [
+            0,
+            1,
+            2
+          ]
+        },
+        "status": "PASS"
+      },
+      "temporary_reader_cleanup": "PASS",
+      "files_sha256": {
+        "main-flow.ipynb": "99b5f01a25101da834c5c3b5af27e1720acb4b9044c009213c9e8d8c05bfbf3a",
+        "fixed-content.txt": "22cd7a4f14e2038f11902b9c7ae64c6ece8e7e7a91cf155a787a59d773a036b8",
+        "model.joblib": "4dcecdea7d2ffbd1c38ee4bfd54926bf723003da5559471eedd803aca9b9c292",
+        "model-contract.json": "08343806c20680845a7d7854bd0b3fda82afa4e27ab5dba48a048613b27d2ad7"
+      }
+    },
+    "original_workspace_notebook_s3_prediction_after_noop": "PASS"
+  },
+  "noop": {
+    "operation": "noop",
+    "didInstall": false,
+    "status": "PASS"
+  },
+  "network_policy": {
+    "contract": "kcn-test-unsupported-v1",
+    "status": "unsupported",
+    "isolation_pass_issued": false
+  },
+  "ceph": {
+    "fsid": "e6229a72-95d0-40d4-b415-ff543b988b26",
+    "health": {
+      "status": "HEALTH_WARN",
+      "checks": {
+        "AUTH_INSECURE_CLIENT_KEY_TYPE": {
+          "severity": "HEALTH_WARN",
+          "summary": {
+            "message": "4 auth client entities with insecure key types",
+            "count": 4
+          },
+          "muted": false
+        },
+        "AUTH_INSECURE_KEYS_ALLOWED": {
+          "severity": "HEALTH_WARN",
+          "summary": {
+            "message": "Monitors are configured to allow auth using insecure key types",
+            "count": 1
+          },
+          "muted": false
+        },
+        "AUTH_INSECURE_KEYS_CREATABLE": {
+          "severity": "HEALTH_WARN",
+          "summary": {
+            "message": "Monitors are configured to allow creation of insecure key types",
+            "count": 1
+          },
+          "muted": false
+        }
+      },
+      "mutes": []
+    },
+    "election_epoch": 18,
+    "quorum": [
+      0,
+      1,
+      2
+    ],
+    "quorum_names": [
+      "a",
+      "b",
+      "c"
+    ],
+    "quorum_age": 5626,
+    "monmap": {
+      "epoch": 4,
+      "min_mon_release_name": "tentacle",
+      "num_mons": 3
+    },
+    "osdmap": {
+      "epoch": 83,
+      "num_osds": 3,
+      "num_up_osds": 3,
+      "osd_up_since": 1791560708,
+      "num_in_osds": 3,
+      "osd_in_since": 1791560690,
+      "num_remapped_pgs": 0
+    },
+    "pgmap": {
+      "pgs_by_state": [
+        {
+          "state_name": "active+clean",
+          "count": 81
+        }
+      ],
+      "num_pgs": 81,
+      "num_pools": 4,
+      "num_objects": 1712,
+      "data_bytes": 5858510026,
+      "bytes_used": 19671339008,
+      "bytes_avail": 624573755392,
+      "bytes_total": 644245094400,
+      "read_bytes_sec": 1108,
+      "write_bytes_sec": 199272,
+      "read_op_per_sec": 1,
+      "write_op_per_sec": 18
+    },
+    "fsmap": {
+      "epoch": 9,
+      "btime": "2026-10-09T15:45:50:741253+0000",
+      "id": 1,
+      "up": 1,
+      "in": 1,
+      "max": 1,
+      "by_rank": [
+        {
+          "filesystem_id": 1,
+          "rank": 0,
+          "name": "ani-fs-b",
+          "status": "up:standby-replay",
+          "gid": 14849
+        },
+        {
+          "filesystem_id": 1,
+          "rank": 0,
+          "name": "ani-fs-a",
+          "status": "up:active",
+          "gid": 14989
+        }
+      ],
+      "up:standby": 0
+    },
+    "mgrmap": {
+      "available": true,
+      "num_standbys": 1,
+      "modules": [
+        "dashboard",
+        "iostat",
+        "nfs",
+        "nvmeof",
+        "prometheus"
+      ],
+      "services": {
+        "dashboard": "https://10.16.0.28:8443/",
+        "prometheus": "http://10.16.0.28:9283/"
+      }
+    },
+    "servicemap": {
+      "epoch": 20,
+      "modified": "2026-10-09T17:16:35.969007+0000",
+      "services": {}
+    },
+    "progress_events": {}
+  },
+  "observed_imageID_count": 236,
+  "imageID_assertion": "EVERY_OBSERVED_IMAGEID_EQUALS_ITS_FROZEN_PLATFORM_DIGEST",
+  "archive": {
+    "host": "fedora/172.16.101.31",
+    "source_sha": "41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3",
+    "archive": "/home/chabking/ani-installer-runs/kcn-full-20261009/delivery-41fa6b7/ani-kcn-full-41fa6b7-amd64.tar",
+    "size": 12733358080,
+    "sha256": "00673f507f6c871039ee2cc3741b4bf28c2fe0feec6a3d30c11af5aba2c3c1c4",
+    "private_site_included": false,
+    "code_checksums_sha256": "55d92f2987cfbe26bb37d9b9f714196050f38b86984ffc0edba4cf8e547bdff5",
+    "materials_checksums_sha256": "5e4d96e1a02c7adbdd93d6ec488e77ebd1f93ffe59fc4c0a10d9575b37babd2c"
+  },
+  "receipt_index": {
+    "final-candidate-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-candidate-41fa6b7.json",
+      "sha256": "3817fab36767d43b3b85f20d975c52ef24d1acab4c86f8df2a1ba3d4efa42268",
+      "status": "FORMAL_CODE_MATERIALS_RENDER_PASS"
+    },
+    "install-final-41fa6b7-attempt-01.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/install-final-41fa6b7-attempt-01.json",
+      "sha256": "94d109e63a5acd0217037ba08def57ed07e50e6ee0911bac69d0147651ab8b16",
+      "status": "INSTALL_PASS"
+    },
+    "final-validation-chain-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-validation-chain-41fa6b7.json",
+      "sha256": "4d6664749aa1ccb376b063baf58b3f08341808217b9d9e2c5dac72fe7658f5bf",
+      "status": "CHAIN_PASS_FINAL_CLEANUP_AND_DELIVERY_PENDING"
+    },
+    "final-validation-chain-41fa6b7-interrupted-after-smoke.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-validation-chain-41fa6b7-interrupted-after-smoke.json",
+      "sha256": "60c57647771b872cb87fe8d500aaa4d36b814b0889aeeb469c3e27780c4db993",
+      "status": "RUNNING"
+    },
+    "postchain-readback-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/postchain-readback-final-41fa6b7.json",
+      "sha256": "458d5061d37553ba235efb9b2923afcbf71f6a0de352d9c52c098990a2f5a6bb",
+      "status": "STOPPED_CHECK_FAIL"
+    },
+    "postchain-readback-reconciled-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/postchain-readback-reconciled-final-41fa6b7.json",
+      "sha256": "9fc536ea8ece2c7686f407350b41a52e597c5290438784b6abb27abbf2793fde",
+      "status": "PASS_CLEANUP_PENDING"
+    },
+    "final-cleanup-chain-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-cleanup-chain-41fa6b7.json",
+      "sha256": "8aa4c66354324b081acda31dc2c0d4de65cffbd378d5e00d9b057102c2a6c093",
+      "status": "STOPPED_VERIFICATION_FAIL"
+    },
+    "final-cleanup-chain-reconciled-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-cleanup-chain-reconciled-41fa6b7.json",
+      "sha256": "0ae8b8919aa1223a25049b590ea4512e3fd3fc53faf7f7117a70ed7f0cddf622",
+      "status": "CLEANUP_PASS_FINAL_DELIVERY_PENDING"
+    },
+    "runtime-inventory-reconciled-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/runtime-inventory-reconciled-final-41fa6b7.json",
+      "sha256": "a278285daf1307027ac7ed2fbaad7f32302306cbfdd68e3f4e97063059317c15",
+      "status": "PASS"
+    },
+    "runtime-inventory-after-cleanup-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/runtime-inventory-after-cleanup-final-41fa6b7.json",
+      "sha256": "2511bc95627fd100a51507757df359218bcd7042d5ffd6d4601bd05106a2179c",
+      "status": "PASS"
+    },
+    "noop-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/noop-final-41fa6b7.json",
+      "sha256": "2c8d8e9f20f5601062c9c0c38785938823ca6d46cbdbce73afa093336d600d68",
+      "status": "PASS"
+    },
+    "milvus-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/milvus-final-41fa6b7.json",
+      "sha256": "506f4c1558b4d1ae0e64d28af12ab1c3aa030ad83b08cf6db89cc551f25e6b78",
+      "status": "PASS"
+    },
+    "milvus-noop-cleanup-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/milvus-noop-cleanup-final-41fa6b7.json",
+      "sha256": "b46c1bb14612887c35fb0b733ed71d3eb1aa8e813a84f06e0efad2e9bb5450d9",
+      "status": "PASS"
+    },
+    "envoy-normal-cleanup-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/envoy-normal-cleanup-final-41fa6b7.json",
+      "sha256": "05c1c7d533fbf8a9b0fcff3ca6bcd63de08011bb92c4bbf89a5ec42296ec80da",
+      "status": "PASS"
+    },
+    "fixture-cleanup-plan-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/fixture-cleanup-plan-final-41fa6b7.json",
+      "sha256": "02caa8ac235ee227e362fab9e964c75695ac6da72b70c3ee9b9ad9c36f8a56dd",
+      "status": "PASS"
+    },
+    "fixture-cleanup-execute-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/fixture-cleanup-execute-final-41fa6b7.json",
+      "sha256": "2888cee43a7bfb543be89b1708a879f08d0d21a570900b5d6d05a86852a385d7",
+      "status": "PASS"
+    },
+    "middleware-cleanup-plan-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/middleware-cleanup-plan-final-41fa6b7.json",
+      "sha256": "5ad2b98e26245cd5051cdaebcf7dc42be0b5f29f458748930b9f9350c0e0e691",
+      "status": "PASS"
+    },
+    "middleware-cleanup-execute-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/middleware-cleanup-execute-final-41fa6b7.json",
+      "sha256": "84d2fbc619e64464e5a40c18ce6171ba8529a52f7a133bef9e787b3cb60957e3",
+      "status": "FAIL"
+    },
+    "middleware-cleanup-reconcile-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/middleware-cleanup-reconcile-final-41fa6b7.json",
+      "sha256": "958e94689dafe2fb021b55d500b81b2957dd32e658e8592adc498068c47d6aeb",
+      "status": "PASS"
+    },
+    "auth-s3-cleanup-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/auth-s3-cleanup-final-41fa6b7.json",
+      "sha256": "5124ada3e33e29f79683c611e890bf11d2f7a02ca99a21e3a8ed5597a723bcb3",
+      "status": "FAIL"
+    },
+    "auth-s3-cleanup-reconciled-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/auth-s3-cleanup-reconciled-final-41fa6b7.json",
+      "sha256": "8a21fccf0f455e731d5e5316e7ddaf26dbf25c6c0dfff51003874138efbd1723",
+      "status": "FAIL"
+    },
+    "auth-s3-cleanup-completed-reconcile-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/auth-s3-cleanup-completed-reconcile-final-41fa6b7.json",
+      "sha256": "5fde3ab10fdefef80ab86d0719068d0457af8acf37636bb1596524aae3963290",
+      "status": "PASS"
+    },
+    "sql-fixture-cleanup-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/sql-fixture-cleanup-final-41fa6b7.json",
+      "sha256": "54365c6edfed29151f28f36a5a8a80734e5bda7a557db41334643cd2016b6114",
+      "status": "FAIL"
+    },
+    "sql-fixture-cleanup-reconciled-final-41fa6b7.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/sql-fixture-cleanup-reconciled-final-41fa6b7.json",
+      "sha256": "c0d21ac2a3674f06af69812631891d21c84b8bf97288db235f13f140372995f8",
+      "status": "PASS"
+    },
+    "postchain-readback-reconciled-final-41fa6b7-export-import-fail.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/postchain-readback-reconciled-final-41fa6b7-export-import-fail.json",
+      "sha256": "0ee6a6b5a3d6f27e569cdb1198017fbd1d170281f9fdf7d2c46c372240524765",
+      "status": "STOPPED_CHECK_FAIL"
+    },
+    "final-cleanup-chain-reconciled-41fa6b7-middleware-fail.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-cleanup-chain-reconciled-41fa6b7-middleware-fail.json",
+      "sha256": "69a08a98f549ff183d7f518266514e18d5670bf07db1d3451b3b6c6ba072b84b",
+      "status": "STOPPED_CLEANUP_FAIL"
+    },
+    "final-cleanup-chain-reconciled-41fa6b7-auth-field-fail.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-cleanup-chain-reconciled-41fa6b7-auth-field-fail.json",
+      "sha256": "af302d8be74463723617f1d18e66c269fa3d6b5e89b5dbfb3d7bc26a540ab488",
+      "status": "STOPPED_CLEANUP_FAIL"
+    },
+    "final-cleanup-chain-reconciled-41fa6b7-guest-file-fail.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-cleanup-chain-reconciled-41fa6b7-guest-file-fail.json",
+      "sha256": "1bf085426b95e2ef993ea62310f826518cc216799dda8ded3a1b2c725b8aa00a",
+      "status": "STOPPED_CLEANUP_FAIL"
+    },
+    "final-verified-outputs-41fa6b7/index.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/final-verified-outputs-41fa6b7/index.json",
+      "sha256": "8d47bd8ffb72c3e3351c66a71a1917d869168e8c8dbde5d03c789503efbc707a",
+      "status": "PASS"
+    },
+    "restore-final-41fa6b7-attempt-01/index.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/restore-final-41fa6b7-attempt-01/index.json",
+      "sha256": "a41cb036a7b63a13406241f97753fa10190140c8a0d9f430816204daafbf0366",
+      "status": "CLEAN_HOST_IDENTITIES_REVERIFIED"
+    },
+    "preserved-current-9ac/index.json": {
+      "path": "/home/chabking/ani-installer-runs/kcn-full-20261009/preserved-current-9ac/index.json",
+      "sha256": "ff88d3d37f5987786b1f9a8d040f64929a4ac32eca1a5aa2a370f6a44c42aee5",
+      "status": "UNIQUE_OUTPUTS_DATABASE_OBJECT_VOLUME_AND_EVIDENCE_VERIFIED"
+    }
+  },
+  "historical_failures": "Original nonzero receipts and logs retained under the task root; none rewritten.",
+  "publication": {
+    "pushed": false,
+    "merged": false
+  }
+}

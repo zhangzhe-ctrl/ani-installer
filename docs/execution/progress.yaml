@@ -8,29 +8,40 @@ metadata:
     R00 只做只读校准与文档记录：未编译、未安装、未制包、未还原快照、未连接目标集群。
     源码基线 2026-09-24 冻结：HEAD 275827f17abeb0d84694d078d0bc2877307cf87e，
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
-  updatedAt: '2026-09-29'
+  updatedAt: '2026-10-10'
 tasks:
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []
   selected: true
-  status: in_progress
+  status: ENV_READY
   stages:
     baseline: origin_release_0f377f6_clean_verified
-    liveInventory: final_clean_snapshot_baseline_three_hosts_verified_20261009T120831Z
-    code: stop_nats_metrics_and_blob_transfer_fixes_new_formal_gate_pending
-    materials: df7c3dc_full_offline_pass_updated_probe_and_verifier_candidate_pending
-    integration: retained_all_selected_roles_kfp_stage1_stage2_protection_and_milvus_persistence_pass
-    cleanOffline: df7c3dc_unified_clean_install_rc0_new_verifier_candidate_revalidation_pending
-    behaviorAcceptance: not_verified
-    noop: not_run
+    liveInventory: final_clean_snapshot_baseline_three_hosts_verified_20261009T152005Z
+    code: formal_code_gate_pass_frozen_41fa6b7
+    materials: full_offline_validate_render_pass_frozen_41fa6b7
+    integration: final_frozen_41fa6b7_all_selected_real_behavior_pass
+    cleanOffline: final_41fa6b7_single_unified_clean_install_rc0
+    behaviorAcceptance: final_41fa6b7_kubeflow_smoke15_declared_acceptance3_milvus_pass
+    noop: final_41fa6b7_operation_noop_didInstall_false_resources_pg_nats_milvus_pass
+    originalDataReadback: original_workspace_notebook_s3_prediction_after_noop_pass
+    cleanup: owned_fixtures_grants_s3_sql_and_normal_uid_cleanup_pass_runtime_preserved
+    environment: ENV_READY
+    networkPolicy: unsupported_kcn_test_unsupported_v1
   evidence:
   - config/examples/kcn-full.yaml
   - docs/execution/kcn-full-install.md
+  - docs/execution/kcn-full-install/records/evidence-index.json
   - kubekey/ani/kcn/materials.lock.json
   - kubekey/ani/envoy/materials.lock.json
   notes:
   - 独立 codex/kcn-full-install 工作树；本地源码/Git/传输，Fedora 任务根 /home/chabking/ani-installer-runs/kcn-full-20261009；未推送或合并。
+  - 41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3 同源正式代码门禁、完整材料、validate/render 均 rc=0；冻结树 565824b438777a652a965f0ebf5d3e0c70176b0de693a7778c4e465573a9434b，二进制 SHA256 e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b。112 镜像、11 Chart、23 Kubeflow 资产及 wheel/guest/系统材料保留完整离线闭包。公开脱敏整包 12733358080 字节，SHA256 00673f507f6c871039ee2cc3741b4bf28c2fe0feec6a3d30c11af5aba2c3c1c4；私有站点不进入公开整包。
+  - preserved-current-9ac/index.json 和最新磁盘链/快照/身份复核通过后，restore-final-41fa6b7-attempt-01 于 2026-10-09 15:20:05 UTC 完成三台快照还原及干净基线复核，rc=0。目标收到同一代码/材料全部校验通过，一次正式 kk ani install 于 15:28:55 UTC 启动、16:19:25 UTC 以 rc=0 完成全部选择；真实 run ani-ani-kcn-full-20261009-152856、install-success 和新集群 UID 3de961b2-8bdd-449c-9840-5939bbb023d4 一致。没有事后 add 补装。
+  - 同一冻结候选完成 KFP Run→TrainJob→JobSet→workspace→artifact/MLMD 成功、exit-42、停止和持久化，以及 Notebook→真实 kernel/WebSocket→受限 TLS S3→KServe 预测 [0,1,2]、工作区恢复、预测重建和错误归因；独立身份/RBAC/S3/HTTP/gRPC 保护通过。正式 smoke 全部 15 个选择、现有 acceptance 声明的 PostgreSQL/NATS/metrics 三项和 Milvus 原始数据重建读回均 rc=0；不编造全组件 acceptance 入口。
+  - 同版本 components 14 项已有安装，真实执行 operation=noop、didInstall=false；运行资源 UID/spec/data/imageID、PostgreSQL 原行、NATS 原消息、Milvus 原 collection/向量保持，三次训练工作区与 Notebook/S3 模型原字节及预测在 noop 后仍相同，输出导出校验通过。Envoy 正常清理等待约 199 秒；其余任务对象、测试卷/快照、VM/网络附件、Harbor 项目/robots、NATS streams、S3 六键、SQL 三行和临时凭据按归属正常清理，运行凭据/控制器/PVC/KFP 历史保留。
+  - 清理后真实三节点/控制器/副本正常，236 个实际 container/init imageID 均对应冻结平台摘要；Ceph 3 MON quorum、3 OSD up/in、81 PG active+clean。AUTH_INSECURE_CLIENT_KEY_TYPE（4 client entities）/AUTH_INSECURE_KEYS_ALLOWED/AUTH_INSECURE_KEYS_CREATABLE 三类 HEALTH_WARN 未静音，不记 HEALTH_OK 或安全认证 PASS。KCN NetworkPolicy unsupported；相关 Kube-OVN 回归通过但不签发新 live PASS；ANI 业务验收不在本任务范围。
+  - 脱敏证据索引状态 ALL_REQUIRED_REAL_BEHAVIOR_AND_CLEANUP_PASS，SHA256 5ba8e71595546d808bc887d2ee055787fefe1de9da53858afb2b37a6883705a1。驱动中断、平台摘要映射/导入/认证字段/已消失文件/API 版本错误的原始退出码和回执均保留；修正只续接未完成项或读取原结果，不重放首装、训练或已消耗的持久化重建预算。以下旧候选记录保留当时结果，不覆盖本条最终状态。
   - 20～22 上一轮集群 a14b07e9 的工作区唯一输出、RustFS 完整数据卷和 MySQL 一致性 dump 已保存并校验。严格 hostkey、VM/IP/BIOS UUID、快照 ID/时间及双盘覆盖重新核实后恢复；三节点恢复后机器 UUID/空数据盘/KVM/Kubernetes 不存在检查通过。此次恢复用于 KCN 集成，不是最终干净首装验收。
   - 0098790 正式完整首装 run ani-ani-kcn-full-20261009-084310 于 2026-10-09 09:01:23 UTC 以 rc=1 停在 Multus 通信检查。新集群 UID 0b581f48-4f84-49d9-beb0-c80d5de97aea；112 镜像 registry 内容门禁、底座、全部 17 CRD、KCN 四类组件和三节点 Ready 已推进，尚未部署后续 Envoy/Ceph/Kubeflow。原始退出码/日志/事件保留；不再次恢复现场。
   - 固定 KCN controller 拒绝 bridge/host-local NAD 缺失 server_socket，阻止全部 Pod VNic 分配。正式 Multus role 改用原生 kc-networking NAD、归属受控的独立 VPC/Subnet 和 net1 Subnet 注解；Kube-OVN 用例保留。Fedora 新回归先红后绿，B01/KCN/KubeflowKCN 定向组通过；保留联调结果见后续条目。

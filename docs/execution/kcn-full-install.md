@@ -6,7 +6,9 @@
 原始 `release` 基线为 `0f377f6ed7655c42d37e7da8777f92448311814d`。
 
 主链为源码修复、同源正式 CLI 和完整离线材料、预检、一次 `kk ani install`、
-全组件行为、同版本 components noop、正常清理。以下表描述选择和规划，不签发实装 PASS。
+全组件行为、同版本 components noop、正常清理。冻结 `41fa6b7` 已完成这条真实主链，
+本轮环境为 `ENV_READY`；逐项回执及原始失败保留在
+[脱敏证据索引](kcn-full-install/records/evidence-index.json)。以下表固定本次选择及验收合同。
 不部署 ANI 应用、Kube-OVN、Loki、RGW、Istio、Knative、GPU 或 KFP frontend。
 
 | 选择 | 固定材料/组合 | 依赖与必须观察的行为 | 规划持久卷 |
@@ -43,7 +45,9 @@ controller 的 `--enable-np=true` 和独立保护探针；不继承历史隔离 
 ## 容量与执行次序
 
 三台实测各 8 CPU / 16 GiB，系统盘和数据盘各 200 GiB，有硬件 `/dev/kvm`。
-旧集群节点 allocatable 各约 7.6 CPU / 14.35 GiB，只作同一机器容量参考。
+本次三节点 allocatable 各约 7.6 CPU / 14.35 GiB；系统盘设备 200 GiB，
+当前根文件系统约 100 GiB，节点报告 ephemeral-storage 为 101593080 KiB，不能按设备
+容量宣称文件系统有 200 GiB 可用空间。最终节点身份和容量原值见证据索引。
 本次完整配置在 Fedora 通过正式 CLI 渲染及选中 Chart 展开后，静态请求合计
 7.9 CPU / 12.93 GiB；声明持久卷 115 GiB，两个租户工作区上限另为 20 GiB。
 Ceph 三副本的原始逻辑上限约 200 GiB，尚未扣除元数据及安全余量。
@@ -126,3 +130,103 @@ Deployment/ReplicaSet/Pod/PVC 归属及 UID 后，使用正式 UID 条件删除�
 
 本轮构建/材料/恢复/安装/验收命令与原始退出码按任务根文件索引保存；
 阶段结论只更新 `progress.yaml`。任一必验项 `fail` / `not_verified` 均不满足 Goal 完成。
+
+## 最终环境交接：41fa6b7
+
+本次正式运行源为 `41fa6b7dc4bc2e48b8dbc690beb1b8c586f29ca3`，源码树指纹
+`565824b438777a652a965f0ebf5d3e0c70176b0de693a7778c4e465573a9434b`。
+Fedora 使用 `go1.26.7-X:nodwarf5 linux/amd64`，正式 `scripts/build-code.sh`
+调用 `scripts/check-code.sh`，完成 untagged/builtin build、vet、受影响行为及合同门禁；
+`scripts/build-offline.sh`、同源 `kk ani validate` 和 `kk ani render` 均退出 0。
+原命令环境、日志和 `.rc` 位于任务根的 `build-code-final-41fa6b7-attempt-01.*`、
+`build-materials-final-41fa6b7-attempt-01.*`、`final-validate-41fa6b7-attempt-01.*`、
+`final-render-41fa6b7-attempt-01.*`。本次后续文档提交不改变该冻结源码或二进制。
+
+替换前 `9ac20d6a` 集群的三次工作区、Notebook 四文件、RustFS 数据卷、MySQL
+一致性 dump 和 24 namespace/28 PVC 身份已保存并校验，入口为
+`preserved-current-9ac/index.json`。这不声明全部 28 PVC 字节备份或恢复演练通过。
+严格核实 ESXi hostkey、三台 VM/磁盘链/快照、管理网络和时间后，
+`restore-final-41fa6b7-attempt-01/index.json` 于 2026-10-09 15:20:05 UTC 确认干净基线。
+一次统一安装于 15:28:55 UTC 开始、16:19:25 UTC 退出 0，没有事后补装或节点手改组件。
+实际命令为：
+
+```bash
+sudo env PYTHONDONTWRITEBYTECODE=1 \
+  /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/code/kk ani install \
+  --config /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/kcn-full-site.private.yaml \
+  --package-root /home/ubuntu/kcn-full/final-41fa6b7-attempt-01/materials
+```
+
+真实 `install-success` 的 run 为 `ani-ani-kcn-full-20261009-152856`，集群 UID 为
+`3de961b2-8bdd-449c-9840-5939bbb023d4`。三节点 IP/UID/DMI、源码、材料和运行摘要
+均绑定在证据索引。私有站点原字节 SHA256 为
+`165b613a307676c9a4048f75e0402687980f7857f69961e494402264f7488b86`；
+公开配置只脱敏 SSH 密码。它与安装记录中的规范化 `siteConfigDigest` 是不同摘要域。
+
+| 实际行为 | 本候选的结果与边界 |
+|---|---|
+| KCN/Multus/专用 Envoy | 三节点 primary 委托、跨节点 Pod/Service/DNS、原生 VPC/Subnet 与副接口通信通过；HTTPRoute 内容和每个 Envoy 副本直连通过。测试 Envoy 正常终止约 199 秒，覆盖 360 秒宽限，没有强删。 |
+| Ceph/RBD/CephFS/快照 | 真实卷写读、两种快照恢复字节比对通过；清理后 3 MON quorum、3 OSD up/in、81 PG active+clean。三类 auth HEALTH_WARN 未静音，见下文。 |
+| cert-manager/PostgreSQL/Valkey/NATS/RustFS | CA/TLS/SAN、SQL/pg_trgm、认证与权限负例、Valkey TTL、原生 HTTPS 对象写读摘要通过；PostgreSQL 原行和 NATS 原 Sequence 1 消息在各一次计划内 Pod 重建后读回，同一 PVC 保持。 |
+| metrics/OpenSearch/Fluent Bit/Metrics Server | 实际采集、报警 firing→resolved、Prometheus 原样本及 Alertmanager 原 silence 重建后保持；唯一 Pod 日志经 Fluent Bit 到 OpenSearch 查询命中，TLS/认证/保留接线通过；节点 CPU/内存指标可读。 |
+| Milvus/Harbor | 原始向量 insert/search 后，经一次 Pod 重建和 noop 读取同一 collection ID/向量，未重插入；Harbor 固定 digest push/pull、认证与实际扫描通过。 |
+| KubeVirt/CDI/Volcano | 固定离线 guest 导入后真实 VM 启动，guest 网络及持久数据读回；正式 gang/cancel/accounting 检查通过。 |
+| KFP/Trainer/JobSet/MLMD/MySQL | 原 Run→TrainJob→JobSet→workspace→artifact/MLMD 成功、exit-42 和停止通过，MySQL 原数据重启后保持；停止实际历史 PENDING→RUNNING→CANCELING→FAILED，两个请求及原对象终止已确认，不改写终态。 |
+| Notebook/KServe | 真实 kernel/WebSocket 执行、工作区停止恢复原四文件、受限 TLS S3 模型加载与预测 `[0,1,2]` 通过；预测 Pod 重建后结果相同，坏路径/坏凭据有实际归因。身份/RBAC/Secret/S3/HTTP/gRPC 保护正负例继续通过。 |
+| 同版本 noop 与原数据 | 正式 components 执行 `operation=noop`、`didInstall=false`；14 项已有安装，资源 UID/spec/data 和运行 imageID 保持，PostgreSQL/NATS/Milvus 原数据保持；三训练工作区、Notebook/S3 模型原字节及预测在 noop 后再次读回相同。 |
+
+同源正式 `kk ani verify --level smoke` 对全部 15 项选择退出 0；现有 acceptance
+仅声明 PostgreSQL、NATS、metrics，本次三项均退出 0。其余规定行为使用同源正式
+专项 checker 和固定 SDK/runtime，由 Fedora 驱动；证据索引区分这三类回执，
+不宣称存在全组件 acceptance 入口。清理后 236 个实际 container/init imageID
+逐个与冻结 linux/amd64 manifest 相同，全部节点及运行控制器/副本就绪。
+
+KCN 的 `kcn-test-unsupported-v1` 贯穿 runtime、checker 和交接，NetworkPolicy
+隔离为 **unsupported**；普通工作负载实际可达性独立记录，不签发隔离 PASS。
+Kube-OVN 受影响配置/渲染/runtime/保护探针回归通过，其隔离门禁保留，
+本次没有新 Kube-OVN live PASS。ANI 服务/UI/IAM/租户业务验收不在本轮环境交接范围。
+
+Ceph 实际为 **HEALTH_WARN**：`AUTH_INSECURE_CLIENT_KEY_TYPE` 有 4 个 auth client
+entities，另有 `AUTH_INSECURE_KEYS_ALLOWED` 和 `AUTH_INSECURE_KEYS_CREATABLE`。
+三类均未静音，`mutes=[]`；功能/持久化与 quorum/OSD/PG 检查通过，
+没有签发 HEALTH_OK 或安全认证 PASS，也没有关闭这些告警来完成验收。
+
+任务清理已通过：按 UID/归属正常删除测试 Envoy、TrainJob/JobSet/Workflow、
+Notebook/InferenceService、8 个测试 PVC、4 组快照及关联后端、VM/CDI/网络附件；
+保留正式 snapshot class 的 Retain。另删除三个独立 NATS stream、Harbor 测试项目及
+robots/测试 pull Secret、六个摘要绑定的 S3 键、三条值/归属绑定的 PostgreSQL 测试行。
+15 个临时授权的真实 TokenReview 均确认过期拒绝，相应 token 文件和 guest SSH 密钥
+已删除；正式 runtime 身份/凭据、PVC、控制器及 KFP/MLMD 历史保留。
+清理前原输出已导出并核实摘要，清理后的运行镜像、拓扑和其他数据库数据保持。
+
+Harbor 首装 smoke 的项目/robots 现在已清理，未来复验需经正式流程创建新的归属明确
+测试资源；不能复用已撤销的授权或把旧 PASS 当作清理后重新运行结果。
+本次持久化重建与 noop 的原回执保留，不重用已消耗的验收预算。
+驱动中断及映射/导入/认证字段/已消失文件/API 版本错误的原失败均在索引保留；
+后续只续接未完成步骤或核对原结果，没有改写失败或重放已完成副作用。
+
+## 二进制、完整包与复现资料
+
+| 交付物 | 位置与 SHA256 |
+|---|---|
+| Linux amd64 `kk` | 本地 `/home/chabking/Documents/Codex/2026-10-09/kcn-full-install/artifacts/41fa6b7/kk`；`e13098aa5f42f59b110c9766d8d8e0a1020e27deddc236e3326173a758c9f59b` |
+| 完整公开离线包 | Fedora 任务根 `delivery-41fa6b7/ani-kcn-full-41fa6b7-amd64.tar`，12733358080 字节；`00673f507f6c871039ee2cc3741b4bf28c2fe0feec6a3d30c11af5aba2c3c1c4` |
+| 代码包校验表 | Fedora `code-final-41fa6b7-attempt-01/SHA256SUMS`；`55d92f2987cfbe26bb37d9b9f714196050f38b86984ffc0edba4cf8e547bdff5` |
+| 材料包校验表 | Fedora `materials-final-41fa6b7-attempt-01/SHA256SUMS`；`5e4d96e1a02c7adbdd93d6ec488e77ebd1f93ffe59fc4c0a10d9575b37babd2c` |
+| 脱敏证据索引 | 本文链接及本地 artifacts 目录 `evidence-index.json`；`5ba8e71595546d808bc887d2ee055787fefe1de9da53858afb2b37a6883705a1` |
+| 配置与源码 | 本地 artifacts 目录 `kcn-full.yaml`、`candidate.json`、`archive-receipt.json`；本地任务目录 `source-41fa6b7.bundle`，保留冻结提交与历史 |
+
+完整包包含同源 code、全部 materials、脱敏 `kcn-full.yaml` 与 candidate，包含 112 个
+批准镜像、11 Chart、23 Kubeflow 资产及 SDK/workspace wheels、guest、scanner、
+Ubuntu ISO 和底座 artifact。完整包已在 Fedora 保存；本地仅保留二进制和小型交付资料。
+凭据、私有配置、数据 dump 不进入公开包。可下载到容量足够的自选目录：
+
+```bash
+scp fedora:/home/chabking/ani-installer-runs/kcn-full-20261009/delivery-41fa6b7/ani-kcn-full-41fa6b7-amd64.tar \
+  /path/with-enough-space/
+```
+
+下载后核对上表整包 SHA256，解包后分别在 code/materials 目录核对 `SHA256SUMS`。
+公开配置的 `CHANGE_ME` 需要替换为本地私有 SSH 凭据，私有配置放在发布包之外；
+新安装仍须重新核实站点身份、干净基线和设备归属。本次源码仅在任务分支提交，
+未推送或合并；原 release 工作树保持 `0f377f6` 且干净，其他仓库与集群未变更。
