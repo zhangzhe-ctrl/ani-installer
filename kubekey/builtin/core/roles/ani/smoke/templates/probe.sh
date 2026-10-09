@@ -333,6 +333,57 @@ if [[ "$envoy_passed" != "pass" ]]; then
 fi
 printf '%s\n' "$envoy_stdout" > "$OUTPUT_DIR/envoy-client.log"
 
+# A load-balanced Service can hide one broken replica. Use the observed
+# EndpointSlice target port and request each ready Pod directly as well.
+mapfile -t replica_rows < <("${KUBECTL[@]}" get endpointslice "$envoy_endpointslice" -n "$NAMESPACE" -o jsonpath='{range .endpoints[?(@.conditions.ready==true)]}{.addresses[0]}{" "}{.targetRef.name}{" "}{.targetRef.uid}{"\n"}{end}')
+replica_port="$("${KUBECTL[@]}" get endpointslice "$envoy_endpointslice" -n "$NAMESPACE" -o jsonpath='{.ports[0].port}')"
+if [[ "${#replica_rows[@]}" -ne 2 || ! "$replica_port" =~ ^[0-9]+$ ]]; then
+  log "expected both Envoy replicas and a resolved target port"
+  exit 1
+fi
+replica=0
+for row in "${replica_rows[@]}"; do
+  read -r replica_ip replica_name replica_uid <<< "$row"
+  if [[ -z "$replica_ip" || -z "$replica_name" || -z "$replica_uid" ]]; then
+    log "Envoy replica identity is incomplete"
+    exit 1
+  fi
+  actual_uid="$("${KUBECTL[@]}" get pod "$replica_name" -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')"
+  if [[ "$actual_uid" != "$replica_uid" ]]; then
+    log "Envoy replica changed since EndpointSlice discovery"
+    exit 1
+  fi
+  replica=$((replica + 1))
+  CURRENT_KIND="envoy-replica-client"
+  CURRENT_POD="$("${KUBECTL[@]}" create -f - -o jsonpath='{.metadata.name}' <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: ani-smoke-replica-client-
+  namespace: $NAMESPACE
+spec:
+  nodeName: $envoy_client_node
+  restartPolicy: Never
+  containers:
+    - name: client
+      image: "$busybox_image"
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          response="\$(wget -T 10 -qO- http://$replica_ip:$replica_port/)"
+          test "\$response" = "ANI-INSTALLER-OK"
+          printf 'ANI-ENVOY-REPLICA-OK\n'
+EOF
+)"
+  wait_for_pod "$CURRENT_POD" 180 "Envoy replica $replica client"
+  replica_log="$("${KUBECTL[@]}" logs "$CURRENT_POD" -n "$NAMESPACE")"
+  printf '%s\n' "$replica_log" > "$OUTPUT_DIR/envoy-replica-${replica}.log"
+  printf '%s\n' "$replica_log" | grep -Fqx 'ANI-ENVOY-REPLICA-OK'
+  append_summary "envoy_replica_$replica=$replica_name uid=$replica_uid endpoint=$replica_ip:$replica_port result=pass"
+done
+CURRENT_POD=""
+
 "${KUBECTL[@]}" get pods -n "$NAMESPACE" -o wide > "$OUTPUT_DIR/pods-after.txt"
 append_summary "result=pass"
 append_summary "envoy_result=pass"

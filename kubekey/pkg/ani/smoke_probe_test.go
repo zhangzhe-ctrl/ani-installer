@@ -64,6 +64,10 @@ func fakeWgetMain() int {
 		target = "dns"
 	case strings.Contains(url, fakeEnvoySvcIP+":9090"):
 		target = "envoy"
+	case strings.Contains(url, "10.16.0.21:10000"):
+		target = "envoy-replica-1"
+	case strings.Contains(url, "10.16.0.22:10000"):
+		target = "envoy-replica-2"
 	}
 	if failTarget == target {
 		fmt.Fprintf(os.Stderr, "fake wget failure for %s\n", target)
@@ -259,6 +263,11 @@ func fakeKubectlMain() int {
 func fakeKubectlPod(name string, rawArgs []string) int {
 	command := strings.Join(rawArgs, " ")
 	switch name {
+	case "envoy-replica-1", "envoy-replica-2":
+		if strings.Contains(command, "metadata.uid") {
+			fmt.Println("uid-" + name)
+		}
+		return 0
 	case "ani-smoke-backend":
 		switch {
 		case strings.Contains(command, "status.conditions"):
@@ -433,12 +442,23 @@ func fakeKubectlEndpointSlice(name string, rawArgs []string, scenario string) in
 		fmt.Println("fake endpointslices")
 		return 0
 	}
+	if strings.Contains(command, "addresses[0]") {
+		fmt.Println("10.16.0.21 envoy-replica-1 uid-envoy-replica-1")
+		if scenario != "replica-unready" {
+			fmt.Println("10.16.0.22 envoy-replica-2 uid-envoy-replica-2")
+		}
+		return 0
+	}
+	if strings.Contains(command, "ports[0].port") {
+		fmt.Println("10000")
+		return 0
+	}
 	if strings.Contains(command, "targetRef.kind") {
-		fmt.Println("Pod")
+		fmt.Print("Pod\nPod\n")
 		return 0
 	}
 	if strings.Contains(command, "conditions.ready") {
-		fmt.Println("true")
+		fmt.Print("true\ntrue\n")
 		return 0
 	}
 	fmt.Println("fake endpointslice")
@@ -479,6 +499,9 @@ func fakeKubectlCreate() int {
 	}
 
 	generateName := "ani-smoke-client-"
+	if strings.Contains(manifest, "generateName: ani-smoke-replica-client-") {
+		generateName = "ani-smoke-replica-client-"
+	}
 	if strings.Contains(manifest, "name: network-client") {
 		generateName = "ani-smoke-network-client-"
 	}
@@ -746,6 +769,11 @@ func TestSmokeProbeUsesFreshClientsAndAccurateEnvoyService(t *testing.T) {
 	if !strings.Contains(requests, "http://"+fakeEnvoySvcIP+":9090/\n") {
 		t.Fatalf("probe did not request the Envoy Service; requests:\n%s", requests)
 	}
+	for _, ip := range []string{"10.16.0.21", "10.16.0.22"} {
+		if !strings.Contains(requests, "http://"+ip+":10000/\n") {
+			t.Fatalf("probe omitted a replica: %s", requests)
+		}
+	}
 	// The generic Pod/Service/DNS probes moved to network-probe.sh (R11); the
 	// Envoy probe must not grow them back.
 	for _, stale := range []string{
@@ -774,6 +802,21 @@ func TestSmokeProbeUsesFreshClientsAndAccurateEnvoyService(t *testing.T) {
 		if !strings.Contains(envoyLog, marker) {
 			t.Fatalf("Envoy client log missing %q: %s", marker, envoyLog)
 		}
+	}
+}
+
+func TestSmokeProbeRejectsHiddenBrokenEnvoyReplica(t *testing.T) {
+	for _, scenario := range []string{"replica-unready", "replica-two-broken"} {
+		t.Run(scenario, func(t *testing.T) {
+			failTarget := ""
+			if scenario == "replica-two-broken" {
+				failTarget = "envoy-replica-2"
+			}
+			result := runSmokeProbe(t, scenario, failTarget, "")
+			if result.exitCode == 0 {
+				t.Fatal("healthy Service hid a broken Envoy replica")
+			}
+		})
 	}
 }
 

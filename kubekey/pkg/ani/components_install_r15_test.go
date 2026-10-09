@@ -452,7 +452,12 @@ func r15RewriteImageTable(t *testing.T, imagesDir string) {
 		if colon := strings.LastIndex(repo, ":"); colon > 0 {
 			repo = repo[:colon]
 		}
-		fields[2] = r15DigestOf(r15PlatformManifest(repo))
+		// Component additions never reinstall the base CNI. Keep its immutable
+		// source-bound identity; only the selected chart images use the registry
+		// double's manifests in these tests.
+		if fields[0] != KCNImageReference {
+			fields[2] = r15DigestOf(r15PlatformManifest(repo))
+		}
 		rewritten = append(rewritten, strings.Join(fields, "\t"))
 	}
 	if err := os.WriteFile(filepath.Join(imagesDir, "images.tsv"), []byte(strings.Join(rewritten, "\n")+"\n"), 0o600); err != nil {
