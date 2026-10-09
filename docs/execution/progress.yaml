@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: origin_release_0f377f6_clean_verified
     liveInventory: current_cluster_a14b07e9_and_three_hosts_strict_hostkey_verified
-    code: kcn_kubeflow_envoy_related_tests_pass_formal_gate_pending
-    materials: complete_final_package_not_built
-    integration: not_run
+    code: integration_0098790_formal_gate_pass_kubeovn_platform_fix_related_tests_pass
+    materials: integration_0098790_full_112_images_offline_package_pass_final_candidate_pending
+    integration: guarded_initial_baseline_restore_in_progress_install_not_run
     cleanOffline: not_run
     behaviorAcceptance: not_verified
     noop: not_run
@@ -31,10 +31,11 @@ tasks:
   - kubekey/ani/envoy/materials.lock.json
   notes:
   - 独立 codex/kcn-full-install 工作树；本地源码/Git/传输，Fedora 任务根 /home/chabking/ani-installer-runs/kcn-full-20261009；未推送或合并。
-  - 20～22 当前保留上一轮 Kubeflow 集群，身份与专用 hostkey 重新核实；工作区唯一输出、RustFS 完整数据卷和 MySQL 一致性 dump 已保存并校验。仅执行归属明确的备份读取及临时 reader，未恢复快照或安装候选组件。
+  - 20～22 上一轮集群 a14b07e9 的工作区唯一输出、RustFS 完整数据卷和 MySQL 一致性 dump 已保存并校验。严格 hostkey、VM/IP/BIOS UUID、快照 ID/时间及双盘覆盖重新核实，初次 KCN 集成基线恢复已启动；正式安装尚未运行。原 Kube-OVN 基线不能直接用于 KCN 首装集成，此次恢复不是最终干净首装验收。
   - 17 CRD、34 对象由固定 2b9467c 源码归档在 Fedora 生成；使用用户供给 494432d2 镜像，旧 fix2 材料已退出当前源码选择。
   - Fedora 实际锁定 Envoy 镜像二进制 /ready 200→503→200、shutdown-manager /healthz、certgen CA/SAN/expiry/key-pair 通过；保留原生探针，正式 smoke 增加逐副本直连与坏副本负例。目标实装尚未运行。
-  - a6e1ce6 正式门禁 Go untagged/builtin 全部通过，后续旧 R03 测试名称及 pipeline 前 export 识别失败；夹具修正后全部后续行为套件通过，修正候选重新走正式发布门禁，不跳过。
+  - 0098790 已通过 Fedora 正式 build-code/check-code 全门禁；树指纹 971ca157b018d062c0805f0ce647f538a0e2caac2d179829fe115f145ed7b6e7；完整 112 镜像离线包、材料闭包及正式 validate/render 通过。用于集成定位，不冒充最终候选冻结或实装成功。
+  - 旧 Kube-OVN 实际 imageID 为来源列表 82cd6fc0 选出的 amd64 manifest 2b505e4d；39487fa 修正能力绑定并保留标签兼容与逐 Pod imageID 检查。Fedora 对应红/绿、runtime 回归及旧集群只读提供方兼容检查通过；强制 NetworkPolicy 保护门禁保留，不签发新 Kube-OVN live PASS。
   - KCN NetworkPolicy 仅为用户已接受的 unsupported；其余必验项有 fail/not_verified 时不得宣称完成。原 KF-STAGE2 Kube-OVN 历史结果保留。
 - id: KF-STAGE2
   title: Kubeflow 二阶段固定组合统一首装

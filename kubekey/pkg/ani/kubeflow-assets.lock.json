@@ -1,10 +1,10 @@
 {
   "schema": "ani.kubeflow.assets.v1",
   "release": "26.03-kubeflow-stage2-v1",
-  "generatedFromCommit": "f3efa8e8d1178c56449d8db94d4c5baf859f0f65",
+  "generatedFromCommit": "39487fa1f77c4c5e5eaff8a3716ecf6d810b5a65",
   "files": {
-    "common.py": "ee39767facb4c6eee6076bd919b83394f332556d328a4d7cfb77ad8e0be04cf2",
-    "resources.py": "afc7db9d9f5b88c43a5e2d9799f025babf356e8f3353348c6345ea369d055d3b",
+    "common.py": "38fe1929aa969445589fdc0f8838d53daab9f5d3df2fe68a7423cf476353a596",
+    "resources.py": "95d56a5d9d9a703aaaa3c8fd517da8f083997b58b43b26c1521a3ef91120c92e",
     "storage.py": "87a86b00128026fd3bffb4f82446f083b7566ba2b0a3a8cdddfce660740d5126",
     "install.py": "09d82d302592869e5d6c4af9578b396c57af84c51ad44ed224b28eca4ab83d48",
     "check.py": "a52dc626d6a5697dcfaa61ff07e9a01d10b09023ca4e08b9e24db3933b2bb5ac",

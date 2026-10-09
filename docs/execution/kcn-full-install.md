@@ -36,6 +36,9 @@
 Kubeflow assets lock 为准。用户供给 KCN `sha256:494432d2…` 是 OCI index；
 其经供给归档字节验证的 linux/amd64 manifest 为 `sha256:26470989…`。
 平台实际 imageID 对照后者；来源 index 与运行平台摘要不得混用。
+Kube-OVN 回归采用来源列表 `82cd6fc0…` 实际选择的 amd64 manifest
+`2b505e4d…`。兼容已有批准标签时仍逐 Pod 核对 imageID，并继续要求策略
+controller 的 `--enable-np=true` 和独立保护探针；不继承历史隔离 PASS。
 
 ## 容量与执行次序
 
