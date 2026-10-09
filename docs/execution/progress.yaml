@@ -18,7 +18,7 @@ tasks:
   stages:
     baseline: origin_release_0f377f6_clean_verified
     liveInventory: final_clean_snapshot_baseline_three_hosts_verified_20261009T120831Z
-    code: stop_nats_metrics_cleanup_fixes_retained_integration_pass_new_formal_gate_pending
+    code: stop_nats_metrics_and_blob_transfer_fixes_new_formal_gate_pending
     materials: df7c3dc_full_offline_pass_updated_probe_and_verifier_candidate_pending
     integration: retained_all_selected_roles_kfp_stage1_stage2_protection_and_milvus_persistence_pass
     cleanOffline: df7c3dc_unified_clean_install_rc0_new_verifier_candidate_revalidation_pending
@@ -47,6 +47,7 @@ tasks:
   - df7c3dc 干净首装后的 stage2 六项、KFP 成功及 exit-42 检查 rc=0。停止原 Run cf37f521-de74-4758-8138-254a17ef494b 的两停止请求确认、原 TrainJob Suspended、原 Pod Gone、Workflow activeDeadlineSeconds=0/Failed；KFP 历史实际 PENDING→RUNNING→FAILED，未采样短暂 CANCELING，原 checker 和原只读 reconcile 均 rc=1，原记录保留。修复以确认请求、原对象身份和实际终止证明停止，保留真实历史并记录 CANCELING observed/not_observed。Fedora 九项回归先红后绿；修复脚本只读对账同一 Run/TrainJob/PVC rc=0、持久写入 0。这是新源码联调证据，尚不能替代新批准材料与干净首装复验。
   - ce5aa3f 正式代码门禁 rc=1：registry 负例把截止时刻的真实 context deadline exceeded 错判为必须最后收到 HTTP 503。修正测试接受这两种真实失败，继续要求 HTTP 请求和有界退出；Fedora 20 次定向检查通过。失败候选未构建材料、未恢复集群。
   - df7c3dc 正式 smoke 15 项 rc=0。acceptance 的 PostgreSQL 原始提交行重建后读回通过；NATS 在发布前失败，固定 CLI 0.4.0 不支持 stream add --force，且旧命令丢失 token 引用与 stderr PubAck，NATS 未重建。metrics 独立验收 01～10 通过，原始采集/报警恢复/样本和 silence 重建后保持，11 在默认 30 秒 Pod 宽限结束前清理超时，原 rc=1 保留。修复 NATS 非交互 JSON/独立 stream/Secret 环境认证/精确 PubAck，metrics 按 UID 正常等待两分钟并支持已消失对象的中断恢复；Fedora 回归先红后绿，真实 Go 协议在同一 9ac 集群发布消费和清理 rc=0，没有重放已消耗的 Pod 重建预算。新同源候选的完整首装及验收仍 pending。
+  - 9ac 集群的 Milvus 原始 collection 在计划内 Pod 重建后读回 rc=0。同版本 noop 的 components 计划在读取 OpenSearch 大层时触发 10 秒 HTTP 总时限，rc=1，未生成计划、未执行组件操作。共享字节门禁统一采用既有制包的 90 秒传输预算，保留每字节 SHA256、声明大小、缺失 blob 和调用方取消检查；慢速完整传输/取消/损坏回归先红后绿。f0c03f2 构建在发现此新断点后取消，实际 rc=143 保留，未制包或恢复。完整 noop 留给包含此修复的新同源干净候选，不将只读字节门禁记为 noop PASS。
   - MON c 的 MON_DISK_LOW 对应 .20 本任务旧重复传输 tar；确认原 SHA256/大小/文件归属和 Fedora 原包保留后，仅删除该目标副本，释放 12733378560 字节。随后 3 MON quorum、3 OSD up/in、81/81 PG active+clean，磁盘告警消失；AUTH_INSECURE_CLIENT_KEY_TYPE/KEYS_ALLOWED/KEYS_CREATABLE 仍存在并单列，不记 HEALTH_OK 或安全认证通过。
   - 17 CRD、34 对象由固定 2b9467c 源码归档在 Fedora 生成；使用用户供给 494432d2 镜像，旧 fix2 材料已退出当前源码选择。
   - Fedora 实际锁定 Envoy 镜像二进制 /ready 200→503→200、shutdown-manager /healthz、certgen CA/SAN/expiry/key-pair 通过；保留原生探针，正式 smoke 增加逐副本直连与坏副本负例。目标实装尚未运行。

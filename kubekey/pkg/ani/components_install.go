@@ -1079,7 +1079,7 @@ func preflightComponentImages(ctx context.Context, cluster ClusterConfig, packag
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: registryContentRequestTimeout}
 	gate := NewRegistryContentChecker(client, registry, lock, EvidenceRoots(packageRoot), true)
 	for _, component := range scope {
 		for _, key := range imagesForComponent(cluster, component) {

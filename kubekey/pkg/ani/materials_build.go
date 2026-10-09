@@ -29,7 +29,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -893,7 +892,7 @@ func RunMaterialsVerifyRegistry(ctx context.Context, input MaterialsRegistryVeri
 	if err := refuseLockNamedOtherReference(lock, table); err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: registryContentRequestTimeout}
 	gate := NewRegistryContentChecker(client, input.RegistryAddress, lock, input.EvidenceDirs, input.VerifyBlobBytes)
 	originals := make([]string, 0, len(table))
 	for original := range table {

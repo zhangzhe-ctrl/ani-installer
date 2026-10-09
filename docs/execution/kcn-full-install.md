@@ -112,6 +112,10 @@ JSON 创建本次独立 file-storage stream；只有对应 stream 的 Sequence 1
 metrics 清理核对本次登记的 UID，等待正常 Pod 宽限和异步删除完成；中断后
 已消失对象可以关闭登记，同名不同 UID 对象不能删除，不缩短 grace 或强删。
 
+安装、components 和制包的 registry 字节门禁使用同一 90 秒请求传输预算，
+覆盖冷缓存大层的完整读入；逐 blob 摘要和声明大小校验、缺失对象拒绝和
+调用方取消均保留。读取通过不代表 components 已执行或业务数据已验收。
+
 Milvus 正式 `vector-verify.py` 保留默认 smoke（insert/flush/search/删除自身
 collection），并提供 `--mode write|readback|cleanup --receipt <文件>` 的持久化
 检查阶段。write 保留本次唯一 collection、服务端 collection ID 和原始向量摘要；

@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -35,6 +36,11 @@ import (
 // install and a component addition all go through registryContentChecker.Verify,
 // so no path can be checked by a weaker rule than another: the same pin, the same
 // evidence, the same blob bytes and the same lock.
+
+// Full config/layer hashing can exceed a readiness-probe timeout on a cold
+// multi-gigabyte layer. Use the packaging gate's bounded transfer budget in
+// production byte gates, while preserving each request's caller cancellation.
+const registryContentRequestTimeout = 90 * time.Second
 
 // registryObject is one manifest object as the registry served it: the raw
 // bytes, their digest, and the digests they reference.

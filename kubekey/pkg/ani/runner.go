@@ -833,7 +833,7 @@ func waitRegistryHTTP(ctx context.Context, registryAddress string, maxWait, poll
 // approved digests. Rows without a lock entry are verified against the table
 // pin and logged as exactly that — never as lock-verified.
 func verifyRegistryImages(ctx context.Context, logger io.Writer, registryAddress string, table ImageTable, lock *MaterialsLock, cluster *ClusterConfig, artifactRoot string) error {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: registryContentRequestTimeout}
 	gate := NewRegistryContentChecker(client, registryAddress, lock, EvidenceRoots(artifactRoot), true)
 	verifiedAgainstLock := 0
 	// R15.3: component-scoped images are only verified when their component
