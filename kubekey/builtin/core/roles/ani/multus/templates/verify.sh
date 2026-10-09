@@ -7,6 +7,7 @@ test -f "$KUBECONFIG_FILE"
 install -d -m 0700 "$OUT_DIR"
 K=(kubectl --kubeconfig "$KUBECONFIG_FILE")
 NS=ani-platform
+TEST_CIDR='{{ .ani.network.multus.test_cidr }}'
 IMAGE='{{ index .ani.images "docker.io/library/busybox:1.37.0" }}'
 node="$("${K[@]}" get nodes -o json | python3 -c '
 import json,sys
@@ -29,6 +30,9 @@ metadata:
   labels: {ani.io/managed-by: '{{ .kubernetes.cluster_name }}', ani.io/check: multus}
   annotations:
     k8s.v1.cni.cncf.io/networks: ani-b01-local
+{{ if eq .ani.network.stack "kcn" }}
+    net1.networking.kubercloud.com/subnet: ani-platform/ani-b01-secondary
+{{ end }}
 spec:
   nodeName: $node
   restartPolicy: Never
@@ -62,6 +66,11 @@ done
 ip_a="$("${K[@]}" -n "$NS" exec "$a" -- sh -ec "ip -4 addr show dev net1 | awk '/inet / {print \$2}' | cut -d/ -f1")"
 ip_b="$("${K[@]}" -n "$NS" exec "$b" -- sh -ec "ip -4 addr show dev net1 | awk '/inet / {print \$2}' | cut -d/ -f1")"
 [ -n "$ip_a" ] && [ -n "$ip_b" ] && [ "$ip_a" != "$ip_b" ] || { echo 'net1 IP allocation failed or duplicate' >&2; exit 1; }
+python3 - "$TEST_CIDR" "$ip_a" "$ip_b" <<'PY'
+import ipaddress,sys
+network=ipaddress.ip_network(sys.argv[1])
+assert all(ipaddress.ip_address(value) in network for value in sys.argv[2:]), 'secondary addresses differ from the declared test subnet'
+PY
 "${K[@]}" -n "$NS" exec "$a" -- ping -c 2 -W 2 "$ip_b" > "$OUT_DIR/net1-a-to-b.txt"
 "${K[@]}" -n "$NS" exec "$b" -- ping -c 2 -W 2 "$ip_a" > "$OUT_DIR/net1-b-to-a.txt"
 eth_b="$("${K[@]}" -n "$NS" get "pod/$b" -o jsonpath='{.status.podIP}')"

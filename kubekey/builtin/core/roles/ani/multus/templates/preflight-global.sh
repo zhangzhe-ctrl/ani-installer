@@ -23,6 +23,9 @@ else
   echo missing > /etc/kubernetes/ani/multus/crd-state
 fi
 items=('clusterrole ani-multus' 'clusterrolebinding ani-multus' 'serviceaccount ani-multus kube-system' 'configmap ani-multus-daemon-config kube-system' 'daemonset ani-multus kube-system')
+{{ if eq .ani.network.stack "kcn" }}
+items+=('vpc.networking.kubercloud.com ani-b01-vpc ani-platform' 'subnet.networking.kubercloud.com ani-b01-secondary ani-platform')
+{{ end }}
 if grep -qx present /etc/kubernetes/ani/multus/crd-state; then
   items+=('network-attachment-definition ani-b01-local ani-platform')
 fi

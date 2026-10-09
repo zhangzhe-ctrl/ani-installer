@@ -74,13 +74,23 @@
     KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl create namespace ani-platform --dry-run=client -o yaml |
       KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f -
 
-- name: ANI Multus | Render node-local test NAD
+- name: ANI Multus | Render provider-compatible test network
   template:
     src: test-nad.yaml
     dest: /etc/kubernetes/ani/multus/20-test-nad.yaml
 
 - name: ANI Multus | Install owned test NAD
   command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/multus/20-test-nad.yaml
+
+- name: ANI Multus | Wait for native KCN secondary VPC and Subnet
+  command: |
+    set -euo pipefail
+    if [ '{{ .ani.network.stack }}' = kcn ]; then
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl -n ani-platform wait vpc.networking.kubercloud.com/ani-b01-vpc --for=condition=Ready --timeout=180s
+    kubectl -n ani-platform wait subnet.networking.kubercloud.com/ani-b01-secondary --for=condition=Ready --timeout=180s
+    kubectl -n ani-platform get vpc.networking.kubercloud.com/ani-b01-vpc subnet.networking.kubercloud.com/ani-b01-secondary -o json > '{{ .ani.run.logs_dir }}/b01-kcn-secondary-network.json'
+    fi
 
 - name: ANI Multus | Render data-plane checker
   template:

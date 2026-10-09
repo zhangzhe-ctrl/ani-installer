@@ -1,5 +1,33 @@
-# This bridge is a node-local functional test only. host-local IPAM is never
-# claimed to allocate unique addresses across nodes.
+# The fixed KCN controller requires native kc-networking attachment configs.
+# Kube-OVN retains the node-local bridge/host-local functional sample.
+{{ if eq .ani.network.stack "kcn" }}
+apiVersion: networking.kubercloud.com/v1
+kind: VPC
+metadata:
+  name: ani-b01-vpc
+  namespace: ani-platform
+  labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
+    ani.io/check: multus
+spec:
+  ipVersion: IPv4
+  cidrBlock: '{{ .ani.network.multus.test_cidr }}'
+---
+apiVersion: networking.kubercloud.com/v1
+kind: Subnet
+metadata:
+  name: ani-b01-secondary
+  namespace: ani-platform
+  labels:
+    ani.io/managed-by: '{{ .kubernetes.cluster_name }}'
+    ani.io/check: multus
+spec:
+  type: VPC
+  gateway: ani-platform/ani-b01-vpc
+  ipVersion: IPv4
+  cidrBlock: '{{ .ani.network.multus.test_cidr }}'
+---
+{{ end }}
 apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:
@@ -12,7 +40,12 @@ spec:
     {
       "cniVersion": "0.3.1",
       "name": "ani-b01-local",
+{{ if eq .ani.network.stack "kcn" }}
+      "type": "kc-networking",
+      "server_socket": "/run/openvswitch/kc-networking-daemon.sock"
+{{ else }}
       "type": "bridge",
       "bridge": "ani-b01-br",
       "ipam": {"type": "host-local", "subnet": "{{ .ani.network.multus.test_cidr }}"}
+{{ end }}
     }

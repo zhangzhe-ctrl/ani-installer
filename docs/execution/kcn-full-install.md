@@ -60,6 +60,13 @@ Ceph 三副本的原始逻辑上限约 200 GiB，尚未扣除元数据及安全�
 RustFS 为 Milvus/Kubeflow 提供对象存储；MySQL/etcd/Harbor DB/cache 保持各自归属。
 最终全选择由同一首装配置完成，不用事后 components add 拼装。
 
+Multus 正式通信用例按 provider 选择附件：固定 KCN 使用原生 `kc-networking`
+NAD（`server_socket=/run/openvswitch/kc-networking-daemon.sock`），在 `ani-platform`
+创建受当前 cluster 归属保护的 `ani-b01-vpc`/`ani-b01-secondary`，CIDR 来自
+`network.multus.testCIDR`；Pod 用 `net1.networking.kubercloud.com/subnet` 绑定该
+Subnet，保留 primary `eth0`。先等待 VPC/Subnet Ready，再验证独立 IP、双向副接口、
+primary 通信和 DNS。Kube-OVN 保留原 node-local bridge/host-local 用例。
+
 ## 身份、恢复和验收边界
 
 Fedora 任务根：`/home/chabking/ani-installer-runs/kcn-full-20261009`。

@@ -1,10 +1,75 @@
 package ani
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestB01MultusAttachmentUsesSupportedProviderContract(t *testing.T) {
+	for _, stack := range []string{"kcn", "kubeovn"} {
+		t.Run(stack, func(t *testing.T) {
+			text := strings.Replace(r06SiteA, "  stack: kcn", "  stack: "+stack+"\n  multus: {enabled: true, testCIDR: 10.250.0.0/24}", 1)
+			c, err := ParseClusterConfig([]byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), c, "/opt/ani", r08FullTable(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			objects := map[string]map[string]any{}
+			probe := ""
+			for _, file := range files {
+				if file.Rel == "multus/templates/verify.sh" {
+					probe = string(file.Rendered)
+				}
+				if file.Rel != "multus/templates/test-nad.yaml" {
+					continue
+				}
+				for _, document := range strings.Split(string(file.Rendered), "---") {
+					var object map[string]any
+					if err := yaml.Unmarshal([]byte(document), &object); err != nil {
+						t.Fatal(err)
+					}
+					if object != nil {
+						objects[object["kind"].(string)] = object
+					}
+				}
+			}
+			nad, ok := objects["NetworkAttachmentDefinition"]
+			if !ok {
+				t.Fatal("attachment NAD missing")
+			}
+			var config map[string]any
+			if err := json.Unmarshal([]byte(nad["spec"].(map[string]any)["config"].(string)), &config); err != nil {
+				t.Fatal(err)
+			}
+			if stack == "kcn" {
+				if config["type"] != "kc-networking" || config["server_socket"] != "/run/openvswitch/kc-networking-daemon.sock" {
+					t.Fatal("KCN controller cannot reconcile this attachment configuration")
+				}
+				for _, kind := range []string{"VPC", "Subnet"} {
+					value, ok := objects[kind]
+					if !ok {
+						t.Fatalf("KCN attachment %s missing", kind)
+					}
+					if value["metadata"].(map[string]any)["namespace"] != "ani-platform" || value["spec"].(map[string]any)["cidrBlock"] != "10.250.0.0/24" {
+						t.Fatalf("incorrect %s scope or CIDR", kind)
+					}
+				}
+				if objects["Subnet"]["spec"].(map[string]any)["gateway"] != "ani-platform/ani-b01-vpc" || !strings.Contains(probe, "net1.networking.kubercloud.com/subnet: ani-platform/ani-b01-secondary") {
+					t.Fatal("secondary interface is not bound to its declared VPC subnet")
+				}
+			} else if config["type"] != "bridge" || len(objects) != 1 || config["ipam"].(map[string]any)["subnet"] != "10.250.0.0/24" {
+				t.Fatal("Kube-OVN node-local bridge contract changed")
+			}
+		})
+	}
+}
 
 func TestB01MultusProductionSelectionAndRender(t *testing.T) {
 	off, err := ParseClusterConfig([]byte(r06SiteA))
