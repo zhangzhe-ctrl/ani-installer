@@ -249,6 +249,26 @@ class MySQLDependencyReadiness(unittest.TestCase):
         self.assertEqual(database["spec"]["template"]["spec"]["volumes"][0]["persistentVolumeClaim"]["claimName"], "mysql-pv-claim")
 
 
+class WorkflowPodNaming(unittest.TestCase):
+    def test_kcn_uses_argo_node_ids_and_kubeovn_keeps_default_names(self):
+        root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"
+        references = json.loads((root / "source-images.json").read_text())
+        for capability, expected in (({"network_stack": "kcn", "network_policy": "unsupported",
+                                      "network_policy_contract": "kcn-test-unsupported-v1"}, "v1"),
+                                     (KUBEOVN_CAPABILITY, None)):
+            with self.subTest(provider=capability["network_stack"]):
+                values = materialize(root / "overlay", {
+                    "images": {name: "offline/" + name for name in references},
+                    "database_class": "ani-block", "database_size": "20Gi", **capability})
+                controller = next(v for v in values if v["kind"] == "Deployment"
+                                  and v["metadata"]["name"] == "workflow-controller")
+                environment = controller["spec"]["template"]["spec"]["containers"][0]["env"]
+                self.assertEqual([e for e in environment if e["name"] == "POD_NAMES"],
+                                 [] if expected is None else [{"name": "POD_NAMES", "value": expected}])
+                self.assertTrue(any(e["name"] == "LEADER_ELECTION_IDENTITY" and e.get("valueFrom")
+                                    for e in environment))
+
+
 class LegacyVisualizationExcluded(unittest.TestCase):
     def test_backend_startup_configuration_keeps_excluded_service_closed(self):
         root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"

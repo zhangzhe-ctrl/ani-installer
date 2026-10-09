@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: origin_release_0f377f6_clean_verified
     liveInventory: new_cluster_0b581f48_kcn_primary_ready_three_hosts_verified
-    code: bb08a24_formal_gate_pass_multus_native_attachment_related_tests_pass
-    materials: integration_0098790_full_112_images_offline_package_pass_final_candidate_pending
-    integration: integration_0098790_install_rc1_multus_attachment_contract_fail_source_fix_prepared
+    code: integration_540cbc1_formal_gate_pass_argo_kcn_naming_fix_targeted_pass
+    materials: integration_540cbc1_full_112_images_offline_package_and_render_pass_final_candidate_pending
+    integration: retained_540cbc1_all_selected_roles_rc0_kfp_container_driver_name_limit_fail_fix_live_pending
     cleanOffline: not_run
     behaviorAcceptance: not_verified
     noop: not_run
@@ -33,7 +33,12 @@ tasks:
   - 独立 codex/kcn-full-install 工作树；本地源码/Git/传输，Fedora 任务根 /home/chabking/ani-installer-runs/kcn-full-20261009；未推送或合并。
   - 20～22 上一轮集群 a14b07e9 的工作区唯一输出、RustFS 完整数据卷和 MySQL 一致性 dump 已保存并校验。严格 hostkey、VM/IP/BIOS UUID、快照 ID/时间及双盘覆盖重新核实后恢复；三节点恢复后机器 UUID/空数据盘/KVM/Kubernetes 不存在检查通过。此次恢复用于 KCN 集成，不是最终干净首装验收。
   - 0098790 正式完整首装 run ani-ani-kcn-full-20261009-084310 于 2026-10-09 09:01:23 UTC 以 rc=1 停在 Multus 通信检查。新集群 UID 0b581f48-4f84-49d9-beb0-c80d5de97aea；112 镜像 registry 内容门禁、底座、全部 17 CRD、KCN 四类组件和三节点 Ready 已推进，尚未部署后续 Envoy/Ceph/Kubeflow。原始退出码/日志/事件保留；不再次恢复现场。
-  - 固定 KCN controller 拒绝 bridge/host-local NAD 缺失 server_socket，阻止全部 Pod VNic 分配。正式 Multus role 改用原生 kc-networking NAD、归属受控的独立 VPC/Subnet 和 net1 Subnet 注解；Kube-OVN 用例保留。Fedora 新回归先红后绿，B01/KCN/KubeflowKCN 定向组通过；实装修复未验证。
+  - 固定 KCN controller 拒绝 bridge/host-local NAD 缺失 server_socket，阻止全部 Pod VNic 分配。正式 Multus role 改用原生 kc-networking NAD、归属受控的独立 VPC/Subnet 和 net1 Subnet 注解；Kube-OVN 用例保留。Fedora 新回归先红后绿，B01/KCN/KubeflowKCN 定向组通过；保留联调结果见后续条目。
+  - 540cbc1 在 Fedora 完成正式 build-code/check-code、完整 build-offline、validate/render；树指纹 998a2c9c7fb38ae51041a723bcf44910fc95bb7dc0f699979af55a18dc34e844，112 镜像、23 个 Kubeflow 资产和 41 个 SDK wheel 绑定通过。完整包在 .20 校验全部字节及实际 registry 内容后，由同源配置生成器和正式 role 在保留集群联调；独立证据目录 retained-540cbc1-attempt-01，不发布首装成功记录。
+  - 保留联调 540cbc1 已正常按 UID 删除旧失败探针；新建独立 KCN VPC/Subnet Ready，三节点委托检查及真实 B01 主/副接口/DNS 检查通过，net1=10.240.0.2/.3，primary 对端=10.16.0.5，新探针正常清理。Envoy certgen/实际 TLS Secret 校验及 HTTPRoute 内容/两个副本逐一 UID 绑定直连通过；原 0098790 统一首装 rc=1 保留。
+  - 同一保留联调全部选中正式 roles 于 2026-10-09 10:29:49 UTC 以 rc=0 完成，包含 Volcano、metrics、OpenSearch、Fluent Bit 真实唯一日志命中和 Kubeflow 全组合控制面检查。此为联调检查，最终全组件验收/持久化补充项/正常清理尚未完成；不改写原统一首装 rc=1。
+  - KFP 真实成功用例 Run 591f3da4-981b-4b2a-a4d5-b6e42c60fbb5 的 DAG driver 已完成；container driver 名长 64 字符，固定 KCN autoCreateVNic 使用该 Pod 名生成 annotation，API 拒绝 name 部分超过 63 字节。原 SDK rc=1/TimeoutError 和 controller 原始错误保留。installer 仅在 KCN 下使用 Argo 3.7.3 支持的 POD_NAMES=v1，正式 checker 校验；Fedora 回归先红后绿，runtime 与两提供方能力测试通过，真实新 Run 尚待复验。
+  - MON c 的 MON_DISK_LOW 对应 .20 本任务旧重复传输 tar；确认原 SHA256/大小/文件归属和 Fedora 原包保留后，仅删除该目标副本，释放 12733378560 字节。随后 3 MON quorum、3 OSD up/in、81/81 PG active+clean，磁盘告警消失；AUTH_INSECURE_CLIENT_KEY_TYPE/KEYS_ALLOWED/KEYS_CREATABLE 仍存在并单列，不记 HEALTH_OK 或安全认证通过。
   - 17 CRD、34 对象由固定 2b9467c 源码归档在 Fedora 生成；使用用户供给 494432d2 镜像，旧 fix2 材料已退出当前源码选择。
   - Fedora 实际锁定 Envoy 镜像二进制 /ready 200→503→200、shutdown-manager /healthz、certgen CA/SAN/expiry/key-pair 通过；保留原生探针，正式 smoke 增加逐副本直连与坏副本负例。目标实装尚未运行。
   - 0098790 已通过 Fedora 正式 build-code/check-code 全门禁；树指纹 971ca157b018d062c0805f0ce647f538a0e2caac2d179829fe115f145ed7b6e7；完整 112 镜像离线包、材料闭包及正式 validate/render 通过。用于集成定位，不冒充最终候选冻结或实装成功。

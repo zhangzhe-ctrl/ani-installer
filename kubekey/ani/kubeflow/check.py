@@ -35,6 +35,12 @@ def check(cluster, root, report):
         if value["kind"] == "CustomResourceDefinition" and not any(c["type"] == "Established" and c["status"] == "True" for c in existing.get("status", {}).get("conditions", [])):
             raise RuntimeError("CRD is not Established: " + identity(value))
         if value["kind"] == "Deployment":
+            if site["network_stack"] == "kcn" and value["metadata"]["name"] == "workflow-controller":
+                containers = existing["spec"]["template"]["spec"]["containers"]
+                environment = containers[0].get("env", [])
+                if [e for e in environment if e["name"] == "POD_NAMES"] != [{"name": "POD_NAMES", "value": "v1"}]:
+                    raise RuntimeError("KCN workflow controller Pod name format must be v1")
+                report["workflowPodNameFormat"] = "v1"
             evidence = cluster.deployment(value)
             desired = {c["name"]: c["image"].rsplit("@", 1)[1] for c in value["spec"]["template"]["spec"]["containers"]}
             for pod in evidence["pods"]:

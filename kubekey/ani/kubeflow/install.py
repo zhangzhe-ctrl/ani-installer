@@ -59,6 +59,15 @@ def materialize(root, site):
     if len(resources) != lock["resource_count"]:
         raise ValueError("overlay resource count differs")
     for value in resources:
+        if (site["network_stack"] == "kcn" and value["kind"] == "Deployment"
+                and value["metadata"]["name"] == "workflow-controller"):
+            # Fixed KCN uses the Pod name as an annotation key's name part
+            # (63-byte limit). Argo 3.7.3's v2 names append the template name;
+            # the real KFP container driver exceeds that limit. Its supported
+            # v1 format keeps the stable node ID without the template suffix.
+            container = value["spec"]["template"]["spec"]["containers"][0]
+            container["env"] = [e for e in container["env"] if e["name"] != "POD_NAMES"] + [
+                {"name": "POD_NAMES", "value": "v1"}]
         if value["kind"] == "Deployment" and value["metadata"]["name"] == "ml-pipeline":
             # 2.16.0 registers the excluded legacy visualization RPC
             # unconditionally and requires these values even without a

@@ -67,6 +67,13 @@ NAD（`server_socket=/run/openvswitch/kc-networking-daemon.sock`），在 `ani-p
 Subnet，保留 primary `eth0`。先等待 VPC/Subnet Ready，再验证独立 IP、双向副接口、
 primary 通信和 DNS。Kube-OVN 保留原 node-local bridge/host-local 用例。
 
+固定 KCN 把 Pod 名用于 annotation 的 name 部分，长度上限为 63 字节。
+Kubeflow 在 KCN 下为 Argo 3.7.3 设置 `POD_NAMES=v1`，使用 node ID，避免
+默认 v2 附加 template 名导致真实 KFP container driver 的 64 字符 Pod 失败。
+正式 checker 核实该配置；Kube-OVN 保留默认格式。v1 不会截断 Workflow 名，
+因此 KCN 上 Workflow 名仍须不超过 52 字符，为 node ID 的哈希后缀留足空间。
+该适配不修改 KCN 源码，也不改变身份、存储或 NetworkPolicy 能力合同。
+
 ## 身份、恢复和验收边界
 
 Fedora 任务根：`/home/chabking/ani-installer-runs/kcn-full-20261009`。
