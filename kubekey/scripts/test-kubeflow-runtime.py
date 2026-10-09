@@ -18,6 +18,8 @@ from resources import NGINX, tenant
 import stage2
 from storage import model_policy
 
+KUBEOVN_CAPABILITY = {"network_stack": "kubeovn", "network_policy": "required", "network_policy_contract": "kubeovn-required-v1"}
+
 
 class ExistingSecret(Cluster):
     def read(self, value):
@@ -234,7 +236,7 @@ class MySQLDependencyReadiness(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"
         references = json.loads((root / "source-images.json").read_text())
         values = materialize(root / "overlay", {"images": {name: "offline/" + name for name in references},
-                            "database_class": "ani-block", "database_size": "20Gi"})
+                            "database_class": "ani-block", "database_size": "20Gi", **KUBEOVN_CAPABILITY})
         database = next(v for v in values if v["kind"] == "Deployment" and v["metadata"]["name"] == "mysql")
         container = database["spec"]["template"]["spec"]["containers"][0]
         for key in ("startupProbe", "readinessProbe"):
@@ -252,7 +254,7 @@ class LegacyVisualizationExcluded(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"
         references = json.loads((root / "source-images.json").read_text())
         values = materialize(root / "overlay", {"images": {name: "offline/" + name for name in references},
-                            "database_class": "ani-block", "database_size": "20Gi"})
+                            "database_class": "ani-block", "database_size": "20Gi", **KUBEOVN_CAPABILITY})
         api = next(v for v in values if v["kind"] == "Deployment" and v["metadata"]["name"] == "ml-pipeline")
         environment = {v["name"]: v.get("value") for v in api["spec"]["template"]["spec"]["containers"][0]["env"]}
         self.assertEqual(environment["ML_PIPELINE_VISUALIZATIONSERVER_SERVICE_HOST"], "127.0.0.1")
@@ -446,7 +448,7 @@ class Stage2Protection(unittest.TestCase):
     def test_kserve_source_ca_uses_the_controller_namespace_and_upstream_filename(self):
         self.assertEqual(stage2.controller_ca("public-ca")["data"], {"cabundle.crt": "public-ca"})
         self.assertEqual(stage2.controller_ca()["metadata"]["namespace"], "kserve")
-        workspace = stage2.namespace_contract({"workspace_max_size": "5Gi"}, stage2.NAMESPACES[0], "public-ca")
+        workspace = stage2.namespace_contract({"workspace_max_size": "5Gi", **KUBEOVN_CAPABILITY}, stage2.NAMESPACES[0], "public-ca")
         self.assertEqual(next(v for v in workspace if v["kind"] == "ConfigMap")["data"], {"ca.crt": "public-ca"})
 
     def test_model_roles_cannot_reverse_their_storage_responsibility(self):
@@ -464,7 +466,7 @@ class Stage2Protection(unittest.TestCase):
             self.assertEqual(object_scopes, [["arn:aws:s3:::bucket-a/models/*"]])
 
     def test_native_workload_contract_does_not_inherit_pipeline_permissions(self):
-        site = {"workspace_class": "ani-cephfs", "workspace_max_size": "5Gi", "images": {stage2.WORKSPACE_IMAGE: "registry/jupyter@sha256:" + "a" * 64}}
+        site = {"workspace_class": "ani-cephfs", "workspace_max_size": "5Gi", "images": {stage2.WORKSPACE_IMAGE: "registry/jupyter@sha256:" + "a" * 64}, **KUBEOVN_CAPABILITY}
         pvc, notebook = stage2.notebook(site, stage2.NAMESPACES[0], "native", "case-a")
         pod = notebook["spec"]["template"]["spec"]
         self.assertFalse(pod["automountServiceAccountToken"])

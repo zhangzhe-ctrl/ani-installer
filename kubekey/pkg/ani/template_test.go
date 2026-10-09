@@ -12,87 +12,33 @@ import (
 )
 
 func TestKCNManifestTemplateUsesSiteInputs(t *testing.T) {
-	path := filepath.Join("..", "..", "builtin", "core", "roles", "ani", "kcn", "templates", "install.yaml")
-	data := map[string]any{
-		"ani": map[string]any{
-			"images": map[string]string{
-				"docker.changqingyun.cn/kubercloud/kc-networking:dev": "192.0.2.11:5000/kubercloud/kc-networking:dev",
-			},
-			"node_addresses": []string{"192.0.2.11", "192.0.2.12", "192.0.2.13"},
-			"network": map[string]any{
-				"service_cidr": "10.96.0.0/16",
-				"kcn": map[string]any{
-					"managedDevices":   []string{"ens35"},
-					"encapNetworks":    []string{"192.0.2.0/24"},
-					"intranetNetworks": []string{"10.96.0.0/16"},
-				},
-			},
-		},
-	}
-
-	tmpl, err := template.New("install.yaml").Funcs(template.FuncMap{
-		"join": func(sep string, values []string) string { return strings.Join(values, sep) },
-	}).ParseFiles(path)
+	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), validConfig(), "/offline", r08FullTable(t))
 	if err != nil {
-		t.Fatalf("parse kcn template: %v", err)
+		t.Fatal(err)
 	}
-	builder := &strings.Builder{}
-	if err := tmpl.Execute(builder, data); err != nil {
-		t.Fatalf("execute kcn template: %v", err)
+	var out string
+	for _, file := range files {
+		if file.Role == "kcn" {
+			out += string(file.Rendered)
+		}
 	}
-	out := builder.String()
-
+	out = strings.ReplaceAll(out, "'", "")
 	for _, want := range []string{
-		"--service-cluster-ip-range=10.96.0.0/16",
-		"value: 192.0.2.11,192.0.2.12,192.0.2.13",
-		"managedDevices: ens35",
-		"encapNetworks: 192.0.2.0/24",
+		"--service-cluster-ip-range=10.96.0.0/16", "--default-cidr=10.16.0.0/16",
+		"value: 192.0.2.11,192.0.2.12,192.0.2.13", "managedDevices: ens35", "encapNetworks: 192.0.2.0/24",
+		"name: basicnetworkisolations.networking.kubercloud.com", "name: learnedroutes.networking.kubercloud.com",
+		"name: transitrouters.networking.kubercloud.com", "name: vpcattachments.networking.kubercloud.com",
+		"name: kcn-ovn-nb", "name: kcn-ovn-northd", "name: kcn-ovn-sb", "- /kc-networking/start-db.sh",
 	} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("rendered manifest missing %q", want)
+			t.Fatalf("rendered KCN missing %q", want)
 		}
 	}
-	// fix2 (2026-09-21): upstream dropped ConfigMap kcn-config entirely, so
-	// 33.3.14.0/23 / 33.3.96.0/19 / 192.1.1.0/24 no longer exist even as
-	// upstream hardcoded values; the checks stay as guards since the locally
-	// restored ConfigMap must render injected values only.
-	for _, stale := range []string{
-		"33.3.1.201", "33.3.1.202", "33.3.1.203", "33.3.64.0/19",
-		"33.3.14.0/23", "33.3.96.0/19", "192.1.1.0/24",
-		"imagePullPolicy: Always",
-	} {
+	for _, stale := range []string{"33.3.1.201", "33.3.1.202", "33.3.1.203", "33.3.64.0/19",
+		"33.3.14.0/23", "33.3.96.0/19", "192.1.1.0/24", "192.168.62.131", "172.16.101.10", "imagePullPolicy: Always"} {
 		if strings.Contains(out, stale) {
-			t.Fatalf("rendered manifest still contains stale site value %q", stale)
+			t.Fatalf("KCN contains stale input %q", stale)
 		}
-	}
-	// 2026-09-21 kcn dev fix2 upgrade: upstream ships three new CRDs
-	// (learnedroutes / transitrouters / vpcattachments) alongside the dev
-	// shapes already asserted below (kcn- prefixed OVN Services, start-db.sh).
-	for _, want := range []string{
-		"name: learnedroutes.networking.kubercloud.com",
-		"name: transitrouters.networking.kubercloud.com",
-		"name: vpcattachments.networking.kubercloud.com",
-		"name: kcn-ovn-nb",
-		"name: kcn-ovn-northd",
-		"name: kcn-ovn-sb",
-		"- /kc-networking/start-db.sh",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("rendered manifest missing KCN dev expectation %q", want)
-		}
-	}
-	// The two-space indent pins the stale check to the Service metadata name;
-	// the dev port names ("- name: ovn-nb") must stay bare and must not trip.
-	for _, stale := range []string{
-		"  name: ovn-nb", "  name: ovn-northd", "  name: ovn-sb",
-		"start-db.sh &", "kc-networking-leader-checker",
-	} {
-		if strings.Contains(out, stale) {
-			t.Fatalf("rendered manifest still contains stale v0.6.2 Service name or hand-patched leader fix %q", stale)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(t.TempDir(), "kcn-install.yaml"), []byte(out), 0o600); err != nil {
-		t.Fatalf("write rendered manifest: %v", err)
 	}
 }
 

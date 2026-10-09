@@ -59,14 +59,15 @@ func kubeflowPinnedImages(table ImageTable, registry string) (map[string]string,
 // Kubeflow belongs to the first-install chain, outside Components. It is not
 // an addition target; omitting this pointer preserves legacy config digests.
 type KubeflowConfig struct {
-	Enabled      bool              `yaml:"enabled"`
-	Release      string            `yaml:"release"`
-	EntryAddress string            `yaml:"entryAddress"`
-	HTTPPort     int               `yaml:"httpPort"`
-	GRPCPort     int               `yaml:"grpcPort"`
-	Database     KubeflowDatabase  `yaml:"database"`
-	Workspace    KubeflowWorkspace `yaml:"workspace"`
-	Tenants      []string          `yaml:"tenants"`
+	Enabled       bool              `yaml:"enabled"`
+	Release       string            `yaml:"release"`
+	NetworkPolicy string            `yaml:"networkPolicy,omitempty"`
+	EntryAddress  string            `yaml:"entryAddress"`
+	HTTPPort      int               `yaml:"httpPort"`
+	GRPCPort      int               `yaml:"grpcPort"`
+	Database      KubeflowDatabase  `yaml:"database"`
+	Workspace     KubeflowWorkspace `yaml:"workspace"`
+	Tenants       []string          `yaml:"tenants"`
 }
 
 type KubeflowDatabase struct {
@@ -103,8 +104,17 @@ func validateKubeflow(c ClusterConfig) error {
 	if c.ObjectStorageProvider() != objectProviderRustFS {
 		return fmt.Errorf("Kubeflow release %s requires declared objectStorage.provider=rustfs", KubeflowRelease)
 	}
-	if networkStack(c.Network.Stack) != "kubeovn" {
-		return fmt.Errorf("Kubeflow release %s requires network.stack=kubeovn with enforced NetworkPolicy", KubeflowRelease)
+	switch networkStack(c.Network.Stack) {
+	case "kcn":
+		if k.NetworkPolicy != "kcn-test-unsupported-v1" {
+			return fmt.Errorf("Kubeflow on KCN requires kubeflow.networkPolicy=kcn-test-unsupported-v1: test environment accepts unsupported Kubernetes NetworkPolicy")
+		}
+	case "kubeovn":
+		if k.NetworkPolicy != "" && k.NetworkPolicy != "required" {
+			return fmt.Errorf("Kubeflow on Kube-OVN requires enforced NetworkPolicy; unsupported test contracts are invalid")
+		}
+	default:
+		return fmt.Errorf("unsupported Kubeflow network provider %q", c.Network.Stack)
 	}
 	address := net.ParseIP(k.EntryAddress)
 	if address == nil || address.To4() == nil {
@@ -163,6 +173,13 @@ func kubeflowSpec(c ClusterConfig) map[string]any {
 		return spec
 	}
 	k := c.Kubeflow
+	spec["network_stack"] = networkStack(c.Network.Stack)
+	spec["network_policy"] = "required"
+	spec["network_policy_contract"] = "kubeovn-required-v1"
+	if networkStack(c.Network.Stack) == "kcn" {
+		spec["network_policy"] = "unsupported"
+		spec["network_policy_contract"] = k.NetworkPolicy
+	}
 	spec["release"] = k.Release
 	spec["entry_address"] = k.EntryAddress
 	spec["http_port"] = k.HTTPPort

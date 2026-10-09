@@ -1324,8 +1324,15 @@ func Validate(c ClusterConfig) error {
 	// selected the site config may still carry the section (it is ignored),
 	// so an existing site file needs no edits to switch stacks.
 	if stack == "kcn" {
-		if len(c.Network.KCN.ManagedDevices) == 0 {
-			return fmt.Errorf("network.kcn.managedDevices is required")
+		devices := map[string]bool{}
+		for _, device := range c.Network.KCN.ManagedDevices {
+			if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$`).MatchString(device) || devices[device] {
+				return fmt.Errorf("network.kcn.managedDevices requires unique Linux interface names")
+			}
+			if device == c.Network.ManagementInterface {
+				return fmt.Errorf("network.kcn.managedDevices cannot adopt management interface %q", device)
+			}
+			devices[device] = true
 		}
 		if len(c.Network.KCN.EncapNetworks) == 0 {
 			return fmt.Errorf("network.kcn.encapNetworks is required")
@@ -1509,6 +1516,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err := Validate(c); err != nil {
 		return nil, err
 	}
+	installer, _ := c.Installer()
 	objectSpec := map[string]any{"provider": c.ObjectStorageProvider()}
 	if c.ObjectStorage != nil && c.ObjectStorageProvider() == objectProviderRustFS {
 		objectSpec["rustfs"] = map[string]any{
@@ -1538,6 +1546,16 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	if err != nil {
 		return nil, err
 	}
+	if networkStack(c.Network.Stack) == "kcn" {
+		ref, err := imageTable.LocalReference(KCNImageReference, registry)
+		if err != nil {
+			return nil, err
+		}
+		if imageTable[KCNImageReference].Digest != strings.Split(KCNImageReference, "@")[1] {
+			return nil, fmt.Errorf("KCN image digest differs from supplied fixed material")
+		}
+		imageRefs[KCNImageReference] = ref + "@" + imageTable[KCNImageReference].Digest
+	}
 	// Split image references for the charts that build "registry/repository:tag"
 	// themselves. Those charts must not be handed a whole reference in the
 	// registry field, or the resulting path is doubled and never pulls. Only
@@ -1555,6 +1573,21 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			return nil, err
 		}
 		kubeflow["images"] = refs
+		networkOriginal := "docker.io/kubeovn/kube-ovn:v1.16.6"
+		if networkStack(c.Network.Stack) == "kcn" {
+			networkOriginal = KCNImageReference
+		}
+		networkRef, err := imageTable.LocalReference(networkOriginal, registry)
+		if err != nil {
+			return nil, err
+		}
+		networkDigest := imageTable[networkOriginal].Digest
+		if !strings.HasPrefix(networkDigest, "sha256:") || !isHex64(strings.TrimPrefix(networkDigest, "sha256:")) {
+			return nil, fmt.Errorf("network provider image has no approved platform digest")
+		}
+		networkRef += "@" + networkDigest
+		kubeflow["network_image"] = networkRef
+		imageRefs[networkOriginal] = networkRef
 	}
 
 	components := componentSpec(c.EffectiveComponents(), c.Name)
@@ -1678,6 +1711,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			// a components run replaces the whole block with its own directories.
 			"run": InstallRunScope(c.Name).SpecMap(),
 			"network": map[string]any{
+				"bootstrap_address":    installer.Address,
 				"stack":                networkStack(c.Network.Stack),
 				"management_interface": c.Network.ManagementInterface,
 				"pod_cidr":             c.Network.PodCIDR,
@@ -1687,11 +1721,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 					"default_gateway": kubeovnNet.DefaultGateway,
 					"join_cidr":       kubeovnNet.JoinCIDR,
 				},
-				"kcn": map[string]any{
-					"managedDevices":   c.Network.KCN.ManagedDevices,
-					"encapNetworks":    c.Network.KCN.EncapNetworks,
-					"intranetNetworks": c.Network.KCN.IntranetNetworks,
-				},
+				"kcn": kcnSiteSpec(c),
 			},
 		},
 	}, nil
@@ -2074,7 +2104,7 @@ func renderSource(files []RenderedFile, name string) string {
 var vendorMaterial = map[string][]string{
 	"ceph":    {"templates/crds.yaml", "templates/csi-operator.yaml"},
 	"envoy":   {"templates/install.yaml"},
-	"kcn":     {"templates/install.yaml"},
+	"kcn":     {"templates/install.yaml", "templates/namespace-crds.yaml"},
 	"kubeovn": {},
 }
 

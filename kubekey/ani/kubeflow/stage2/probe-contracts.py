@@ -185,6 +185,9 @@ def main():
               "main_report_sha256": hashlib.sha256(source).hexdigest(), "run_id": original["run_id"], "namespace": original["namespace"]}
     atomic(cluster.directory / "report.json", report)
     try:
+        report["networkCapability"] = cluster.network_capability()
+        if original.get("networkCapability") != report["networkCapability"]:
+            raise ValueError("original main flow network capability differs")
         report["lock"] = product_lock()
         report["cluster_uid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
         if report["cluster_uid"] != original["cluster_uid"] or original["namespace"] != stage2.NAMESPACES[0]:

@@ -1,0 +1,67 @@
+# Complete current non-ANI selection. Supply private SSH access separately.
+# Devices below are the .20-.22 lab identities, rechecked before every restore/install.
+name: ani-kcn-full
+profile: full
+installerNode: node1
+ssh:
+  user: ubuntu
+  port: 22
+  password: CHANGE_ME
+nodes:
+  - {name: node1, address: 172.16.101.20}
+  - {name: node2, address: 172.16.101.21}
+  - {name: node3, address: 172.16.101.22}
+network:
+  stack: kcn
+  managementInterface: ens34
+  podCIDR: 10.16.0.0/16
+  serviceCIDR: 10.96.0.0/16
+  kcn:
+    managedDevices: []
+    encapNetworks: [172.16.101.0/24]
+    intranetNetworks: [172.16.101.0/24, 10.16.0.0/16, 10.96.0.0/16]
+  multus:
+    enabled: true
+    testCIDR: 10.240.0.0/24
+registry:
+  port: 5001
+storage:
+  enabled: true
+  provider: ceph
+  makeDefaultStorageClass: true
+  nodes:
+    - {name: node1, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+    - {name: node2, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+    - {name: node3, devices: [/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0]}
+objectStorage:
+  provider: rustfs
+  rustfs: {mode: standalone, storageClass: ani-block, storageSize: 20Gi}
+components:
+  certManager: {enabled: true}
+  postgresql: {enabled: true, storageClass: ani-block, storageSize: 10Gi}
+  valkey: {enabled: true, storageClass: ani-block, storageSize: 2Gi}
+  nats: {enabled: true, storageClass: ani-block, storageSize: 5Gi}
+  metrics:
+    enabled: true
+    storageClass: ani-block
+    prometheusStorageSize: 5Gi
+    alertmanagerStorageSize: 1Gi
+    prometheusRetention: 24h
+    prometheusRetentionSize: 4GiB
+  logging: {backend: opensearch, storageClass: ani-block, storageSize: 10Gi, retentionDays: '3'}
+  milvus: {enabled: true, storageClass: ani-block, storageSize: 10Gi, etcdStorageSize: 5Gi}
+  metricsServer: {enabled: true}
+  snapshotController: {enabled: true}
+  kubevirt: {enabled: true, vmNode: node3, storageClass: ani-block, scratchStorageClass: ani-block, storageSize: 2Gi}
+  volcano: {enabled: true}
+  harbor: {enabled: true, externalAddress: 172.16.101.20, storageClass: ani-block, storageSize: 10Gi}
+kubeflow:
+  enabled: true
+  release: 26.03-kubeflow-stage2-v1
+  networkPolicy: kcn-test-unsupported-v1
+  entryAddress: 172.16.101.20
+  httpPort: 30443
+  grpcPort: 30444
+  database: {storageClass: ani-block, storageSize: 20Gi}
+  workspace: {storageClass: ani-cephfs, maxSize: 5Gi, maxClaimsPerTenant: 2}
+  tenants: [ani-kfp-probe-a, ani-kfp-probe-b]

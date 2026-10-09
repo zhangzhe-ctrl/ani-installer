@@ -47,6 +47,8 @@ print(json.dumps({'mode':mode,'namespace':namespace,'bucket':bucket,'key':key,'s
 NETWORK_CODE = r'''
 import errno,http.client,json,pathlib,socket,ssl,sys
 targets,api_targets,root_ca,model_ca,namespace,image=json.loads(sys.argv[1]),json.loads(sys.argv[2]),sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]
+policy=sys.argv[7]
+assert policy in ('required','unsupported')
 assert not pathlib.Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists()
 dns=sorted({x[4][0] for x in socket.getaddrinfo('kubernetes.default.svc.cluster.local',443,type=socket.SOCK_STREAM)})
 assert api_targets[0]['address'] in dns
@@ -57,6 +59,10 @@ with socket.create_connection((host,9000),timeout=5) as raw:
  with ssl.create_default_context(cadata=model_ca).wrap_socket(raw,server_hostname=host) as secured: assert secured.getpeercert()
 rows=[]
 for t in targets:
+ if policy=='unsupported':
+  with socket.create_connection((t['address'],t['port']),timeout=5): pass
+  rows.append({**t,'result':'REACHABLE_NETWORKPOLICY_UNSUPPORTED'})
+  continue
  try:
   with socket.create_connection((t['address'],t['port']),timeout=2): raise RuntimeError('ordinary workload reached protected control endpoint '+t['name'])
  except (TimeoutError,socket.timeout): rows.append({**t,'result':'TIMEOUT_DENIED'})
@@ -71,9 +77,11 @@ for t in api_targets:
   c.request('POST','/api/v1/namespaces/'+namespace+'/pods?dryRun=All',body=body,headers={'Content-Type':'application/json'})
   r=c.getresponse();r.read(65536);assert r.status in (401,403)
   api_rows.append({**t,'result':'AUTHORIZATION_DENIED','http_status':r.status})
- except (TimeoutError,socket.timeout): api_rows.append({**t,'result':'TRANSPORT_DENIED'})
+ except (TimeoutError,socket.timeout):
+  assert policy=='required', 'KCN Kubernetes authorization must be reached and denied by the API'
+  api_rows.append({**t,'result':'TRANSPORT_DENIED'})
  finally: c.close()
-print(json.dumps({'dns':dns,'s3_tls_positive':True,'token_present':False,'control_targets':rows,'kubernetes_create_dry_run':api_rows}))
+print(json.dumps({'dns':dns,'s3_tls_positive':True,'token_present':False,'network_isolation':'unsupported' if policy=='unsupported' else 'denial_verified','control_targets':rows,'kubernetes_create_dry_run':api_rows}))
 '''
 
 
@@ -153,7 +161,7 @@ def workload_boundary(cluster, original, report):
                     ref = e.get("valueFrom", {}).get("secretKeyRef")
                     if (ref and ref != {"name": storage_secret, "key": e["name"]}) or (not ref and e.get("value") != decode(binding, e["name"])):
                         raise ValueError("ordinary workload S3 credential differs from its dedicated role")
-        args = [json.dumps(targets), json.dumps(api_targets), root_ca, model_ca, namespace, cluster.site["images"]["ani.local/kubeflow-execution:26.03-v1"]]
+        args = [json.dumps(targets), json.dumps(api_targets), root_ca, model_ca, namespace, cluster.site["images"]["ani.local/kubeflow-execution:26.03-v1"], cluster.site["network_policy"]]
         evidence = json.loads(cluster.call(["-n", namespace, "exec", "pod/" + value["metadata"]["name"], "-c", container, "--", "python", "-c", NETWORK_CODE, *args], sensitive=True, timeout=120))
         if len(evidence.get("control_targets", [])) != len(targets) or len(evidence.get("kubernetes_create_dry_run", [])) != len(api_targets):
             raise ValueError("ordinary workload boundary targets are incomplete")
@@ -188,6 +196,9 @@ def main():
               "main_report_sha256": hashlib.sha256(source).hexdigest(), "run_id": original["run_id"]}
     atomic(cluster.directory / "report.json", report)
     try:
+        report["networkCapability"] = cluster.network_capability()
+        if original.get("networkCapability") != report["networkCapability"]:
+            raise ValueError("original main flow network capability differs")
         report["lock"] = product_lock(); report["cluster_uid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
         if report["cluster_uid"] != original["cluster_uid"]: raise ValueError("original cluster differs")
         workload_boundary(cluster, original, report)

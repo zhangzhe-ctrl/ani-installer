@@ -1,0 +1,169 @@
+{
+  "schema": "ani.kcn.materials.v1",
+  "sourceCommit": "2b9467c66dc9024fbf321a4b3a98a9e5f3fef377",
+  "sourceArchiveSha256": "303324e153bb23557b475c1f95a73eca12967e0a27106d9696734ad005917855",
+  "sourceImage": "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f",
+  "kustomize": "v5.8.1",
+  "rawBundleSha256": "5a85aea2dcc234ee81a4543286000389a63db85414b7ab917917fb398db3a036",
+  "crds": [
+    "basicnetworkisolations.networking.kubercloud.com",
+    "eipgateways.networking.kubercloud.com",
+    "eips.networking.kubercloud.com",
+    "learnedroutes.networking.kubercloud.com",
+    "nats.networking.kubercloud.com",
+    "networkacls.networking.kubercloud.com",
+    "nics.networking.kubercloud.com",
+    "routetables.networking.kubercloud.com",
+    "securitygroups.networking.kubercloud.com",
+    "snats.networking.kubercloud.com",
+    "subnets.networking.kubercloud.com",
+    "transitrouters.networking.kubercloud.com",
+    "vlannetworks.networking.kubercloud.com",
+    "vnicips.networking.kubercloud.com",
+    "vnics.networking.kubercloud.com",
+    "vpcattachments.networking.kubercloud.com",
+    "vpcs.networking.kubercloud.com"
+  ],
+  "objects": [
+    {
+      "kind": "Namespace",
+      "name": "kcn-system"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "basicnetworkisolations.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "eipgateways.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "eips.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "learnedroutes.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "nats.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "networkacls.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "nics.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "routetables.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "securitygroups.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "snats.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "subnets.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "transitrouters.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "vlannetworks.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "vnicips.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "vnics.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "vpcattachments.networking.kubercloud.com"
+    },
+    {
+      "kind": "CustomResourceDefinition",
+      "name": "vpcs.networking.kubercloud.com"
+    },
+    {
+      "kind": "ServiceAccount",
+      "name": "kcn-controller"
+    },
+    {
+      "kind": "Role",
+      "name": "kcn-leader-election-role"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "kcn-manager-role"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "kcn-metrics-auth-role"
+    },
+    {
+      "kind": "ClusterRole",
+      "name": "kcn-metrics-reader"
+    },
+    {
+      "kind": "RoleBinding",
+      "name": "kcn-leader-election-rolebinding"
+    },
+    {
+      "kind": "ClusterRoleBinding",
+      "name": "kcn-manager-rolebinding"
+    },
+    {
+      "kind": "ClusterRoleBinding",
+      "name": "kcn-metrics-auth-rolebinding"
+    },
+    {
+      "kind": "ConfigMap",
+      "name": "kcn-config"
+    },
+    {
+      "kind": "Service",
+      "name": "kcn-ovn-nb"
+    },
+    {
+      "kind": "Service",
+      "name": "kcn-ovn-northd"
+    },
+    {
+      "kind": "Service",
+      "name": "kcn-ovn-sb"
+    },
+    {
+      "kind": "Deployment",
+      "name": "kcn-controller"
+    },
+    {
+      "kind": "Deployment",
+      "name": "kcn-ovn-central"
+    },
+    {
+      "kind": "DaemonSet",
+      "name": "kcn-cni-ds"
+    },
+    {
+      "kind": "DaemonSet",
+      "name": "kcn-ovs-ds"
+    }
+  ],
+  "files": {
+    "namespace-crds.yaml": "b45e444f33ba749f233c8654aad3400e566473f84e42ef4fb6293e8aa2b3beee",
+    "install.yaml": "07c8043a3d3db7a1387bd5fd70af26af5b6cadd7aa446ce61518f5713dfe8293"
+  }
+}

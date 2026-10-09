@@ -4,7 +4,7 @@ import json
 import secrets
 
 from common import identity, decode
-from resources import obj, network, peers, ports
+from resources import obj, network, peers, ports, network_resources
 
 WORKSPACE_IMAGE = "ani.local/kubeflow-jupyter:26.03-stage2-v1"
 NAMESPACES = ("ani-kf-stage2-a", "ani-kf-stage2-b")
@@ -34,7 +34,7 @@ def materialize(root, site):
     values = json.loads(text)
     if len(values) != lock["resource_count"]:
         raise ValueError("stage2 overlay count differs")
-    return values
+    return network_resources(site, values)
 
 
 def namespace_contract(site, namespace, ca=None):
@@ -59,7 +59,7 @@ def namespace_contract(site, namespace, ca=None):
             {"to": [peers("ani-platform", {"app.kubernetes.io/instance": "ani-rustfs"})], "ports": ports(9000)}])]
     if ca is not None:
         values.append(obj("ConfigMap", "ani-model-ca", namespace, data={"ca.crt": ca}))
-    return values
+    return network_resources(site, values)
 
 
 def notebook(site, namespace, name, run_id):

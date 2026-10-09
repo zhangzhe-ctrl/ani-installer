@@ -294,6 +294,9 @@ def main():
         report["original_report_sha256"] = hashlib.sha256(source).hexdigest()
     atomic(cluster.directory / "report.json", report)
     try:
+        report["networkCapability"] = cluster.network_capability()
+        if previous and previous.get("networkCapability") != report["networkCapability"]:
+            raise ValueError("original main flow network capability differs")
         report["cluster_uid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
         execute(cluster, root, a.run_id, report, previous, bool(a.reconcile_report))
     except BaseException as error:

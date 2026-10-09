@@ -23,6 +23,7 @@ import stage2
 
 def check(cluster, root, report):
     site = cluster.site
+    report["networkCapability"] = cluster.network_capability()
     report["clusterUid"] = cluster.read(obj("Namespace", "kube-system"))["metadata"]["uid"]
     values = materialize(root, site)
     values += entry(site, site["images"])

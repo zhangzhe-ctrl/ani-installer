@@ -1,0 +1,12 @@
+{
+  "schema": "ani.envoy.staged-materials.v1",
+  "inputSha256": "c382555812172801f93389b9022be85af8e9b37efb114f48f9b4f5fea9d261d1",
+  "inputCommit": "0f377f6ed7655c42d37e7da8777f92448311814d",
+  "crdCount": 20,
+  "files": {
+    "install.yaml": "9cafd9f6f7c0321566ed5a067ceea3c32f16968416845ad0f29dd24292e047cf",
+    "foundation.yaml": "82d68f89cc4ce711f461ce0397db2864cb5f54e8a6acd861eb889d5a278cb210",
+    "certgen.yaml": "4784636eb7669817808eabd63b49befc2a0f69b500b86fb920cf790a02268ebb",
+    "controller.yaml": "97d36ddb159bc277bb0a9eb8d37c96d4797a7a689f7402491d9dbc075384f34f"
+  }
+}

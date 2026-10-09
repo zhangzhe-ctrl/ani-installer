@@ -2,6 +2,10 @@
 
 完整站点见 `site.example.yaml`。沿用 `kubeflow.enabled` 与 `kubeflow.release`；省略或关闭时不创建二阶段对象。启用时 release 必须为 `26.03-kubeflow-stage2-v1`，要求 full 首装、持久存储、RustFS 和 cert-manager。没有 Notebooks/KServe 子开关或追加安装入口。
 
+当前网络合同支持 Kube-OVN，以及明确接受能力差异的 KCN 测试环境。Kube-OVN 省略 `kubeflow.networkPolicy` 或填 `required`，必须启用策略控制器、安装规定 NetworkPolicy 并通过健康控制端点拒绝和 DNS/S3 正向探针。KCN 必须填 `kubeflow.networkPolicy: kcn-test-unsupported-v1`；这是固定测试环境能力合同，不是通用跳过检查开关。完整选择示例见 `config/examples/kcn-full.yaml`。
+
+Go 从网络选择推导 provider、NetworkPolicy 能力与合同，正式 site 将其与锁定 CNI 镜像一同传给安装、检查、smoke 和 stage2 探针。缺失或矛盾的声明、不同的 live provider/镜像、Kube-OVN 未开启策略控制器都失败。KCN 不创建声称有效的 NetworkPolicy，不把 KCN 原生隔离对象充当它；控制端点记录实际可达性与 `unsupported`，不生成网络隔离就绪。Kubernetes 身份/RBAC、跨 Namespace Secret、S3 writer/reader 与前缀、应用 HTTP/gRPC TokenReview/audience 等独立保护继续要求通过。原有 Kube-OVN live 记录保持原来的环境、候选和隔离含义，不转记为 KCN PASS。
+
 ## 固定来源与平台
 
 KFP 2.16.0、Trainer 2.1.0、JobSet 0.10.1 沿用 BASE_SHA 锁定字节。Notebook Controller 1.10.0 源码为 `90e987bf87d3e7c900926310b00bfa16b59e41eb`，使用 standalone，`USE_ISTIO=false`。KServe 0.16.0 源码为 `5b033a4024429302440b72180472ae2d26b44086`，显式 Standard，仅注册 CPU sklearn Runtime。

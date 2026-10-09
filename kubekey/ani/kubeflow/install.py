@@ -15,7 +15,7 @@ import pathlib
 import secrets
 
 from common import Cluster, assets, atomic, decode, identity, load_site
-from resources import RELEASE, admission, entry, isolation, obj, runtime, tenant
+from resources import RELEASE, admission, entry, isolation, obj, runtime, tenant, network_resources
 from storage import scoped_storage
 import stage2
 
@@ -85,7 +85,7 @@ def materialize(root, site):
                                         "timeoutSeconds": 5, "failureThreshold": 100}
             database["readinessProbe"] = {"exec": {"command": query}, "periodSeconds": 5,
                                           "timeoutSeconds": 5, "failureThreshold": 3}
-    return resources
+    return network_resources(site, resources)
 
 
 def database_secrets(cluster, config):
@@ -169,6 +169,7 @@ def entry_ports_available(cluster):
 def install(cluster, root, report):
     site = cluster.site
     report["lock"] = product_lock()
+    report["networkCapability"] = cluster.network_capability()
     values = materialize(root, site)
     stage2.preflight(cluster, root)
     entry_ports_available(cluster)
@@ -268,7 +269,8 @@ def install(cluster, root, report):
                            'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql --protocol=TCP -h127.0.0.1 -uroot --connect-timeout=3 --batch --skip-column-names -e "SELECT 1"'], sensitive=True)
     if result.strip() != "1":
         raise RuntimeError("MySQL authenticated protocol check differs")
-    report["completedPhases"].append("ISOLATED_STORAGE_DATABASE_AUTHENTICATED")
+    report["completedPhases"].append("STORAGE_DATABASE_AUTHENTICATED")
+    report["networkIsolation"] = "unsupported" if site["network_policy"] == "unsupported" else "policies_installed_pending_protection_probe"
     atomic(cluster.directory / "report.json", report)
     consumers = [v for v in values if v["kind"] == "Deployment" and v["metadata"].get("namespace") == "kubeflow" and v["metadata"]["name"] != "mysql"]
     # MLMD before KFP API, then API consumers/Argo. First failed dependency

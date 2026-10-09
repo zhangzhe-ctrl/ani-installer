@@ -71,7 +71,7 @@ func TestMaterialKeysMatchTheSelectedStack(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 	table = r08FullTable(t)
-	delete(table, "docker.changqingyun.cn/kubercloud/kc-networking:dev")
+	delete(table, KCNImageReference)
 	_, err = KubeKeyConfig(kcnConfig, "/opt/ani/packages/kubekey-artifact.tgz", "/opt/ani", table)
 	if err == nil {
 		t.Fatal("a kcn config without the kcn networking image must fail before deployment")

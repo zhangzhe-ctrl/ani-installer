@@ -7,6 +7,7 @@ import (
 )
 
 const placeholderRegistry = "127.0.0.1:5000"
+const KCNImageReference = "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f"
 
 // Image records one actual image in the offline package.
 type Image struct {
@@ -184,7 +185,7 @@ func componentImageKeys() []ImageKey {
 		// declared keys (every original exists in images.tsv / images-kubeovn.tsv
 		// exactly as shipped), so a required image that is missing from the
 		// package fails before deployment instead of rendering an empty field.
-		{Group: "kcn", Name: "networking", Original: "docker.changqingyun.cn/kubercloud/kc-networking:dev"},
+		{Group: "kcn", Name: "networking", Original: KCNImageReference},
 		{Group: "kubeovn", Name: "kubeOvn", Original: "docker.io/kubeovn/kube-ovn:v1.16.6"},
 		{Group: "kubeovn", Name: "vpcNatGateway", Original: "docker.io/kubeovn/vpc-nat-gateway:v1.16.6"},
 		{Group: "multus", Name: "daemon", Original: "ghcr.io/k8snetworkplumbingwg/multus-cni:v4.3.1-thick"},

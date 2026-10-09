@@ -1,6 +1,7 @@
 ## Kubeflow
 
 - Release: {{ .ani.kubeflow.release }}; KFP 2.16.0, Trainer 2.1.0, JobSet 0.10.1, Argo 3.7.3.
+- Network: {{ .ani.kubeflow.network_stack }}; Kubernetes NetworkPolicy: {{ .ani.kubeflow.network_policy }}; contract: {{ .ani.kubeflow.network_policy_contract }}. KCN test environments do not receive a network-isolation readiness attestation; identity, storage protection and functional acceptance remain independent.
 - HTTP: https://{{ .ani.kubeflow.entry_address }}:{{ .ani.kubeflow.http_port }}
 - gRPC TLS: {{ .ani.kubeflow.entry_address }}:{{ .ani.kubeflow.grpc_port }}
 - Authentication: Kubernetes TokenReview; short-lived SA Bearer token, audience `pipelines.kubeflow.org`; Namespace SAR; shared reads disabled. No trusted client identity header.

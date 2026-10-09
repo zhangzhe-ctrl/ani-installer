@@ -2,21 +2,32 @@
 - name: ANI Envoy | Create work directory
   command: install -d -m 0755 /etc/kubernetes/ani
 
-- name: ANI Envoy | Render base install manifest
+- name: ANI Envoy | Render namespace and complete CRD stage
   template:
     src: install.yaml
-    dest: /etc/kubernetes/ani/envoy-install.yaml
+    dest: /etc/kubernetes/ani/envoy-namespace-crds.yaml
 
-- name: ANI Envoy | Apply base install manifest
-  command: kubectl apply --server-side -f /etc/kubernetes/ani/envoy-install.yaml
+- name: ANI Envoy | Apply namespace and all CRDs
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/envoy-namespace-crds.yaml
 
-- name: ANI Envoy | Wait for required CRDs
+- name: ANI Envoy | Wait for every actual CRD Established
   command: |
-    kubectl wait --for=condition=Established \
-      crd/backends.gateway.envoyproxy.io \
-      crd/envoyproxies.gateway.envoyproxy.io \
-      crd/gatewayclasses.gateway.networking.k8s.io \
-      --timeout=180s
+    set -euo pipefail
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl get -f /etc/kubernetes/ani/envoy-namespace-crds.yaml -o name |
+      while IFS= read -r resource; do
+        case "$resource" in customresourcedefinition.*/*)
+          kubectl wait --for=condition=Established "$resource" --timeout=180s ;;
+        esac
+      done
+
+- name: ANI Envoy | Render RBAC and Service foundation
+  template:
+    src: foundation.yaml
+    dest: /etc/kubernetes/ani/envoy-foundation.yaml
+
+- name: ANI Envoy | Apply RBAC and Service foundation
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/envoy-foundation.yaml
 
 - name: ANI Envoy | Render GatewayNamespace RBAC
   template:
@@ -24,39 +35,73 @@
     dest: /etc/kubernetes/ani/envoy-gateway-namespace-mode.yaml
 
 - name: ANI Envoy | Apply GatewayNamespace RBAC
-  command: kubectl apply --server-side -f /etc/kubernetes/ani/envoy-gateway-namespace-mode.yaml
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/envoy-gateway-namespace-mode.yaml
 
-- name: ANI Envoy | Render controller configuration
+- name: ANI Envoy | Render final controller configuration
   template:
     src: envoy-gateway-config.yaml
     dest: /etc/kubernetes/ani/envoy-gateway.yaml
 
-- name: ANI Envoy | Write controller configuration
+- name: ANI Envoy | Apply final configuration before certificate or controller
   command: |
     set -euo pipefail
-    kubectl create configmap envoy-gateway-config -n envoy-gateway-system --from-file=envoy-gateway.yaml=/etc/kubernetes/ani/envoy-gateway.yaml --dry-run=client -o yaml | kubectl apply -f -
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl create configmap envoy-gateway-config -n envoy-gateway-system --from-file=envoy-gateway.yaml=/etc/kubernetes/ani/envoy-gateway.yaml --dry-run=client -o yaml | kubectl apply --server-side -f -
 
-- name: ANI Envoy | Restart controller
-  command: kubectl rollout restart deployment/envoy-gateway -n envoy-gateway-system
+- name: ANI Envoy | Render certgen Job
+  template:
+    src: certgen.yaml
+    dest: /etc/kubernetes/ani/envoy-certgen.yaml
+
+- name: ANI Envoy | Run and wait for certgen
+  command: |
+    set -euo pipefail
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl apply --server-side -f /etc/kubernetes/ani/envoy-certgen.yaml
+    kubectl wait -n envoy-gateway-system --for=condition=Complete -f /etc/kubernetes/ani/envoy-certgen.yaml --timeout=300s
+
+- name: ANI Envoy | Ship TLS Secret validator
+  template:
+    src: verify-tls.py
+    dest: /etc/kubernetes/ani/envoy-verify-tls.py
+
+- name: ANI Envoy | Verify actual TLS Secret before controller
+  command: |
+    set -euo pipefail
+    KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl get secret/envoy-gateway -n envoy-gateway-system -o json |
+      python3 /etc/kubernetes/ani/envoy-verify-tls.py
+
+- name: ANI Envoy | Render controller deployment
+  template:
+    src: controller.yaml
+    dest: /etc/kubernetes/ani/envoy-controller.yaml
+
+- name: ANI Envoy | Apply controller with actual configuration checksum
+  command: |
+    set -euo pipefail
+    export KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    kubectl create --dry-run=client --validate=false -f /etc/kubernetes/ani/envoy-controller.yaml -o json |
+      python3 -c 'import hashlib,json,pathlib,sys; v=json.load(sys.stdin); v["spec"]["template"]["metadata"].setdefault("annotations",{})["ani.io/config-checksum"]=hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest(); print(json.dumps(v))' /etc/kubernetes/ani/envoy-gateway.yaml |
+      kubectl apply --server-side -f -
 
 - name: ANI Envoy | Wait for controller
-  command: kubectl rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=300s
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=300s
 
-- name: ANI Envoy | Render small NoEIP EnvoyProxy
+- name: ANI Envoy | Render dedicated EnvoyProxy
   template:
     src: envoy-proxy.yaml
     dest: /etc/kubernetes/ani/envoy-proxy-small-noeip.yaml
 
-- name: ANI Envoy | Apply small NoEIP EnvoyProxy
-  command: kubectl apply --server-side -f /etc/kubernetes/ani/envoy-proxy-small-noeip.yaml
+- name: ANI Envoy | Apply dedicated EnvoyProxy
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/envoy-proxy-small-noeip.yaml
 
-- name: ANI Envoy | Render NoEIP GatewayClass
+- name: ANI Envoy | Render dedicated GatewayClass
   template:
     src: gatewayclass.yaml
     dest: /etc/kubernetes/ani/gatewayclass-lb-small-noeip.yaml
 
-- name: ANI Envoy | Apply NoEIP GatewayClass
-  command: kubectl apply --server-side -f /etc/kubernetes/ani/gatewayclass-lb-small-noeip.yaml
+- name: ANI Envoy | Apply dedicated GatewayClass
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl apply --server-side -f /etc/kubernetes/ani/gatewayclass-lb-small-noeip.yaml
 
-- name: ANI Envoy | Wait for NoEIP GatewayClass
-  command: kubectl wait --for=condition=Accepted gatewayclass/lb-small-noeip --timeout=180s
+- name: ANI Envoy | Wait for dedicated GatewayClass
+  command: KUBECONFIG='{{ .ani.run.kubeconfig }}' kubectl wait --for=condition=Accepted gatewayclass/lb-small-noeip --timeout=180s

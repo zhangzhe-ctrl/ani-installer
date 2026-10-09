@@ -8,7 +8,7 @@ import re
 import subprocess
 import time
 
-from resources import RELEASE
+from resources import RELEASE, network_capability
 
 PLURALS = {
     "Namespace": "namespaces", "ServiceAccount": "serviceaccounts", "Secret": "secrets",
@@ -43,6 +43,7 @@ def load_site(path, kubeconfig=None):
     site = json.loads(pathlib.Path(path).read_text())
     if site["release"] != RELEASE or site["workspace_mode"] != "managed-execution-pvc-v1":
         raise ValueError("unsupported Kubeflow release or workspace mode")
+    network_capability(site)
     if kubeconfig is not None and kubeconfig != site["kubeconfig"]:
         raise ValueError("checker kubeconfig differs from this install run")
     for key in ("kubeconfig", "artifact_root", "logs_dir", "connections_dir"):
@@ -80,6 +81,38 @@ class Cluster:
         self.command = ["kubectl", "--kubeconfig", site["kubeconfig"], "--request-timeout=30s"]
         self.writes = []
         self.sequence = 0
+
+    def network_capability(self):
+        capability = network_capability(self.site)
+        provider = capability["provider"]
+        namespace, daemon, controller = (("kcn-system", "kcn-cni-ds", "kcn-controller") if provider == "kcn"
+                                         else ("kube-system", "kube-ovn-cni", "kube-ovn-controller"))
+        expected_image = self.site.get("network_image", "")
+        if not re.fullmatch(r".+@sha256:[a-f0-9]{64}", expected_image):
+            raise ValueError("network capability lacks the approved provider image")
+        evidence = []
+        for kind, name in (("daemonset", daemon), ("deployment", controller)):
+            value = json.loads(self.call(["get", kind, name, "-n", namespace, "-o", "json"]))
+            spec, status = value["spec"], value.get("status", {})
+            if status.get("observedGeneration", 0) < value["metadata"].get("generation", 1):
+                raise ValueError("network capability provider generation is not ready")
+            desired = status.get("desiredNumberScheduled", 0) if kind == "daemonset" else spec.get("replicas", 1)
+            ready = status.get("numberReady", 0) if kind == "daemonset" else status.get("readyReplicas", 0)
+            if desired < 1 or ready != desired:
+                raise ValueError("network capability provider is not ready")
+            containers = spec["template"]["spec"]["containers"]
+            if any(c["image"] != expected_image for c in containers):
+                raise ValueError("network capability provider image differs from approved material")
+            if provider == "kubeovn" and kind == "deployment" and any("--enable-np=true" not in c.get("args", []) for c in containers):
+                raise ValueError("network capability requires the Kube-OVN policy controller enabled")
+            evidence.append({"kind": kind, "namespace": namespace, "name": name,
+                             "uid": value["metadata"]["uid"], "image": expected_image, "ready": ready})
+        foreign = "kube-ovn-controller" if provider == "kcn" else "kcn-controller"
+        foreign_namespace = "kube-system" if provider == "kcn" else "kcn-system"
+        values = json.loads(self.call(["get", "deployments", "-A", "-o", "json"]))["items"]
+        if any(v["metadata"]["name"] == foreign and v["metadata"]["namespace"] == foreign_namespace for v in values):
+            raise ValueError("network capability provider selection conflicts with installed controller")
+        return {**capability, "workloads": evidence, "networkIsolationReady": False if provider == "kcn" else "requires_protection_probe"}
 
     def call(self, args, value=None, sensitive=False, timeout=45):
         result = subprocess.run(self.command + args, input=None if value is None else json.dumps(value),

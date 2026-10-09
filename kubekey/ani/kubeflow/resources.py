@@ -10,6 +10,23 @@ RELEASE = "26.03-kubeflow-stage2-v1"
 EXECUTION_IMAGE = "ani.local/kubeflow-execution:26.03-v1"
 
 
+def network_capability(site):
+    provider = site.get("network_stack")
+    expected = {"kcn": ("unsupported", "kcn-test-unsupported-v1"),
+                "kubeovn": ("required", "kubeovn-required-v1")}
+    actual = (site.get("network_policy"), site.get("network_policy_contract"))
+    if provider not in expected or actual != expected[provider]:
+        raise ValueError("missing or inconsistent network capability contract")
+    return {"provider": provider, "networkPolicy": actual[0], "contract": actual[1]}
+
+
+def network_resources(site, values):
+    capability = network_capability(site)
+    if capability["networkPolicy"] == "unsupported":
+        return [v for v in values if v["kind"] != "NetworkPolicy"]
+    return values
+
+
 def obj(kind, name, namespace=None, api="v1", **body):
     metadata = {"name": name, "labels": {"ani.io/kubeflow-release": RELEASE}}
     if namespace:
@@ -237,6 +254,8 @@ def admission(site, runtime_name, image):
 
 
 def isolation(site):
+    if network_capability(site)["networkPolicy"] == "unsupported":
+        return []
     output = [network("ani-kfp-default-ingress", "kubeflow", {}, ingress=[])]
     pipeline_peer = {"namespaceSelector": {"matchLabels": {"ani.io/kubeflow-tenant": "true"}},
                      "podSelector": {"matchLabels": {"pipelines.kubeflow.org/v2_component": "true"}}}
