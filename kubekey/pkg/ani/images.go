@@ -8,9 +8,15 @@ import (
 
 const placeholderRegistry = "127.0.0.1:5000"
 const KCNImageReference = "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f"
+
 // The supplied reference is an OCI index. Offline Ubuntu amd64 delivery lands
 // its verified platform manifest, preserving the index as source evidence.
 const KCNAMD64ManifestDigest = "sha256:26470989d18f7c14ba21823c80709678b44149d7a1ec8282aab1906f11a77234"
+
+// The existing Kube-OVN TSV pin is a multi-platform manifest list. The source
+// list bytes select this exact amd64 manifest, also served by the offline pack.
+const KubeOVNImagePin = "sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2"
+const KubeOVNAMD64ManifestDigest = "sha256:2b505e4dab411036f21985d765ec25fd2c5aff46521a96cf5e5dc964f302e805"
 
 // Image records one actual image in the offline package.
 type Image struct {

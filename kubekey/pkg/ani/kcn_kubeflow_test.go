@@ -1,10 +1,69 @@
 package ani
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+func TestKubeflowKubeOVNManifestListBinding(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "ani", "kubeovn", "source-index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(raw)
+	if "sha256:"+hex.EncodeToString(hash[:]) != KubeOVNImagePin {
+		t.Fatal("source manifest list differs from approved pin")
+	}
+	var index struct {
+		Manifests []struct {
+			Digest   string
+			Platform struct {
+				OS           string
+				Architecture string
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &index); err != nil {
+		t.Fatal(err)
+	}
+	selected := ""
+	for _, m := range index.Manifests {
+		if m.Platform.OS == "linux" && m.Platform.Architecture == "amd64" {
+			if selected != "" {
+				t.Fatal("ambiguous amd64 platform")
+			}
+			selected = m.Digest
+		}
+	}
+	if selected != KubeOVNAMD64ManifestDigest {
+		t.Fatal("source list does not bind the declared running manifest")
+	}
+	c := kubeflowTestConfig()
+	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), c, "/offline", r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Name == "kubeflow-site.yaml" {
+			var site map[string]any
+			if err := json.Unmarshal(file.Rendered, &site); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasSuffix(site["network_image"].(string), "@"+selected) {
+				t.Fatal("runtime site binds the source list instead of its actual platform")
+			}
+			return
+		}
+	}
+	t.Fatal("enabled runtime site missing")
+}
 
 func TestKubeflowKCNTestEnvironmentCapability(t *testing.T) {
 	c := kubeflowTestConfig()

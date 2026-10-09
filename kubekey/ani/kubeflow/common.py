@@ -102,7 +102,13 @@ class Cluster:
             if desired < 1 or ready != desired or (kind == "daemonset" and desired != len(self.site["node_addresses"])):
                 raise ValueError("network capability provider is not ready")
             containers = spec["template"]["spec"]["containers"]
-            if any(c["image"] != expected_image for c in containers):
+            # Existing Kube-OVN installations use the approved local tag. A tag
+            # is accepted only with every Pod's exact approved amd64 imageID
+            # below; fresh rendering pins that same manifest explicitly.
+            references = {expected_image}
+            if provider == "kubeovn":
+                references.add(expected_image.rsplit("@", 1)[0])
+            if any(c["image"] not in references for c in containers):
                 raise ValueError("network capability provider image differs from approved material")
             if provider == "kubeovn" and kind == "deployment" and any("--enable-np=true" not in c.get("args", []) for c in containers):
                 raise ValueError("network capability requires the Kube-OVN policy controller enabled")

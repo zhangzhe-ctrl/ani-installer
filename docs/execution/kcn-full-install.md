@@ -23,7 +23,7 @@
 | metrics | kube-prometheus-stack 85.4.0，完整选定五组件 | Ceph；实际采集和报警生命周期 | 5 + 1 GiB |
 | OpenSearch/Fluent Bit | Chart 3.8.0 / 0.58.2，Fluent Bit 5.1.2 | Ceph/CA/认证；唯一 Pod 日志经采集到查询命中、3 天保留 | 10 GiB |
 | RustFS | Chart 1.0.0，provider 派生 standalone | Ceph/CA；原生 HTTPS Put/Get/hash、权限拒绝 | 20 GiB |
-| Milvus | Chart 5.0.25、app 2.6.21，专用 etcd | Ceph/RustFS；insert/search、持久化 | 10 + 5 GiB |
+| Milvus | Chart 5.0.25、实际进程镜像 2.6.24，专用 etcd | Ceph/RustFS；insert/search、持久化 | 10 + 5 GiB |
 | Metrics Server | Chart 3.14.0、app 0.9.0 | API/节点；真实 CPU/内存指标 | 0 |
 | Snapshot Controller | 8.5.0，RBD/CephFS 两个 Class | Ceph CSI；两种卷写读→快照→新卷恢复→字节比对 | 临时测试卷另计 |
 | KubeVirt/CDI | 1.9.0 / 1.66.1、固定 CirrOS 0.6.3 guest | KVM/Ceph/网络；CDI→真实 guest、网络、持久化 | 2 GiB root；scratch 另计 |

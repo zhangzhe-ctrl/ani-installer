@@ -51,6 +51,12 @@ kcnMaterials:
   crdCount: 17
   networkPolicy: unsupported
 
+kubeovnMaterials:
+  sourceImage: docker.io/kubeovn/kube-ovn:v1.16.6
+  sourceIndexDigest: sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2
+  runtimeManifestDigest: sha256:2b505e4dab411036f21985d765ec25fd2c5aff46521a96cf5e5dc964f302e805
+  networkPolicy: required
+
 # ---------------------------------------------------------------------------
 # 随制品提供的固定二进制工具
 # ---------------------------------------------------------------------------

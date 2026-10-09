@@ -1582,6 +1582,12 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 			return nil, err
 		}
 		networkDigest := imageTable[networkOriginal].Digest
+		if networkStack(c.Network.Stack) == "kubeovn" {
+			if networkDigest != KubeOVNImagePin {
+				return nil, fmt.Errorf("Kube-OVN network image pin differs from approved source list")
+			}
+			networkDigest = KubeOVNAMD64ManifestDigest
+		}
 		if !strings.HasPrefix(networkDigest, "sha256:") || !isHex64(strings.TrimPrefix(networkDigest, "sha256:")) {
 			return nil, fmt.Errorf("network provider image has no approved platform digest")
 		}
