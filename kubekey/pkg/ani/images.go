@@ -8,6 +8,9 @@ import (
 
 const placeholderRegistry = "127.0.0.1:5000"
 const KCNImageReference = "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f"
+// The supplied reference is an OCI index. Offline Ubuntu amd64 delivery lands
+// its verified platform manifest, preserving the index as source evidence.
+const KCNAMD64ManifestDigest = "sha256:26470989d18f7c14ba21823c80709678b44149d7a1ec8282aab1906f11a77234"
 
 // Image records one actual image in the offline package.
 type Image struct {

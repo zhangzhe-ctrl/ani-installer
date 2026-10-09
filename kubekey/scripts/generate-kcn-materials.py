@@ -17,11 +17,31 @@ import yaml
 SOURCE = "2b9467c66dc9024fbf321a4b3a98a9e5f3fef377"
 ARCHIVE_SHA256 = "303324e153bb23557b475c1f95a73eca12967e0a27106d9696734ad005917855"
 IMAGE = "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f"
+AMD64 = "sha256:26470989d18f7c14ba21823c80709678b44149d7a1ec8282aab1906f11a77234"
 
 
-def generate(archive, kustomize, output):
+def verify_image(archive):
+    with tarfile.open(archive) as stream:
+        def blob(digest):
+            data = stream.extractfile("blobs/sha256/" + digest.split(":")[1]).read()
+            if "sha256:" + hashlib.sha256(data).hexdigest() != digest:
+                raise ValueError("KCN supplied image blob digest differs")
+            return data
+        index = json.loads(blob(IMAGE.split("@")[1]))
+        platforms = [m for m in index['manifests'] if m.get('platform') == {'architecture': 'amd64', 'os': 'linux'}]
+        if len(platforms) != 1 or platforms[0]['digest'] != AMD64:
+            raise ValueError("KCN supplied index does not bind the approved amd64 manifest")
+        manifest = json.loads(blob(AMD64))
+        config = json.loads(blob(manifest['config']['digest']))
+        if config['architecture'] != 'amd64' or config['os'] != 'linux':
+            raise ValueError("KCN platform config differs")
+        for layer in manifest['layers']: blob(layer['digest'])
+
+
+def generate(archive, image_archive, kustomize, output):
     if hashlib.sha256(archive.read_bytes()).hexdigest() != ARCHIVE_SHA256:
         raise ValueError("KCN source archive differs from the fixed approved source")
+    verify_image(image_archive)
     version = subprocess.check_output([str(kustomize), "version"], text=True).strip()
     if version != "v5.8.1":
         raise ValueError("KCN generation requires kustomize v5.8.1")
@@ -99,7 +119,7 @@ def generate(archive, kustomize, output):
     for name, text in files.items():
         (output / name).write_text(text)
     lock = {"schema": "ani.kcn.materials.v1", "sourceCommit": SOURCE,
-            "sourceArchiveSha256": ARCHIVE_SHA256, "sourceImage": IMAGE, "kustomize": version,
+            "sourceArchiveSha256": ARCHIVE_SHA256, "sourceImage": IMAGE, "amd64ManifestDigest": AMD64, "kustomize": version,
             "rawBundleSha256": hashlib.sha256(raw).hexdigest(), "crds": crds,
             "objects": [{"kind": kind, "name": name} for kind, name in ids],
             "files": {name: hashlib.sha256(text.encode()).hexdigest() for name, text in files.items()}}
@@ -110,7 +130,8 @@ def generate(archive, kustomize, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-archive", type=pathlib.Path, required=True)
+    parser.add_argument("--image-archive", type=pathlib.Path, required=True)
     parser.add_argument("--kustomize", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args()
-    generate(args.source_archive, args.kustomize, args.output)
+    generate(args.source_archive, args.image_archive, args.kustomize, args.output)

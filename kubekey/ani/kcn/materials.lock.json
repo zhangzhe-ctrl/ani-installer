@@ -3,6 +3,7 @@
   "sourceCommit": "2b9467c66dc9024fbf321a4b3a98a9e5f3fef377",
   "sourceArchiveSha256": "303324e153bb23557b475c1f95a73eca12967e0a27106d9696734ad005917855",
   "sourceImage": "docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f",
+  "amd64ManifestDigest": "sha256:26470989d18f7c14ba21823c80709678b44149d7a1ec8282aab1906f11a77234",
   "kustomize": "v5.8.1",
   "rawBundleSha256": "5a85aea2dcc234ee81a4543286000389a63db85414b7ab917917fb398db3a036",
   "crds": [

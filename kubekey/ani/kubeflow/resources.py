@@ -9,7 +9,7 @@ import json
 RELEASE = "26.03-kubeflow-stage2-v1"
 EXECUTION_IMAGE = "ani.local/kubeflow-execution:26.03-v1"
 NETWORK_IMAGE_DIGESTS = {
-    "kcn": "sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f",
+    "kcn": "sha256:26470989d18f7c14ba21823c80709678b44149d7a1ec8282aab1906f11a77234",
     "kubeovn": "sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2",
 }
 

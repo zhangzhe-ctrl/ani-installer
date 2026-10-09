@@ -42,7 +42,7 @@ class NetworkCapability(unittest.TestCase):
         rows = [line.split("\t") for line in (root / "ani/images.tsv").read_text().splitlines()]
         digests = {row[0]: row[2] for row in rows if len(row) == 4}
         self.assertEqual(digests["docker.io/kubeovn/kube-ovn:v1.16.6"], NETWORK_IMAGE_DIGESTS["kubeovn"])
-        self.assertIn("docker.changqingyun.cn/kubercloud/kc-networking@" + NETWORK_IMAGE_DIGESTS["kcn"], digests)
+        self.assertEqual(digests["docker.changqingyun.cn/kubercloud/kc-networking@sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f"], NETWORK_IMAGE_DIGESTS["kcn"])
 
     def test_both_exact_contracts_load(self):
         for provider, policy, contract in (("kcn", "unsupported", "kcn-test-unsupported-v1"),

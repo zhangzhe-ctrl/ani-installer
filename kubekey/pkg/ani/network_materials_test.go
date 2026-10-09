@@ -6,14 +6,26 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestKCNSourceIndexCannotMasqueradeAsRuntimePlatform(t *testing.T) {
+	table := testImageTable()
+	image := table[KCNImageReference]
+	image.Digest = strings.Split(KCNImageReference, "@")[1]
+	table[KCNImageReference] = image
+	if _, err := KubeKeyConfig(validConfig(), "/offline/packages/kubekey-artifact.tgz", "/offline", table); err == nil {
+		t.Fatal("source OCI index was accepted as the offline amd64 manifest")
+	}
+}
 
 func TestControlledNetworkMaterialsMatchSourceLock(t *testing.T) {
 	for _, role := range []string{"kcn", "envoy"} {
 		var lock struct {
-			Files       map[string]string `json:"files"`
-			SourceImage string            `json:"sourceImage"`
+			Files               map[string]string `json:"files"`
+			SourceImage         string            `json:"sourceImage"`
+			AMD64ManifestDigest string            `json:"amd64ManifestDigest"`
 		}
 		data, err := os.ReadFile(filepath.Join("..", "..", "ani", role, "materials.lock.json"))
 		if err != nil {
@@ -27,6 +39,9 @@ func TestControlledNetworkMaterialsMatchSourceLock(t *testing.T) {
 		}
 		if role == "kcn" && lock.SourceImage != KCNImageReference {
 			t.Fatal("KCN source image lock differs")
+		}
+		if role == "kcn" && lock.AMD64ManifestDigest != KCNAMD64ManifestDigest {
+			t.Fatal("KCN supplied index/platform correspondence differs")
 		}
 		for name, expected := range lock.Files {
 			data, err := os.ReadFile(filepath.Join("..", "..", "builtin", "core", "roles", "ani", role, "templates", name))

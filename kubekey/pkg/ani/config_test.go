@@ -201,7 +201,7 @@ func testImageTable() ImageTable {
 	}
 	table[KCNImageReference] = Image{Original: KCNImageReference,
 		HaulerRef: "127.0.0.1:5000/kubercloud/kc-networking:main-2b9467c",
-		Digest:    strings.Split(KCNImageReference, "@")[1], Use: "fixed KCN test material"}
+		Digest:    KCNAMD64ManifestDigest, Use: "fixed KCN test material"}
 	return table
 }
 

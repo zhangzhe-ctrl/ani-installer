@@ -1551,7 +1551,7 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		if err != nil {
 			return nil, err
 		}
-		if imageTable[KCNImageReference].Digest != strings.Split(KCNImageReference, "@")[1] {
+		if imageTable[KCNImageReference].Digest != KCNAMD64ManifestDigest {
 			return nil, fmt.Errorf("KCN image digest differs from supplied fixed material")
 		}
 		imageRefs[KCNImageReference] = ref + "@" + imageTable[KCNImageReference].Digest
