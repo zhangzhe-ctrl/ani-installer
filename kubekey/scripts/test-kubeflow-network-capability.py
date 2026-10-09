@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "ani/kubeflow"))
 from common import load_site
-from resources import RELEASE, isolation, network_resources, obj
+from resources import RELEASE, isolation, network_resources, obj, NETWORK_IMAGE_DIGESTS
 import stage2
 
 
@@ -17,6 +17,7 @@ class NetworkCapability(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             site = {"release": RELEASE, "workspace_mode": "managed-execution-pvc-v1",
                     "registry": "192.0.2.11:5001", "images": {}, **capability}
+            site.setdefault("network_image", "192.0.2.11:5001/cni:fixed@" + NETWORK_IMAGE_DIGESTS.get(site.get("network_stack"), "sha256:" + "0" * 64))
             site.update({key: temporary for key in ("kubeconfig", "artifact_root", "logs_dir", "connections_dir")})
             path = pathlib.Path(temporary) / "site.json"
             path.write_text(json.dumps(site))
@@ -30,6 +31,18 @@ class NetworkCapability(unittest.TestCase):
         for capability in cases:
             with self.subTest(capability=capability), self.assertRaisesRegex(ValueError, "network capability"):
                 self.load(**capability)
+
+    def test_forged_image_binding_fails_even_with_an_exact_capability_contract(self):
+        with self.assertRaisesRegex(ValueError, "network capability image"):
+            self.load(network_stack="kcn", network_policy="unsupported", network_policy_contract="kcn-test-unsupported-v1",
+                      network_image="192.0.2.11:5001/fake:fixed@sha256:" + "0" * 64)
+
+    def test_source_image_capabilities_match_the_formal_image_table(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        rows = [line.split("\t") for line in (root / "ani/images.tsv").read_text().splitlines()]
+        digests = {row[0]: row[2] for row in rows if len(row) == 4}
+        self.assertEqual(digests["docker.io/kubeovn/kube-ovn:v1.16.6"], NETWORK_IMAGE_DIGESTS["kubeovn"])
+        self.assertIn("docker.changqingyun.cn/kubercloud/kc-networking@" + NETWORK_IMAGE_DIGESTS["kcn"], digests)
 
     def test_both_exact_contracts_load(self):
         for provider, policy, contract in (("kcn", "unsupported", "kcn-test-unsupported-v1"),

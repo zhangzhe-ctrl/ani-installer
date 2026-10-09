@@ -8,6 +8,10 @@ import json
 
 RELEASE = "26.03-kubeflow-stage2-v1"
 EXECUTION_IMAGE = "ani.local/kubeflow-execution:26.03-v1"
+NETWORK_IMAGE_DIGESTS = {
+    "kcn": "sha256:494432d2f7b896eb953647166c6aa18d6ea2113b133d40d82127cfcbe416712f",
+    "kubeovn": "sha256:82cd6fc07fbc476a532aba710f3758419588d0fb4d62e9dc36978f4f093198e2",
+}
 
 
 def network_capability(site):
@@ -25,6 +29,15 @@ def network_resources(site, values):
     if capability["networkPolicy"] == "unsupported":
         return [v for v in values if v["kind"] != "NetworkPolicy"]
     return values
+
+
+def approved_network_image(site):
+    capability = network_capability(site)
+    image = site.get("network_image", "")
+    if (not image.startswith(site["registry"] + "/")
+            or image.rsplit("@", 1)[-1] != NETWORK_IMAGE_DIGESTS[capability["provider"]]):
+        raise ValueError("network capability image differs from the source-approved provider material")
+    return image
 
 
 def obj(kind, name, namespace=None, api="v1", **body):

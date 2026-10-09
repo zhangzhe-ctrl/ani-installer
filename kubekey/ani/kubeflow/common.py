@@ -8,7 +8,7 @@ import re
 import subprocess
 import time
 
-from resources import RELEASE, network_capability
+from resources import RELEASE, network_capability, approved_network_image
 
 PLURALS = {
     "Namespace": "namespaces", "ServiceAccount": "serviceaccounts", "Secret": "secrets",
@@ -44,6 +44,7 @@ def load_site(path, kubeconfig=None):
     if site["release"] != RELEASE or site["workspace_mode"] != "managed-execution-pvc-v1":
         raise ValueError("unsupported Kubeflow release or workspace mode")
     network_capability(site)
+    approved_network_image(site)
     if kubeconfig is not None and kubeconfig != site["kubeconfig"]:
         raise ValueError("checker kubeconfig differs from this install run")
     for key in ("kubeconfig", "artifact_root", "logs_dir", "connections_dir"):
@@ -87,7 +88,7 @@ class Cluster:
         provider = capability["provider"]
         namespace, daemon, controller = (("kcn-system", "kcn-cni-ds", "kcn-controller") if provider == "kcn"
                                          else ("kube-system", "kube-ovn-cni", "kube-ovn-controller"))
-        expected_image = self.site.get("network_image", "")
+        expected_image = approved_network_image(self.site)
         if not re.fullmatch(r".+@sha256:[a-f0-9]{64}", expected_image):
             raise ValueError("network capability lacks the approved provider image")
         evidence = []
@@ -98,13 +99,22 @@ class Cluster:
                 raise ValueError("network capability provider generation is not ready")
             desired = status.get("desiredNumberScheduled", 0) if kind == "daemonset" else spec.get("replicas", 1)
             ready = status.get("numberReady", 0) if kind == "daemonset" else status.get("readyReplicas", 0)
-            if desired < 1 or ready != desired:
+            if desired < 1 or ready != desired or (kind == "daemonset" and desired != len(self.site["node_addresses"])):
                 raise ValueError("network capability provider is not ready")
             containers = spec["template"]["spec"]["containers"]
             if any(c["image"] != expected_image for c in containers):
                 raise ValueError("network capability provider image differs from approved material")
             if provider == "kubeovn" and kind == "deployment" and any("--enable-np=true" not in c.get("args", []) for c in containers):
                 raise ValueError("network capability requires the Kube-OVN policy controller enabled")
+            selector = ",".join(k + "=" + v for k, v in spec["selector"]["matchLabels"].items())
+            pods = json.loads(self.call(["get", "pods", "-n", namespace, "-l", selector, "-o", "json"]))["items"]
+            current = [p for p in pods if not p["metadata"].get("deletionTimestamp")]
+            if len(current) != desired:
+                raise ValueError("network capability provider Pod topology differs")
+            for pod in current:
+                states = pod.get("status", {}).get("containerStatuses", [])
+                if len(states) != len(containers) or any(not c.get("ready") or c.get("imageID", "").rsplit("@", 1)[-1] != expected_image.rsplit("@", 1)[1] for c in states):
+                    raise ValueError("network capability provider runtime imageID is not verified")
             evidence.append({"kind": kind, "namespace": namespace, "name": name,
                              "uid": value["metadata"]["uid"], "image": expected_image, "ready": ready})
         foreign = "kube-ovn-controller" if provider == "kcn" else "kcn-controller"
