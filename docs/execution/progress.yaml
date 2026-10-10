@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_05590b7_formal_code_and_builtin_package_pass_source_fingerprint_2f9c3daa
-    materials: candidate_05590b7_attempt_02_formal_complete_pass_117_images_15_charts_four_wasm_transfer_running
-    integration: lws_llmi_real_behavior_pass_higress_db82952_first_execute_fail_official_gatewayclass_description_check_all_original_453_unchanged_source_fix_targeted_pass_owned_helm_rollback_pass_05590b7_live_pending
+    code: candidate_05a63a7_formal_code_and_builtin_package_pass_source_fingerprint_862567fc_oci_checksum_fix_targeted_pass_formal_pending
+    materials: candidate_05590b7_attempt_02_formal_complete_and_target_transfer_pass_current_higress_driver_approval_requires_refresh
+    integration: lws_llmi_real_behavior_pass_higress_05590b7_execute_fail_oci_manifest_vs_content_checksum_all_original_453_unchanged_owned_recovery_pending
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: retained_lws_and_llmi_pass_operation_noop_didInstall_false_full_combination_and_clean_install_pending
@@ -67,6 +67,8 @@ tasks:
   - 旧 db82952 与 234c2ec 完整镜像归档均在 .20 的本任务私有材料目录重新逐字节校验后，释放 Fedora 副本以供同源 attempt-02，实际可用空间 41846067200 字节。恢复快照或释放目标副本前必须先迁回 Fedora 并核实 b8072f07a6e66d4a2f88b4b5ca6d65332abb46031f5eebbfcb42a5bae64e3aaa 与 d36e2ff727f0b41a9786cdf048665b6dec2c2e402e62140254e4a84dd22936c6；旧目标 registry 服务/store 未动。attempt-02 容量门禁采用本次已测峰值加 5 GiB 预留及额外 1 GiB，正式材料构建中。
   - 05590b7 同源材料 attempt-02 正式 rc=0，117 镜像/15 Chart/四 Wasm 与完整既有离线闭包通过；实测最低余量 12275093504 字节，未再触及预留。旧归档迁回与新包传输顺序推进中，Higress 实际行为尚未完成。正式 verify 保留复验路径已在 Fedora 用真实 dispatcher/持久账本及 UID-conditioned API seam 复现旧预算阻塞后转绿，相关目标组 20.937s 通过；新 verify 候选尚未正式构建或用于集群变更。
   - 正式 verify 新增显式 --revalidate-preservation：只接受原成功 install 记录及原 identity-bound done/pass 账本，复核原 PVC，按 verifier 二进制 SHA 固定额外一次预算；原账本不变，UID 条件删除与协议读回保持。RunVerify 先红后绿 2.582s，原预算/权限/替换/失败停止相关回归 20.937s；组件记录负例最初误用 missing 外来 release 夹具，原 rc=1 保留，改为既有 absent 夹具后真实记录拒绝 0.576s 与正式 builtin CLI 分派 0.100s 通过。当前仍是源码候选，未在集群消耗新预算。
+  - 05a63a7454d3084de5ecf641a45f8d62a3c5675e 正式 check-code、builtin 构建和代码包 rc=0，源码指纹 862567fc354ddaf666af34ef354dc3782370ec7a21bbdedf2d6e2f5471ea7cf0 保持；新增复验预算尚未在集群使用。05590b7 完整材料传输和全部目标 SHA256SUMS 通过，正式 Higress 补装 ani-components-ani-kcn-full-20261010-181516 原始 rc=1 保留，停在双副本四模块加载的 300 秒门禁，原 453 对象完全相同。
+  - 两个真实 gateway 日志均确认受信任 Harbor OCI 拉取进入校验后，四插件 sha256 错用了内容层摘要；官方 Higress 2.2.4 固定 Istio gitlink d5e408b7007e76e8f4f93565bcc21dd44143c214 的 OCI loader 比较 manifest 摘要。正式 RenderSite 驱动回归 0.806s 红，修为固定 manifest 后 0.427s 绿；实际加载文件仍独立校验 wasmDigest，manifest 不能替代内容字节。加载门禁移至测试 HTTPRoute 发布之前，七资产批准锁更新；实际 Helm/OCI 相关组 4.114s 通过，新正式构建、归属恢复和 live 重试待完成。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

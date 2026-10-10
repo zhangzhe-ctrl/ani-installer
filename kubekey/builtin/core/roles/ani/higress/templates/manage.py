@@ -262,10 +262,12 @@ def publish_harbor(plugins):
 
 
 def plugin_defaults(plugins):
+    # The official OCI loader compares sha256 with the image manifest before
+    # fetching its Wasm layer. loaded_modules separately verifies module bytes.
     return [{'apiVersion': 'extensions.higress.io/v1alpha1', 'kind': 'WasmPlugin',
              'metadata': meta('ani-platform-' + p['name'], NS),
              'spec': {'url': 'oci://' + REGISTRY + '/' + p['registryRepository'] + '@' + p['manifest']['digest'],
-                      'sha256': p['wasmDigest'].split(':', 1)[1], 'imagePullPolicy': 'IfNotPresent',
+                      'sha256': p['manifest']['digest'].split(':', 1)[1], 'imagePullPolicy': 'IfNotPresent',
                       'defaultConfigDisable': True, 'failStrategy': 'FAIL_CLOSE'}} for p in plugins]
 
 
@@ -496,7 +498,9 @@ def probe():
         phase, priority, config = configs[name]
         o['spec'].update({'phase': phase, 'priority': priority, 'matchRules': [{'domain': [host], 'config': config, 'configDisable': False}]})
     apply(activated)
-    # Credential and all plugins precede publication of this isolated route.
+    # Readiness, including actual module bytes on both replicas, precedes
+    # publication. Failed plugin loading must leave this route unpublished.
+    loaded = wait('all four actual Wasm modules on each gateway replica', lambda: loaded_modules(plugins), 300)
     route = {'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'HTTPRoute', 'metadata': meta('external-engine-boundary', PROBE_NS),
              'spec': {'parentRefs': [{'name': GATEWAY, 'namespace': NS, 'sectionName': 'http'}], 'hostnames': [host],
                       'rules': [{'matches': [{'path': {'type': 'Exact', 'value': '/v1/completions'}, 'headers': [{'name': 'x-higress-llm-model', 'value': model}]}],
@@ -509,7 +513,6 @@ def probe():
             if p.get('controllerName', '').startswith('higress.io/gateway-controller') and all(any(c['type'] == k and c['status'] == 'True' and c.get('observedGeneration') == o['metadata']['generation'] for c in p.get('conditions', [])) for k in ['Accepted', 'ResolvedRefs']): return o
         return False
     wait('probe HTTPRoute accepted and refs resolved', route_ready)
-    loaded = wait('all four actual Wasm modules on each gateway replica', lambda: loaded_modules(plugins), 300)
     def request(address, model, credential):
         headers = {'Host': host, 'Content-Type': 'application/json'}
         if credential is not None: headers['x-api-key'] = credential

@@ -48,6 +48,48 @@ assert m.gateway_objects()[0]['spec']==actual, 'configured class must retain off
 	}
 }
 
+func TestHigressOCIPluginChecksumMatchesOfficialLoader(t *testing.T) {
+	c := kubeflowTestConfig()
+	c.Kubeflow = nil
+	c.Components.CertManager.Enabled = true
+	c.Components.Higress = HigressComponent{Enabled: true, WasmRegistry: "material"}
+	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), c, "/offline", r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := filepath.Join(t.TempDir(), "manage.py")
+	for _, file := range files {
+		if file.Rel == "higress/templates/manage.py" {
+			if err := os.WriteFile(driver, file.Rendered, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The pinned upstream OCI loader checks the manifest digest before it
+	// fetches the binary. The loaded file must independently match Wasm bytes.
+	program := `import importlib.util,json,sys
+s=importlib.util.spec_from_file_location('higress',sys.argv[1])
+m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+plugins=json.load(open(sys.argv[2]))['plugins']
+for p,o in zip(plugins,m.plugin_defaults(plugins)):
+ assert p['manifest']['digest']!=p['wasmDigest'], 'fixture must distinguish OCI identity from module bytes'
+ assert o['spec']['sha256']==p['manifest']['digest'].split(':')[1], ('official OCI loader rejects checksum',p['name'],o['spec']['sha256'])
+ assert o['spec']['url'].endswith('@'+p['manifest']['digest'])
+m.gateway_pods=lambda:[{'metadata':{'name':'gateway-a'}},{'metadata':{'name':'gateway-b'}}]
+m.config_dump=lambda name:json.dumps({'modules':[{'filename':'/var/lib/wasm/'+p['manifest']['digest'].split(':')[1]+'.wasm'} for p in plugins]})
+content={p['manifest']['digest'].split(':')[1]:p['wasmDigest'].split(':')[1] for p in plugins}
+m.kube=lambda *args:content[args[-1].split('/')[-1].removesuffix('.wasm')]+'  '+args[-1]
+loaded=m.loaded_modules(plugins)
+assert loaded and all(len(v)==4 for v in loaded.values()), 'content-pinned modules must load on both replicas'
+m.kube=lambda *args:args[-1].split('/')[-1].removesuffix('.wasm')+'  '+args[-1]
+assert m.loaded_modules(plugins) is False, 'manifest checksum cannot replace actual module byte verification'
+`
+	cmd := exec.Command("python3", "-c", program, driver, filepath.Join("..", "..", "ani", "higress", "wasm.lock.json"))
+	if raw, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("official OCI and loaded module identity: %v\n%s", err, raw)
+	}
+}
+
 func TestHigressOfficialChartKeepsOnlySelectedGatewayAndPinnedImages(t *testing.T) {
 	helm := os.Getenv("ANI_LLMI_HELM_BIN")
 	if helm == "" {
