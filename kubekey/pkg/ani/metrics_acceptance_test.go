@@ -159,6 +159,7 @@ if verb=='exec':
    if os.getenv('FAKE_SILENCE_MATCHER_CHANGED'):content['matchers'][0]['value']='AnotherAlert'
    if os.getenv('FAKE_SILENCE_COMMENT_CHANGED'):content['comment']='changed after recreation'
   content['status']={'state':'expired' if read('silence-expired') and not os.getenv('FAKE_SILENCE_EXPIRE_STUCK') else 'active'}
+  if read('silence-expired') and os.getenv('FAKE_SILENCE_EXPIRE_STUCK'):write('silence-expiration-observed-active','1')
   print(json.dumps(content));sys.exit(0)
  sys.exit('unknown exec script '+script[:80]+' extra '+str(extra))
 sys.exit('unsupported '+str(args))
@@ -314,11 +315,35 @@ func metricsRunScenario(t *testing.T, knob, value string) (VerifyReport, string)
 	// enough scheduling margin; only deliberately stuck polls need a short run
 	// deadline. Assertions still require the exact failing step and delete UIDs.
 	budget := 30 * time.Second
-	if knob == "FAKE_BAD_ATTEMPT_LABEL" || knob == "FAKE_MARKER_PRE_MISSING" || knob == "FAKE_SILENCE_EXPIRE_STUCK" {
+	if knob == "FAKE_BAD_ATTEMPT_LABEL" || knob == "FAKE_MARKER_PRE_MISSING" {
 		budget = 10 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
+	if knob == "FAKE_SILENCE_EXPIRE_STUCK" {
+		// End this deliberately stuck external response only after the real
+		// cleanup step has read it. Earlier subprocess scheduling cannot turn
+		// the intended METRICS-11 failure into a skipped step.
+		go func() {
+			tick := time.NewTicker(10 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					if _, err := os.Stat(filepath.Join(state, "silence-expiration-observed-active")); err == nil {
+						select {
+						case <-ctx.Done():
+						case <-time.After(100 * time.Millisecond):
+							cancel()
+						}
+						return
+					}
+				}
+			}
+		}()
+	}
 	err := RunVerify(ctx, input, nil)
 	report := r13ReadReport(t, r13FindAcceptanceReport(t, input.Output))
 	if report.Overall == VerifyStatusPass && err != nil {
@@ -459,6 +484,11 @@ func TestMetricsRunVerifyIsolatedAcceptance(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			report, state := metricsRunScenario(t, tc.knob, tc.value)
+			if tc.name == "silence-expiration-must-be-observed" {
+				if _, err := os.Stat(filepath.Join(state, "silence-expiration-observed-active")); err != nil {
+					t.Fatal("the external API must report the still-active silence during cleanup before this scenario ends", err)
+				}
+			}
 			if report.Overall == VerifyStatusPass || metricsStepStatus(report, tc.step) != VerifyStatusFailed {
 				t.Fatalf("wanted %s fail, got %+v", tc.step, report.Results)
 			}

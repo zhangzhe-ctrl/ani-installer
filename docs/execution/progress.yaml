@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: b843144_formal_code_gate_and_builtin_package_pass_llmi_cabundle_rbac_source_repair_pending
+    code: candidate_45c36b0_formal_gate_fail_metrics_late_fault_fixture_budget_source_fix_pending
     materials: full_117_images_15_charts_four_wasm_packaging_reached_source_layout_gate_then_failed_higress_allowlist_source_fix_targeted_pass_new_formal_build_pending
-    integration: lws_pass_llmi_b843144_admission_ready_owner_chain_fail_official_configmap_write_permissions_missing_higress_not_verified
+    integration: lws_pass_llmi_b843144_probe_fail_owned_normal_rollback_and_original_448_protection_pass_new_candidate_pending_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -57,6 +57,7 @@ tasks:
   - ea91d31 正式代码门禁 rc=1 保留：唯一失败为 TestComponentValuesRenderCompleteImages 的手写上下文没有 Higress map，输出 GatewayClass/端口缺失；该夹具现复用正式 typed 默认解析与 higressSpec，最小回归通过。LLMI CA/leader EndpointSlice 与 Higress 定向组 6.042s 通过；未绕过正式代码门禁或执行失败候选。
   - b843144 正式代码门禁及 builtin 包 rc=0，源码指纹 e0aab3ec8c611430b8b6123050c4c7f9b5c72a3f9e0fc5cac05ea42faf1b22eb；117 镜像完整材料构建中。复用逐字节通过的 114 镜像材料后，正式 plan/execute ani-components-ani-kcn-full-20261010-150140 已安装 LLMI controller、CRD 和 Ready webhook 证书，原 Standard Deployment UID 保持。真实 LLMI admission 通过但尚未生成 LWS，原始 rc=1 与探针 namespace ani-llmi-probe-09fc5f9c3e 保留：官方 v0.17.0 LLMI role 缺少 CA bundle reconciler 实际调用的 ConfigMap Create/Update。live can-i 和实际 Chart 回归均为红；源码过滤器只补充 ConfigMap create 及固定 global-ca-bundle 名称的 update，Pod 仍只读，其他 ConfigMap 不获更新权限。全部 LLMI 定向组 4.212s 通过；失败归属清理及新正式候选待完成，不记 LLMI live PASS。
   - b843144 完整材料在 117 镜像闭包、15 Chart、四 Wasm 及全部工具/guest/DB/ISO 落地后，以 rc=1 停在旧 Kubeflow 材料校验器的 manifests 顶层封闭目录守卫。新增批准 Higress 版本/七文件/批准锁的逐字节校验，仍拒绝未知组件、版本和修改脚本；CLI 四项回归先红后绿，实际已落地组合通过无写入源码审批校验。d93876e 正式代码构建因该新材料断点取消，实际 rc=143 保留。LLMI 失败后的原 448 对象完全不变；核实本次所有对象 UID/标签/Helm 归属及没有其他 LLMI 实例后，探针 finalizer 正常完成，仅本次 LLMI Chart、新 CRD/配置/证书 Secret/Lease 正常删除，未强删 finalizer 或共享 namespace/Standard/LWS/CA。新组合仍待正式构建及完整 live 行为。
+  - 45c36b0 正式代码门禁 rc=1，唯一失败为既有 metrics silence-expiration 负例的 10 秒总预算在 METRICS-10 后耗尽，导致要求的 METRICS-11 被跳过；未生成候选包或执行安装。修复仅让外部测试 API 记录实际读到过期请求后仍 active 的 silence，并在该故障被真实清理步骤读取后取消；生产等待预算、行为和精确失败步骤/两次原 UID 删除断言不变。新材料 CLI 五项含旧 Kubeflow 目录兼容均通过。正常 LLMI 回滚后原 448 对象完全相同；目标仅删除已核对 Fedora 备份的本任务旧 images.haul.tar.zst，释放 8718800406 字节，目标当前余量 43129274368 字节，旧包的目标大归档转为 Fedora 完整备份状态，原 registry 服务及 store 未动。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []
