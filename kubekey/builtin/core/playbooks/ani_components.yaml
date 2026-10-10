@@ -54,6 +54,8 @@
       when: '{{ and (index .ani.components "lws").enabled (index .ani.components_run.scope "lws") }}'
     - role: ani/kserve
       when: '{{ and (index .ani.components "kserve").enabled (index .ani.components_run.scope "kserve") }}'
+    - role: ani/higress
+      when: '{{ and (index .ani.components "higress").enabled (index .ani.components_run.scope "higress") }}'
     # The observability batch keeps the base gating semantics (one typed log
     # backend, metrics first because the log roles reuse its namespace) and
     # adds the same scope condition as every other role.

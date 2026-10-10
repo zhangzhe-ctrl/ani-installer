@@ -388,6 +388,14 @@ func RunPreflight(input PreflightInput) (*PreflightReport, error) {
 		return report, fail("materials lock", err)
 	}
 	artifactLockDigest := sha256FileHex(filepath.Join(input.ArtifactRoot, "config", "components.lock.yaml"))
+	if aniRoleEnabled("higress", *input.Cluster) {
+		if err := verifyHigressWasmArtifact(input.ArtifactRoot); err != nil {
+			return report, fail("Higress OCI Wasm source binding", err)
+		}
+		if err := verifyHigressAssets(input.ArtifactRoot); err != nil {
+			return report, fail("Higress asset source binding", err)
+		}
+	}
 	if input.Cluster.KubeflowEnabled() {
 		if err := verifyKubeflowAssets(input.ArtifactRoot); err != nil {
 			return report, fail("Kubeflow asset source binding", err)

@@ -38,7 +38,7 @@ var (
 	// logging backend rather than written independently.
 	componentsOrder = [...]string{
 		"cert-manager", "postgresql", "valkey", "nats",
-		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve",
+		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve", "higress",
 	}
 )
 
@@ -173,6 +173,7 @@ type Components struct {
 	Volcano            VolcanoComponent       `yaml:"volcano"`
 	Harbor             HarborComponent        `yaml:"harbor"`
 	LWS                LWSComponent           `yaml:"lws,omitempty" json:",omitzero"`
+	Higress            HigressComponent       `yaml:"higress,omitempty" json:",omitzero"`
 	// KServeLLM is resolved from the versioned Kubeflow combination. It is
 	// deliberately absent from the user YAML and the declared config digest.
 	KServeLLM bool             `yaml:"-" json:"-"`
@@ -308,6 +309,7 @@ func (c Components) Selection() []ComponentRow {
 		"harbor":              c.Harbor.Enabled,
 		"lws":                 c.LWS.Enabled,
 		"kserve":              c.KServeLLM,
+		"higress":             c.Higress.Enabled,
 		"metrics":             c.Metrics.Enabled,
 		"loki":                c.Logging.LogBackend() == loggingLoki,
 		"opensearch":          c.Logging.LogBackend() == loggingOpenSearch,
@@ -372,7 +374,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve", "higress",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -575,6 +577,7 @@ func (c ClusterConfig) ObjectStorageProvider() string {
 
 func (c ClusterConfig) EffectiveComponents() Components {
 	components := c.Components
+	components.Higress = effectiveHigress(c)
 	if c.KubeflowEnabled() {
 		components.CertManager.Enabled = true
 		if c.KServeLLMEnabled() {
@@ -685,6 +688,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 			}
 		case "kserve":
 			if base || !c.KServeLLMEnabled() {
+				continue
+			}
+		case "higress":
+			if base || !c.Components.Higress.Enabled {
 				continue
 			}
 		case "metrics-server":
@@ -1266,6 +1273,9 @@ func Validate(c ClusterConfig) error {
 	if err := validateKubeflow(c); err != nil {
 		return err
 	}
+	if err := validateHigress(c); err != nil {
+		return err
+	}
 	if c.Components.SnapshotController.Enabled && (!c.Storage.Enabled || c.Storage.provider() != storageProviderCeph) {
 		return fmt.Errorf("components.snapshotController requires storage.enabled=true and storage.provider=ceph for the fixed RBD/CephFS snapshot classes")
 	}
@@ -1628,6 +1638,16 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	}
 
 	components := componentSpec(c.EffectiveComponents(), c.Name)
+	if c.Components.Higress.Enabled {
+		h := components["higress"].(map[string]any)
+		for key, original := range map[string]string{"controller_image": HigressControllerImage, "pilot_image": HigressPilotImage, "gateway_image": HigressGatewayImage} {
+			approved := higressImageApproval[original]
+			if imageTable[original].Digest != approved.platform {
+				return nil, fmt.Errorf("Higress image differs from approved linux/amd64 manifest: %s", original)
+			}
+			h[key] = imageRefs[original] + "@" + approved.platform
+		}
+	}
 	if c.EffectiveComponents().LWS.Enabled {
 		if imageTable[LWSImageReference].Digest != LWSAMD64ManifestDigest {
 			return nil, fmt.Errorf("LWS image differs from the approved linux/amd64 manifest")
@@ -1817,6 +1837,7 @@ func componentSpec(c Components, clusterName string) map[string]any {
 		"required_by": "kubeflow.release=" + KubeflowLLMRelease, "dependencies": []string{"cert-manager", "lws"},
 		"chart_path": KServeLLMChartPath, "chart_sha256": KServeLLMChartSHA256,
 		"crd_chart_path": KServeLLMCRDChartPath, "crd_chart_sha256": KServeLLMCRDChartSHA256}
+	spec["higress"] = higressSpec(c.Higress, clusterName)
 	// The metrics stack carries its own storage and retention fields. The
 	// values are always present so a role can render them without re-reading
 	// the site YAML, even when the stack is disabled.
@@ -1983,6 +2004,8 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return c.EffectiveComponents().LWS.Enabled && installProfile(c.Profile) != "base"
 	case "kserve":
 		return c.KServeLLMEnabled() && installProfile(c.Profile) != "base"
+	case "higress":
+		return c.Components.Higress.Enabled && installProfile(c.Profile) != "base"
 	case "postgresql":
 		return c.Components.PostgreSQL.Enabled && installProfile(c.Profile) != "base"
 	case "valkey":

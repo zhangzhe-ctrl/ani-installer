@@ -1,0 +1,14 @@
+{
+  "schema": "ani.higress.assets.v1",
+  "version": "2.2.4",
+  "generatedFromCommit": "234c2ec3a84090df5310803ba789cd02a7b74f40",
+  "files": {
+    "connection.md": "ba5776945c79061f82bc6bc986d4ba2dd776e11d7d7717b0b4ca87554c4dc218",
+    "filter.py": "a9ee4e4176c354647235d432d58fd52271e4b7bbaa3cd59776fa093db8a48c9b",
+    "gateway-api.yaml": "338bf514abde283d0c9133307171cf068d1a20bcdf0bbeca2ae64bba3fc88498",
+    "manage.py": "279a429c1b9ced27d0d4e712576f743acd68ea74fb6e910a45b0b9e46361c014",
+    "values.yaml": "9961a32b36d06b2d66db0dd04f5848ee76e41b5f6166fb8fa7f9ce7b3efdccd8",
+    "verify.sh": "48d7848095af32f2a82d44dcca8cf8fc255846eb46d2deda50f7fad44a20e368",
+    "tasks.yaml": "1c6de6dd09cff16c4c88822b3f6ee615bb97fa61e104e51e9643d07eab0d9656"
+  }
+}

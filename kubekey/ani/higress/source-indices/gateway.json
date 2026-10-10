@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.index.v1+json",
+  "manifests": [
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:679841c12ba34efa15f47402156195c2abbd4a58327a28c2367ea4a219ff6b2a",
+      "size": 2962,
+      "annotations": {
+        "io.higress.gateway-version": "2.2.4",
+        "io.higress.higress-source-commit": "58666ac985cee19a0a9a353421c63cead6d0cb47",
+        "io.higress.plugin-snapshot-sha256": "09bc798df37e50dae2e684947885c31eb756636c76a98761a9a980fc031e3a1a",
+        "org.opencontainers.image.revision": "58666ac985cee19a0a9a353421c63cead6d0cb47"
+      },
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      }
+    },
+    {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:e5871940ca4605d6ebc10d291ed91c1f0857e84ee2149c2f4c1d7f912f7043af",
+      "size": 2962,
+      "annotations": {
+        "io.higress.gateway-version": "2.2.4",
+        "io.higress.higress-source-commit": "58666ac985cee19a0a9a353421c63cead6d0cb47",
+        "io.higress.plugin-snapshot-sha256": "09bc798df37e50dae2e684947885c31eb756636c76a98761a9a980fc031e3a1a",
+        "org.opencontainers.image.revision": "58666ac985cee19a0a9a353421c63cead6d0cb47"
+      },
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      }
+    }
+  ],
+  "annotations": {
+    "io.higress.gateway-version": "2.2.4",
+    "io.higress.higress-source-commit": "58666ac985cee19a0a9a353421c63cead6d0cb47",
+    "io.higress.plugin-snapshot-sha256": "09bc798df37e50dae2e684947885c31eb756636c76a98761a9a980fc031e3a1a",
+    "org.opencontainers.image.revision": "58666ac985cee19a0a9a353421c63cead6d0cb47"
+  }
+}

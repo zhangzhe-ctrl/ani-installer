@@ -46,6 +46,7 @@ RUSTFS_RC_BIN="${RUSTFS_RC_BIN:-}"
 KUBEFLOW_WHEELS_DIR="${KUBEFLOW_WHEELS_DIR:-}"
 KUBEFLOW_GRPC_CHECK_BIN="${KUBEFLOW_GRPC_CHECK_BIN:-}"
 KUBEFLOW_GRPC_SOURCE_ARCHIVE="${KUBEFLOW_GRPC_SOURCE_ARCHIVE:-}"
+HIGRESS_WASM_SOURCE_ROOT="${ANI_HIGRESS_WASM_SOURCE_ROOT:-}"
 VIRTCTL_BIN="${VIRTCTL_BIN:-}"
 KUBEVIRT_GUEST="${KUBEVIRT_GUEST:-}"
 TRIVY_DB_FILE="${TRIVY_DB_FILE:-}"
@@ -273,6 +274,23 @@ if grep -q '^kubeflow:' "$COMPONENT_LOCK"; then
     --workspace-wheels-dir "${KUBEFLOW_WORKSPACE_WHEELS_DIR:?supply closed Notebook workspace wheels}" \
     --output "$OUTPUT/manifests/kubeflow/26.03-kubeflow-stage2-v1"
 fi
+if grep -q '^batchHigress:' "$COMPONENT_LOCK"; then
+  mkdir -p "$OUTPUT/manifests/higress/2.2.4"
+  python3 - "$ROOT" "$OUTPUT" <<'PY'
+import hashlib, json, pathlib, shutil, sys
+source, output = map(pathlib.Path, sys.argv[1:])
+approval = source / 'pkg/ani/higress-assets.lock.json'
+lock = json.loads(approval.read_bytes())
+assert lock['schema'] == 'ani.higress.assets.v1' and lock['version'] == '2.2.4'
+role = source / 'builtin/core/roles/ani/higress'
+destination = output / 'manifests/higress/2.2.4'
+for name, digest in lock['files'].items():
+    path = role / ('tasks/main.yaml' if name == 'tasks.yaml' else 'templates/' + name)
+    assert pathlib.Path(name).name == name and hashlib.sha256(path.read_bytes()).hexdigest() == digest, name
+    shutil.copyfile(path, destination / name)
+shutil.copyfile(approval, destination / 'assets.lock.json')
+PY
+fi
 
 echo "[1/6] placing KubeKey artifact"
 if [[ -n "$KUBEKEY_ARTIFACT" ]]; then
@@ -359,7 +377,7 @@ CHECK_TAR
   # "pulled by digest" alone does not guarantee the packaged object IS the pinned one.
   materials record-evidence --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --out "$OUTPUT/images/evidence" "${EVIDENCE_FROM[@]}"
   LANDED="$WORK/landed-store"
-  materials land-images --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --evidence-dir "$OUTPUT/images/evidence" --source-store "$STORE" --out-store "$LANDED"
+  materials land-images --images-tsv "$IMAGES_TSV" --lock "$COMPONENT_LOCK"     --evidence-dir "$OUTPUT/images/evidence" "${EVIDENCE_ARGS[@]}" --source-store "$STORE" --out-store "$LANDED"
   verify_image_store "$LANDED"
   "$HAULER_BIN" store save -s "$LANDED" -f "$OUTPUT/images/images.haul.tar.zst"
 fi
@@ -384,6 +402,29 @@ if grep -q '^batchKServeLLM:' "$COMPONENT_LOCK"; then
   materials land-images --images-tsv "$OUTPUT/images/component-stores/kserve/images.tsv" --lock "$COMPONENT_LOCK" \
     --evidence-dir "$OUTPUT/images/evidence" --source-store "$LANDED" \
     --out-store "$OUTPUT/images/component-stores/kserve/store"
+fi
+if grep -q '^batchHigress:' "$COMPONENT_LOCK"; then
+  for image in controller pilot gateway; do
+    case "$image" in
+      controller) index_sha=0a5b7809a107cbec150f41352a156e31160b8a92df787798e2a9a06cdd5587da ;;
+      pilot) index_sha=f742ed20f938c5c1eaf6f8c36c6481a87052d06e903ab6cb0c079165ac0c8284 ;;
+      gateway) index_sha=3dbd609df5db3fca61653eafe0e2310705e485190c4f8cd02d9aab8f07dcf329 ;;
+    esac
+    printf '%s  %s\n' "$index_sha" "$ROOT/ani/higress/source-indices/$image.json" | sha256sum -c -
+    install -m 0644 "$ROOT/ani/higress/source-indices/$image.json" "$OUTPUT/images/evidence/$index_sha.json"
+  done
+  mkdir -p "$OUTPUT/images/component-stores/higress"
+  awk -F '\t' '$1=="original_ref" || $1 ~ /^higress-registry.cn-hangzhou.cr.aliyuncs.com\/higress\//' "$IMAGES_TSV" > "$OUTPUT/images/component-stores/higress/images.tsv"
+  materials land-images --images-tsv "$OUTPUT/images/component-stores/higress/images.tsv" --lock "$COMPONENT_LOCK" \
+    --evidence-dir "$OUTPUT/images/evidence" --source-store "$LANDED" \
+    --out-store "$OUTPUT/images/component-stores/higress/store"
+  : "${HIGRESS_WASM_SOURCE_ROOT:?set HIGRESS_WASM_SOURCE_ROOT to the fixed OCI Wasm source layouts}"
+  wasm_sources=()
+  for plugin in model-router key-auth key-rate-limit ai-statistics; do
+    wasm_sources+=(--source-store "$HIGRESS_WASM_SOURCE_ROOT/higress-oci-$plugin")
+  done
+  materials place-wasm --lock "$ROOT/ani/higress/wasm.lock.json" \
+    --artifact-root "$OUTPUT" "${wasm_sources[@]}"
 fi
 
 echo "[3/6] placing fixed binaries, repository ISO and chart material"

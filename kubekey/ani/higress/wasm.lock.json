@@ -1,0 +1,160 @@
+{
+  "apiVersion": "ani.material/v1",
+  "kind": "OCIWasmMaterialLock",
+  "higressVersion": "2.2.4",
+  "sourceCommit": "58666ac985cee19a0a9a353421c63cead6d0cb47",
+  "plugins": [
+    {
+      "name": "model-router",
+      "version": "2.0.2",
+      "type": "oci-wasm",
+      "source": "oci://higress-registry.cn-hangzhou.cr.aliyuncs.com/plugins/model-router:2.0.2",
+      "manifest": {
+        "digest": "sha256:e8b99fe5e302a59ab53e6884109b0c4f4a86db1c62ec681c48fd0da86192229f",
+        "size": 1047,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json"
+      },
+      "config": {
+        "mediaType": "application/vnd.oci.empty.v1+json",
+        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "size": 2,
+        "data": "e30="
+      },
+      "layers": [
+        {
+          "mediaType": "application/vnd.module.wasm.config.v1+json",
+          "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "size": 2,
+          "annotations": {
+            "org.opencontainers.image.title": "config.json"
+          }
+        },
+        {
+          "mediaType": "application/vnd.module.wasm.content.layer.v1+wasm",
+          "digest": "sha256:62127d6d8561e380b9af5738de5368408430d6091a5afb7a9ad4f6a02b1cd12d",
+          "size": 6212713,
+          "annotations": {
+            "org.opencontainers.image.title": "plugin.wasm"
+          }
+        }
+      ],
+      "wasmDigest": "sha256:62127d6d8561e380b9af5738de5368408430d6091a5afb7a9ad4f6a02b1cd12d",
+      "artifactPath": "wasm/model-router",
+      "registryRepository": "ani-higress-platform/plugins/model-router"
+    },
+    {
+      "name": "key-auth",
+      "version": "2.0.0",
+      "type": "oci-wasm",
+      "source": "oci://higress-registry.cn-hangzhou.cr.aliyuncs.com/plugins/key-auth:2.0.0",
+      "manifest": {
+        "digest": "sha256:c9cddda9b7dc36b8260afd10d12a089556a070dba28b0b17691e18efc0ca545c",
+        "size": 853,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json"
+      },
+      "config": {
+        "mediaType": "application/vnd.oci.empty.v1+json",
+        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "size": 2,
+        "data": "e30="
+      },
+      "layers": [
+        {
+          "mediaType": "application/vnd.module.wasm.config.v1+json",
+          "digest": "sha256:271ff30131674302b5e074051cb73f0a054b8c69b9bd9242fd4f4707ccbbea0f",
+          "size": 94,
+          "annotations": {
+            "org.opencontainers.image.title": "config.json"
+          }
+        },
+        {
+          "mediaType": "application/vnd.module.wasm.content.layer.v1+wasm",
+          "digest": "sha256:19ec6a090a2515bbb8df50bbf3786c056a217352647793f6a185fb381f4b4df9",
+          "size": 1113029,
+          "annotations": {
+            "org.opencontainers.image.title": "bazel-bin/extensions/key_auth/key_auth.wasm"
+          }
+        }
+      ],
+      "wasmDigest": "sha256:19ec6a090a2515bbb8df50bbf3786c056a217352647793f6a185fb381f4b4df9",
+      "artifactPath": "wasm/key-auth",
+      "registryRepository": "ani-higress-platform/plugins/key-auth"
+    },
+    {
+      "name": "key-rate-limit",
+      "version": "1.0.0",
+      "type": "oci-wasm",
+      "source": "oci://higress-registry.cn-hangzhou.cr.aliyuncs.com/plugins/key-rate-limit:1.0.0",
+      "manifest": {
+        "digest": "sha256:c59da1ee175ff04aa3ce18ca465265a51cc4f2bbc901c8f45cc8f8bbaa6ad357",
+        "size": 864,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json"
+      },
+      "config": {
+        "mediaType": "application/vnd.oci.empty.v1+json",
+        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "size": 2,
+        "data": "e30="
+      },
+      "layers": [
+        {
+          "mediaType": "application/vnd.module.wasm.config.v1+json",
+          "digest": "sha256:271ff30131674302b5e074051cb73f0a054b8c69b9bd9242fd4f4707ccbbea0f",
+          "size": 94,
+          "annotations": {
+            "org.opencontainers.image.title": "config.json"
+          }
+        },
+        {
+          "mediaType": "application/vnd.module.wasm.content.layer.v1+wasm",
+          "digest": "sha256:72d14435bd51a99a4afcaea2d5a6798ec3ac118fe1e9ed2d82ddd4efe7b21c93",
+          "size": 484322,
+          "annotations": {
+            "org.opencontainers.image.title": "bazel-bin/extensions/key_rate_limit/key_rate_limit.wasm"
+          }
+        }
+      ],
+      "wasmDigest": "sha256:72d14435bd51a99a4afcaea2d5a6798ec3ac118fe1e9ed2d82ddd4efe7b21c93",
+      "artifactPath": "wasm/key-rate-limit",
+      "registryRepository": "ani-higress-platform/plugins/key-rate-limit"
+    },
+    {
+      "name": "ai-statistics",
+      "version": "2.0.2",
+      "type": "oci-wasm",
+      "source": "oci://higress-registry.cn-hangzhou.cr.aliyuncs.com/plugins/ai-statistics:2.0.2",
+      "manifest": {
+        "digest": "sha256:3b6beecc9945290c17ed81fa02a2c592df8c5c4c7c7ac22c0abd85196a0c9da2",
+        "size": 1047,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json"
+      },
+      "config": {
+        "mediaType": "application/vnd.oci.empty.v1+json",
+        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "size": 2,
+        "data": "e30="
+      },
+      "layers": [
+        {
+          "mediaType": "application/vnd.module.wasm.config.v1+json",
+          "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "size": 2,
+          "annotations": {
+            "org.opencontainers.image.title": "config.json"
+          }
+        },
+        {
+          "mediaType": "application/vnd.module.wasm.content.layer.v1+wasm",
+          "digest": "sha256:88f0a4c6c3dbdb8cac50cd7d27211e38615b9333b00e6140118b07d794d6e518",
+          "size": 6275270,
+          "annotations": {
+            "org.opencontainers.image.title": "plugin.wasm"
+          }
+        }
+      ],
+      "wasmDigest": "sha256:88f0a4c6c3dbdb8cac50cd7d27211e38615b9333b00e6140118b07d794d6e518",
+      "artifactPath": "wasm/ai-statistics",
+      "registryRepository": "ani-higress-platform/plugins/ai-statistics"
+    }
+  ]
+}

@@ -6,6 +6,46 @@
 
 apiVersion: ani.installer/v1
 
+batchHigress:
+  status: source_material_verified / runtime_not_verified
+  version: 2.2.4
+  source: https://github.com/higress-group/higress/tree/v2.2.4
+  sourceCommit: 58666ac985cee19a0a9a353421c63cead6d0cb47
+  namespace: higress-system
+  release: ani-higress
+  charts:
+    - name: higress
+      chartVersion: 2.2.4
+      appVersion: 2.2.4
+      source: https://higress.io/helm-charts/higress-2.2.4.tgz
+      sha256: c048d97805f7925d74051674e1f639fa178e5b7ce4eabd893d03b02eff653787
+      artifactChartPath: charts/higress/2.2.4.tgz
+      namespace: higress-system
+      release: ani-higress
+  wasm:
+    type: oci-wasm
+    sourceLockPath: ani/higress/wasm.lock.json
+    artifactLockPath: wasm/wasm.lock.json
+    sha256: cc4b51b5719a38302792e0f85daca9f09c373d8f9bb32ccbc2887ccc705d3d1d
+    registryRepositoryPrefix: ani-higress-platform/plugins
+    materialBoundary: Four fixed OCI manifests and config/content descriptors; not Pod images
+  images:
+    - original: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/higress:2.2.4
+      haulerRef: 127.0.0.1:5000/higress/higress:2.2.4
+      sourceManifestDigest: sha256:0a5b7809a107cbec150f41352a156e31160b8a92df787798e2a9a06cdd5587da
+      amd64ManifestDigest: sha256:ab9012ff6ff08135d44696cf8b44cb9b7070d22067ec7d0d9be2a5410ab2e885
+      use: Independent Higress controller; no console
+    - original: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/pilot:2.2.4
+      haulerRef: 127.0.0.1:5000/higress/pilot:2.2.4
+      sourceManifestDigest: sha256:f742ed20f938c5c1eaf6f8c36c6481a87052d06e903ab6cb0c079165ac0c8284
+      amd64ManifestDigest: sha256:47f3897770e6ee65d27826233efac970b9b5cce53f11d178d062129d3efbb921
+      use: Dedicated Higress discovery container; no Istio installation
+    - original: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/gateway:2.2.4
+      haulerRef: 127.0.0.1:5000/higress/gateway:2.2.4
+      sourceManifestDigest: sha256:3dbd609df5db3fca61653eafe0e2310705e485190c4f8cd02d9aab8f07dcf329
+      amd64ManifestDigest: sha256:679841c12ba34efa15f47402156195c2abbd4a58327a28c2367ea4a219ff6b2a
+      use: Independent Higress gateway and actual OCI Wasm fetch/load
+
 batchKServeLLM:
   status: source_material_verified / runtime_not_verified
   combinationRelease: 26.10-kubeflow-llm-v1

@@ -36,11 +36,37 @@ func validateLWSAdditionMaterial(packageRoot string, lock *MaterialsLock) error 
 }
 
 func approvedAdditionImage(component string, row Image) bool {
+	if component == "higress" {
+		approved, ok := higressImageApproval[row.Original]
+		return ok && row.Digest == approved.platform
+	}
 	return (component == "lws" && row.Original == LWSImageReference && row.Digest == LWSAMD64ManifestDigest) ||
 		(component == "kserve" && row.Original == KServeLLMImageReference && row.Digest == KServeLLMAMD64ManifestDigest)
 }
 
 func validateAdditionMaterial(component, packageRoot string, lock *MaterialsLock) error {
+	if component == "higress" {
+		if err := verifyHigressAssets(packageRoot); err != nil {
+			return err
+		}
+		chart, ok := lock.ChartByArtifactPath(HigressChartPath)
+		if !ok || chart.Name != "higress" || chart.ChartVersion != HigressVersion || strings.TrimPrefix(chart.SHA256, "sha256:") != HigressChartSHA256 || sha256FileHex(filepath.Join(packageRoot, HigressChartPath)) != HigressChartSHA256 {
+			return fmt.Errorf("Higress requires the source-approved official Chart")
+		}
+		if err := verifyChartIdentity(filepath.Join(packageRoot, HigressChartPath), *chart); err != nil {
+			return err
+		}
+		if err := verifyHigressWasmArtifact(packageRoot); err != nil {
+			return err
+		}
+		for original, pin := range higressImageApproval {
+			approved, err := (ImageEvidence{Roots: EvidenceRoots(packageRoot)}).resolveApproved(Image{Original: original, Digest: pin.index})
+			if err != nil || approved.Platform() != pin.platform {
+				return fmt.Errorf("Higress original index evidence differs: %s: %v", original, err)
+			}
+		}
+		return nil
+	}
 	if component == "lws" {
 		return validateLWSAdditionMaterial(packageRoot, lock)
 	}

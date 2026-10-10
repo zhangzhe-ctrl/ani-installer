@@ -1,0 +1,29 @@
+global:
+  enableGatewayAPI: true
+  gatewayClass: {{ (index .ani.components "higress").gateway_class }}
+  enableIstioAPI: false
+  createIngressClass: false
+  enableAlphaGatewayAPI: false
+  enableInferenceExtension: false
+  enableGatewayAPIDeploymentController: false
+  enableRedis: false
+  enablePluginServer: false
+  o11y: {enabled: false}
+  imagePullPolicy: IfNotPresent
+higress-core:
+  controller:
+    automaticHttps: {enabled: false}
+  gateway:
+    replicas: 2
+    service:
+      type: NodePort
+      externalTrafficPolicy: Cluster
+      ports:
+        - {name: http2, port: 80, targetPort: 80, protocol: TCP, nodePort: {{ (index .ani.components "higress").http_port }}}
+{{ if (index .ani.components "higress").tls_secret }}
+        - {name: https, port: 443, targetPort: 443, protocol: TCP, nodePort: {{ (index .ani.components "higress").https_port }}}
+{{ end }}
+  meshConfig:
+    accessLogFormat: '{"method":"%REQ(:METHOD)%","path":"%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%","response_code":"%RESPONSE_CODE%","route_name":"%ROUTE_NAME%"}'
+higress-console:
+  replicaCount: 0

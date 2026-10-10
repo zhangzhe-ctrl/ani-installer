@@ -181,5 +181,7 @@
       when: '{{ and .ani.kubeflow.enabled (ne .ani.profile "base") }}'
     - role: ani/kserve
       when: '{{ and (index .ani.components "kserve").enabled (ne .ani.profile "base") }}'
+    - role: ani/higress
+      when: '{{ and (index .ani.components "higress").enabled (ne .ani.profile "base") }}'
 
 - import_playbook: hook/post_install.yaml

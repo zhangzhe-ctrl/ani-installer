@@ -238,6 +238,12 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 			"lws":    {"kserve"}, "cert-manager": {"kubeflow", "kserve"},
 		}
 	}
+	if c.Components.Higress.Enabled && effectiveHigress(c).WasmRegistry == "harbor" {
+		if manifest.DependencySources == nil {
+			manifest.DependencySources = map[string][]string{}
+		}
+		manifest.DependencySources["harbor"] = append(manifest.DependencySources["harbor"], "higress.wasmRegistry=harbor")
+	}
 	if len(classes) > 0 {
 		manifest.ComponentClasses = classes
 	}

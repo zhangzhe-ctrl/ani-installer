@@ -1,0 +1,43 @@
+---
+- name: ANI Higress | Create private component work directories
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    install -d -m 0700 /etc/kubernetes/ani/higress '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+- name: ANI Higress | Render fixed upstream Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/higress/values.yaml
+- name: ANI Higress | Render bounded independent gateway Chart filter
+  template:
+    src: filter.py
+    dest: /etc/kubernetes/ani/higress/filter.py
+- name: ANI Higress | Render approved shared Gateway API prerequisites
+  template:
+    src: gateway-api.yaml
+    dest: /etc/kubernetes/ani/higress/gateway-api.yaml
+- name: ANI Higress | Render protected registry and real gateway driver
+  template:
+    src: manage.py
+    dest: /etc/kubernetes/ani/higress/manage.py
+- name: ANI Higress | Establish APIs publish verified Wasm and install independent gateway
+  command: >-
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    python3 /etc/kubernetes/ani/higress/manage.py install
+- name: ANI Higress | Wait for the primary workload bound by component records
+  command: >-
+    kubectl --kubeconfig='{{ .ani.run.kubeconfig }}' -n higress-system
+    rollout status deployment/higress-controller --timeout=600s
+- name: ANI Higress | Render formal verifier
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/higress/verify.sh
+- name: ANI Higress | Verify real Wasm loading routing auth rate limits and all node entries
+  command: >-
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}'
+    bash /etc/kubernetes/ani/higress/verify.sh
+- name: ANI Higress | Render consumption and credential reference facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/higress.md'

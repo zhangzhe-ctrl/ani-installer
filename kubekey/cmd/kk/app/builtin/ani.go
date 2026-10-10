@@ -235,6 +235,17 @@ func newANIMaterialsCommand() *cobra.Command {
 	cmd.AddCommand(newANIMaterialsVerifyRegistryCommand())
 	cmd.AddCommand(newANIMaterialsRecordEvidenceCommand())
 	cmd.AddCommand(newANIMaterialsLandImagesCommand())
+	cmd.AddCommand(newANIMaterialsPlaceWasmCommand())
+	return cmd
+}
+
+func newANIMaterialsPlaceWasmCommand() *cobra.Command {
+	input := ani.MaterialsWasmInput{}
+	cmd := &cobra.Command{Use: "place-wasm", Short: "Place the source-approved OCI Wasm artifacts separately from Pod images", RunE: func(cmd *cobra.Command, _ []string) error { return ani.RunMaterialsPlaceWasm(input, cmd.OutOrStdout()) }}
+	cmd.Flags().StringVar(&input.LockPath, "lock", "ani/higress/wasm.lock.json", "source-approved OCI Wasm lock")
+	cmd.Flags().StringArrayVar(&input.SourceStores, "source-store", nil, "read-only OCI source layout (repeatable)")
+	cmd.Flags().StringVar(&input.ArtifactRoot, "artifact-root", "", "output artifact root")
+	_ = cmd.MarkFlagRequired("artifact-root")
 	return cmd
 }
 

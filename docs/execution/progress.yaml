@@ -17,9 +17,9 @@ tasks:
   status: in_progress
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
-    liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: candidate_c52261d_formal_pass_b2faa2e_llmi_formal_gate_failed_three_contract_guards_targeted_fix_pass_new_candidate_pending
-    materials: candidate_0283fa4_complete_113_images_12_charts_source_bound_and_target_checksums_pass
+    liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
+    code: candidate_234c2ec_llmi_formal_pass_higress_source_role_config_chart_and_related_components_gate_pass_formal_candidate_pending
+    materials: candidate_234c2ec_complete_114_images_14_charts_fedora_formal_pass_target_transfer_blocked_before_writes
     integration: lws_c52261d_two_node_uid_http_normal_finalization_smoke_and_true_noop_pass_llmi_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
@@ -46,7 +46,13 @@ tasks:
   - 长时保留对象对账中，原 440 对象的 UID/labels 保持；437 对象 payloadHash 相同，三份 CDI 证书由 managedFields 确认 cdi-operator 于 03:58:33/34 UTC 更新，早于 12:09 CST 的 c52261d noop。单列控制器证书续期，不宣称全部原对象长时字节不变；本次 LWS noop 前后受保护 LWS 资源及证书完全相同。
   - LLMI 新组合 26.10-kubeflow-llm-v1 派生 LWS 与 cert-manager，旧 26.03 语义不变。官方 v0.17.0 两份 Chart 经实际 Helm/filter 渲染检查，共享 Standard 配置和 GIE 排除、外部 API 错误及 namespace 归属拒绝通过；验证输出的依赖来源先红后绿。114 镜像批准 store 已按 manifest/blob 闭包落地；完整新材料、正式候选和真实 admission/reconcile 仍待执行。
   - b2faa2e 正式代码门禁 rc=1 保留，未制材料或执行集群操作；三项合同守卫揭示 role YAML 未显式等待记录绑定 workload、verify 循环旧 16 行夹具和一组件仅一 Chart 的旧材料假设。修复增加正式 Deployment 等待与 CRD prerequisite Chart 登记并在 plan 计入两份 Chart，更新选择表及逐材料守卫。最小三项回归先红后绿，LLMI/组件 plan/execute 相关测试通过；新同源正式构建仍待执行。
+  - 234c2ec 正式 check-code/build-code 全门禁及 builtin 包 rc=0，源码指纹 7f8d9fe6ebc869afdd2752f17e049fc5e237e2fa117dee302f5eb065b060274b 从门禁前到制包后相同；114 镜像/14 Chart 完整材料构建启动。私有新站点使用 26.10 组合且声明 lws.enabled=false，待正式补装验证自动依赖。
+  - 234c2ec 完整材料 build-offline rc=0，114 镜像全部 manifest/blob 校验、14 Chart、23 个 Kubeflow 源码批准文件与 41 wheel、固定工具/guest/DB/ISO 均通过。目标 transfer 在第一个严格 SSH 机器身份核对以 rc=255 停止；尚未创建目标目录、传包或执行补装。20/22 握手前关闭；21 机器身份仍为 84131dc6818543829bf60a76f5cd13b2，但经 21 连接两节点返回 No route to host，Fedora 到 20 API 在严格 CA/client 认证 TLS 握手阶段 EOF。当前无法重新核实原 UID，停止集群写入并继续 Higress 源码；原失败回执保留，不绕过 hostkey 或恢复快照。
   - Higress 2.2.4 的三份 amd64 控制器/网关镜像及四份 OCI Wasm 插件已在 Fedora 按固定 manifest 和全部 blob 摘要校验；Wasm 单列类型并检查内容层魔数。仅源材料通过，正式安装及实际模块加载/路由仍 not_verified。
+  - Higress 四插件专用 OCIWasmMaterialLock 源码批准摘要 cc4b51b5719a38302792e0f85daca9f09c373d8f9bb32ccbc2887ccc705d3d1d；正式 materials place-wasm 按现有 blob 校验落地原始 manifest/config/layer，独立 wasm/ 目录且不进入 Pod 镜像表。Fedora 正式 typed 独立选择/共存/端口冲突、官方 Chart 15 对象边界/三平台摘要/Harbor CA、外来 namespace/不兼容共享 API 零写入拒绝及缺失 Wasm 首装 preflight 先红后绿通过。组件/verify/LWS/LLMI 关联门禁 19.320s 通过；Higress 角色、固定材料、补装/首装/verifier 和源批准资产锁已接入源码，正式候选构建及真实 Gateway/加载/HTTP 行为仍未验证。
+  - 用户确认没有其他任务维护 20/22。严格 ESXi 只读核对 VM14/15/16 的 VMware UUID 与既有记录一致，Linux UUID 另列，不混用字节序；三台均 Powered on。20 报 guestToolsRunning/原管理 IP，22 报 guestToolsNotRunning/notRunning，21 对20/22管理邻居解析 INCOMPLETE。未开关机、重启、改网卡或恢复快照；现场诊断保留在 Fedora 本任务 private/esxi-network-diagnostic-readonly-attempt-02.json。
+  - 用户确认 test-01 的 ESXi 关机是本人操作且现在允许使用；只读复核三台 VMware UUID 和磁盘映射均未改变，检查时已全部开机，本驱动未执行电源操作或快照恢复。三节点严格 SSH 机器身份、原 kube-system UID、v1.35.8/8 CPU 和 Ready 集合重新核实，234c2ec 使用新传输回执续接，首次失败回执保留。
+  - Higress 受保护 HTTP 客户端先复现 302 向其他 authority 携带请求头，修复拒绝重定向及环境代理；真实 HTTP 边界回归通过。源码审批同时绑定七份原始 role/CRD/脚本资产，缺失审批及修改 driver 的首装 preflight 在任何变更前拒绝。Higress/OCI Wasm 最终定向组 7.453s 通过；正式全代码及 117 镜像/15 Chart/四 Wasm 材料候选尚未构建，未记 live PASS。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

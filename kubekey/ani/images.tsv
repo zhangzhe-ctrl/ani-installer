@@ -1,4 +1,7 @@
 original_ref	hauler_ref	actual_digest	use_location
+higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/higress:2.2.4	127.0.0.1:5000/higress/higress:2.2.4	sha256:ab9012ff6ff08135d44696cf8b44cb9b7070d22067ec7d0d9be2a5410ab2e885	Independent official Higress controller
+higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/pilot:2.2.4	127.0.0.1:5000/higress/pilot:2.2.4	sha256:47f3897770e6ee65d27826233efac970b9b5cce53f11d178d062129d3efbb921	Dedicated official Higress discovery container
+higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/gateway:2.2.4	127.0.0.1:5000/higress/gateway:2.2.4	sha256:679841c12ba34efa15f47402156195c2abbd4a58327a28c2367ea4a219ff6b2a	Independent official Higress gateway with OCI Wasm loading
 docker.io/kserve/llmisvc-controller:v0.17.0	127.0.0.1:5000/kserve/llmisvc-controller:v0.17.0	sha256:30795379cceea64653daba008fee9b054bb889523000b53586cd3bdc48608b79	Official LLMI controller, admission/conversion webhook and workload TLS certificate reuse fix
 registry.k8s.io/lws/lws:v0.10.0	127.0.0.1:5000/lws/lws:v0.10.0	sha256:1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8	Official LWS controller and internal webhook certificate manager
 docker.io/library/haproxy:2.9.6-alpine	127.0.0.1:5000/library/haproxy:2.9.6-alpine	sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5	KubeKey artifact; unused because control_plane_endpoint.type=local

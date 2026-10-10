@@ -55,6 +55,16 @@ components:
   kubevirt: {enabled: true, vmNode: node3, storageClass: ani-block, scratchStorageClass: ani-block, storageSize: 2Gi}
   volcano: {enabled: true}
   harbor: {enabled: true, externalAddress: 172.16.101.20, storageClass: ani-block, storageSize: 10Gi}
+  # Independent selection; the old Kubeflow release below retains its meaning.
+  # Enable in the full LLM combination site with kubeflow.release=26.10-kubeflow-llm-v1.
+  higress:
+    enabled: false
+    gatewayClass: higress
+    gatewayName: ani-higress
+    httpPort: 30445
+    httpsPort: 30446 # reserved until hostname + TLS Secret are configured
+    allowedNamespaces: [ani-system]
+    wasmRegistry: harbor
 kubeflow:
   enabled: true
   release: 26.03-kubeflow-stage2-v1

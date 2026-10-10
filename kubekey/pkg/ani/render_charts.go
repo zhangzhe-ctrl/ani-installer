@@ -130,6 +130,20 @@ func RunChartExpansion(ctx context.Context, input ChartExpansionInput, cluster C
 
 	expanded := 0
 	postRenderer := ""
+	higressRenderer := ""
+	if enabled["higress"] {
+		for _, file := range files {
+			if file.Rel == "higress/templates/filter.py" {
+				higressRenderer = filepath.Join(scratch, "higress-filter.py")
+				if err := os.WriteFile(higressRenderer, file.Rendered, 0o700); err != nil {
+					return err
+				}
+			}
+		}
+		if higressRenderer == "" {
+			return errors.New("selected Higress has no bounded independent gateway post-renderer")
+		}
+	}
 	if enabled["kserve"] {
 		for _, file := range files {
 			if file.Rel == "kserve/templates/filter.py" {
@@ -170,6 +184,9 @@ func RunChartExpansion(ctx context.Context, input ChartExpansionInput, cluster C
 		filter := ""
 		if role == "kserve" {
 			filter = postRenderer
+		}
+		if role == "higress" {
+			filter = higressRenderer
 		}
 		rendered, err := expandChart(ctx, input.HelmBin, archive, valuesFile, spec, chart, filter)
 		if err != nil {

@@ -192,6 +192,9 @@ func componentImageKeys() []ImageKey {
 	return append([]ImageKey{
 		{Group: "lws", Name: "manager", Original: LWSImageReference},
 		{Group: "kserve", Name: "controller", Original: KServeLLMImageReference},
+		{Group: "higress", Name: "controller", Original: HigressControllerImage},
+		{Group: "higress", Name: "pilot", Original: HigressPilotImage},
+		{Group: "higress", Name: "gateway", Original: HigressGatewayImage},
 		// R08: the two main CNIs and the foundation components now have real,
 		// declared keys (every original exists in images.tsv / images-kubeovn.tsv
 		// exactly as shipped), so a required image that is missing from the

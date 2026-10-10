@@ -79,6 +79,7 @@ var componentsDeferred = []string{
 // componentInstallSpecs covers every canonical component ID of
 // componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
+	"higress":             {Namespace: "higress-system", Release: "ani-higress", Chart: "higress", ChartVersion: HigressVersion, WorkloadKind: "Deployment", WorkloadName: "higress-controller"},
 	"lws":                 {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
 	"kserve":              {Namespace: "kserve", Release: "ani-kserve-llmi", Chart: "kserve-llmisvc-resources", ChartVersion: KServeLLMVersion, PrerequisiteChart: "kserve-llmisvc-crd", WorkloadKind: "Deployment", WorkloadName: "llmisvc-controller-manager", InternalDeps: []string{"cert-manager", "lws"}},
 	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
@@ -246,7 +247,7 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 	}
 	registryUnitDigest := ""
 	for _, component := range scope {
-		if component == "lws" || component == "kserve" {
+		if component == "lws" || component == "kserve" || component == "higress" {
 			if err := validateAdditionMaterial(component, input.PackageRoot, artifactLock); err != nil {
 				return err
 			}
@@ -506,6 +507,9 @@ func componentsScope(cluster ClusterConfig, only []string) ([]string, error) {
 
 func componentDependencies(cluster ClusterConfig, name string) []string {
 	deps := append([]string(nil), componentInstallSpecs[name].InternalDeps...)
+	if name == "higress" && effectiveHigress(cluster).WasmRegistry == "harbor" {
+		deps = append(deps, "harbor")
+	}
 	if name == "milvus" && cluster.ObjectStorageProvider() == objectProviderRustFS {
 		deps = append(deps, "rustfs")
 	}
@@ -1521,7 +1525,7 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 		return errors.New("original registry unit changed after planning; re-plan")
 	}
 	for _, component := range fullScope {
-		if component == "lws" || component == "kserve" {
+		if component == "lws" || component == "kserve" || component == "higress" {
 			if err := validateAdditionMaterial(component, input.PackageRoot, artifactLock); err != nil {
 				return err
 			}
