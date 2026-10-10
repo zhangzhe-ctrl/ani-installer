@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: lws_and_controlled_additive_materials_fedora_related_pass_formal_gate_pending
-    materials: official_lws_chart_and_113_approved_image_store_full_package_pending
-    integration: not_run
+    code: candidate_0283fa4_formal_code_gate_pass_lws_empty_namespace_fix_related_pass_next_formal_gate_pending
+    materials: candidate_0283fa4_complete_113_images_12_charts_source_bound_and_target_checksums_pass
+    integration: lws_first_execute_failed_empty_namespace_before_kubernetes_api_writes
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -32,13 +32,15 @@ tasks:
   - kubekey/ani/components.lock.yaml
   notes:
   - 用户于本 Goal 明确覆盖旧 LWS 暂缓及 LLMI 排除决定，授权独立 Higress；其余暂停能力保持原边界。无 ANI 应用部署或业务仓库修改。
-  - 本地任务分支 codex/lws-kserve-higress，Fedora 私有任务根 /home/chabking/ani-installer-runs/lws-kserve-higress-20261010。未推送、恢复快照或写入集群。
+  - 本地任务分支 codex/lws-kserve-higress，Fedora 私有任务根 /home/chabking/ani-installer-runs/lws-kserve-higress-20261010。未推送或恢复快照；首个正式 LWS execute 已追加批准镜像材料到原只读 registry 数据目录，组件驱动在 Kubernetes API 写入前失败。
   - 首个真实断点为缺少 LWS typed config/正式 role；独立选择和渲染先红后绿。正式 plan/execute 绑定 ani-lws/lws-system 和 Deployment lws-controller-manager，完整材料及 live 行为仍待验证。
   - LWS 官方 OCI Chart manifest 249c5000a24a22cb26e410774be6f613756029242eb3b27b01fdeb9258228896，Chart layer 66dbead7996e962c36e5efad01a448e612dbe52ae071cd429fec6acb21433161；镜像 index 46b1f3b6090d6983a0eab5b80385018d8ea74155ec09a67a17a2cf492d48aa4c 与 amd64 manifest 1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8 分开固定。
   - KServe v0.17.0 官方源码 c71eba91631b976ff7b111f3061df9af86399e99 已存在 workload 证书复用/续期修正和行为测试，CRD served v1alpha1 经 webhook 转换到 v1alpha2；仅为修复候选，ANI PodSpec 兼容、材料和 live reconcile 尚未验证。
   - 9b0311c 正式代码门禁因三个仍按 15 行选择表编写的旧夹具失败；原始 rc=1 保留，已补齐 LWS 行并通过对应回归。尚未生成该候选正式代码包。
   - 补装新增材料断点已进入正式 plan/execute：原成功安装锁按记录摘要核实，候选只可追加材料批次，计划同时绑定两份锁；执行前重新核对，旧材料替换或计划后漂移拒绝。新增 LWS 离线 OCI 闭包经批准 blob 校验后以独占文件追加到原 Distribution 数据目录，不修改原只读服务、store 或已有引用。
-  - 固定 Hauler v2.0.3 真实 HTTP 测试通过：运行中的只读服务立即提供准确 LWS manifest 和全部 blob；重复追加保留 tag inode/mtime，冲突 tag 零写入。原拉取 store 的转换 manifest 现场保留；另建材料落地工具输出的 113 镜像批准 store。正式包、保留集群安装和行为仍 pending。
+  - 固定 Hauler v2.0.3 真实 HTTP 测试通过：运行中的只读服务立即提供准确 LWS manifest 和全部 blob；重复追加保留 tag inode/mtime，冲突 tag 零写入。原拉取 store 的转换 manifest 现场保留；另建材料落地工具输出的 113 镜像批准 store。
+  - 0283fa4 正式代码门禁、builtin 二进制和完整离线材料构建通过；113 镜像按批准 manifest/blob 校验，12 Chart 逐项绑定摘要，Kubeflow 23 文件及 41 wheel 源码批准校验通过。代码和材料共 12802400675 字节，20 节点接收端 SHA256SUMS 全部通过，剩余约 41 GiB。
+  - 正式 plan ani-components-ani-kcn-full-20261010-110633 通过，只选择 lws，原成功安装材料锁不变；execute 首个 rc=1 保留，空 lws-system namespace 的 Secret list 返回空输出后触发 NoneType.get。未创建 LWS CRD、namespace、controller 或探针；前后原 440 个对象 UID、labels、payloadHash 完全相同。最小生产 renderer/driver 回归已同样失败，修复只将空列表正常归一化，API 错误和外部退出码继续传播。新候选正式构建及 live 调度/HTTP/生命周期仍待验证。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

@@ -77,9 +77,10 @@ func TestLWSProductionRenderRequiresLockedController(t *testing.T) {
 // renderer, material approval and install/preflight/exit handling all run.
 func TestLWSInstallStopsBeforeMutatingSharedObjects(t *testing.T) {
 	for _, scenario := range []struct {
-		name string
-		code int
-	}{{"foreign-crd", 1}, {"api-failure", 67}} {
+		name    string
+		code    int
+		message string
+	}{{"foreign-crd", 1, "pre-existing LWS object"}, {"api-failure", 67, "preserved external API error"}, {"absent-namespace", 1, "pre-existing LWS object"}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			root := t.TempDir()
 			c, err := ParseClusterConfig([]byte(lwsStandaloneSite))
@@ -135,7 +136,8 @@ if os.environ['LWS_SCENARIO']=='api-failure':
 if 'CustomResourceDefinition' in args:
  print(json.dumps({'metadata':{'name':'leaderworkersets.leaderworkerset.x-k8s.io','labels':{'ani.io/managed-by':'foreign'}}}))
 elif 'secret' in args:
- print(json.dumps({'items':[]}))
+ if os.environ['LWS_SCENARIO']!='absent-namespace':
+  print(json.dumps({'items':[]}))
 `, 0o700)
 			cmd := exec.Command("python3", filepath.Join(root, "driver.py"), "install")
 			cmd.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "ANI_RUN_KUBECONFIG="+filepath.Join(root, "kubeconfig"), "LWS_SCENARIO="+scenario.name, "LWS_WRITES="+filepath.Join(root, "writes"))
@@ -143,6 +145,9 @@ elif 'secret' in args:
 			exit, ok := err.(*exec.ExitError)
 			if !ok || exit.ExitCode() != scenario.code {
 				t.Fatalf("install exit=%v, want %d: %s", err, scenario.code, output)
+			}
+			if !strings.Contains(string(output), scenario.message) {
+				t.Fatalf("install did not reach the expected ownership/API decision: %s", output)
 			}
 			if _, err := os.Stat(filepath.Join(root, "writes")); !os.IsNotExist(err) {
 				t.Fatal("failed preflight mutated the cluster")

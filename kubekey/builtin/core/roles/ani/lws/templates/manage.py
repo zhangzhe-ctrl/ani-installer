@@ -73,7 +73,7 @@ def install():
     lws = [obj for obj in crds if obj['metadata']['name'] == 'leaderworkersets.leaderworkerset.x-k8s.io']
     if len(lws) != 1 or not any(v['name'] == 'v1' and v['served'] for v in lws[0]['spec']['versions']):
         raise ValueError('LWS official chart does not serve the required v1 API')
-    releases = get('secret', namespace=NS)
+    releases = get('secret', namespace=NS) or {}
     if any(o['metadata'].get('labels', {}).get('name') == 'ani-lws' and
            o['metadata'].get('labels', {}).get('owner') == 'helm' for o in releases.get('items', [])):
         raise ValueError('LWS release already exists; use formal plan/execute for noop')
