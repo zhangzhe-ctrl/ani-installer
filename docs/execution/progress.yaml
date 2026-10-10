@@ -18,12 +18,12 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_ecfbb47_formal_code_and_builtin_package_pass_source_fingerprint_b61eb3d3
+    code: candidate_7d1ae43_formal_code_and_builtin_package_pass_higress_fresh_evidence_directory_fix_red_green_new_candidate_pending
     materials: candidate_ecfbb47_complete_immutable_reassembly_117_images_15_charts_four_wasm_source_approval_full_bytes_and_target_transfer_pass
-    integration: smoke3_first11_pass_kubevirt_fixture_absent_then_fresh_guest_import_started_native_ssh_known_hosts_bug_fixed_and_tested_new_formal_candidate_pending
+    integration: candidate_7d1ae43_first13_smoke_pass_fresh_harbor_probe_and_three_remaining_smoke_pass_higress_check_pass_but_missing_evidence_directory_report_failure_fixed_in_source
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: retained_kubeflow_stage1_stage2_and_supplemental_pass_remaining_infrastructure_and_clean_install_pending
-    noop: retained_ecfbb47_full_17_components_operation_noop_didInstall_false_all470_protected_objects_unchanged_clean_install_pending
+    noop: retained_7d1ae43_full17_formal_plan_execute_noop_pass_post_data_noop_and_clean_install_pending
     cleanup: not_run
     environment: not_ready
     networkPolicy: unsupported_kcn_test_unsupported_v1
@@ -76,6 +76,9 @@ tasks:
   - 全 17 组件正式 smoke 首个 rc=1 停在 cert-manager：三工作负载均 Available，但上一任务已正常清理 ani-cert-test，现有 checker 的临时 leaf 前置样例缺失，其他组件均 not_run。核实三节点/集群和 namespace 不存在后，仅从本候选批准 internal-ca.yaml 提取原测试 Certificate，恢复任务归属 namespace/leaf；共享根 CA、Secret、Issuer/ClusterIssuer 的 UID/spec/data 均保持。失败回执与输出保留，独立 verify2 复验已启动；未重装、重建或旋转共享 CA，持久化预算尚未消耗。
   - smoke2 原始 rc=1 停在 Fluent Bit：三节点真实 stdout 均存在，OpenSearch 仅命中 node1/node3。node2 输入/输出计数停止、尾读账本不再推进，线程阻塞于到 10.96.0.1:443 的既有 TCP read，健康接口仍为 ok；固定 5.1.2 源码的同步 Kubernetes metadata 连接默认无限 IO 等待。仅正常 UID/resourceVersion 条件重建该 node2 Pod，DaemonSet spec、hostPath 和全部 477 个受保护对象不变；此为单独 lab 运维恢复，不是 verifier PASS 或 installer 修复。原失败及探针保留，smoke3 全组合复验运行中；未修改日志探针、放宽超时或消耗持久化复验预算。
   - smoke3 前 11 项真实 PASS，含三节点 stdout→Fluent Bit→OpenSearch 与 RBD/CephFS 快照字节；随后因上一任务正常清理的 KubeVirt DataVolume/VM 缺失退出 1，后六项未通过。正式当前 guest-source Pod 与匹配原 Service 的只读复用已恢复，固定 CirrOS 经 CDI 导入且 VM 启动后，旧 root known_hosts 拒绝新 guest：固定 virtctl v1.9.0 的 native SSH 不传递 --known-hosts。正式 RenderSite→真实固定 virtctl→OpenSSH -G 的回归 1.183s 红、0.198s 绿；两条正式 SSH 调用显式传递 UserKnownHostsFile，严格/accept-new 策略保持，系统 known_hosts 未动。B05、KCN/Kube-OVN、smoke 相关组 44.464s 通过；新正式构建及本次失败探针的正常归属恢复待完成，VM/PVC 现场与全部首个失败保留，未继续持久化或快照恢复。
+  - 7d1ae43000cedceac87996e0eff118b73eb9e38e 正式 check-code/builtin/代码包 rc=0，源码指纹 e373f19bc1f0f8615408e93b3226f7c79b3037d6cf344c4df5e1d21a85da4303 不变；同一完整材料全部字节通过并复用。旧失败 guest 正常归属清理后，当前正式 B05 完成 CDI 导入、实际 guest 命令、同 PVC stop/start 标记保持及 DNS/Service 下载字节摘要；root known_hosts 与原 Service/控制器不变。全 17 plan/execute noop 通过。
+  - 当前 7d1ae43 全组合 smoke 前 13 项通过，Harbor 因先前正常清理的 ani-b07-test 项目缺失返回 404，首个失败与后三项 not_run 保留。原 B07 证据已在 Fedora 逐文件备份并在目标保留；当前正式打包完整 B07 重新完成私有项目、robot 权限正负例、固定 digest push/pull、真实离线扫描与三节点运行时拉取，原 477 对象完全不变，仅新增本次 pull Secret。后续 scoped smoke 的 Harbor/LWS/KServe 通过，Higress FileNotFoundError 保留，未执行持久化/基础探针/快照。
+  - Higress 只读实际 check 返回 pass，Chart/OCI 闭包存在；故障为正式 wrapper 未创建独立 evidence 目录而报告写入失败。RenderSite→真实 Bash→RunVerify→外部 checker 文件写入合同先红后绿（0.628s/0.454s），新增 install -d -m 0700；业务 check、身份、插件、认证和超时不放宽，七资产审批同步更新。新正式候选及修复后集群门禁待完成。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

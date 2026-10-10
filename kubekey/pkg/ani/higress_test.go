@@ -13,6 +13,57 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestHigressSmokeWritesEvidenceInAFreshPrivateDirectory(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, _ := r13Prepare(t)
+	c := kubeflowTestConfig()
+	c.Kubeflow = nil
+	c.Components.CertManager.Enabled = true
+	c.Components.Higress = HigressComponent{Enabled: true, WasmRegistry: "material"}
+	files, err := RenderSite("../../builtin/core/roles/ani", c, "/offline", r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scripts := filepath.Join(base, "scripts", "higress")
+	if err := os.MkdirAll(scripts, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Rel == "higress/templates/verify.sh" {
+			if err := os.WriteFile(filepath.Join(scripts, "verify.sh"), file.Rendered, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The checker process is the external boundary here. Its reporter writes
+	// a real file, like the production CLI, and fails when its parent is absent.
+	// Gateway/auth/plugin behavior is covered separately by the real live probe.
+	reporter := "#!" + python + `
+import json,pathlib,sys
+assert sys.argv[1:4]==['/etc/kubernetes/ani/higress/manage.py','check','--output-dir']
+out=pathlib.Path(sys.argv[4])
+assert out.stat().st_mode & 0o777 == 0o700, 'evidence directory must be private'
+(out/'higress-behavior.json').write_text(json.dumps({'status':'pass'}))
+`
+	if err := os.WriteFile(filepath.Join(base, "bin", "python3"), []byte(reporter), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run, state := r13RunRecord(t, base, true, PhaseSucceeded, "higress")
+	out := filepath.Join(base, "fresh", "verification")
+	if err := RunVerify(context.Background(), VerifyInput{RunFile: run, StateFile: state,
+		Level: VerifyLevelSmoke, ScriptDir: filepath.Dir(scripts), Output: out,
+		Kubeconfig: filepath.Join(base, "kubeconfig")}, io.Discard); err != nil {
+		t.Fatalf("formal Higress smoke must allow its checker to write fresh private evidence: %v", err)
+	}
+	evidence := filepath.Join(out, "smoke-ani-ani-lab-20260924-130000-higress", "higress-behavior.json")
+	if _, err := os.Stat(evidence); err != nil {
+		t.Fatal("Higress checker evidence was not persisted", err)
+	}
+}
+
 func TestHigressGatewayClassMatchesOfficialControllerReconciliation(t *testing.T) {
 	c := kubeflowTestConfig()
 	c.Kubeflow = nil
