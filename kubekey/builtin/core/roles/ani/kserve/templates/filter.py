@@ -37,6 +37,18 @@ for obj in objects:
         # Standard already uses this site's installed CA. Reuse its issuer
         # identity without creating an excluded Issuer or changing the CA.
         obj['spec']['issuerRef'] = {'kind': 'ClusterIssuer', 'name': 'ani-ca'}
+    if obj['kind'] == 'ClusterRole':
+        read_ca = {'apiGroups': [''], 'resources': ['configmaps', 'pods'], 'verbs': ['get', 'list', 'watch']}
+        if obj['rules'].count(read_ca) != 1:
+            raise ValueError('official LLMI ConfigMap read rule differs from the approved Chart')
+        # v0.17.0 calls the shared CA-bundle reconciler, whose Create/Update
+        # operations are absent from its official LLMI role. Keep Pod access
+        # read-only and limit updates to the controller's fixed bundle name.
+        obj['rules'] += [
+            {'apiGroups': [''], 'resources': ['configmaps'], 'verbs': ['create']},
+            {'apiGroups': [''], 'resources': ['configmaps'],
+             'resourceNames': ['global-ca-bundle'], 'verbs': ['update']},
+        ]
     obj['metadata'].setdefault('labels', {})['ani.io/managed-by'] = '{{ .kubernetes.cluster_name }}'
     kept.append(obj)
 if removed != GIE or { (o['kind'], o['metadata']['name']) for o in kept } != EXPECTED or len(kept) != len(EXPECTED):

@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: higress_f89485b_formal_build_cancelled_after_llmi_retained_issuer_failure_new_source_fix_and_targeted_gate_pass
+    code: b843144_formal_code_gate_and_builtin_package_pass_llmi_cabundle_rbac_source_repair_pending
     materials: candidate_234c2ec_complete_114_images_14_charts_fedora_and_target_full_byte_checks_pass_117_image_candidate_pending
-    integration: lws_pass_llmi_234c2ec_preflight_fail_excluded_namespaced_issuer_original_448_objects_unchanged_higress_not_verified
+    integration: lws_pass_llmi_b843144_admission_ready_owner_chain_fail_official_configmap_write_permissions_missing_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -55,6 +55,7 @@ tasks:
   - Higress 受保护 HTTP 客户端先复现 302 向其他 authority 携带请求头，修复拒绝重定向及环境代理；真实 HTTP 边界回归通过。源码审批同时绑定七份原始 role/CRD/脚本资产，缺失审批及修改 driver 的首装 preflight 在任何变更前拒绝。Higress/OCI Wasm 最终定向组 7.453s 通过；正式全代码及 117 镜像/15 Chart/四 Wasm 材料候选尚未构建，未记 live PASS。
   - 234c2ec 新传输完成：完整材料 SHA256SUMS 摘要 07cf09e1465b62c33618bd9ab4e9651cd29cbd42f5b8cc46536c3ff2d27c1445，目标全部字节通过。正式 plan ani-components-ani-kcn-full-20261010-141500 仅补装 kserve；execute 原始 rc=1 停在 Standard 前置检查，未创建 LLMI API/对象。现有组合已明确排除 selfsigned-issuer 并复用 ani-ca ClusterIssuer，驱动及官方 Chart Certificate 错误引用了被排除的 Issuer；448 个受保护对象前后 UID/labels/payloadHash 完全相同。已在源码改为核实并复用现有 CA，不修改其资源或凭据；实际 Chart/批准 Standard 资产回归先红后绿。f89485b 代码门禁因发现此实际新断点主动取消，rc=143 保留，未制材料或用于安装。
   - ea91d31 正式代码门禁 rc=1 保留：唯一失败为 TestComponentValuesRenderCompleteImages 的手写上下文没有 Higress map，输出 GatewayClass/端口缺失；该夹具现复用正式 typed 默认解析与 higressSpec，最小回归通过。LLMI CA/leader EndpointSlice 与 Higress 定向组 6.042s 通过；未绕过正式代码门禁或执行失败候选。
+  - b843144 正式代码门禁及 builtin 包 rc=0，源码指纹 e0aab3ec8c611430b8b6123050c4c7f9b5c72a3f9e0fc5cac05ea42faf1b22eb；117 镜像完整材料构建中。复用逐字节通过的 114 镜像材料后，正式 plan/execute ani-components-ani-kcn-full-20261010-150140 已安装 LLMI controller、CRD 和 Ready webhook 证书，原 Standard Deployment UID 保持。真实 LLMI admission 通过但尚未生成 LWS，原始 rc=1 与探针 namespace ani-llmi-probe-09fc5f9c3e 保留：官方 v0.17.0 LLMI role 缺少 CA bundle reconciler 实际调用的 ConfigMap Create/Update。live can-i 和实际 Chart 回归均为红；源码过滤器只补充 ConfigMap create 及固定 global-ca-bundle 名称的 update，Pod 仍只读，其他 ConfigMap 不获更新权限。全部 LLMI 定向组 4.212s 通过；失败归属清理及新正式候选待完成，不记 LLMI live PASS。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

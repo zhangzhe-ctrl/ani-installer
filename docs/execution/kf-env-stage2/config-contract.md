@@ -36,6 +36,8 @@ KFP 2.16.0、Trainer 2.1.0、JobSet 0.10.1 沿用 BASE_SHA 锁定字节。Notebo
 
 保留 Standard manager 实际注册的 InferenceService、TrainedModel、InferenceGraph、ServingRuntime、ClusterServingRuntime 与 LocalModelCache 等 CRD/webhook 依赖。Standard 的两个未注册 LLMI webhook 仍从原 overlay 排除，处置和渲染输入摘要保存在 `kubekey/ani/kubeflow/stage2/overlay/overlay.lock.json`。新组合由独立官方 LLMI Chart 提供自己的 controller、CRD conversion、webhook、证书和 Lease，复用现有 cert-manager 与 Ready 的 `ani-ca` ClusterIssuer；不创建原组合已排除的 `selfsigned-issuer`，不修改既有 CA 或覆盖 `inferenceservice-config`。仅安装 LLMI API 和控制器，不安装 GIE/router/scheduler；调用方继续自行发布 HTTPRoute。空的官方 LLMInferenceServiceConfig 预置不注入引擎命令或覆盖调用方 leader/worker PodSpec，消费 API 为 v1alpha1，存储版本为 v1alpha2。Istio、Knative 和 GPU Runtime 保持未选择。
 
+固定 v0.17.0 LLMI Chart 的受控过滤器补齐官方 CA bundle reconciler 所需的 ConfigMap 创建权限与 `global-ca-bundle` 更新权限；不授予 Pod 写权限或其他 ConfigMap 的更新权限。
+
 ## 原生资源与模型
 
 安装器准备两个独立环境探针 Namespace `ani-kf-stage2-a/b`、SA、配额、NetworkPolicy、Jupyter token Secret、模型 writer/reader Secret 与 CA ConfigMap。受限管理员探针另外创建 PVC 和 Notebook CR；这不是产品生命周期后端。Notebook 的工作负载与 KFP pipeline-runner 权限分开。

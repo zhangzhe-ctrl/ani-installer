@@ -158,6 +158,45 @@ func TestLLMIOfficialChartsPreserveStandardAndExcludeGIE(t *testing.T) {
 				t.Fatalf("LLMI webhook must reuse the installed CA without an excluded namespaced Issuer: %v", issuer)
 			}
 		}
+		if kind == "ClusterRole" {
+			// The official controller creates the CA bundle and uses Update for
+			// renewal. It must retain read-only access to unrelated Pod objects.
+			allows := func(resource, verb, resourceName string) bool {
+				for _, rawRule := range obj["rules"].([]interface{}) {
+					rule := rawRule.(map[string]interface{})
+					contains := func(key, value string) bool {
+						for _, item := range rule[key].([]interface{}) {
+							if item == value {
+								return true
+							}
+						}
+						return false
+					}
+					if rule["apiGroups"] == nil || !contains("apiGroups", "") || !contains("resources", resource) || !contains("verbs", verb) {
+						continue
+					}
+					if rule["resourceNames"] == nil || contains("resourceNames", resourceName) {
+						return true
+					}
+				}
+				return false
+			}
+			for _, test := range []struct {
+				resource, verb, name string
+				want                 bool
+			}{
+				{"configmaps", "create", "", true},
+				{"configmaps", "update", "global-ca-bundle", true},
+				{"configmaps", "update", "unrelated-config", false},
+				{"configmaps", "delete", "global-ca-bundle", false},
+				{"pods", "create", "", false},
+				{"pods", "get", "probe", true},
+			} {
+				if got := allows(test.resource, test.verb, test.name); got != test.want {
+					t.Fatalf("LLMI CA bundle authorization %s/%s/%s=%v, want %v", test.resource, test.verb, test.name, got, test.want)
+				}
+			}
+		}
 		if kind == "Deployment" {
 			deployments++
 			if name != "llmisvc-controller-manager" {
