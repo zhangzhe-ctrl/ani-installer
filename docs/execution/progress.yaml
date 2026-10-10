@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_234c2ec_llmi_formal_pass_higress_source_role_config_chart_and_related_components_gate_pass_formal_candidate_pending
-    materials: candidate_234c2ec_complete_114_images_14_charts_fedora_formal_pass_target_transfer_blocked_before_writes
-    integration: lws_c52261d_two_node_uid_http_normal_finalization_smoke_and_true_noop_pass_llmi_higress_not_verified
+    code: higress_f89485b_formal_build_cancelled_after_llmi_retained_issuer_failure_new_source_fix_and_targeted_gate_pass
+    materials: candidate_234c2ec_complete_114_images_14_charts_fedora_and_target_full_byte_checks_pass_117_image_candidate_pending
+    integration: lws_pass_llmi_234c2ec_preflight_fail_excluded_namespaced_issuer_original_448_objects_unchanged_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -53,6 +53,7 @@ tasks:
   - 用户确认没有其他任务维护 20/22。严格 ESXi 只读核对 VM14/15/16 的 VMware UUID 与既有记录一致，Linux UUID 另列，不混用字节序；三台均 Powered on。20 报 guestToolsRunning/原管理 IP，22 报 guestToolsNotRunning/notRunning，21 对20/22管理邻居解析 INCOMPLETE。未开关机、重启、改网卡或恢复快照；现场诊断保留在 Fedora 本任务 private/esxi-network-diagnostic-readonly-attempt-02.json。
   - 用户确认 test-01 的 ESXi 关机是本人操作且现在允许使用；只读复核三台 VMware UUID 和磁盘映射均未改变，检查时已全部开机，本驱动未执行电源操作或快照恢复。三节点严格 SSH 机器身份、原 kube-system UID、v1.35.8/8 CPU 和 Ready 集合重新核实，234c2ec 使用新传输回执续接，首次失败回执保留。
   - Higress 受保护 HTTP 客户端先复现 302 向其他 authority 携带请求头，修复拒绝重定向及环境代理；真实 HTTP 边界回归通过。源码审批同时绑定七份原始 role/CRD/脚本资产，缺失审批及修改 driver 的首装 preflight 在任何变更前拒绝。Higress/OCI Wasm 最终定向组 7.453s 通过；正式全代码及 117 镜像/15 Chart/四 Wasm 材料候选尚未构建，未记 live PASS。
+  - 234c2ec 新传输完成：完整材料 SHA256SUMS 摘要 07cf09e1465b62c33618bd9ab4e9651cd29cbd42f5b8cc46536c3ff2d27c1445，目标全部字节通过。正式 plan ani-components-ani-kcn-full-20261010-141500 仅补装 kserve；execute 原始 rc=1 停在 Standard 前置检查，未创建 LLMI API/对象。现有组合已明确排除 selfsigned-issuer 并复用 ani-ca ClusterIssuer，驱动及官方 Chart Certificate 错误引用了被排除的 Issuer；448 个受保护对象前后 UID/labels/payloadHash 完全相同。已在源码改为核实并复用现有 CA，不修改其资源或凭据；实际 Chart/批准 Standard 资产回归先红后绿。f89485b 代码门禁因发现此实际新断点主动取消，rc=143 保留，未制材料或用于安装。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

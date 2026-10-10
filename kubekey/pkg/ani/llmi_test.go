@@ -152,6 +152,12 @@ func TestLLMIOfficialChartsPreserveStandardAndExcludeGIE(t *testing.T) {
 		if kind == "CustomResourceDefinition" || kind == "ConfigMap" || name == "kserve-controller-manager" {
 			t.Fatalf("LLMI resources would install a shared/Standard/GIE object: %s/%s", kind, name)
 		}
+		if kind == "Certificate" {
+			issuer := obj["spec"].(map[string]interface{})["issuerRef"].(map[string]interface{})
+			if issuer["name"] != "ani-ca" || issuer["kind"] != "ClusterIssuer" {
+				t.Fatalf("LLMI webhook must reuse the installed CA without an excluded namespaced Issuer: %v", issuer)
+			}
+		}
 		if kind == "Deployment" {
 			deployments++
 			if name != "llmisvc-controller-manager" {
@@ -224,5 +230,80 @@ print(json.dumps({'metadata':{'uid':'external-fixture','labels':{'ani.io/managed
 				t.Fatal("failed shared-object preflight mutated Kubernetes")
 			}
 		})
+	}
+}
+
+func TestLLMIRecognizesSourceApprovedStandardCAWithoutExcludedIssuer(t *testing.T) {
+	dir := t.TempDir()
+	files := llmiRendered(t, dir)
+	driver, ca := filepath.Join(dir, "manage.py"), filepath.Join(dir, "internal-ca.yaml")
+	for path, data := range map[string][]byte{driver: files["kserve/templates/manage.py"], ca: files["cert-manager/templates/internal-ca.yaml"]} {
+		if len(data) == 0 {
+			t.Fatal("missing production driver/CA recipe")
+		}
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Reuse the real fixed Standard overlay and CA recipe. Only the API read
+	// boundary supplies object UIDs, mapped image names and Ready observations.
+	script := `import copy,json,runpy,sys,yaml
+driver=runpy.run_path(sys.argv[1]);g=driver['standard'].__globals__
+objects=json.load(open(sys.argv[2]))+list(yaml.safe_load_all(open(sys.argv[3])))
+fixtures={}
+for value in objects:
+ if not value:continue
+ o=copy.deepcopy(value);m=o['metadata'];m['uid']='isolated-api-boundary-'+m['name']
+ m.setdefault('labels',{})['ani.io/managed-by']=g['OWNER']
+ if o['kind']=='Deployment' and m['name']=='kserve-controller-manager':
+  for c in o['spec']['template']['spec']['containers']:
+   if c['name']=='manager':c['image']=g['STANDARD_IMAGE']
+ if o['kind'] in ['ClusterIssuer','Certificate']:o['status']={'conditions':[{'type':'Ready','status':'True'}]}
+ fixtures[(o['kind'].lower(),m['name'],m.get('namespace'))]=o
+calls=[]
+def external_api(kind,name=None,namespace=None):
+ calls.append((kind,name,namespace))
+ return fixtures.get(({'crd':'customresourcedefinition'}.get(kind,kind),name,namespace))
+g['get']=external_api
+assert not external_api('issuer','selfsigned-issuer','kserve')
+result=driver['standard']()
+assert len(result)==64
+assert ('clusterissuer','ani-ca',None) in calls
+fixtures[('clusterissuer','ani-ca',None)]['status']['conditions'][0]['status']='False'
+try:
+ driver['standard']()
+ raise AssertionError('unready shared CA passed Standard protection')
+except ValueError as e:assert 'not ready' in str(e),str(e)
+`
+	cmd := exec.Command("python3", "-c", script, driver, filepath.Join("..", "..", "ani/kubeflow/stage2/overlay/resources.json"), ca)
+	if raw, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("actual Standard/CA prerequisite: %v\n%s", err, raw)
+	}
+}
+
+func TestLLMIServiceRequiresActualLeaderUIDAddressAndPort(t *testing.T) {
+	dir := t.TempDir()
+	driver := filepath.Join(dir, "manage.py")
+	if err := os.WriteFile(driver, llmiRendered(t, dir)["kserve/templates/manage.py"], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := `import copy,runpy,sys
+driver=runpy.run_path(sys.argv[1]);check=driver['leader_endpoints'];g=check.__globals__
+leader={'metadata':{'name':'actual-leader','uid':'actual-leader-uid'},'status':{'podIP':'10.16.0.17'}}
+source={'metadata':{'name':'actual-leader-slice','uid':'slice-uid','labels':{'kubernetes.io/service-name':'probe-http'}},'ports':[{'port':8000,'protocol':'TCP'}],
+ 'endpoints':[{'conditions':{'ready':True},'addresses':['10.16.0.17'],'targetRef':{'kind':'Pod','name':'actual-leader','uid':'actual-leader-uid'}}]}
+for scenario in ['actual','wrong-pod-uid','wrong-address','wrong-port','no-ready-endpoint']:
+ o=copy.deepcopy(source)
+ if scenario=='wrong-pod-uid':o['endpoints'][0]['targetRef']['uid']='different-pod-uid'
+ if scenario=='wrong-address':o['endpoints'][0]['addresses']=['10.16.0.18']
+ if scenario=='wrong-port':o['ports'][0]['port']=8001
+ if scenario=='no-ready-endpoint':o['endpoints'][0]['conditions']['ready']=False
+ g['listing']=lambda kind,namespace:[o]
+ result=check('isolated-api-boundary',leader)
+ assert bool(result)==(scenario=='actual'),scenario
+`
+	cmd := exec.Command("python3", "-c", script, driver)
+	if raw, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("real leader endpoint identity: %v\n%s", err, raw)
 	}
 }

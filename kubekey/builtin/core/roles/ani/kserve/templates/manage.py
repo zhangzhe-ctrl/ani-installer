@@ -75,7 +75,7 @@ def wait(description, observe, timeout=300):
 
 def standard():
     values = [get('namespace', NS), get('deployment', 'kserve-controller-manager', NS),
-              get('configmap', 'inferenceservice-config', NS), get('issuer', 'selfsigned-issuer', NS),
+              get('configmap', 'inferenceservice-config', NS), get('clusterissuer', 'ani-ca'),
               get('crd', 'inferenceservices.serving.kserve.io')]
     if not all(values) or values[0]['metadata'].get('labels', {}).get('ani.io/managed-by') != OWNER:
         raise ValueError('the selected Standard base/namespace is absent or foreign')
@@ -85,7 +85,9 @@ def standard():
     if json.loads(values[2]['data']['deploy']).get('defaultDeploymentMode') != 'Standard':
         raise ValueError('Standard default deployment mode differs')
     if not any(c['type'] == 'Ready' and c['status'] == 'True' for c in values[3].get('status', {}).get('conditions', [])):
-        raise ValueError('existing Standard selfsigned-issuer is not ready')
+        raise ValueError('existing Standard ani-ca ClusterIssuer is not ready')
+    if values[3]['spec'] != {'ca': {'secretName': 'ani-root-ca'}}:
+        raise ValueError('existing Standard ani-ca ClusterIssuer differs from the installed CA recipe')
     protected = [{'uid': v['metadata']['uid'], 'labels': v['metadata'].get('labels', {}),
                   'spec': v.get('spec'), 'data': v.get('data')} for v in values]
     return hashlib.sha256(json.dumps(protected, sort_keys=True).encode()).hexdigest()
@@ -194,6 +196,21 @@ def check():
             'routing': 'caller-owned-HTTPRoute', 'engines': 'external-boundary'}
 
 
+def leader_endpoints(namespace, leader):
+    slices = [s for s in listing('endpointslices', namespace)
+              if s['metadata']['labels'].get('kubernetes.io/service-name') == 'probe-http']
+    ready = [(s, e) for s in slices for e in s.get('endpoints', []) if e.get('conditions', {}).get('ready')]
+    if len(ready) != 1:
+        return False
+    endpoint_slice, endpoint = ready[0]
+    target = endpoint.get('targetRef', {})
+    if (target.get('kind') != 'Pod' or target.get('name') != leader['metadata']['name'] or
+            target.get('uid') != leader['metadata']['uid'] or endpoint.get('addresses') != [leader['status']['podIP']] or
+            not any(p.get('port') == 8000 and p.get('protocol') == 'TCP' for p in endpoint_slice.get('ports', []))):
+        return False
+    return [endpoint_slice]
+
+
 def probe():
     result = check()
     name = 'ani-llmi-probe-' + uuid.uuid4().hex[:10]
@@ -279,6 +296,10 @@ http.server.HTTPServer(('0.0.0.0',8000),Handler).serve_forever()
         main = next(c for c in pod['spec']['containers'] if c['name'] == 'main')
         if main['command'] != ['python3', '-u', '-c', server] or main.get('args', []) or main['image'] != ENGINE_IMAGE:
             raise ValueError('LLMI changed the caller engine command/image')
+        if not any(e.get('name') == 'PROBE_MARKER' and e.get('value') == marker for e in main.get('env', [])):
+            raise ValueError('LLMI changed the caller environment')
+        if not any(m['name'] == 'caller-model' and m['mountPath'] == '/models' and not m.get('readOnly', False) for m in main.get('volumeMounts', [])):
+            raise ValueError('LLMI changed the caller writable PVC mount')
         statuses = [c for c in pod['status'].get('containerStatuses', []) if c['name'] == 'main']
         if len(statuses) != 1 or ENGINE_IMAGE.rsplit('@', 1)[1] not in statuses[0].get('imageID', ''):
             raise ValueError('external boundary actual imageID differs from approval')
@@ -293,10 +314,7 @@ http.server.HTTPServer(('0.0.0.0',8000),Handler).serve_forever()
                'spec': {'selector': {'statefulset.kubernetes.io/pod-name': leader['metadata']['name']},
                         'ports': [{'port': 8080, 'targetPort': 8000}]}}
     apply([service])
-    def ready_slice():
-        return any(e.get('conditions', {}).get('ready') for s in listing('endpointslices', name)
-                   if s['metadata']['labels'].get('kubernetes.io/service-name') == 'probe-http' for e in s.get('endpoints', []))
-    wait('actual leader Service EndpointSlice', ready_slice)
+    slices = wait('actual leader Service EndpointSlice', lambda: leader_endpoints(name, leader))
     code = 'import urllib.request; print(urllib.request.urlopen("http://probe-http:8080/",timeout=5).read().decode(),end="")'
     response = kube('exec', '-n', name, worker['metadata']['name'], '-c', 'main', '--', 'python3', '-c', code)
     if response != marker + ':leader': raise ValueError('LLMI cross-node HTTP content differs')
@@ -307,11 +325,14 @@ http.server.HTTPServer(('0.0.0.0',8000),Handler).serve_forever()
     for role in ('leader', 'worker'):
         actual = kube('exec', '-n', name, worker['metadata']['name'], '-c', 'main', '--', 'cat', '/models/data/' + role + '.txt')
         if actual != marker + ':' + role: raise ValueError('LLMI shared PVC bytes differ for ' + role)
-    slices = listing('endpointslices', name)
-    if not any(e.get('conditions', {}).get('ready') for s in slices if s['metadata']['labels'].get('kubernetes.io/service-name') == 'probe-http' for e in s.get('endpoints', [])):
-        raise ValueError('LLMI probe Service lacks a ready EndpointSlice')
+    slices = leader_endpoints(name, leader)
+    if not slices:
+        raise ValueError('LLMI probe Service no longer targets the actual leader UID/address/port')
     result.update({'probeNamespace': name, 'llmiUID': llm['metadata']['uid'], 'lwsUID': groups[0]['metadata']['uid'],
                    'podUIDs': [p['metadata']['uid'] for p in pods], 'nodes': NODES[:2], 'httpContent': response,
+                   'pvcUID': claim_uid, 'serviceUID': get('service', 'probe-http', name)['metadata']['uid'],
+                   'endpointSlices': [{'uid': s['metadata']['uid'], 'leaderUID': leader['metadata']['uid'],
+                                       'leaderAddress': leader['status']['podIP'], 'port': 8000} for s in slices],
                    'pvcBytes': 'leader-and-worker-exact-match', 'callerCommands': 'preserved'})
     kube('delete', 'llminferenceservice', 'engine-boundary', '-n', name, '--wait=true', '--timeout=600s')
     wait('normal LLMI LWS Pod StatefulSet finalization', lambda: not listing('leaderworkersets', name) and

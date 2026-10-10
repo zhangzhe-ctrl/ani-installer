@@ -31,6 +31,12 @@ for obj in objects:
         continue
     if key not in EXPECTED:
         raise ValueError('unexpected object in official LLMI resources Chart: ' + '/'.join(key))
+    if obj['kind'] == 'Certificate':
+        if obj['spec']['issuerRef'] != {'kind': 'Issuer', 'name': 'selfsigned-issuer'}:
+            raise ValueError('official LLMI webhook issuer differs from the approved Chart')
+        # Standard already uses this site's installed CA. Reuse its issuer
+        # identity without creating an excluded Issuer or changing the CA.
+        obj['spec']['issuerRef'] = {'kind': 'ClusterIssuer', 'name': 'ani-ca'}
     obj['metadata'].setdefault('labels', {})['ani.io/managed-by'] = '{{ .kubernetes.cluster_name }}'
     kept.append(obj)
 if removed != GIE or { (o['kind'], o['metadata']['name']) for o in kept } != EXPECTED or len(kept) != len(EXPECTED):

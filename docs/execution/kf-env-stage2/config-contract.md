@@ -34,7 +34,7 @@ KFP 2.16.0、Trainer 2.1.0、JobSet 0.10.1 沿用 BASE_SHA 锁定字节。Notebo
 
 核心版本来自 [Kubeflow 26.03 发行矩阵](https://www.kubeflow.org/docs/kubeflow-distribution/releases/kubeflow-26.03/)。[KServe 0.16 Standard 文档](https://raw.githubusercontent.com/kserve/website/main/versioned_docs/version-0.16/admin-guide/kubernetes-deployment.md)要求 Kubernetes 1.32+、cert-manager 1.15+；当前 BASE_SHA 为 Kubernetes 1.35.8、cert-manager 1.21.2，未升级共享组件。满足版本要求并不证明 ANI 裁剪组合已实测兼容；实际状态只见本轮 README 与交接。
 
-保留 Standard manager 实际注册的 InferenceService、TrainedModel、InferenceGraph、ServingRuntime、ClusterServingRuntime 与 LocalModelCache 等 CRD/webhook 依赖。Standard 的两个未注册 LLMI webhook 仍从原 overlay 排除，处置和渲染输入摘要保存在 `kubekey/ani/kubeflow/stage2/overlay/overlay.lock.json`。新组合由独立官方 LLMI Chart 提供自己的 controller、CRD conversion、webhook、证书和 Lease，复用现有 cert-manager 与 Standard selfsigned Issuer，禁止覆盖 `inferenceservice-config`。仅安装 LLMI API 和控制器，不安装 GIE/router/scheduler；调用方继续自行发布 HTTPRoute。空的官方 LLMInferenceServiceConfig 预置不注入引擎命令或覆盖调用方 leader/worker PodSpec，消费 API 为 v1alpha1，存储版本为 v1alpha2。Istio、Knative 和 GPU Runtime 保持未选择。
+保留 Standard manager 实际注册的 InferenceService、TrainedModel、InferenceGraph、ServingRuntime、ClusterServingRuntime 与 LocalModelCache 等 CRD/webhook 依赖。Standard 的两个未注册 LLMI webhook 仍从原 overlay 排除，处置和渲染输入摘要保存在 `kubekey/ani/kubeflow/stage2/overlay/overlay.lock.json`。新组合由独立官方 LLMI Chart 提供自己的 controller、CRD conversion、webhook、证书和 Lease，复用现有 cert-manager 与 Ready 的 `ani-ca` ClusterIssuer；不创建原组合已排除的 `selfsigned-issuer`，不修改既有 CA 或覆盖 `inferenceservice-config`。仅安装 LLMI API 和控制器，不安装 GIE/router/scheduler；调用方继续自行发布 HTTPRoute。空的官方 LLMInferenceServiceConfig 预置不注入引擎命令或覆盖调用方 leader/worker PodSpec，消费 API 为 v1alpha1，存储版本为 v1alpha2。Istio、Knative 和 GPU Runtime 保持未选择。
 
 ## 原生资源与模型
 
