@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: candidate_0283fa4_formal_code_gate_pass_lws_empty_namespace_fix_related_pass_next_formal_gate_pending
+    code: candidate_ea98b2c_formal_code_gate_pass_lws_empty_collection_fix_related_pass_next_formal_gate_pending
     materials: candidate_0283fa4_complete_113_images_12_charts_source_bound_and_target_checksums_pass
-    integration: lws_first_execute_failed_empty_namespace_before_kubernetes_api_writes
+    integration: lws_ea98b2c_controller_admission_two_node_uid_http_pass_cleanup_driver_empty_list_failed
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -40,7 +40,8 @@ tasks:
   - 补装新增材料断点已进入正式 plan/execute：原成功安装锁按记录摘要核实，候选只可追加材料批次，计划同时绑定两份锁；执行前重新核对，旧材料替换或计划后漂移拒绝。新增 LWS 离线 OCI 闭包经批准 blob 校验后以独占文件追加到原 Distribution 数据目录，不修改原只读服务、store 或已有引用。
   - 固定 Hauler v2.0.3 真实 HTTP 测试通过：运行中的只读服务立即提供准确 LWS manifest 和全部 blob；重复追加保留 tag inode/mtime，冲突 tag 零写入。原拉取 store 的转换 manifest 现场保留；另建材料落地工具输出的 113 镜像批准 store。
   - 0283fa4 正式代码门禁、builtin 二进制和完整离线材料构建通过；113 镜像按批准 manifest/blob 校验，12 Chart 逐项绑定摘要，Kubeflow 23 文件及 41 wheel 源码批准校验通过。代码和材料共 12802400675 字节，20 节点接收端 SHA256SUMS 全部通过，剩余约 41 GiB。
-  - 正式 plan ani-components-ani-kcn-full-20261010-110633 通过，只选择 lws，原成功安装材料锁不变；execute 首个 rc=1 保留，空 lws-system namespace 的 Secret list 返回空输出后触发 NoneType.get。未创建 LWS CRD、namespace、controller 或探针；前后原 440 个对象 UID、labels、payloadHash 完全相同。最小生产 renderer/driver 回归已同样失败，修复只将空列表正常归一化，API 错误和外部退出码继续传播。新候选正式构建及 live 调度/HTTP/生命周期仍待验证。
+  - 正式 plan ani-components-ani-kcn-full-20261010-110633 通过，只选择 lws，原成功安装材料锁不变；execute 首个 rc=1 保留，空 lws-system namespace 的 Secret list 返回空输出后触发 NoneType.get。未创建 LWS CRD、namespace、controller 或探针；前后原 440 个对象 UID、labels、payloadHash 完全相同。最小生产 renderer/driver 回归复现后修复，API 错误和外部退出码继续传播。
+  - ea98b2c 正式代码门禁和 builtin 包通过；复用同一完整材料并核实摘要后，plan ani-components-ani-kcn-full-20261010-113538 通过。真实 execute 安装官方 controller/webhook，完成 node1/node2 leader/worker 调度、UID 归属链和精确 HTTP 内容断言；正常删除 LWS 后，空 Pod list 输出触发清理驱动 NoneType 下标错误，execute rc=1 与非可消费记录保留。生产 renderer/driver 的空集合回归同样失败；修复区分空集合与缺失单个对象，全部 LWS 定向测试通过。重新验证与本次归属残留 namespace 正常清理待执行；不把部分行为通过记录成完整 PASS。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

@@ -42,7 +42,7 @@ def get(kind, name=None, namespace=None):
     if namespace:
         args += ['-n', namespace]
     text = kube(*args, '--ignore-not-found', '-o', 'json')
-    return json.loads(text) if text.strip() else None
+    return json.loads(text) if text.strip() else (None if name else {'items': []})
 
 
 def apply(objects):

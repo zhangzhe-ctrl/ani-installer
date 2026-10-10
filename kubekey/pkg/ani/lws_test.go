@@ -155,3 +155,47 @@ elif 'secret' in args:
 		})
 	}
 }
+
+// kubectl --ignore-not-found can emit no JSON for an empty collection on
+// Kubernetes 1.35. The lifecycle check must treat that as an empty list while
+// preserving a missing named object and real API failures as distinct results.
+func TestLWSKubectlEmptyListsAndAPIFailure(t *testing.T) {
+	root := t.TempDir()
+	c, err := ParseClusterConfig([]byte(lwsStandaloneSite))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), c, root, r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Rel == "lws/templates/manage.py" {
+			if err := os.WriteFile(filepath.Join(root, "driver.py"), file.Rendered, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := os.Mkdir(filepath.Join(root, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fake := "#!/bin/sh\nif [ \"$LWS_EMPTY_API_FAILURE\" = yes ]; then echo 'preserved external API error' >&2; exit 67; fi\n"
+	if err := os.WriteFile(filepath.Join(root, "bin", "kubectl"), []byte(fake), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := `import importlib.util,os,subprocess,sys
+s=importlib.util.spec_from_file_location('driver',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+assert m.get('pods',namespace='owned-probe')['items']==[]
+assert m.get('statefulsets',namespace='owned-probe')['items']==[]
+assert m.get('namespace','absent') is None
+os.environ['LWS_EMPTY_API_FAILURE']='yes'
+try: m.get('pods',namespace='owned-probe')
+except subprocess.CalledProcessError as e: assert e.returncode==67
+else: raise AssertionError('API failure was converted to an empty list')
+`
+	cmd := exec.Command("python3", "-c", script, filepath.Join(root, "driver.py"))
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"), "ANI_RUN_KUBECONFIG="+filepath.Join(root, "kubeconfig"))
+	if raw, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("empty-list lifecycle protocol: %v\n%s", err, raw)
+	}
+}
