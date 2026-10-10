@@ -2,12 +2,82 @@ package ani
 
 import (
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
+
+// Exercise the rendered calls through the locked virtctl and OpenSSH's real
+// configuration resolver. This catches a virtctl flag that is accepted but
+// never forwarded to its native SSH child, without contacting a cluster.
+func TestB05RenderedGuestSSHUsesItsOwnKnownHosts(t *testing.T) {
+	virtctl := os.Getenv("ANI_B05_VIRTCTL_BIN")
+	if virtctl == "" {
+		t.Skip("set ANI_B05_VIRTCTL_BIN to the locked offline virtctl")
+	}
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(r06SiteA, "  certManager: {enabled: true}",
+		"  certManager: {enabled: true}\n  kubevirt: {enabled: true, vmNode: node3, storageClass: ani-block, storageSize: 2Gi}", 1)
+	c, err := ParseClusterConfig([]byte(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := RenderSite("../../builtin/core/roles/ani", c, "/offline", r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var script string
+	for _, f := range files {
+		if f.Rel == "kubevirt/templates/verify.sh" {
+			script = string(f.Rendered)
+		}
+	}
+	calls := regexp.MustCompile(`(?s)timeout (?:25|40) "\$V" ssh .*?cirros@vm/ani-b05-guest`).FindAllString(script, -1)
+	if len(calls) != 2 {
+		t.Fatalf("expected initial-guest and smoke SSH calls, found %d", len(calls))
+	}
+	for i, call := range calls {
+		dir := t.TempDir()
+		known, capture := filepath.Join(dir, "guest-known-hosts"), filepath.Join(dir, "ssh-config")
+		quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+		wrapper := "#!/bin/sh\nexec " + quote(ssh) + " -G \"$@\" > \"$SSH_CAPTURE_FILE\"\n"
+		if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(wrapper), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		kubeconfig := filepath.Join(dir, "kubeconfig")
+		if err := os.WriteFile(kubeconfig, []byte("apiVersion: v1\nkind: Config\nclusters:\n- name: fixture\n  cluster: {server: http://127.0.0.1:1}\ncontexts:\n- name: fixture\n  context: {cluster: fixture, user: fixture, namespace: ani-platform}\ncurrent-context: fixture\nusers:\n- name: fixture\n  user: {}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		command := "V=" + quote(virtctl) + "; KNOWN=" + quote(known) + "; KEY=" + quote(filepath.Join(dir, "guest-key")) + "; cmd='uname -m'; " + call
+		cmd := exec.Command("bash", "-c", command)
+		cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "KUBECONFIG="+kubeconfig, "SSH_CAPTURE_FILE="+capture)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("rendered SSH call %d failed: %v\n%s", i, err, out)
+		}
+		resolved, err := os.ReadFile(capture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(resolved), "userknownhostsfile "+known+"\n") {
+			t.Fatalf("rendered call %d did not bind native SSH to the guest's dedicated known_hosts", i)
+		}
+		mode := "true"
+		if strings.Contains(call, "accept-new") {
+			mode = "accept-new"
+		}
+		if !strings.Contains(string(resolved), "stricthostkeychecking "+mode+"\n") {
+			t.Fatalf("rendered call %d changed the declared host-key policy", i)
+		}
+	}
+}
 
 func TestB05KubeVirtSelectionAndProductionRender(t *testing.T) {
 	off, err := ParseClusterConfig([]byte(r06SiteA))

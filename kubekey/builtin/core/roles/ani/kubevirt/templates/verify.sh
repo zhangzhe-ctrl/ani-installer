@@ -39,6 +39,7 @@ if [ "${ANI_VERIFY_LEVEL:-}" = smoke ]; then
   test -s "$KEY"
   GUEST_OUT="$(timeout 40 "$V" ssh --namespace ani-platform --identity-file "$KEY" \
     --known-hosts "$KNOWN" --local-ssh-opts='-o StrictHostKeyChecking=yes' \
+    --local-ssh-opts="-o UserKnownHostsFile=$KNOWN" \
     --command 'uname -m; id -un; cat /home/cirros/ani-b05-marker' cirros@vm/ani-b05-guest)"
   printf '%s\n' "$GUEST_OUT" > "$OUT/guest-command.txt"
   printf '%s\n' "$GUEST_OUT" | grep -qx x86_64
@@ -173,6 +174,7 @@ run_guest() {
   while [ "$SECONDS" -lt "$deadline" ]; do
     if timeout 25 "$V" ssh --namespace ani-platform --identity-file "$KEY" \
       --known-hosts "$KNOWN" --local-ssh-opts='-o StrictHostKeyChecking=accept-new' \
+      --local-ssh-opts="-o UserKnownHostsFile=$KNOWN" \
       --command "$cmd" cirros@vm/ani-b05-guest; then return 0; fi
     sleep 5
   done

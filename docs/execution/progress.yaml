@@ -18,12 +18,12 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_05a63a7_formal_code_and_builtin_package_pass_source_fingerprint_862567fc_oci_checksum_fix_targeted_pass_formal_pending
-    materials: candidate_05590b7_attempt_02_formal_complete_and_target_transfer_pass_current_higress_driver_approval_requires_refresh
-    integration: lws_llmi_real_behavior_pass_higress_05590b7_execute_fail_oci_manifest_vs_content_checksum_all_original_453_unchanged_owned_recovery_pending
+    code: candidate_ecfbb47_formal_code_and_builtin_package_pass_source_fingerprint_b61eb3d3
+    materials: candidate_ecfbb47_complete_immutable_reassembly_117_images_15_charts_four_wasm_source_approval_full_bytes_and_target_transfer_pass
+    integration: smoke3_first11_pass_kubevirt_fixture_absent_then_fresh_guest_import_started_native_ssh_known_hosts_bug_fixed_and_tested_new_formal_candidate_pending
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
-    behaviorAcceptance: not_run
-    noop: retained_lws_and_llmi_pass_operation_noop_didInstall_false_full_combination_and_clean_install_pending
+    behaviorAcceptance: retained_kubeflow_stage1_stage2_and_supplemental_pass_remaining_infrastructure_and_clean_install_pending
+    noop: retained_ecfbb47_full_17_components_operation_noop_didInstall_false_all470_protected_objects_unchanged_clean_install_pending
     cleanup: not_run
     environment: not_ready
     networkPolicy: unsupported_kcn_test_unsupported_v1
@@ -69,6 +69,13 @@ tasks:
   - 正式 verify 新增显式 --revalidate-preservation：只接受原成功 install 记录及原 identity-bound done/pass 账本，复核原 PVC，按 verifier 二进制 SHA 固定额外一次预算；原账本不变，UID 条件删除与协议读回保持。RunVerify 先红后绿 2.582s，原预算/权限/替换/失败停止相关回归 20.937s；组件记录负例最初误用 missing 外来 release 夹具，原 rc=1 保留，改为既有 absent 夹具后真实记录拒绝 0.576s 与正式 builtin CLI 分派 0.100s 通过。当前仍是源码候选，未在集群消耗新预算。
   - 05a63a7454d3084de5ecf641a45f8d62a3c5675e 正式 check-code、builtin 构建和代码包 rc=0，源码指纹 862567fc354ddaf666af34ef354dc3782370ec7a21bbdedf2d6e2f5471ea7cf0 保持；新增复验预算尚未在集群使用。05590b7 完整材料传输和全部目标 SHA256SUMS 通过，正式 Higress 补装 ani-components-ani-kcn-full-20261010-181516 原始 rc=1 保留，停在双副本四模块加载的 300 秒门禁，原 453 对象完全相同。
   - 两个真实 gateway 日志均确认受信任 Harbor OCI 拉取进入校验后，四插件 sha256 错用了内容层摘要；官方 Higress 2.2.4 固定 Istio gitlink d5e408b7007e76e8f4f93565bcc21dd44143c214 的 OCI loader 比较 manifest 摘要。正式 RenderSite 驱动回归 0.806s 红，修为固定 manifest 后 0.427s 绿；实际加载文件仍独立校验 wasmDigest，manifest 不能替代内容字节。加载门禁移至测试 HTTPRoute 发布之前，七资产批准锁更新；实际 Helm/OCI 相关组 4.114s 通过，新正式构建、归属恢复和 live 重试待完成。
+  - ecfbb475ad238ae9a6eb18b7f1209d6629645791 正式代码、builtin 构建和代码包 rc=0，源码指纹 b61eb3d30119206e79ed58f01a7eb2cbe334638121ebfd1b625f0735b01c52ca 不变。失败探针、临时 key 和旧 Chart 正常清理；四个本次归属且禁用的旧摘要插件正常删除以满足新源码严格身份检查，原 453 对象及另外 13 个保留前置对象完全不变。恢复驱动两处库存/回执字段误判的首个 rc=1 保留，均以只读核对纠正，没有重放删除或 noop。
+  - 当前完整材料采用批准 05590b7 attempt-02 的不可变复用及官方 build-offline 内同一 Higress 资产组装步骤，没有伪造新 build-offline rc=0。完整成员及全部复用摘要相同，仅更新源码批准的 manage.py、assets.lock.json 和诚实来源记录；全部字节/current validate/full render/目标传输通过，SHA256SUMS 摘要 20b9a4aad6dfc616e9700da603303d71e5aac211b91ef0bdebd665d73dda7f40。正式 Higress run ani-components-ani-kcn-full-20261010-190840 rc=0，四内容摘要匹配的模块在两个副本实际加载，路由发布前完成加载门禁，三节点 18 项模型/认证/限流断言和临时身份正常清理通过。
+  - 当前全 17 组件正式 run ani-components-ani-kcn-full-20261010-191354 为 operation=noop、didInstall=false，全部 470 个比较对象保持；驱动最初误从记录根读取 operation，原 rc=1 保留，按真实 componentsExecution 字段只读核实后继续首个未运行阶段，没有重跑 noop。当前源码重新渲染的 LWS/LLMI 外部引擎边界行为及 normal-finalization-pass 已通过；完整 Kubeflow、其他基础组件与持久化门禁仍待完成，未冻结、恢复快照或声明环境交付。
+  - ecfbb47 当前保留全组合的 LWS/LLMI 复验及全部 470 个受保护对象核对通过；Kubeflow stage2 六例、stage1 成功/exit-42/停止及 supplemental 工作区字节、工作负载边界、RBAC/S3/HTTP/gRPC 和 MySQL 持久化均为真实 rc=0。原安装生产者仍明确为 41fa6b7，当前 checker/材料消费者为 ecfbb47，不改写历史安装来源。
+  - 全 17 组件正式 smoke 首个 rc=1 停在 cert-manager：三工作负载均 Available，但上一任务已正常清理 ani-cert-test，现有 checker 的临时 leaf 前置样例缺失，其他组件均 not_run。核实三节点/集群和 namespace 不存在后，仅从本候选批准 internal-ca.yaml 提取原测试 Certificate，恢复任务归属 namespace/leaf；共享根 CA、Secret、Issuer/ClusterIssuer 的 UID/spec/data 均保持。失败回执与输出保留，独立 verify2 复验已启动；未重装、重建或旋转共享 CA，持久化预算尚未消耗。
+  - smoke2 原始 rc=1 停在 Fluent Bit：三节点真实 stdout 均存在，OpenSearch 仅命中 node1/node3。node2 输入/输出计数停止、尾读账本不再推进，线程阻塞于到 10.96.0.1:443 的既有 TCP read，健康接口仍为 ok；固定 5.1.2 源码的同步 Kubernetes metadata 连接默认无限 IO 等待。仅正常 UID/resourceVersion 条件重建该 node2 Pod，DaemonSet spec、hostPath 和全部 477 个受保护对象不变；此为单独 lab 运维恢复，不是 verifier PASS 或 installer 修复。原失败及探针保留，smoke3 全组合复验运行中；未修改日志探针、放宽超时或消耗持久化复验预算。
+  - smoke3 前 11 项真实 PASS，含三节点 stdout→Fluent Bit→OpenSearch 与 RBD/CephFS 快照字节；随后因上一任务正常清理的 KubeVirt DataVolume/VM 缺失退出 1，后六项未通过。正式当前 guest-source Pod 与匹配原 Service 的只读复用已恢复，固定 CirrOS 经 CDI 导入且 VM 启动后，旧 root known_hosts 拒绝新 guest：固定 virtctl v1.9.0 的 native SSH 不传递 --known-hosts。正式 RenderSite→真实固定 virtctl→OpenSSH -G 的回归 1.183s 红、0.198s 绿；两条正式 SSH 调用显式传递 UserKnownHostsFile，严格/accept-new 策略保持，系统 known_hosts 未动。B05、KCN/Kube-OVN、smoke 相关组 44.464s 通过；新正式构建及本次失败探针的正常归属恢复待完成，VM/PVC 现场与全部首个失败保留，未继续持久化或快照恢复。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []
