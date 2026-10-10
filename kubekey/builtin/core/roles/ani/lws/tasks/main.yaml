@@ -1,0 +1,41 @@
+---
+- name: ANI LWS | Create private work and evidence directories
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    install -d -m 0700 /etc/kubernetes/ani/lws '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI LWS | Render upstream values and controlled install driver
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/lws/values.yaml
+
+- name: ANI LWS | Render install and behavior driver from builtin assets
+  template:
+    src: manage.py
+    dest: /etc/kubernetes/ani/lws/manage.py
+
+- name: ANI LWS | Establish CRDs before controller and internal webhook certificate
+  command: >-
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}' python3 /etc/kubernetes/ani/lws/manage.py install
+
+- name: ANI LWS | Render the formal verification entry
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/lws/verify.sh
+
+- name: ANI LWS | Wait for the identity bound by component plan and execution records
+  command: >-
+    kubectl --kubeconfig '{{ .ani.run.kubeconfig }}' -n lws-system
+    rollout status deployment/lws-controller-manager --timeout=300s
+
+- name: ANI LWS | Verify real leader worker scheduling HTTP content and normal lifecycle
+  command: >-
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}'
+    bash /etc/kubernetes/ani/lws/verify.sh
+
+- name: ANI LWS | Render environment connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/lws.md'

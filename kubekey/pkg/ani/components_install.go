@@ -77,6 +77,7 @@ var componentsDeferred = []string{
 // componentInstallSpecs covers every canonical component ID of
 // componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
+	"lws":                {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
 	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
 	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
 	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},

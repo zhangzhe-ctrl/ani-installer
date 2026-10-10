@@ -50,6 +50,8 @@
       when: '{{ and (index .ani.components "harbor").enabled (index .ani.components_run.scope "harbor") }}'
     - role: ani/volcano
       when: '{{ and (index .ani.components "volcano").enabled (index .ani.components_run.scope "volcano") }}'
+    - role: ani/lws
+      when: '{{ and (index .ani.components "lws").enabled (index .ani.components_run.scope "lws") }}'
     # The observability batch keeps the base gating semantics (one typed log
     # backend, metrics first because the log roles reuse its namespace) and
     # adds the same scope condition as every other role.

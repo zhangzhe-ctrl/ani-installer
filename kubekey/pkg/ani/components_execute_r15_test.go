@@ -407,7 +407,7 @@ func TestComponentsPlaybookStaysComponentsOnly(t *testing.T) {
 	}
 	// Every role is gated on the scope map, so a base context can never
 	// trigger it and a components run can never widen beyond --only.
-	if strings.Count(playbook, "(index .ani.components_run.scope") != 15 {
-		t.Fatalf("all fifteen roles must be scope-gated:\n%s", playbook)
+	if strings.Count(playbook, "(index .ani.components_run.scope") != 16 {
+		t.Fatalf("all sixteen roles must be scope-gated:\n%s", playbook)
 	}
 }

@@ -99,6 +99,7 @@ func TestComponentsSelectionKeepsDocumentedOrder(t *testing.T) {
 		{"kubevirt", "false"},
 		{"volcano", "false"},
 		{"harbor", "false"},
+		{"lws", "false"},
 	}
 	if len(rows) != len(want) {
 		t.Fatalf("selection length = %d, want %d", len(rows), len(want))
@@ -1077,9 +1078,9 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatalf("read verify.sh: %v", err)
 	}
 	script := string(data)
-	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor)"
+	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor lws)"
 	if !strings.Contains(script, want) {
-		t.Fatalf("verify.sh does not declare the fixed 15-row component list; want %q", want)
+		t.Fatalf("verify.sh does not declare the fixed 16-row component list; want %q", want)
 	}
 	if !strings.Contains(script, `tail -n +2 "$SELECTION_FILE"`) {
 		t.Fatal("verify.sh must skip the config_sha256 header row when reading the selection")
@@ -1088,8 +1089,8 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatal("verify.sh must fail when the selection row count is wrong")
 	}
 	// The row list must match componentsOrder exactly.
-	if len(componentsOrder) != 15 {
-		t.Fatalf("componentsOrder has %d rows, want 15", len(componentsOrder))
+	if len(componentsOrder) != 16 {
+		t.Fatalf("componentsOrder has %d rows, want 16", len(componentsOrder))
 	}
 	for _, name := range componentsOrder {
 		if !strings.Contains(script, name) {

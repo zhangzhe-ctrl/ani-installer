@@ -36,9 +36,9 @@ var (
 	// The first four are the foundation batch; the last four are the
 	// observability batch, whose last three rows are derived from the typed
 	// logging backend rather than written independently.
-	componentsOrder = [15]string{
+	componentsOrder = [...]string{
 		"cert-manager", "postgresql", "valkey", "nats",
-		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws",
 	}
 )
 
@@ -80,6 +80,13 @@ type HarborComponent struct {
 
 // VolcanoComponent selects the CPU Queue/PodGroup scheduler slice.
 type VolcanoComponent struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// LWSComponent selects the official LeaderWorkerSet controller independently.
+// Its upstream internal certificate manager needs neither persistent storage
+// nor cert-manager. KServe's LLM release derives this same component.
+type LWSComponent struct {
 	Enabled bool `yaml:"enabled"`
 }
 
@@ -165,6 +172,7 @@ type Components struct {
 	KubeVirt           KubeVirtComponent      `yaml:"kubevirt"`
 	Volcano            VolcanoComponent       `yaml:"volcano"`
 	Harbor             HarborComponent        `yaml:"harbor"`
+	LWS                LWSComponent           `yaml:"lws,omitempty" json:",omitzero"`
 	Metrics            MetricsComponent       `yaml:"metrics"`
 	Logging            LoggingComponent       `yaml:"logging"`
 }
@@ -295,6 +303,7 @@ func (c Components) Selection() []ComponentRow {
 		"kubevirt":            c.KubeVirt.Enabled,
 		"volcano":             c.Volcano.Enabled,
 		"harbor":              c.Harbor.Enabled,
+		"lws":                 c.LWS.Enabled,
 		"metrics":             c.Metrics.Enabled,
 		"loki":                c.Logging.LogBackend() == loggingLoki,
 		"opensearch":          c.Logging.LogBackend() == loggingOpenSearch,
@@ -359,7 +368,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -662,6 +671,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 			if base || !c.KubeflowEnabled() {
 				continue
 			}
+		case "lws":
+			if base || !c.EffectiveComponents().LWS.Enabled {
+				continue
+			}
 		case "metrics-server":
 			if base || !c.Components.MetricsServer.Enabled {
 				continue
@@ -758,6 +771,9 @@ func requiredChartPaths(c ClusterConfig) []string {
 		return nil
 	}
 	var paths []string
+	if c.EffectiveComponents().LWS.Enabled {
+		paths = append(paths, LWSChartPath)
+	}
 	if c.EffectiveComponents().CertManager.Enabled {
 		paths = append(paths, "charts/cert-manager/v1.21.2.tgz")
 	}
@@ -1597,6 +1613,12 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 	}
 
 	components := componentSpec(c.EffectiveComponents(), c.Name)
+	if c.EffectiveComponents().LWS.Enabled {
+		if imageTable[LWSImageReference].Digest != LWSAMD64ManifestDigest {
+			return nil, fmt.Errorf("LWS image differs from the approved linux/amd64 manifest")
+		}
+		components["lws"].(map[string]any)["image_ref"] = imageRefs[LWSImageReference] + "@" + LWSAMD64ManifestDigest
+	}
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
 		nodeNames = append(nodeNames, n.Name)
@@ -1764,6 +1786,12 @@ func componentSpec(c Components, clusterName string) map[string]any {
 		}
 		spec[row.Name] = entry
 	}
+	spec["lws"] = map[string]any{
+		"enabled":      c.LWS.Enabled,
+		"version":      LWSVersion,
+		"chart_path":   LWSChartPath,
+		"chart_sha256": LWSChartSHA256,
+	}
 	// The metrics stack carries its own storage and retention fields. The
 	// values are always present so a role can render them without re-reading
 	// the site YAML, even when the stack is disabled.
@@ -1926,6 +1954,8 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return c.EffectiveComponents().CertManager.Enabled && installProfile(c.Profile) != "base"
 	case "kubeflow":
 		return c.KubeflowEnabled()
+	case "lws":
+		return c.EffectiveComponents().LWS.Enabled && installProfile(c.Profile) != "base"
 	case "postgresql":
 		return c.Components.PostgreSQL.Enabled && installProfile(c.Profile) != "base"
 	case "valkey":
@@ -2042,7 +2072,7 @@ func RenderSite(rolesDir string, c ClusterConfig, artifactRoot string, table Ima
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".sh") && !strings.HasSuffix(path, ".txt") && !strings.HasSuffix(path, ".md")) {
+		if entry.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".sh") && !strings.HasSuffix(path, ".py") && !strings.HasSuffix(path, ".txt") && !strings.HasSuffix(path, ".md")) {
 			return nil
 		}
 		roleRel, err := filepath.Rel(rolesDir, path)

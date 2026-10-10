@@ -190,6 +190,7 @@ type ImageKey struct {
 // rather than in the role template, so there is one place to read.
 func componentImageKeys() []ImageKey {
 	return append([]ImageKey{
+		{Group: "lws", Name: "manager", Original: LWSImageReference},
 		// R08: the two main CNIs and the foundation components now have real,
 		// declared keys (every original exists in images.tsv / images-kubeovn.tsv
 		// exactly as shipped), so a required image that is missing from the

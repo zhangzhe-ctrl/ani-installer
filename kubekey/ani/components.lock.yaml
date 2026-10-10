@@ -5,6 +5,34 @@
 # 与之配套的执行计划：docs/foundation-components-batch-execution-plan-20260918.md
 
 apiVersion: ani.installer/v1
+
+# Unmodified official OCI chart, pulled and independently fetched on Fedora.
+# API, chart, source archive and target-platform image are separate approvals.
+batchLWS:
+  status: source_material_verified / runtime_not_verified
+  version: v0.10.0
+  api: leaderworkerset.x-k8s.io/v1
+  sourceArchive:
+    url: https://codeload.github.com/kubernetes-sigs/lws/tar.gz/refs/tags/v0.10.0
+    sha256: f59345acbcb8ab90f2560276967a2d1c257145b5e8a820cb86f0bcbdea9ac5b1
+  chart:
+    name: lws
+    chartVersion: v0.10.0
+    appVersion: v0.10.0
+    source: https://registry.k8s.io/v2/lws/charts/lws/blobs/sha256:66dbead7996e962c36e5efad01a448e612dbe52ae071cd429fec6acb21433161
+    ociSource: oci://registry.k8s.io/lws/charts/lws:0.10.0
+    ociManifestDigest: sha256:249c5000a24a22cb26e410774be6f613756029242eb3b27b01fdeb9258228896
+    packaging: unmodified official Helm OCI chart layer; direct HTTPS blob input reuses existing digest verification
+    sha256: 66dbead7996e962c36e5efad01a448e612dbe52ae071cd429fec6acb21433161
+    artifactChartPath: charts/lws/v0.10.0.tgz
+    release: ani-lws
+    namespace: lws-system
+  images:
+    - original: registry.k8s.io/lws/lws:v0.10.0
+      haulerRef: 127.0.0.1:5000/lws/lws:v0.10.0
+      sourceManifestDigest: sha256:46b1f3b6090d6983a0eab5b80385018d8ea74155ec09a67a17a2cf492d48aa4c
+      amd64ManifestDigest: sha256:1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8
+      use: official controller and internal certificate manager; no inference engine
 kind: ComponentMaterialLock
 
 lockedAt: "2026-09-18"

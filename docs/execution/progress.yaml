@@ -10,6 +10,32 @@ metadata:
     treeSHA256 8c66e3a591ea3bbe2146fafde5713966cc24b24ba6283b6f1b0370eb8dd22410（source-before）。
   updatedAt: '2026-10-10'
 tasks:
+- id: LWS-KSERVE-HIGRESS-20261010
+  title: LWS KServe LLM Higress 正式支持与全组件保留联调及统一首装
+  dependsOn: []
+  selected: true
+  status: in_progress
+  stages:
+    baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
+    liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
+    code: lws_independent_selection_render_shared_conflict_exit_propagation_fedora_pass
+    materials: lws_official_chart_and_amd64_manifest_verified_full_package_pending
+    integration: not_run
+    cleanOffline: not_run_gate_requires_all_retained_behavior_pass
+    behaviorAcceptance: not_run
+    noop: not_run
+    cleanup: not_run
+    environment: not_ready
+    networkPolicy: unsupported_kcn_test_unsupported_v1
+  evidence:
+  - kubekey/pkg/ani/lws_test.go
+  - kubekey/ani/components.lock.yaml
+  notes:
+  - 用户于本 Goal 明确覆盖旧 LWS 暂缓及 LLMI 排除决定，授权独立 Higress；其余暂停能力保持原边界。无 ANI 应用部署或业务仓库修改。
+  - 本地任务分支 codex/lws-kserve-higress，Fedora 私有任务根 /home/chabking/ani-installer-runs/lws-kserve-higress-20261010。未推送、恢复快照或写入集群。
+  - 首个真实断点为缺少 LWS typed config/正式 role；独立选择和渲染先红后绿。正式 plan/execute 绑定 ani-lws/lws-system 和 Deployment lws-controller-manager，完整材料及 live 行为仍待验证。
+  - LWS 官方 OCI Chart manifest 249c5000a24a22cb26e410774be6f613756029242eb3b27b01fdeb9258228896，Chart layer 66dbead7996e962c36e5efad01a448e612dbe52ae071cd429fec6acb21433161；镜像 index 46b1f3b6090d6983a0eab5b80385018d8ea74155ec09a67a17a2cf492d48aa4c 与 amd64 manifest 1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8 分开固定。
+  - KServe v0.17.0 官方源码 c71eba91631b976ff7b111f3061df9af86399e99 已存在 workload 证书复用/续期修正和行为测试，CRD served v1alpha1 经 webhook 转换到 v1alpha2；仅为修复候选，ANI PodSpec 兼容、材料和 live reconcile 尚未验证。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

@@ -1,0 +1,13 @@
+fullnameOverride: lws
+replicaCount: 1
+enablePrometheus: false
+enableCertManager: false
+enableDisaggregatedSet: false
+image:
+  manager:
+    repository: {{ .ani.registry }}/{{ .ani.image_parts.lws.manager.repository }}
+    tag: {{ .ani.image_parts.lws.manager.tag }}@sha256:1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8
+    pullPolicy: IfNotPresent
+resources:
+  requests: {cpu: '1', memory: 1Gi}
+  limits: {cpu: '2', memory: 2Gi}

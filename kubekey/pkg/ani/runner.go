@@ -612,6 +612,7 @@ func effectiveSelection(c ClusterConfig) []ComponentRow {
 // before deployment instead of mid-install. The foundation batch lists
 // cert-manager and NATS; the observability batch lists its four Charts.
 var componentChartMaterials = map[string]string{
+	"lws":            LWSChartPath,
 	"cert-manager":   "charts/cert-manager/v1.21.2.tgz",
 	"nats":           "charts/nats/2.14.6.tgz",
 	"rustfs":         "charts/rustfs/1.0.0.tgz",
