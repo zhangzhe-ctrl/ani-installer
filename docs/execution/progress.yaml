@@ -18,12 +18,12 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_45c36b0_formal_gate_fail_metrics_late_fault_fixture_budget_source_fix_pending
-    materials: full_117_images_15_charts_four_wasm_packaging_reached_source_layout_gate_then_failed_higress_allowlist_source_fix_targeted_pass_new_formal_build_pending
-    integration: lws_pass_llmi_b843144_probe_fail_owned_normal_rollback_and_original_448_protection_pass_new_candidate_pending_higress_not_verified
+    code: candidate_db82952_formal_pass_higress_official_gatewayclass_description_fix_targeted_pass_next_formal_build_pending
+    materials: candidate_db82952_attempt_02_formal_complete_117_images_15_charts_four_wasm_pass_target_transfer_pending
+    integration: lws_llmi_real_behavior_pass_higress_db82952_first_execute_fail_official_gatewayclass_description_check_all_original_453_unchanged_source_fix_targeted_pass
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
-    noop: not_run
+    noop: retained_lws_and_llmi_pass_operation_noop_didInstall_false_full_combination_and_clean_install_pending
     cleanup: not_run
     environment: not_ready
     networkPolicy: unsupported_kcn_test_unsupported_v1
@@ -58,6 +58,10 @@ tasks:
   - b843144 正式代码门禁及 builtin 包 rc=0，源码指纹 e0aab3ec8c611430b8b6123050c4c7f9b5c72a3f9e0fc5cac05ea42faf1b22eb；117 镜像完整材料构建中。复用逐字节通过的 114 镜像材料后，正式 plan/execute ani-components-ani-kcn-full-20261010-150140 已安装 LLMI controller、CRD 和 Ready webhook 证书，原 Standard Deployment UID 保持。真实 LLMI admission 通过但尚未生成 LWS，原始 rc=1 与探针 namespace ani-llmi-probe-09fc5f9c3e 保留：官方 v0.17.0 LLMI role 缺少 CA bundle reconciler 实际调用的 ConfigMap Create/Update。live can-i 和实际 Chart 回归均为红；源码过滤器只补充 ConfigMap create 及固定 global-ca-bundle 名称的 update，Pod 仍只读，其他 ConfigMap 不获更新权限。全部 LLMI 定向组 4.212s 通过；失败归属清理及新正式候选待完成，不记 LLMI live PASS。
   - b843144 完整材料在 117 镜像闭包、15 Chart、四 Wasm 及全部工具/guest/DB/ISO 落地后，以 rc=1 停在旧 Kubeflow 材料校验器的 manifests 顶层封闭目录守卫。新增批准 Higress 版本/七文件/批准锁的逐字节校验，仍拒绝未知组件、版本和修改脚本；CLI 四项回归先红后绿，实际已落地组合通过无写入源码审批校验。d93876e 正式代码构建因该新材料断点取消，实际 rc=143 保留。LLMI 失败后的原 448 对象完全不变；核实本次所有对象 UID/标签/Helm 归属及没有其他 LLMI 实例后，探针 finalizer 正常完成，仅本次 LLMI Chart、新 CRD/配置/证书 Secret/Lease 正常删除，未强删 finalizer 或共享 namespace/Standard/LWS/CA。新组合仍待正式构建及完整 live 行为。
   - 45c36b0 正式代码门禁 rc=1，唯一失败为既有 metrics silence-expiration 负例的 10 秒总预算在 METRICS-10 后耗尽，导致要求的 METRICS-11 被跳过；未生成候选包或执行安装。修复仅让外部测试 API 记录实际读到过期请求后仍 active 的 silence，并在该故障被真实清理步骤读取后取消；生产等待预算、行为和精确失败步骤/两次原 UID 删除断言不变。新材料 CLI 五项含旧 Kubeflow 目录兼容均通过。正常 LLMI 回滚后原 448 对象完全相同；目标仅删除已核对 Fedora 备份的本任务旧 images.haul.tar.zst，释放 8718800406 字节，目标当前余量 43129274368 字节，旧包的目标大归档转为 Fedora 完整备份状态，原 registry 服务及 store 未动。
+  - db82952035bb11163c2a36894c2ebe69803dbeb0 正式 check-code、builtin 构建和代码包 rc=0；源码指纹 38f599481a4f8b74266576d12caeba21a775379b933e68b5632136c8843a3bca 在门禁、构建和制包间不变。复用逐字节核实的 234c2ec 完整材料，正式补装 run ani-components-ani-kcn-full-20261010-155340 rc=0：v1alpha1 admission、实际 LLMI→LWS→StatefulSet→双节点 Pod UID 链、调用方命令与 PVC 挂载、精确 leader EndpointSlice/跨节点 HTTP 和卷内字节均通过，探针正常 finalization 清理。原 448 对象 UID/labels/payloadHash 完全不变；正式 smoke 通过，后续 run ani-components-ani-kcn-full-20261010-160034 为 operation=noop、didInstall=false，新增后 453 个受保护对象完全不变。此为 CPU 外部引擎边界平台用例，不能替代真实 LLM/ANI 业务验收。
+  - db82952 完整材料 attempt-01 的 117 镜像落地及 registry 内容门禁通过，随后 Hauler save 以 rc=1 退出且未打印具体错误；7791034368 字节归档经 zstd -t 确认 premature end，未生成最终 SHA256SUMS。Fedora 当时余量约 18–19 GiB；开始核实仅本任务两次失败大归档的安全释放与同源重试空间条件，原失败日志和退出码保留，未传输失败材料或安装 Higress。
+  - 仅释放 Fedora 本任务 b843144/db82952 两次 rc=1 且无最终 SHA256SUMS 的大归档，原日志、输入、成功材料及目标 registry 保留；同源同输入 attempt-02 正式 build-offline rc=0。117 镜像、15 Chart、四 Wasm、Kubeflow 23 批准资产及 41 wheel、工具/guest/DB/ISO 均通过；9158367036 字节镜像归档完整保存，构建采样最低余量 8763719680 字节。完整材料 SHA256SUMS 文件摘要 4cdf63ff7ae1ba10126e3eb6ee4f476bff21360aabbf0b7b313c2960bc918bcb，正式 kk 摘要 6cd77c456892aa3ed5c667bfdede3055bde49fd908a0559ca36687170de8dc89；目标全字节传输与 Higress live 行为仍待完成。
+  - db82952 目标完整代码和材料全部 SHA256SUMS 通过；正式 run ani-components-ani-kcn-full-20261010-163156 仅补装 Higress，Harbor 保持 already_installed。Higress 官方 Chart、独立 controller/gateway、Harbor 受信任 CA 与四个固定 OCI Wasm 发布、GatewayClass/Gateway Accepted 已落地；原始 execute rc=1 停在严格 GatewayClass spec 核对，官方 2.2.4 controller 自动加入 description 字段，实际 Gateway listener/allowedRoutes 与站点完全相同。原 453 个受保护对象 UID/labels/payloadHash 均不变，未进入插件加载/路由探针或继续变更。对应官方 classInfo 源码和实际响应的最小回归为红，正式声明补齐同一 description 且保留全 spec 严格比较后，Higress 定向组 6.744s 通过；七资产批准锁同步更新。新正式候选与正常归属恢复仍待完成，不把 controller/Gateway Ready 记成 Higress 行为 PASS。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

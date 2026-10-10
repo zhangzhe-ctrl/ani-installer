@@ -277,7 +277,10 @@ def gateway_objects():
     if TLS_SECRET:
         listeners.append({'name': 'https', 'port': 443, 'protocol': 'HTTPS', 'hostname': HOSTNAME,
                           'allowedRoutes': allowed, 'tls': {'mode': 'Terminate', 'certificateRefs': [{'group': '', 'kind': 'Secret', 'name': TLS_SECRET}]}})
-    return [{'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'GatewayClass', 'metadata': meta(GATEWAY_CLASS), 'spec': {'controllerName': controller}},
+    # Fixed upstream classInfo reconciles this description onto every managed
+    # class. Declare it so strict identity checks compare the actual full spec.
+    return [{'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'GatewayClass', 'metadata': meta(GATEWAY_CLASS),
+             'spec': {'controllerName': controller, 'description': 'The default Higress GatewayClass'}},
             {'apiVersion': 'gateway.networking.k8s.io/v1', 'kind': 'Gateway', 'metadata': meta(GATEWAY, NS), 'spec': {'gatewayClassName': GATEWAY_CLASS, 'listeners': listeners}}]
 
 

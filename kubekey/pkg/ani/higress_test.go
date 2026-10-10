@@ -13,6 +13,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestHigressGatewayClassMatchesOfficialControllerReconciliation(t *testing.T) {
+	c := kubeflowTestConfig()
+	c.Kubeflow = nil
+	c.Components.CertManager.Enabled = true
+	c.Components.Higress = HigressComponent{Enabled: true, WasmRegistry: "material"}
+	files, err := RenderSite(filepath.Join("..", "..", "builtin", "core", "roles", "ani"), c, "/offline", r08FullTable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := filepath.Join(t.TempDir(), "manage.py")
+	for _, file := range files {
+		if file.Rel == "higress/templates/manage.py" {
+			if err := os.WriteFile(driver, file.Rendered, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// This is the actual spec reconciled by the fixed 2.2.4 controller, not
+	// a relaxed subset comparison. Its classInfo supplies the description.
+	program := `import importlib.util,sys
+s=importlib.util.spec_from_file_location('higress',sys.argv[1])
+m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+actual={'controllerName':'higress.io/gateway-controller','description':'The default Higress GatewayClass'}
+expected=m.gateway_objects()[0]['spec']
+assert expected==actual, ('official reconciliation differs',expected,actual)
+m.GATEWAY_CLASS='site-edge'
+actual['controllerName']='higress.io/gateway-controller-site-edge'
+assert m.gateway_objects()[0]['spec']==actual, 'configured class must retain official classInfo description'
+`
+	cmd := exec.Command("python3", "-c", program, driver)
+	if raw, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("official reconciled GatewayClass must match the declared identity: %v\n%s", err, raw)
+	}
+}
+
 func TestHigressOfficialChartKeepsOnlySelectedGatewayAndPinnedImages(t *testing.T) {
 	helm := os.Getenv("ANI_LLMI_HELM_BIN")
 	if helm == "" {
