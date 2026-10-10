@@ -365,6 +365,17 @@ CHECK_TAR
 fi
 install -m 0644 "$IMAGES_TSV" "$OUTPUT/images/images.tsv"
 
+# Independent LWS additions carry a small, lock-approved OCI closure. The
+# executor publishes only missing content into the existing readonly registry;
+# it never reloads the whole archive or replaces that service.
+if grep -q '^batchLWS:' "$COMPONENT_LOCK"; then
+  mkdir -p "$OUTPUT/images/component-stores/lws"
+  awk -F '\t' '$1=="original_ref" || $1=="registry.k8s.io/lws/lws:v0.10.0"' "$IMAGES_TSV" > "$OUTPUT/images/component-stores/lws/images.tsv"
+  materials land-images --images-tsv "$OUTPUT/images/component-stores/lws/images.tsv" --lock "$COMPONENT_LOCK" \
+    --evidence-dir "$OUTPUT/images/evidence" --source-store "$LANDED" \
+    --out-store "$OUTPUT/images/component-stores/lws/store"
+fi
+
 echo "[3/6] placing fixed binaries, repository ISO and chart material"
 # F06: tools and charts are placed by Go against the individual lock entry that
 # approves them (digest + name/version + artifact path), and every landed file is

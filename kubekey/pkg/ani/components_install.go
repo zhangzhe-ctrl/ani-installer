@@ -77,7 +77,7 @@ var componentsDeferred = []string{
 // componentInstallSpecs covers every canonical component ID of
 // componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
-	"lws":                {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
+	"lws":                 {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
 	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
 	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
 	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
@@ -166,14 +166,17 @@ type ComponentsPlan struct {
 	BaseClusterUID string `json:"baseClusterUid"`
 	// BaseRunFile records the exact success record the plan was built against;
 	// execute must load the same file and reach the same digests.
-	BaseRunFile string                    `json:"baseRunFile,omitempty"`
-	Invariants  map[string]string         `json:"invariants"`
-	Components  []ComponentsPlanComponent `json:"components"`
-	Excluded    []string                  `json:"excluded"`
-	LiveChecks  map[string]string         `json:"liveChecks"`
-	StartedAt   string                    `json:"startedAt"`
-	FinishedAt  string                    `json:"finishedAt"`
-	Overall     string                    `json:"overall"`
+	BaseRunFile             string                    `json:"baseRunFile,omitempty"`
+	MaterialsLockDigest     string                    `json:"materialsLockDigest,omitempty"`
+	BaseMaterialsLockDigest string                    `json:"baseMaterialsLockDigest,omitempty"`
+	RegistryUnitDigest      string                    `json:"registryUnitDigest,omitempty"`
+	Invariants              map[string]string         `json:"invariants"`
+	Components              []ComponentsPlanComponent `json:"components"`
+	Excluded                []string                  `json:"excluded"`
+	LiveChecks              map[string]string         `json:"liveChecks"`
+	StartedAt               string                    `json:"startedAt"`
+	FinishedAt              string                    `json:"finishedAt"`
+	Overall                 string                    `json:"overall"`
 }
 
 // componentsPlanExcluded states — by name — what a components-only run never
@@ -227,8 +230,31 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 	if err != nil {
 		return err
 	}
+	materialsDigest, baseMaterialsDigest, err := bindComponentsMaterials(baseManifest, input.PackageRoot)
+	if err != nil {
+		return err
+	}
 	if err := preflightComponentImages(ctx, cluster, input.PackageRoot, artifactLock, scope, stdout); err != nil {
 		return err
+	}
+	registryUnitDigest := ""
+	for _, component := range scope {
+		if component == "lws" {
+			if err := validateLWSAdditionMaterial(input.PackageRoot, artifactLock); err != nil {
+				return err
+			}
+			if _, err := componentRegistryAppendTarget(cluster, baseManifest); err != nil {
+				return err
+			}
+			registryUnitDigest = sha256FileHex(filepath.Join(systemdUnitDir, serviceUnitName))
+		}
+	}
+	for _, component := range planComponents {
+		if component.Status == "already_installed" {
+			if err := preflightComponentImages(ctx, cluster, input.PackageRoot, artifactLock, []string{component.Component}, nil, true); err != nil {
+				return err
+			}
+		}
 	}
 
 	// All checks passed: only now are any files written, and the first write is
@@ -269,21 +295,24 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 		return err
 	}
 	plan := &ComponentsPlan{
-		SchemaVersion:    1,
-		RunID:            runID,
-		ClusterName:      manifest.ClusterName,
-		BaseConfigDigest: baseManifest.ConfigDigest,
-		NewConfigDigest:  manifest.ConfigDigest,
-		KKBinaryDigest:   playerDigest,
-		CodeCommit:       version.Get().GitCommit,
-		BaseClusterUID:   liveID.ClusterUID,
-		BaseRunFile:      absBaseRun,
-		Invariants:       invariants,
-		Components:       planComponents,
-		Excluded:         componentsPlanExcluded,
-		LiveChecks:       live,
-		StartedAt:        time.Now().UTC().Format(time.RFC3339),
-		Overall:          VerifyStatusPass,
+		SchemaVersion:           1,
+		RunID:                   runID,
+		ClusterName:             manifest.ClusterName,
+		BaseConfigDigest:        baseManifest.ConfigDigest,
+		NewConfigDigest:         manifest.ConfigDigest,
+		KKBinaryDigest:          playerDigest,
+		CodeCommit:              version.Get().GitCommit,
+		BaseClusterUID:          liveID.ClusterUID,
+		BaseRunFile:             absBaseRun,
+		MaterialsLockDigest:     materialsDigest,
+		BaseMaterialsLockDigest: baseMaterialsDigest,
+		RegistryUnitDigest:      registryUnitDigest,
+		Invariants:              invariants,
+		Components:              planComponents,
+		Excluded:                componentsPlanExcluded,
+		LiveChecks:              live,
+		StartedAt:               time.Now().UTC().Format(time.RFC3339),
+		Overall:                 VerifyStatusPass,
 	}
 	plan.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -1067,7 +1096,7 @@ func artifactMaterialsLock(packageRoot string) (*MaterialsLock, error) {
 // and digest-compared against the local registry. A components run never guesses
 // a registry location from the original reference, and never accepts a bare
 // HTTP 200 as proof that the right bytes are there.
-func preflightComponentImages(ctx context.Context, cluster ClusterConfig, packageRoot string, lock *MaterialsLock, scope []string, stdout io.Writer) error {
+func preflightComponentImages(ctx context.Context, cluster ClusterConfig, packageRoot string, lock *MaterialsLock, scope []string, stdout io.Writer, requireLive ...bool) error {
 	registry, err := cluster.RegistryAddress()
 	if err != nil {
 		return err
@@ -1092,6 +1121,19 @@ func preflightComponentImages(ctx context.Context, cluster ClusterConfig, packag
 			approval, err := gate.Verify(ctx, row)
 			if err != nil {
 				if absentInRegistry(err) {
+					if component == "lws" && (len(requireLive) == 0 || !requireLive[0]) {
+						if row.Digest != LWSAMD64ManifestDigest {
+							return fmt.Errorf("LWS addition requires approved controller digest %s", LWSAMD64ManifestDigest)
+						}
+						dataRoot := filepath.Join(runtimeBaseDir, cluster.Name, "work", "registry-data")
+						if _, sourceErr := componentRegistryFiles(filepath.Join(packageRoot, "images", "component-stores", component, "store"), dataRoot, row, lock); sourceErr != nil {
+							return errors.Wrap(sourceErr, "missing LWS image has no verified offline addition")
+						}
+						if stdout != nil {
+							fmt.Fprintf(stdout, "components image %s: approved offline addition; registry publication pending execute\n", key.Original)
+						}
+						continue
+					}
 					return fmt.Errorf("image %s is missing from the registry %s (%v); prepare that batch's base per the blueprint — a components run never downloads materials",
 						key.Original, registry, err)
 				}
@@ -1436,6 +1478,11 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 			return fmt.Errorf("component %q the plan recorded as already_installed is now %q on the live cluster (release, ownership or health changed after planning); re-plan instead of recording a stale observation",
 				c.Component, freshStatus[c.Component])
 		}
+		if c.Status == "already_installed" {
+			if err := preflightComponentImages(ctx, *cluster, input.PackageRoot, artifactLock, []string{c.Component}, nil, true); err != nil {
+				return err
+			}
+		}
 	}
 	// Material identity: the artifact's approved lock must still be the one the
 	// base install was built from (F02 materials identity, cheap digest check).
@@ -1446,18 +1493,24 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	// base pinned no lock (a package root with no lock cannot prove anything).
 	lockDigestForRecord := sha256FileHex(filepath.Join(input.PackageRoot, "config", "components.lock.yaml"))
 	currentLock := lockDigestForRecord
-	if baseManifest.Identity.MaterialsLockDigest != "" {
-		if currentLock == "" {
-			return fmt.Errorf("the base install recorded approved materials lock %s but this package root carries none; re-plan from the approved artifact", baseManifest.Identity.MaterialsLockDigest)
-		}
-		currentCanonical := currentLock
-		if !strings.HasPrefix(baseManifest.Identity.MaterialsLockDigest, "sha256:") {
-			// digest fields in the record are stored without prefix in some
-			// shapes; compare like-for-like.
-			currentCanonical = "sha256:" + currentLock
-		}
-		if currentLock != baseManifest.Identity.MaterialsLockDigest && currentCanonical != baseManifest.Identity.MaterialsLockDigest {
-			return fmt.Errorf("the artifact lock digest %s no longer matches the base install's %s; materials changed after planning — rebuild the plan from the approved artifact", currentLock, baseManifest.Identity.MaterialsLockDigest)
+	boundMaterials, boundBaseMaterials, err := bindComponentsMaterials(baseManifest, input.PackageRoot)
+	if err != nil {
+		return err
+	}
+	if plan.MaterialsLockDigest != "" && (boundMaterials != plan.MaterialsLockDigest || boundBaseMaterials != plan.BaseMaterialsLockDigest) {
+		return errors.New("materials changed after planning; re-plan from the approved additive artifact")
+	}
+	if plan.MaterialsLockDigest == "" && strings.TrimPrefix(baseManifest.Identity.MaterialsLockDigest, "sha256:") != currentLock {
+		return errors.New("an older plan cannot authorize an additive materials lock; re-plan")
+	}
+	if plan.RegistryUnitDigest != "" && sha256FileHex(filepath.Join(systemdUnitDir, serviceUnitName)) != plan.RegistryUnitDigest {
+		return errors.New("original registry unit changed after planning; re-plan")
+	}
+	for _, component := range fullScope {
+		if component == "lws" {
+			if err := validateLWSAdditionMaterial(input.PackageRoot, artifactLock); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1548,6 +1601,12 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	}
 	if len(executed) == 0 {
 		return errors.New("the plan has no planned components (only already_installed or skipped); there is nothing to execute")
+	}
+	if err := publishMissingComponentImages(ctx, *cluster, baseManifest, input.PackageRoot, artifactLock, executed); err != nil {
+		return errors.Wrap(err, "publish approved missing component image; component writes stopped")
+	}
+	if err := preflightComponentImages(ctx, *cluster, input.PackageRoot, artifactLock, fullScope, nil, true); err != nil {
+		return errors.Wrap(err, "published component images failed live content check; component writes stopped")
 	}
 
 	// The components run gets its own runtime root, so the base install's

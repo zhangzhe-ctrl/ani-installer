@@ -400,7 +400,7 @@ func TestWriteComponentSelectionIsStrictlyFormatted(t *testing.T) {
 	}
 	want := "# config_sha256=abc123\n" +
 		"cert-manager\ttrue\npostgresql\tfalse\nvalkey\tfalse\nnats\tfalse\n" +
-		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\n"
+		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\nlws\tfalse\n"
 	if string(data) != want {
 		t.Fatalf("selection file = %q, want %q", string(data), want)
 	}
@@ -580,8 +580,8 @@ components:
 		t.Fatalf("legacy site config must still validate: %v", err)
 	}
 	rows := c.Components.Selection()
-	if len(rows) != 15 {
-		t.Fatalf("selection rows = %d, want 15", len(rows))
+	if len(rows) != 16 {
+		t.Fatalf("selection rows = %d, want 16", len(rows))
 	}
 	for _, row := range rows[:4] {
 		if !row.Enabled {
@@ -2701,7 +2701,7 @@ func TestVerifyStopsAfterFirstFailure(t *testing.T) {
 			t.Fatalf("read config: %v", err)
 		}
 		sum := sha256.Sum256(raw)
-		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor"}
+		names := []string{"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws"}
 		var b strings.Builder
 		fmt.Fprintf(&b, "# config_sha256=%s\n", hex.EncodeToString(sum[:]))
 		for _, name := range names {

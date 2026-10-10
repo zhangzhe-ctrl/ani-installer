@@ -120,7 +120,7 @@ func newANIComponentsInstallCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&input.ConfigFile, "config", "c", "cluster.yaml", "path to the site config WITH the new components enabled")
-	cmd.Flags().StringVar(&input.PackageRoot, "package-root", ".", "root of the original offline artifact (same one the base used)")
+	cmd.Flags().StringVar(&input.PackageRoot, "package-root", ".", "approved offline artifact for the addition (original material batches must remain identical)")
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated canonical component IDs to add (required)")
 	cmd.Flags().StringVar(&input.BaseRunFile, "base-run", "", "path to the base install's run.json (identity/invariants source)")
 	cmd.Flags().StringVar(&input.StateFile, "state", "", "optional base install state (run-state.json)")

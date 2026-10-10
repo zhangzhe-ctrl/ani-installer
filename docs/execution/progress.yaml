@@ -18,8 +18,8 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: lws_independent_selection_render_shared_conflict_exit_propagation_fedora_pass
-    materials: lws_official_chart_and_amd64_manifest_verified_full_package_pending
+    code: lws_and_controlled_additive_materials_fedora_related_pass_formal_gate_pending
+    materials: official_lws_chart_and_113_approved_image_store_full_package_pending
     integration: not_run
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
@@ -36,6 +36,9 @@ tasks:
   - 首个真实断点为缺少 LWS typed config/正式 role；独立选择和渲染先红后绿。正式 plan/execute 绑定 ani-lws/lws-system 和 Deployment lws-controller-manager，完整材料及 live 行为仍待验证。
   - LWS 官方 OCI Chart manifest 249c5000a24a22cb26e410774be6f613756029242eb3b27b01fdeb9258228896，Chart layer 66dbead7996e962c36e5efad01a448e612dbe52ae071cd429fec6acb21433161；镜像 index 46b1f3b6090d6983a0eab5b80385018d8ea74155ec09a67a17a2cf492d48aa4c 与 amd64 manifest 1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8 分开固定。
   - KServe v0.17.0 官方源码 c71eba91631b976ff7b111f3061df9af86399e99 已存在 workload 证书复用/续期修正和行为测试，CRD served v1alpha1 经 webhook 转换到 v1alpha2；仅为修复候选，ANI PodSpec 兼容、材料和 live reconcile 尚未验证。
+  - 9b0311c 正式代码门禁因三个仍按 15 行选择表编写的旧夹具失败；原始 rc=1 保留，已补齐 LWS 行并通过对应回归。尚未生成该候选正式代码包。
+  - 补装新增材料断点已进入正式 plan/execute：原成功安装锁按记录摘要核实，候选只可追加材料批次，计划同时绑定两份锁；执行前重新核对，旧材料替换或计划后漂移拒绝。新增 LWS 离线 OCI 闭包经批准 blob 校验后以独占文件追加到原 Distribution 数据目录，不修改原只读服务、store 或已有引用。
+  - 固定 Hauler v2.0.3 真实 HTTP 测试通过：运行中的只读服务立即提供准确 LWS manifest 和全部 blob；重复追加保留 tag inode/mtime，冲突 tag 零写入。原拉取 store 的转换 manifest 现场保留；另建材料落地工具输出的 113 镜像批准 store。正式包、保留集群安装和行为仍 pending。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []
