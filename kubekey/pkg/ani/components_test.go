@@ -983,10 +983,11 @@ func TestComponentValuesRenderCompleteImages(t *testing.T) {
 			"image_parts":   imageParts,
 			"objectStorage": map[string]any{"provider": objectProviderRGW, "milvus_s3": binding.templateSpec()},
 			"components": map[string]any{
-				"nats":   map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
-				"rustfs": map[string]any{"storage_class": "ani-block", "storage_size": "20Gi"},
-				"milvus": map[string]any{"storage_class": "ani-block", "storage_size": "10Gi", "etcd_storage_size": "5Gi"},
-				"harbor": map[string]any{"external_address": "192.0.2.11", "storage_class": "ani-block", "storage_size": "10Gi"},
+				"higress": higressSpec(effectiveHigress(ClusterConfig{Components: Components{Higress: HigressComponent{Enabled: true}}}), "ani-lab"),
+				"nats":    map[string]any{"storage_class": "ani-block", "storage_size": "5Gi"},
+				"rustfs":  map[string]any{"storage_class": "ani-block", "storage_size": "20Gi"},
+				"milvus":  map[string]any{"storage_class": "ani-block", "storage_size": "10Gi", "etcd_storage_size": "5Gi"},
+				"harbor":  map[string]any{"external_address": "192.0.2.11", "storage_class": "ani-block", "storage_size": "10Gi"},
 				"metrics": map[string]any{
 					"enabled":                   true,
 					"namespace":                 "ani-observability",
