@@ -87,6 +87,8 @@ type VerifyInput struct {
 	// AllowPodRecreate gates the whole acceptance level: without it, the
 	// dispatcher refuses to run any mutation (R13 step 5).
 	AllowPodRecreate bool
+	// RevalidatePreservation requests one new, binary-bound check after a prior successful acceptance.
+	RevalidatePreservation bool
 	// ScriptDir is where the packaged component verify scripts live
 	// (/etc/kubernetes/ani on a real install node).
 	ScriptDir string
@@ -124,18 +126,19 @@ type VerifyReport struct {
 	// Operation + DidInstall come from the execution record: they say whether
 	// this subject installed anything, so a verification can never be read as
 	// proof of an install it did not observe.
-	Operation        string                  `json:"operation,omitempty"`
-	DidInstall       *bool                   `json:"didInstall,omitempty"`
-	InstallerCode    string                  `json:"installerCodeBinaryDigest,omitempty"`
-	VerifierCode     string                  `json:"verifierCodeBinaryDigest,omitempty"`
-	ClusterName      string                  `json:"clusterName"`
-	ConfigDigest     string                  `json:"configDigest"`
-	NetworkStack     string                  `json:"networkStack"`
-	Level            string                  `json:"level"`
-	AllowPodRecreate bool                    `json:"allowPodRecreate"`
-	StartedAt        string                  `json:"startedAt"`
-	FinishedAt       string                  `json:"finishedAt"`
-	Results          []VerifyComponentResult `json:"results"`
+	Operation              string                  `json:"operation,omitempty"`
+	DidInstall             *bool                   `json:"didInstall,omitempty"`
+	InstallerCode          string                  `json:"installerCodeBinaryDigest,omitempty"`
+	VerifierCode           string                  `json:"verifierCodeBinaryDigest,omitempty"`
+	ClusterName            string                  `json:"clusterName"`
+	ConfigDigest           string                  `json:"configDigest"`
+	NetworkStack           string                  `json:"networkStack"`
+	Level                  string                  `json:"level"`
+	AllowPodRecreate       bool                    `json:"allowPodRecreate"`
+	RevalidatePreservation bool                    `json:"revalidatePreservation,omitempty"`
+	StartedAt              string                  `json:"startedAt"`
+	FinishedAt             string                  `json:"finishedAt"`
+	Results                []VerifyComponentResult `json:"results"`
 	// NotDeclared names the components in scope that this level has no declared
 	// check for. They are reported, never counted as a pass: an acceptance that
 	// ran nothing must not look like an acceptance that passed.
@@ -302,17 +305,20 @@ func declaredAcceptanceComponents() []string {
 // shared installer lock is held, so a crash, a concurrent invocation, or a
 // changed --output cannot re-acquire the delete quota.
 type acceptanceLedger struct {
-	State      string `json:"state"` // attempted | done | unknown
-	RunID      string `json:"runId"`
-	Target     string `json:"target"`
-	OldPodUID  string `json:"oldPodUID"`
-	OldPVCUID  string `json:"oldPVCUID"`
-	NewPodUID  string `json:"newPodUID,omitempty"`
-	Controller string `json:"controller"`
-	Token      string `json:"token"`
-	StartedAt  string `json:"startedAt"`
-	FinishedAt string `json:"finishedAt,omitempty"`
-	Outcome    string `json:"outcome,omitempty"`
+	State                    string `json:"state"` // attempted | done | unknown
+	RunID                    string `json:"runId"`
+	Target                   string `json:"target"`
+	OldPodUID                string `json:"oldPodUID"`
+	OldPVCUID                string `json:"oldPVCUID"`
+	NewPodUID                string `json:"newPodUID,omitempty"`
+	Controller               string `json:"controller"`
+	Token                    string `json:"token"`
+	StartedAt                string `json:"startedAt"`
+	FinishedAt               string `json:"finishedAt,omitempty"`
+	Outcome                  string `json:"outcome,omitempty"`
+	OriginalLedgerSHA256     string `json:"originalLedgerSHA256,omitempty"`
+	VerifierCodeBinaryDigest string `json:"verifierCodeBinaryDigest,omitempty"`
+	BaseClusterUID           string `json:"baseClusterUid,omitempty"`
 }
 
 const (
@@ -373,6 +379,9 @@ func (input *VerifyInput) defaults() error {
 	case VerifyLevelSmoke, VerifyLevelAcceptance:
 	default:
 		return fmt.Errorf("verify --level must be %q or %q, got %q", VerifyLevelSmoke, VerifyLevelAcceptance, input.Level)
+	}
+	if input.RevalidatePreservation && input.Level != VerifyLevelAcceptance {
+		return errors.New("--revalidate-preservation is available only with --level acceptance")
 	}
 	if strings.TrimSpace(input.ScriptDir) == "" {
 		input.ScriptDir = "/etc/kubernetes/ani"
@@ -653,6 +662,9 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 		return err
 	}
 	manifest, runID := loaded.manifest, loaded.runID
+	if input.RevalidatePreservation && loaded.isExecution {
+		return errors.New("preservation revalidation requires the original install-success record; components execution and noop records cannot grant a new mutation budget")
+	}
 	// C01: before this command can attest, report or change anything, the cluster
 	// its --kubeconfig actually reaches has to be the cluster the record belongs
 	// to. Both record kinds pass through here, so the install-success path can no
@@ -703,21 +715,22 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 		install = &e.DidInstall
 	}
 	report := VerifyReport{
-		NotDeclared:      acceptanceNotDeclared,
-		SchemaVersion:    VerifyReportSchemaVersion,
-		RunID:            runID,
-		RecordKind:       manifest.RecordKind,
-		BaseRunID:        loaded.baseRunID,
-		Operation:        loaded.operation(),
-		InstallerCode:    manifest.Identity.CodeBinaryDigest,
-		VerifierCode:     selfBinaryDigest(),
-		DidInstall:       install,
-		ClusterName:      manifest.ClusterName,
-		ConfigDigest:     manifest.ConfigDigest,
-		NetworkStack:     manifest.NetworkStack,
-		Level:            input.Level,
-		AllowPodRecreate: input.AllowPodRecreate,
-		StartedAt:        time.Now().UTC().Format(time.RFC3339),
+		NotDeclared:            acceptanceNotDeclared,
+		SchemaVersion:          VerifyReportSchemaVersion,
+		RunID:                  runID,
+		RecordKind:             manifest.RecordKind,
+		BaseRunID:              loaded.baseRunID,
+		Operation:              loaded.operation(),
+		InstallerCode:          manifest.Identity.CodeBinaryDigest,
+		VerifierCode:           selfBinaryDigest(),
+		DidInstall:             install,
+		ClusterName:            manifest.ClusterName,
+		ConfigDigest:           manifest.ConfigDigest,
+		NetworkStack:           manifest.NetworkStack,
+		Level:                  input.Level,
+		AllowPodRecreate:       input.AllowPodRecreate,
+		RevalidatePreservation: input.RevalidatePreservation,
+		StartedAt:              time.Now().UTC().Format(time.RFC3339),
 	}
 
 	// The report path: smoke stays run-scoped (it is read-only and re-runnable);
@@ -734,6 +747,9 @@ func RunVerify(ctx context.Context, input VerifyInput, stdout io.Writer) error {
 	scopeKey := runID
 	if input.Level == VerifyLevelAcceptance {
 		scopeKey = acceptanceScopeKey(loaded.baseRunID, scope)
+		if input.RevalidatePreservation {
+			scopeKey += "-revalidation-" + report.VerifierCode
+		}
 	}
 	reportPath := filepath.Join(reportDir, fmt.Sprintf("verify-%s-%s.json", input.Level, scopeKey))
 
@@ -1122,6 +1138,14 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 	if err != nil {
 		return nil, err
 	}
+	var revalidation *acceptanceRevalidation
+	if input.RevalidatePreservation {
+		revalidation, err = prepareAcceptanceRevalidation(ctx, input, runner, manifest, runID, stateDir, scope)
+		if err != nil {
+			return nil, err
+		}
+		stateDir = revalidation.stateDir()
+	}
 	registry := fmt.Sprintf("%s:%d", manifest.Installer.RegistryHost, manifest.Installer.RegistryPort)
 	results := make([]VerifyComponentResult, 0, len(scope))
 	failed := false
@@ -1155,6 +1179,10 @@ func runAcceptanceScope(ctx context.Context, input VerifyInput, runner kubectlRu
 			outputDir: filepath.Join(input.Output, "acceptance-"+sanitizePathToken(runID)+"-"+component),
 			scriptDir: input.ScriptDir,
 			evidence:  map[string]string{},
+		}
+		attempt.revalidation = revalidation
+		if revalidation != nil {
+			attempt.outputDir += "-revalidation-" + revalidation.verifier
 		}
 		if component == "metrics" {
 			attempt.metrics = newMetricsAttemptState(attempt, manifest.ClusterName)

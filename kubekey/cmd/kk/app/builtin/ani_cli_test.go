@@ -127,3 +127,15 @@ func TestANICLIDefaultsAreReleaseLocal(t *testing.T) {
 		t.Fatalf("execute --kubeconfig must state that it is exported to every child step")
 	}
 }
+
+func TestANIRevalidationFlagReachesTheProductionVerifyDispatcher(t *testing.T) {
+	root := NewANICommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"verify", "--run", "/missing-run.json", "--level", "smoke", "--revalidate-preservation"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--revalidate-preservation is available only with --level acceptance") {
+		t.Fatalf("CLI flag must reach the real acceptance-only guard: %v", err)
+	}
+}

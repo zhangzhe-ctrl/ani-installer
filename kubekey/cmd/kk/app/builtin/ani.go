@@ -153,6 +153,7 @@ func newANIVerifyCommand() *cobra.Command {
 	cmd.Flags().StringVar(&input.Level, "level", "", "verification level: smoke (read-only) or acceptance (declared pod recreation)")
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated component IDs to limit the scope (each must be attested by the record: installed by it, or confirmed ANI-owned by it)")
 	cmd.Flags().BoolVar(&input.AllowPodRecreate, "allow-pod-recreate", false, "acceptance only: allow the one declared, planned pod recreation per target")
+	cmd.Flags().BoolVar(&input.RevalidatePreservation, "revalidate-preservation", false, "acceptance only: one check per current binary after prior successful acceptance, preserving its original ledger and PVC")
 	cmd.Flags().StringVar(&input.ScriptDir, "script-dir", "/etc/kubernetes/ani", "directory holding the packaged component verify scripts")
 	cmd.Flags().StringVar(&input.Kubeconfig, "kubeconfig", ani.DefaultKubeconfigPath, "kubeconfig for acceptance kubectl calls and smoke scripts")
 	cmd.Flags().StringVar(&input.Output, "output", "/var/lib/ani-installer/verify", "report output directory")

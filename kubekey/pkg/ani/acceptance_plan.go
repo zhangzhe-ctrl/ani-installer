@@ -75,18 +75,19 @@ type acceptancePlan struct {
 // back what an earlier phase wrote instead of writing something new and reading
 // that back as proof of persistence.
 type acceptanceAttempt struct {
-	ctx       context.Context
-	runner    kubectlRunner
-	deleter   *podDeleter
-	component string
-	stateDir  string
-	runID     string
-	registry  string
-	attempt   string
-	outputDir string
-	scriptDir string
-	evidence  map[string]string
-	metrics   *metricsAttemptState
+	ctx          context.Context
+	runner       kubectlRunner
+	deleter      *podDeleter
+	component    string
+	stateDir     string
+	runID        string
+	registry     string
+	attempt      string
+	outputDir    string
+	scriptDir    string
+	evidence     map[string]string
+	metrics      *metricsAttemptState
+	revalidation *acceptanceRevalidation
 	// wroteToken records that this attempt's data write genuinely happened, so a
 	// read-back cannot be satisfied by a fresh write.
 	wroteToken bool
@@ -407,6 +408,18 @@ func (a *acceptanceAttempt) recreateOnce(t acceptanceTarget, check persistenceCh
 	} else {
 		evidence["oldStableUid"] = stableUID
 	}
+	parentDigest := ""
+	if a.revalidation != nil {
+		parentDigest, err = a.revalidation.bindTarget(a.runID, t, stableUID)
+		if err != nil {
+			result.Status = VerifyStatusFailed
+			result.Detail = err.Error()
+			return result
+		}
+		evidence["originalLedgerSHA256"] = parentDigest
+		evidence["revalidationVerifierCodeBinaryDigest"] = a.revalidation.verifier
+		evidence["originalLedgerRunID"] = a.runID
+	}
 	if existing, found, perr := peekAcceptanceLedger(a.stateDir, a.runID, t); perr != nil {
 		result.Status = VerifyStatusFailed
 		result.Detail = perr.Error()
@@ -424,6 +437,11 @@ func (a *acceptanceAttempt) recreateOnce(t acceptanceTarget, check persistenceCh
 		OldPodUID: podUID, OldPVCUID: stableUID,
 		Controller: t.ControllerKind + "/" + t.ControllerName,
 		Token:      token, StartedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if a.revalidation != nil {
+		rec.OriginalLedgerSHA256 = parentDigest
+		rec.VerifierCodeBinaryDigest = a.revalidation.verifier
+		rec.BaseClusterUID = a.revalidation.clusterUID
 	}
 	existing, created, err := claimAcceptanceLedger(a.stateDir, a.runID, t, rec)
 	if err != nil {

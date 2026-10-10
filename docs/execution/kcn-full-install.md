@@ -116,6 +116,15 @@ JSON 创建本次独立 file-storage stream；只有对应 stream 的 Sequence 1
 metrics 清理核对本次登记的 UID，等待正常 Pod 宽限和异步删除完成；中断后
 已消失对象可以关闭登记，同名不同 UID 对象不能删除，不缩短 grace 或强删。
 
+保留集群已有成功 acceptance 时，正式复验使用原 `install-success` 记录，
+显式 `--level acceptance --only postgresql,nats,metrics --allow-pod-recreate
+--revalidate-preservation`。每个目标的原账本必须是 identity-bound `done/pass`，
+当前 PVC UID 必须仍为原接受卷；未知、失败、损坏或缺失账本拒绝复验。
+新预算按当前 verifier 二进制完整 SHA256 和原 run/target 固定，一目标一次，
+保留原账本并在新意图中记录其 SHA256、二进制和集群 UID；原有 UID 条件删除、
+真实协议读回及失败停止合同不变。更换输出目录不能重启预算，components/
+noop 记录不能赋予复验变更权；首装使用原默认 acceptance，不开启此复验参数。
+
 安装、components 和制包的 registry 字节门禁使用同一 90 秒请求传输预算，
 覆盖冷缓存大层的完整读入；逐 blob 摘要和声明大小校验、缺失对象拒绝和
 调用方取消均保留。读取通过不代表 components 已执行或业务数据已验收。

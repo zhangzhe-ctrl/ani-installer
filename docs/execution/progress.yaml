@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_uid_3de961b2_three_strict_ssh_machine_identities_and_ready_nodes_reverified_after_user_lab_power_operation
-    code: candidate_db82952_formal_pass_higress_official_gatewayclass_description_fix_targeted_pass_next_formal_build_pending
-    materials: candidate_db82952_attempt_02_formal_complete_117_images_15_charts_four_wasm_pass_target_transfer_pending
-    integration: lws_llmi_real_behavior_pass_higress_db82952_first_execute_fail_official_gatewayclass_description_check_all_original_453_unchanged_source_fix_targeted_pass
+    code: candidate_05590b7_formal_code_and_builtin_package_pass_source_fingerprint_2f9c3daa
+    materials: candidate_05590b7_attempt_02_formal_complete_pass_117_images_15_charts_four_wasm_transfer_running
+    integration: lws_llmi_real_behavior_pass_higress_db82952_first_execute_fail_official_gatewayclass_description_check_all_original_453_unchanged_source_fix_targeted_pass_owned_helm_rollback_pass_05590b7_live_pending
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: retained_lws_and_llmi_pass_operation_noop_didInstall_false_full_combination_and_clean_install_pending
@@ -62,6 +62,11 @@ tasks:
   - db82952 完整材料 attempt-01 的 117 镜像落地及 registry 内容门禁通过，随后 Hauler save 以 rc=1 退出且未打印具体错误；7791034368 字节归档经 zstd -t 确认 premature end，未生成最终 SHA256SUMS。Fedora 当时余量约 18–19 GiB；开始核实仅本任务两次失败大归档的安全释放与同源重试空间条件，原失败日志和退出码保留，未传输失败材料或安装 Higress。
   - 仅释放 Fedora 本任务 b843144/db82952 两次 rc=1 且无最终 SHA256SUMS 的大归档，原日志、输入、成功材料及目标 registry 保留；同源同输入 attempt-02 正式 build-offline rc=0。117 镜像、15 Chart、四 Wasm、Kubeflow 23 批准资产及 41 wheel、工具/guest/DB/ISO 均通过；9158367036 字节镜像归档完整保存，构建采样最低余量 8763719680 字节。完整材料 SHA256SUMS 文件摘要 4cdf63ff7ae1ba10126e3eb6ee4f476bff21360aabbf0b7b313c2960bc918bcb，正式 kk 摘要 6cd77c456892aa3ed5c667bfdede3055bde49fd908a0559ca36687170de8dc89；目标全字节传输与 Higress live 行为仍待完成。
   - db82952 目标完整代码和材料全部 SHA256SUMS 通过；正式 run ani-components-ani-kcn-full-20261010-163156 仅补装 Higress，Harbor 保持 already_installed。Higress 官方 Chart、独立 controller/gateway、Harbor 受信任 CA 与四个固定 OCI Wasm 发布、GatewayClass/Gateway Accepted 已落地；原始 execute rc=1 停在严格 GatewayClass spec 核对，官方 2.2.4 controller 自动加入 description 字段，实际 Gateway listener/allowedRoutes 与站点完全相同。原 453 个受保护对象 UID/labels/payloadHash 均不变，未进入插件加载/路由探针或继续变更。对应官方 classInfo 源码和实际响应的最小回归为红，正式声明补齐同一 description 且保留全 spec 严格比较后，Higress 定向组 6.744s 通过；七资产批准锁同步更新。新正式候选与正常归属恢复仍待完成，不把 controller/Gateway Ready 记成 Higress 行为 PASS。
+  - 05590b7e31d480967c6e95c87cccdd34840a9007 正式代码门禁、builtin 二进制及代码包 rc=0，源码指纹 2f9c3daa7710729db6554beccbda785bc2e59b1afed5b621eb614a99f13316dd 不变。失败 Higress Chart 正常卸载，保留本次 namespace/API、CA、Gateway 和四插件发布凭据引用，原 453 个对象仍完全相同；新正式补装待完成。
+  - 05590b7 材料 attempt-01 已通过 117 镜像完整内容校验及 ISO 注入，但余量 5104295936 字节触及私有 5 GiB 预留，由监控 SIGTERM 取消，进程 rc=-15/规范化 shell rc=143 保留；未生成完整包。仅清除本次失败大文件并释放可再生成的本任务 Go 缓存；源输入、代码包和失败记录保留。
+  - 旧 db82952 与 234c2ec 完整镜像归档均在 .20 的本任务私有材料目录重新逐字节校验后，释放 Fedora 副本以供同源 attempt-02，实际可用空间 41846067200 字节。恢复快照或释放目标副本前必须先迁回 Fedora 并核实 b8072f07a6e66d4a2f88b4b5ca6d65332abb46031f5eebbfcb42a5bae64e3aaa 与 d36e2ff727f0b41a9786cdf048665b6dec2c2e402e62140254e4a84dd22936c6；旧目标 registry 服务/store 未动。attempt-02 容量门禁采用本次已测峰值加 5 GiB 预留及额外 1 GiB，正式材料构建中。
+  - 05590b7 同源材料 attempt-02 正式 rc=0，117 镜像/15 Chart/四 Wasm 与完整既有离线闭包通过；实测最低余量 12275093504 字节，未再触及预留。旧归档迁回与新包传输顺序推进中，Higress 实际行为尚未完成。正式 verify 保留复验路径已在 Fedora 用真实 dispatcher/持久账本及 UID-conditioned API seam 复现旧预算阻塞后转绿，相关目标组 20.937s 通过；新 verify 候选尚未正式构建或用于集群变更。
+  - 正式 verify 新增显式 --revalidate-preservation：只接受原成功 install 记录及原 identity-bound done/pass 账本，复核原 PVC，按 verifier 二进制 SHA 固定额外一次预算；原账本不变，UID 条件删除与协议读回保持。RunVerify 先红后绿 2.582s，原预算/权限/替换/失败停止相关回归 20.937s；组件记录负例最初误用 missing 外来 release 夹具，原 rc=1 保留，改为既有 absent 夹具后真实记录拒绝 0.576s 与正式 builtin CLI 分派 0.100s 通过。当前仍是源码候选，未在集群消耗新预算。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []
