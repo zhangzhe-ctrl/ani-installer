@@ -6,6 +6,45 @@
 
 apiVersion: ani.installer/v1
 
+batchKServeLLM:
+  status: source_material_verified / runtime_not_verified
+  combinationRelease: 26.10-kubeflow-llm-v1
+  baseRelease: 26.03-kubeflow-stage2-v1
+  version: v0.17.0
+  source: https://github.com/kserve/kserve/tree/v0.17.0
+  sourceCommit: c71eba91631b976ff7b111f3061df9af86399e99
+  api: serving.kserve.io/v1alpha1
+  storageAPI: serving.kserve.io/v1alpha2
+  sourceIndexEvidence:
+    sourcePath: ani/kserve-llm/source-index.json
+    artifactPath: images/evidence/f9ab82e15ba714eb6a734c8e20ef42e0dabdaeb88aa56848d1f71137c2272a0e.json
+    sha256: f9ab82e15ba714eb6a734c8e20ef42e0dabdaeb88aa56848d1f71137c2272a0e
+  charts:
+    - name: kserve-llmisvc-crd
+      chartVersion: v0.17.0
+      appVersion: v0.17.0
+      source: https://ghcr.io/v2/kserve/charts/kserve-llmisvc-crd/blobs/sha256:e49aee5322397d4dacd9ee9eadf98b797e8f726e1e8c21acadc2854d9e27aa81
+      ociSource: oci://ghcr.io/kserve/charts/kserve-llmisvc-crd:v0.17.0
+      ociManifestDigest: sha256:702f93b1b1975808f8cb2db6586eb4979f06ecbcfe943a994ebd95b0ddfda02b
+      sha256: e49aee5322397d4dacd9ee9eadf98b797e8f726e1e8c21acadc2854d9e27aa81
+      artifactChartPath: charts/kserve-llmisvc-crd/v0.17.0.tgz
+    - name: kserve-llmisvc-resources
+      chartVersion: v0.17.0
+      appVersion: v0.17.0
+      source: https://ghcr.io/v2/kserve/charts/kserve-llmisvc-resources/blobs/sha256:456fd2cc244c344a262ca7d553092e6abb3e8cb2c3b87f12653cf46ad3fbffba
+      ociSource: oci://ghcr.io/kserve/charts/kserve-llmisvc-resources:v0.17.0
+      ociManifestDigest: sha256:f48ce2b048074f8795de2f3c31953a47cd653d73f88abd7ec7a7b10688bc7242
+      sha256: 456fd2cc244c344a262ca7d553092e6abb3e8cb2c3b87f12653cf46ad3fbffba
+      artifactChartPath: charts/kserve-llmisvc-resources/v0.17.0.tgz
+      release: ani-kserve-llmi
+      namespace: kserve
+  images:
+    - original: docker.io/kserve/llmisvc-controller:v0.17.0
+      haulerRef: 127.0.0.1:5000/kserve/llmisvc-controller:v0.17.0
+      sourceManifestDigest: sha256:f9ab82e15ba714eb6a734c8e20ef42e0dabdaeb88aa56848d1f71137c2272a0e
+      amd64ManifestDigest: sha256:30795379cceea64653daba008fee9b054bb889523000b53586cd3bdc48608b79
+      use: official LLMI controller and webhook; caller supplied engine boundary
+
 # Unmodified official OCI chart, pulled and independently fetched on Fedora.
 # API, chart, source archive and target-platform image are separate approvals.
 batchLWS:

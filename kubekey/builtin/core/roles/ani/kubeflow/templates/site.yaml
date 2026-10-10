@@ -1,5 +1,6 @@
 {
-  "release": "{{ .ani.kubeflow.release }}",
+  "release": "{{ .ani.kubeflow.base_release }}",
+  "combination_release": "{{ .ani.kubeflow.release }}",
   "kubeconfig": "{{ .ani.run.kubeconfig }}",
   "logs_dir": "{{ .ani.run.logs_dir }}",
   "connections_dir": "{{ .ani.run.connections_dir }}",

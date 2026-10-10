@@ -179,5 +179,7 @@
     # First-install selection only. Deliberately absent from ani_components.
     - role: ani/kubeflow
       when: '{{ and .ani.kubeflow.enabled (ne .ani.profile "base") }}'
+    - role: ani/kserve
+      when: '{{ and (index .ani.components "kserve").enabled (ne .ani.profile "base") }}'
 
 - import_playbook: hook/post_install.yaml

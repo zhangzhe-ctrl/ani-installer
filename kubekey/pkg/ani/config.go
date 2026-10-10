@@ -38,7 +38,7 @@ var (
 	// logging backend rather than written independently.
 	componentsOrder = [...]string{
 		"cert-manager", "postgresql", "valkey", "nats",
-		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws",
+		"metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve",
 	}
 )
 
@@ -173,8 +173,11 @@ type Components struct {
 	Volcano            VolcanoComponent       `yaml:"volcano"`
 	Harbor             HarborComponent        `yaml:"harbor"`
 	LWS                LWSComponent           `yaml:"lws,omitempty" json:",omitzero"`
-	Metrics            MetricsComponent       `yaml:"metrics"`
-	Logging            LoggingComponent       `yaml:"logging"`
+	// KServeLLM is resolved from the versioned Kubeflow combination. It is
+	// deliberately absent from the user YAML and the declared config digest.
+	KServeLLM bool             `yaml:"-" json:"-"`
+	Metrics   MetricsComponent `yaml:"metrics"`
+	Logging   LoggingComponent `yaml:"logging"`
 }
 
 // Storage providers accepted by storage.provider.
@@ -304,6 +307,7 @@ func (c Components) Selection() []ComponentRow {
 		"volcano":             c.Volcano.Enabled,
 		"harbor":              c.Harbor.Enabled,
 		"lws":                 c.LWS.Enabled,
+		"kserve":              c.KServeLLM,
 		"metrics":             c.Metrics.Enabled,
 		"loki":                c.Logging.LogBackend() == loggingLoki,
 		"opensearch":          c.Logging.LogBackend() == loggingOpenSearch,
@@ -368,7 +372,7 @@ func (c Components) storage(name string) *StorageComponent {
 // The observability batch is complete here: metrics, the two mutually
 // exclusive log backends and the collector all ship their own roles.
 var ImplementedComponents = []string{
-	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws",
+	"cert-manager", "postgresql", "valkey", "nats", "metrics", "loki", "opensearch", "fluent-bit", "rustfs", "milvus", "metrics-server", "snapshot-controller", "kubevirt", "volcano", "harbor", "lws", "kserve",
 }
 
 // storageSizeOrErr parses a capacity and rejects values that are zero or
@@ -573,6 +577,10 @@ func (c ClusterConfig) EffectiveComponents() Components {
 	components := c.Components
 	if c.KubeflowEnabled() {
 		components.CertManager.Enabled = true
+		if c.KServeLLMEnabled() {
+			components.LWS.Enabled = true
+			components.KServeLLM = true
+		}
 	}
 	if c.ObjectStorageProvider() == objectProviderRustFS && c.ObjectStorage != nil {
 		components.RustFS = StorageComponent{
@@ -675,6 +683,10 @@ func componentImageKeysForRun(c ClusterConfig) []ImageKey {
 			if base || !c.EffectiveComponents().LWS.Enabled {
 				continue
 			}
+		case "kserve":
+			if base || !c.KServeLLMEnabled() {
+				continue
+			}
 		case "metrics-server":
 			if base || !c.Components.MetricsServer.Enabled {
 				continue
@@ -773,6 +785,9 @@ func requiredChartPaths(c ClusterConfig) []string {
 	var paths []string
 	if c.EffectiveComponents().LWS.Enabled {
 		paths = append(paths, LWSChartPath)
+	}
+	if c.KServeLLMEnabled() {
+		paths = append(paths, KServeLLMCRDChartPath, KServeLLMChartPath)
 	}
 	if c.EffectiveComponents().CertManager.Enabled {
 		paths = append(paths, "charts/cert-manager/v1.21.2.tgz")
@@ -1619,6 +1634,12 @@ func KubeKeyConfig(c ClusterConfig, artifactPath, artifactRoot string, imageTabl
 		}
 		components["lws"].(map[string]any)["image_ref"] = imageRefs[LWSImageReference] + "@" + LWSAMD64ManifestDigest
 	}
+	if c.KServeLLMEnabled() {
+		if imageTable[KServeLLMImageReference].Digest != KServeLLMAMD64ManifestDigest {
+			return nil, fmt.Errorf("LLMI controller differs from the approved linux/amd64 manifest")
+		}
+		components["kserve"].(map[string]any)["image_ref"] = imageRefs[KServeLLMImageReference] + "@" + KServeLLMAMD64ManifestDigest
+	}
 	nodeNames := make([]string, 0, len(c.Nodes))
 	for _, n := range c.Nodes {
 		nodeNames = append(nodeNames, n.Name)
@@ -1792,6 +1813,10 @@ func componentSpec(c Components, clusterName string) map[string]any {
 		"chart_path":   LWSChartPath,
 		"chart_sha256": LWSChartSHA256,
 	}
+	spec["kserve"] = map[string]any{"enabled": c.KServeLLM, "version": KServeLLMVersion,
+		"required_by": "kubeflow.release=" + KubeflowLLMRelease, "dependencies": []string{"cert-manager", "lws"},
+		"chart_path": KServeLLMChartPath, "chart_sha256": KServeLLMChartSHA256,
+		"crd_chart_path": KServeLLMCRDChartPath, "crd_chart_sha256": KServeLLMCRDChartSHA256}
 	// The metrics stack carries its own storage and retention fields. The
 	// values are always present so a role can render them without re-reading
 	// the site YAML, even when the stack is disabled.
@@ -1956,6 +1981,8 @@ func aniRoleEnabled(role string, c ClusterConfig) bool {
 		return c.KubeflowEnabled()
 	case "lws":
 		return c.EffectiveComponents().LWS.Enabled && installProfile(c.Profile) != "base"
+	case "kserve":
+		return c.KServeLLMEnabled() && installProfile(c.Profile) != "base"
 	case "postgresql":
 		return c.Components.PostgreSQL.Enabled && installProfile(c.Profile) != "base"
 	case "valkey":
@@ -2599,5 +2626,16 @@ func RunRender(input ValidateInput, rolesDir string, stdout io.Writer) error {
 	}
 	fmt.Fprintf(out, "rendered %d files for cluster=%s profile=%s network=%s (no live API access, nothing applied)\n",
 		len(files), cluster.Name, installProfile(cluster.Profile), networkStack(cluster.Network.Stack))
+	if cluster.KServeLLMEnabled() {
+		manifest, err := BuildRunManifest(cluster)
+		if err != nil {
+			return err
+		}
+		data, err := json.Marshal(manifest.DependencySources)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "enabled components: %s\ndependency sources: %s\n", strings.Join(manifest.Components, ","), data)
+	}
 	return nil
 }

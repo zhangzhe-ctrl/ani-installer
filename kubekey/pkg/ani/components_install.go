@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,13 +72,14 @@ type componentInstallSpec struct {
 // them with the deferred message instead of plain "unknown".
 var componentsDeferred = []string{
 	"cdi",
-	"notebooks", "trainer", "hub", "kserve", "pipelines",
+	"notebooks", "trainer", "hub", "pipelines",
 }
 
 // componentInstallSpecs covers every canonical component ID of
 // componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
 	"lws":                 {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
+	"kserve":              {Namespace: "kserve", Release: "ani-kserve-llmi", Chart: "kserve-llmisvc-resources", ChartVersion: KServeLLMVersion, WorkloadKind: "Deployment", WorkloadName: "llmisvc-controller-manager", InternalDeps: []string{"cert-manager", "lws"}},
 	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
 	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
 	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
@@ -170,6 +172,7 @@ type ComponentsPlan struct {
 	MaterialsLockDigest     string                    `json:"materialsLockDigest,omitempty"`
 	BaseMaterialsLockDigest string                    `json:"baseMaterialsLockDigest,omitempty"`
 	RegistryUnitDigest      string                    `json:"registryUnitDigest,omitempty"`
+	DependencySources       map[string][]string       `json:"dependencySources,omitempty"`
 	Invariants              map[string]string         `json:"invariants"`
 	Components              []ComponentsPlanComponent `json:"components"`
 	Excluded                []string                  `json:"excluded"`
@@ -200,6 +203,9 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 	}
 	baseManifest, err := loadBaseRunRecord(input.BaseRunFile, input.StateFile)
 	if err != nil {
+		return err
+	}
+	if err := requireKServeAdditionBase(baseManifest, scope); err != nil {
 		return err
 	}
 	invariants, err := compareBaseInvariants(baseManifest, *manifest)
@@ -239,8 +245,8 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 	}
 	registryUnitDigest := ""
 	for _, component := range scope {
-		if component == "lws" {
-			if err := validateLWSAdditionMaterial(input.PackageRoot, artifactLock); err != nil {
+		if component == "lws" || component == "kserve" {
+			if err := validateAdditionMaterial(component, input.PackageRoot, artifactLock); err != nil {
 				return err
 			}
 			if _, err := componentRegistryAppendTarget(cluster, baseManifest); err != nil {
@@ -307,6 +313,7 @@ func RunComponentsInstallPlan(ctx context.Context, input ComponentsInstallInput,
 		MaterialsLockDigest:     materialsDigest,
 		BaseMaterialsLockDigest: baseMaterialsDigest,
 		RegistryUnitDigest:      registryUnitDigest,
+		DependencySources:       manifest.DependencySources,
 		Invariants:              invariants,
 		Components:              planComponents,
 		Excluded:                componentsPlanExcluded,
@@ -1121,13 +1128,10 @@ func preflightComponentImages(ctx context.Context, cluster ClusterConfig, packag
 			approval, err := gate.Verify(ctx, row)
 			if err != nil {
 				if absentInRegistry(err) {
-					if component == "lws" && (len(requireLive) == 0 || !requireLive[0]) {
-						if row.Digest != LWSAMD64ManifestDigest {
-							return fmt.Errorf("LWS addition requires approved controller digest %s", LWSAMD64ManifestDigest)
-						}
+					if approvedAdditionImage(component, row) && (len(requireLive) == 0 || !requireLive[0]) {
 						dataRoot := filepath.Join(runtimeBaseDir, cluster.Name, "work", "registry-data")
 						if _, sourceErr := componentRegistryFiles(filepath.Join(packageRoot, "images", "component-stores", component, "store"), dataRoot, row, lock); sourceErr != nil {
-							return errors.Wrap(sourceErr, "missing LWS image has no verified offline addition")
+							return errors.Wrap(sourceErr, "missing component image has no verified offline addition")
 						}
 						if stdout != nil {
 							fmt.Fprintf(stdout, "components image %s: approved offline addition; registry publication pending execute\n", key.Original)
@@ -1378,6 +1382,9 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	if manifest.ConfigDigest != plan.NewConfigDigest {
 		return fmt.Errorf("the site config digest %s does not match the plan's %s; re-plan before executing", manifest.ConfigDigest, plan.NewConfigDigest)
 	}
+	if !reflect.DeepEqual(manifest.DependencySources, plan.DependencySources) {
+		return errors.New("the resolved dependency sources differ from the plan; re-plan before executing")
+	}
 	if manifest.ClusterName != plan.ClusterName {
 		return fmt.Errorf("the site config belongs to cluster %q, the plan to %q", manifest.ClusterName, plan.ClusterName)
 	}
@@ -1449,6 +1456,9 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 	if err != nil {
 		return err
 	}
+	if err := requireKServeAdditionBase(baseManifest, fullScope); err != nil {
+		return err
+	}
 	// C05: the live re-verification runs for the whole closure, including a plan
 	// with nothing left to write. A no-op used to skip every freshness check, so
 	// a release that changed owner, version or health after planning could still
@@ -1507,8 +1517,8 @@ func RunComponentsExecute(ctx context.Context, input ComponentsExecuteInput, std
 		return errors.New("original registry unit changed after planning; re-plan")
 	}
 	for _, component := range fullScope {
-		if component == "lws" {
-			if err := validateLWSAdditionMaterial(input.PackageRoot, artifactLock); err != nil {
+		if component == "lws" || component == "kserve" {
+			if err := validateAdditionMaterial(component, input.PackageRoot, artifactLock); err != nil {
 				return err
 			}
 		}

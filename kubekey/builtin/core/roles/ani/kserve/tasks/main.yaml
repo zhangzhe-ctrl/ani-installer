@@ -1,0 +1,42 @@
+---
+- name: ANI KServe LLM | Create task work and evidence directories
+  command: |
+    set -euo pipefail
+    test -f '{{ .ani.run.kubeconfig }}'
+    install -d -m 0700 /etc/kubernetes/ani/kserve '{{ .ani.run.logs_dir }}' '{{ .ani.run.connections_dir }}'
+
+- name: ANI KServe LLM | Render fixed official Chart values
+  template:
+    src: values.yaml
+    dest: /etc/kubernetes/ani/kserve/values.yaml
+
+- name: ANI KServe LLM | Render bounded upstream resource filter
+  template:
+    src: filter.py
+    dest: /etc/kubernetes/ani/kserve/filter.py
+
+- name: ANI KServe LLM | Render install and real controller probe
+  template:
+    src: manage.py
+    dest: /etc/kubernetes/ani/kserve/manage.py
+
+- name: ANI KServe LLM | Establish new APIs and ready admission without replacing Standard
+  command: >-
+    ANI_RUN_KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    python3 /etc/kubernetes/ani/kserve/manage.py install
+
+- name: ANI KServe LLM | Render formal verifier
+  template:
+    src: verify.sh
+    dest: /etc/kubernetes/ani/kserve/verify.sh
+
+- name: ANI KServe LLM | Verify real LLMI to LWS to PVC and HTTP lifecycle
+  command: >-
+    ANI_VERIFY_KUBECONFIG='{{ .ani.run.kubeconfig }}'
+    ANI_VERIFY_OUTPUT_DIR='{{ .ani.run.logs_dir }}'
+    bash /etc/kubernetes/ani/kserve/verify.sh
+
+- name: ANI KServe LLM | Render component connection facts
+  template:
+    src: connection.md
+    dest: '{{ .ani.run.connections_dir }}/kserve.md'

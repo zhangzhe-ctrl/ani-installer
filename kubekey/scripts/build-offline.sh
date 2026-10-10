@@ -375,6 +375,16 @@ if grep -q '^batchLWS:' "$COMPONENT_LOCK"; then
     --evidence-dir "$OUTPUT/images/evidence" --source-store "$LANDED" \
     --out-store "$OUTPUT/images/component-stores/lws/store"
 fi
+if grep -q '^batchKServeLLM:' "$COMPONENT_LOCK"; then
+  llmi_index_sha=f9ab82e15ba714eb6a734c8e20ef42e0dabdaeb88aa56848d1f71137c2272a0e
+  printf '%s  %s\n' "$llmi_index_sha" "$ROOT/ani/kserve-llm/source-index.json" | sha256sum -c -
+  install -m 0644 "$ROOT/ani/kserve-llm/source-index.json" "$OUTPUT/images/evidence/$llmi_index_sha.json"
+  mkdir -p "$OUTPUT/images/component-stores/kserve"
+  awk -F '\t' '$1=="original_ref" || $1=="docker.io/kserve/llmisvc-controller:v0.17.0"' "$IMAGES_TSV" > "$OUTPUT/images/component-stores/kserve/images.tsv"
+  materials land-images --images-tsv "$OUTPUT/images/component-stores/kserve/images.tsv" --lock "$COMPONENT_LOCK" \
+    --evidence-dir "$OUTPUT/images/evidence" --source-store "$LANDED" \
+    --out-store "$OUTPUT/images/component-stores/kserve/store"
+fi
 
 echo "[3/6] placing fixed binaries, repository ISO and chart material"
 # F06: tools and charts are placed by Go against the individual lock entry that

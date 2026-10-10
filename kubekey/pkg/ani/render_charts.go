@@ -129,6 +129,20 @@ func RunChartExpansion(ctx context.Context, input ChartExpansionInput, cluster C
 	}
 
 	expanded := 0
+	postRenderer := ""
+	if enabled["kserve"] {
+		for _, file := range files {
+			if file.Rel == "kserve/templates/filter.py" {
+				postRenderer = filepath.Join(scratch, "kserve-filter.py")
+				if err := os.WriteFile(postRenderer, file.Rendered, 0o700); err != nil {
+					return err
+				}
+			}
+		}
+		if postRenderer == "" {
+			return errors.New("selected KServe combination has no bounded LLMI post-renderer")
+		}
+	}
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name, "-values.yaml") {
 			continue
@@ -153,7 +167,11 @@ func RunChartExpansion(ctx context.Context, input ChartExpansionInput, cluster C
 		if err := os.WriteFile(valuesFile, file.Rendered, 0o600); err != nil {
 			return errors.Wrapf(err, "write the rendered values of %q", role)
 		}
-		rendered, err := expandChart(ctx, input.HelmBin, archive, valuesFile, spec, chart)
+		filter := ""
+		if role == "kserve" {
+			filter = postRenderer
+		}
+		rendered, err := expandChart(ctx, input.HelmBin, archive, valuesFile, spec, chart, filter)
 		if err != nil {
 			return errors.Wrapf(err, "component %q: helm template", role)
 		}
@@ -173,7 +191,7 @@ func RunChartExpansion(ctx context.Context, input ChartExpansionInput, cluster C
 
 // expandChart runs one `helm template` with the same release, namespace and
 // values file the role will use.
-func expandChart(ctx context.Context, helmBin, archive, valuesFile string, spec componentInstallSpec, chart *LockedChart) (string, error) {
+func expandChart(ctx context.Context, helmBin, archive, valuesFile string, spec componentInstallSpec, chart *LockedChart, postRenderer ...string) (string, error) {
 	namespace := spec.Namespace
 	if chart.Namespace != "" {
 		namespace = chart.Namespace
@@ -187,6 +205,9 @@ func expandChart(ctx context.Context, helmBin, archive, valuesFile string, spec 
 	}
 	command := exec.CommandContext(ctx, helmBin, "template", release, archive,
 		"--namespace", namespace, "--values", valuesFile)
+	if len(postRenderer) > 0 && postRenderer[0] != "" {
+		command.Args = append(command.Args, "--post-renderer", postRenderer[0])
+	}
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr

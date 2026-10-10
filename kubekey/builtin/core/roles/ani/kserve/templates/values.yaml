@@ -1,0 +1,13 @@
+kserve:
+  version: v0.17.0
+  createSharedResources: false
+  certManager: {enabled: false}
+  inferenceServiceConfig: {enabled: false}
+  storagecontainer: {enabled: false}
+  llmisvc:
+    controller:
+      image: {{ .ani.registry }}/{{ .ani.image_parts.kserve.controller.repository }}
+      tag: {{ .ani.image_parts.kserve.controller.tag }}@sha256:30795379cceea64653daba008fee9b054bb889523000b53586cd3bdc48608b79
+      env:
+        - name: LLM_INFERENCE_SERVICE_VERSIONED_CONFIG
+          value: 'false'

@@ -274,7 +274,7 @@ func downloadChart(ctx context.Context, client *http.Client, url, digest, destin
 	if err != nil {
 		return errors.Wrapf(err, "request %s", url)
 	}
-	response, err := client.Do(request)
+	response, err := getHTTPSMaterial(client, request)
 	if err != nil {
 		return errors.Wrapf(err, "fetch %s", url)
 	}

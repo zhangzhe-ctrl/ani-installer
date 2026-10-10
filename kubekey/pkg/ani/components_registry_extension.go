@@ -35,6 +35,41 @@ func validateLWSAdditionMaterial(packageRoot string, lock *MaterialsLock) error 
 	return verifyChartIdentity(path, *chart)
 }
 
+func approvedAdditionImage(component string, row Image) bool {
+	return (component == "lws" && row.Original == LWSImageReference && row.Digest == LWSAMD64ManifestDigest) ||
+		(component == "kserve" && row.Original == KServeLLMImageReference && row.Digest == KServeLLMAMD64ManifestDigest)
+}
+
+func validateAdditionMaterial(component, packageRoot string, lock *MaterialsLock) error {
+	if component == "lws" {
+		return validateLWSAdditionMaterial(packageRoot, lock)
+	}
+	if component != "kserve" {
+		return fmt.Errorf("component %s has no approved additive material path", component)
+	}
+	approved, err := (ImageEvidence{Roots: EvidenceRoots(packageRoot)}).resolveApproved(Image{Original: KServeLLMImageReference, Digest: KServeLLMSourceIndexDigest})
+	if err != nil || approved.Platform() != KServeLLMAMD64ManifestDigest {
+		return fmt.Errorf("LLMI source index evidence does not select the approved amd64 manifest: %v", err)
+	}
+	for _, expected := range []struct{ path, name, digest string }{
+		{KServeLLMCRDChartPath, "kserve-llmisvc-crd", KServeLLMCRDChartSHA256},
+		{KServeLLMChartPath, "kserve-llmisvc-resources", KServeLLMChartSHA256},
+	} {
+		chart, ok := lock.ChartByArtifactPath(expected.path)
+		if !ok || chart.Name != expected.name || chart.ChartVersion != KServeLLMVersion || strings.TrimPrefix(chart.SHA256, "sha256:") != expected.digest {
+			return fmt.Errorf("LLMI addition requires source-approved official Chart %s", expected.name)
+		}
+		path := filepath.Join(packageRoot, expected.path)
+		if sha256FileHex(path) != expected.digest {
+			return fmt.Errorf("LLMI Chart differs from source approval: %s", path)
+		}
+		if err := verifyChartIdentity(path, *chart); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func componentRegistryFiles(store, dataRoot string, row Image, lock *MaterialsLock) ([]registryAppendFile, error) {
 	entry, ok := lock.ImageByOriginal(row.Original)
 	if !ok || entry.Disabled || entry.HaulerRef != row.HaulerRef {

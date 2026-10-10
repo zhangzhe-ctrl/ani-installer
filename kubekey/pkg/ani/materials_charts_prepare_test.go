@@ -91,6 +91,46 @@ func c10Lock(t *testing.T, name, version, serverURL, digest string) string {
 	return path
 }
 
+func TestC10_PrepareOfficialOCIChartWithAnonymousPullToken(t *testing.T) {
+	path, digest := c10ChartArchive(t, t.TempDir(), "llmi", "v0.17.0")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source string
+	tokenCalls, blobCalls := 0, 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			tokenCalls++
+			if r.URL.Query().Get("scope") != "repository:kserve/charts/llmi:pull" || r.URL.Query().Get("service") != r.Host {
+				t.Error("anonymous token request did not preserve exact pull scope")
+			}
+			fmt.Fprint(w, `{"token":"test-only-public-pull-token"}`)
+			return
+		}
+		blobCalls++
+		if r.Header.Get("Authorization") != "Bearer test-only-public-pull-token" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="%s",scope="repository:kserve/charts/llmi:pull"`, source, r.Host))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Write(data)
+	}))
+	defer server.Close()
+	source = server.URL
+	root := t.TempDir()
+	lock := c10Lock(t, "llmi", "v0.17.0", source+"/v2/kserve/charts/llmi/blobs/sha256:"+digest, digest)
+	if err := RunMaterialsPrepareCharts(MaterialsPrepareChartsInput{LockPath: lock, Root: root, CacheDir: t.TempDir(), Client: server.Client()}, os.Stdout); err != nil {
+		t.Fatalf("official public OCI chart preparation failed: %v", err)
+	}
+	if tokenCalls != 1 || blobCalls != 2 {
+		t.Fatalf("anonymous pull calls: token=%d blob=%d", tokenCalls, blobCalls)
+	}
+	if got := sha256FileHex(filepath.Join(root, "charts", "llmi", "llmi-v0.17.0.tgz")); got != digest {
+		t.Fatalf("landed chart hash=%s", got)
+	}
+}
+
 func TestC10_PrepareChartsLandsAndVerifiesEveryApprovedChart(t *testing.T) {
 	chartDir := t.TempDir()
 	type entry struct {
@@ -177,6 +217,52 @@ func TestC10_PrepareChartsLandsAndVerifiesEveryApprovedChart(t *testing.T) {
 	}
 	if n := strings.Count(second.String(), "already present"); n != len(entries) {
 		t.Fatalf("expected every chart verified in place, got:\n%s", second)
+	}
+}
+
+func TestC10_OCIChallengeCannotWidenMaterialAuthority(t *testing.T) {
+	for _, scenario := range []string{"foreign-authority", "wrong-repository", "plaintext-realm", "repeated-realm"} {
+		t.Run(scenario, func(t *testing.T) {
+			var source string
+			tokenCalls := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/token" {
+					tokenCalls++
+					t.Error("unsafe material challenge contacted its token endpoint")
+					return
+				}
+				realm, scope := source+"/token", "repository:kserve/charts/llmi:pull"
+				if scenario == "foreign-authority" {
+					realm = "https://other.invalid/token"
+				}
+				if scenario == "plaintext-realm" {
+					realm = strings.Replace(source, "https://", "http://", 1) + "/token"
+				}
+				if scenario == "wrong-repository" {
+					scope = "repository:other/chart:pull"
+				}
+				challenge := fmt.Sprintf(`Bearer realm="%s",service="%s",scope="%s"`, realm, r.Host, scope)
+				if scenario == "repeated-realm" {
+					challenge += fmt.Sprintf(`,realm="%s"`, realm)
+				}
+				w.Header().Set("WWW-Authenticate", challenge)
+				w.WriteHeader(http.StatusUnauthorized)
+			}))
+			defer server.Close()
+			source = server.URL
+			root := t.TempDir()
+			lock := c10Lock(t, "llmi", "v0.17.0", source+"/v2/kserve/charts/llmi/blobs/sha256:"+strings.Repeat("a", 64), strings.Repeat("a", 64))
+			err := RunMaterialsPrepareCharts(MaterialsPrepareChartsInput{LockPath: lock, Root: root, CacheDir: t.TempDir(), Client: server.Client()}, os.Stdout)
+			if err == nil || !strings.Contains(err.Error(), "challenge") {
+				t.Fatalf("unsafe challenge was not rejected: %v", err)
+			}
+			if tokenCalls != 0 {
+				t.Fatalf("unsafe token calls=%d", tokenCalls)
+			}
+			if _, err := os.Stat(filepath.Join(root, "charts", "llmi", "llmi-v0.17.0.tgz")); !os.IsNotExist(err) {
+				t.Fatal("unsafe material was published")
+			}
+		})
 	}
 }
 

@@ -18,9 +18,9 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: candidate_ea98b2c_formal_code_gate_pass_lws_empty_collection_fix_related_pass_next_formal_gate_pending
+    code: candidate_c52261d_formal_code_gate_builtin_build_pass_llmi_related_tests_pass_next_candidate_pending
     materials: candidate_0283fa4_complete_113_images_12_charts_source_bound_and_target_checksums_pass
-    integration: lws_ea98b2c_controller_admission_two_node_uid_http_pass_cleanup_driver_empty_list_failed
+    integration: lws_c52261d_two_node_uid_http_normal_finalization_smoke_and_true_noop_pass_llmi_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
     behaviorAcceptance: not_run
     noop: not_run
@@ -42,6 +42,10 @@ tasks:
   - 0283fa4 正式代码门禁、builtin 二进制和完整离线材料构建通过；113 镜像按批准 manifest/blob 校验，12 Chart 逐项绑定摘要，Kubeflow 23 文件及 41 wheel 源码批准校验通过。代码和材料共 12802400675 字节，20 节点接收端 SHA256SUMS 全部通过，剩余约 41 GiB。
   - 正式 plan ani-components-ani-kcn-full-20261010-110633 通过，只选择 lws，原成功安装材料锁不变；execute 首个 rc=1 保留，空 lws-system namespace 的 Secret list 返回空输出后触发 NoneType.get。未创建 LWS CRD、namespace、controller 或探针；前后原 440 个对象 UID、labels、payloadHash 完全相同。最小生产 renderer/driver 回归复现后修复，API 错误和外部退出码继续传播。
   - ea98b2c 正式代码门禁和 builtin 包通过；复用同一完整材料并核实摘要后，plan ani-components-ani-kcn-full-20261010-113538 通过。真实 execute 安装官方 controller/webhook，完成 node1/node2 leader/worker 调度、UID 归属链和精确 HTTP 内容断言；正常删除 LWS 后，空 Pod list 输出触发清理驱动 NoneType 下标错误，execute rc=1 与非可消费记录保留。生产 renderer/driver 的空集合回归同样失败；修复区分空集合与缺失单个对象，全部 LWS 定向测试通过。重新验证与本次归属残留 namespace 正常清理待执行；不把部分行为通过记录成完整 PASS。
+  - c52261d 正式代码门禁及 builtin 构建通过；source tree a848ca62bfc4e6f340f1b256188f2873e9e839eec3edf6fb6153022a53182754。新 plan/execute ani-components-ani-kcn-full-20261010-120909 从真实 Helm/Deployment 与 served manifest 观察 already_installed，消费记录 operation=noop、didInstall=false。正式 render 中的修复后 LWS driver 完成双节点实际 UID 链、精确 HTTP 内容、正常 finalization 清理；正式 smoke 通过。旧失败探针的空 namespace 仅在归属及无其他对象核实后正常删除；LWS Pod/Deployment/证书 UID 与内容摘要完全不变，原失败记录保持 fail。
+  - 长时保留对象对账中，原 440 对象的 UID/labels 保持；437 对象 payloadHash 相同，三份 CDI 证书由 managedFields 确认 cdi-operator 于 03:58:33/34 UTC 更新，早于 12:09 CST 的 c52261d noop。单列控制器证书续期，不宣称全部原对象长时字节不变；本次 LWS noop 前后受保护 LWS 资源及证书完全相同。
+  - LLMI 新组合 26.10-kubeflow-llm-v1 派生 LWS 与 cert-manager，旧 26.03 语义不变。官方 v0.17.0 两份 Chart 经实际 Helm/filter 渲染检查，共享 Standard 配置和 GIE 排除、外部 API 错误及 namespace 归属拒绝通过；验证输出的依赖来源先红后绿。114 镜像批准 store 已按 manifest/blob 闭包落地；完整新材料、正式候选和真实 admission/reconcile 仍待执行。
+  - Higress 2.2.4 的三份 amd64 控制器/网关镜像及四份 OCI Wasm 插件已在 Fedora 按固定 manifest 和全部 blob 摘要校验；Wasm 单列类型并检查内容层魔数。仅源材料通过，正式安装及实际模块加载/路由仍 not_verified。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
   dependsOn: []

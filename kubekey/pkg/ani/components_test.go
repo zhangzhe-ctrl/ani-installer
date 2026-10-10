@@ -100,6 +100,7 @@ func TestComponentsSelectionKeepsDocumentedOrder(t *testing.T) {
 		{"volcano", "false"},
 		{"harbor", "false"},
 		{"lws", "false"},
+		{"kserve", "false"},
 	}
 	if len(rows) != len(want) {
 		t.Fatalf("selection length = %d, want %d", len(rows), len(want))
@@ -400,7 +401,7 @@ func TestWriteComponentSelectionIsStrictlyFormatted(t *testing.T) {
 	}
 	want := "# config_sha256=abc123\n" +
 		"cert-manager\ttrue\npostgresql\tfalse\nvalkey\tfalse\nnats\tfalse\n" +
-		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\nlws\tfalse\n"
+		"metrics\tfalse\nloki\tfalse\nopensearch\tfalse\nfluent-bit\tfalse\nrustfs\tfalse\nmilvus\tfalse\nmetrics-server\tfalse\nsnapshot-controller\tfalse\nkubevirt\tfalse\nvolcano\tfalse\nharbor\tfalse\nlws\tfalse\nkserve\tfalse\n"
 	if string(data) != want {
 		t.Fatalf("selection file = %q, want %q", string(data), want)
 	}
@@ -580,8 +581,8 @@ components:
 		t.Fatalf("legacy site config must still validate: %v", err)
 	}
 	rows := c.Components.Selection()
-	if len(rows) != 16 {
-		t.Fatalf("selection rows = %d, want 16", len(rows))
+	if len(rows) != 17 {
+		t.Fatalf("selection rows = %d, want 17", len(rows))
 	}
 	for _, row := range rows[:4] {
 		if !row.Enabled {
@@ -1078,9 +1079,9 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatalf("read verify.sh: %v", err)
 	}
 	script := string(data)
-	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor lws)"
+	want := "EXPECTED_COMPONENTS=(cert-manager postgresql valkey nats metrics loki opensearch fluent-bit rustfs milvus metrics-server snapshot-controller kubevirt volcano harbor lws kserve)"
 	if !strings.Contains(script, want) {
-		t.Fatalf("verify.sh does not declare the fixed 16-row component list; want %q", want)
+		t.Fatalf("verify.sh does not declare the fixed 17-row component list; want %q", want)
 	}
 	if !strings.Contains(script, `tail -n +2 "$SELECTION_FILE"`) {
 		t.Fatal("verify.sh must skip the config_sha256 header row when reading the selection")
@@ -1089,8 +1090,8 @@ func TestVerifyScriptExpectsEveryComponentRow(t *testing.T) {
 		t.Fatal("verify.sh must fail when the selection row count is wrong")
 	}
 	// The row list must match componentsOrder exactly.
-	if len(componentsOrder) != 16 {
-		t.Fatalf("componentsOrder has %d rows, want 16", len(componentsOrder))
+	if len(componentsOrder) != 17 {
+		t.Fatalf("componentsOrder has %d rows, want 17", len(componentsOrder))
 	}
 	for _, name := range componentsOrder {
 		if !strings.Contains(script, name) {

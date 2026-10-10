@@ -11,6 +11,7 @@ import (
 )
 
 const KubeflowRelease = "26.03-kubeflow-stage2-v1"
+const KubeflowLLMRelease = "26.10-kubeflow-llm-v1"
 
 func kubeflowImageKeys() []ImageKey {
 	return []ImageKey{
@@ -85,6 +86,10 @@ func (c ClusterConfig) KubeflowEnabled() bool {
 	return c.Kubeflow != nil && c.Kubeflow.Enabled
 }
 
+func (c ClusterConfig) KServeLLMEnabled() bool {
+	return c.KubeflowEnabled() && c.Kubeflow.Release == KubeflowLLMRelease
+}
+
 var kubeflowDNSName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 func validateKubeflow(c ClusterConfig) error {
@@ -95,8 +100,8 @@ func validateKubeflow(c ClusterConfig) error {
 	if installProfile(c.Profile) != "full" {
 		return fmt.Errorf("kubeflow.enabled requires profile=full; Kubeflow is a first-install selection")
 	}
-	if k.Release != KubeflowRelease {
-		return fmt.Errorf("kubeflow.release must be %q, got %q", KubeflowRelease, k.Release)
+	if k.Release != KubeflowRelease && k.Release != KubeflowLLMRelease {
+		return fmt.Errorf("kubeflow.release must be %q or %q, got %q", KubeflowRelease, KubeflowLLMRelease, k.Release)
 	}
 	if !c.Storage.Enabled {
 		return fmt.Errorf("kubeflow.enabled requires persistent storage")
@@ -181,6 +186,9 @@ func kubeflowSpec(c ClusterConfig) map[string]any {
 		spec["network_policy_contract"] = k.NetworkPolicy
 	}
 	spec["release"] = k.Release
+	// The new combination adds its own role; existing Standard/KFP assets
+	// retain their approved base identity and their original semantics.
+	spec["base_release"] = KubeflowRelease
 	spec["entry_address"] = k.EntryAddress
 	spec["http_port"] = k.HTTPPort
 	spec["grpc_port"] = k.GRPCPort

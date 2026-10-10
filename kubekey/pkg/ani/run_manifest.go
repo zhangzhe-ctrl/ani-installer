@@ -93,14 +93,15 @@ type RunManifest struct {
 	Result     string           `json:"result,omitempty"`
 	Identity   ManifestIdentity `json:"identity,omitempty"`
 
-	Installer        ManifestInstaller      `json:"installer"`
-	Nodes            []ManifestNode         `json:"nodes"`
-	Components       []string               `json:"components"`
-	StorageClass     string                 `json:"storageClass"`
-	Storage          ManifestStorage        `json:"storage"`
-	ObjectStorage    *ManifestObjectStorage `json:"objectStorage,omitempty"`
-	Kubeflow         *KubeflowConfig        `json:"kubeflow,omitempty"`
-	ComponentClasses map[string]string      `json:"componentStorageClasses,omitempty"`
+	Installer         ManifestInstaller      `json:"installer"`
+	Nodes             []ManifestNode         `json:"nodes"`
+	Components        []string               `json:"components"`
+	DependencySources map[string][]string    `json:"dependencySources,omitempty"`
+	StorageClass      string                 `json:"storageClass"`
+	Storage           ManifestStorage        `json:"storage"`
+	ObjectStorage     *ManifestObjectStorage `json:"objectStorage,omitempty"`
+	Kubeflow          *KubeflowConfig        `json:"kubeflow,omitempty"`
+	ComponentClasses  map[string]string      `json:"componentStorageClasses,omitempty"`
 
 	// PackageRoot is recorded so a later step can find the artifact, but this
 	// build only validates the configuration: materials are R07's job.
@@ -229,6 +230,12 @@ func BuildRunManifest(c ClusterConfig) (RunManifest, error) {
 		manifest.Components = append(manifest.Components, row.Name)
 		if component := c.EffectiveComponents().storage(row.Name); component != nil {
 			classes[row.Name] = strings.TrimSpace(component.StorageClass)
+		}
+	}
+	if c.KServeLLMEnabled() {
+		manifest.DependencySources = map[string][]string{
+			"kserve": {"kubeflow.release=" + KubeflowLLMRelease},
+			"lws":    {"kserve"}, "cert-manager": {"kubeflow", "kserve"},
 		}
 	}
 	if len(classes) > 0 {
@@ -404,6 +411,13 @@ func RunValidate(_ context.Context, input ValidateInput, stdout io.Writer) error
 	fmt.Fprintf(out, "config digest: %s\n", manifest.ConfigDigest)
 	if len(manifest.Components) > 0 {
 		fmt.Fprintf(out, "enabled components: %s\n", strings.Join(manifest.Components, ","))
+	}
+	if len(manifest.DependencySources) > 0 {
+		data, err := json.Marshal(manifest.DependencySources)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "dependency sources: %s\n", data)
 	}
 	if manifest.StorageClass != "" {
 		fmt.Fprintf(out, "storage class: %s\n", manifest.StorageClass)

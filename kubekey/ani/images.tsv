@@ -1,4 +1,5 @@
 original_ref	hauler_ref	actual_digest	use_location
+docker.io/kserve/llmisvc-controller:v0.17.0	127.0.0.1:5000/kserve/llmisvc-controller:v0.17.0	sha256:30795379cceea64653daba008fee9b054bb889523000b53586cd3bdc48608b79	Official LLMI controller, admission/conversion webhook and workload TLS certificate reuse fix
 registry.k8s.io/lws/lws:v0.10.0	127.0.0.1:5000/lws/lws:v0.10.0	sha256:1008a2a66ef8cacc22e5ec1393eb267d7d131dcfd936e5fe7c5969339d5d05c8	Official LWS controller and internal webhook certificate manager
 docker.io/library/haproxy:2.9.6-alpine	127.0.0.1:5000/library/haproxy:2.9.6-alpine	sha256:e563b715517db98465f12b3d8b756ef9b1e438825481351049f6f5e7796175a5	KubeKey artifact; unused because control_plane_endpoint.type=local
 docker.io/plndr/kube-vip:v0.7.2	127.0.0.1:5000/plndr/kube-vip:v0.7.2	sha256:9d12df52ee3d95d4bc28fe19fcddb970f10705ac59566070d8dc142f593c4277	KubeKey artifact; unused because control_plane_endpoint.type=local
