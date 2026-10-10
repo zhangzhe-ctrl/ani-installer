@@ -79,15 +79,33 @@ else:
     for wheel in workspace["wheels"]:
         if pathlib.Path(wheel["file"]).name != wheel["file"] or hashlib.sha256((workspace_wheels / wheel["file"]).read_bytes()).hexdigest() != wheel["sha256"]:
             raise ValueError("Notebook wheel bytes differ from source approval")
-    tool = yaml.safe_load((root / "ani/components.lock.yaml").read_text())["tools"]["ani-kfp-grpc-check"]
+    components_lock = yaml.safe_load((root / "ani/components.lock.yaml").read_text())
+    tool = components_lock["tools"]["ani-kfp-grpc-check"]
     if not grpc_source or hashlib.sha256(grpc_source.read_bytes()).hexdigest() != tool["sourceTarballSha256"]:
         raise ValueError("gRPC client source archive differs from the reviewed material lock")
     if args.verify_output:
         destination = args.verify_output
         if destination.name != RELEASE or destination.parent.name != "kubeflow" or destination.parent.parent.name != "manifests":
             raise ValueError("only the fixed Kubeflow material release directory is allowed")
-        if {p.name for p in destination.parent.parent.iterdir()} != {"kubeflow"} or {p.name for p in destination.parent.iterdir()} != {RELEASE}:
+        manifests = destination.parent.parent
+        allowed = {"kubeflow"} | ({"higress"} if "batchHigress" in components_lock else set())
+        if {p.name for p in manifests.iterdir()} != allowed or {p.name for p in destination.parent.iterdir()} != {RELEASE}:
             raise ValueError("unknown manifest material directory")
+        if "higress" in allowed:
+            approved_higress = (root / "pkg/ani/higress-assets.lock.json").read_bytes()
+            higress = json.loads(approved_higress)
+            if higress["schema"] != "ani.higress.assets.v1" or higress["version"] != "2.2.4":
+                raise ValueError("unknown Higress source approval")
+            directory = manifests / "higress" / higress["version"]
+            if {p.name for p in directory.parent.iterdir()} != {higress["version"]}:
+                raise ValueError("unknown Higress release material")
+            if {p.name for p in directory.iterdir()} != set(higress["files"]) | {"assets.lock.json"}:
+                raise ValueError("unknown or missing Higress release material")
+            if (directory / "assets.lock.json").read_bytes() != approved_higress:
+                raise ValueError("Higress material approval differs from source approval")
+            for name, digest in higress["files"].items():
+                if pathlib.Path(name).name != name or hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
+                    raise ValueError("Higress material differs from source-approved bytes: " + name)
         expected = set(FILES) | {"assets.lock.json", "grpc-source.tar", "wheels", "workspace-wheels"}
         if {p.name for p in destination.iterdir()} != expected:
             raise ValueError("unknown or missing release material")
