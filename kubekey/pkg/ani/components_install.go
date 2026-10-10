@@ -58,14 +58,15 @@ const componentsKubeVersion = "v1.35.8"
 // manifest) and what it requires. It is data, so a component cannot invent
 // mutation scope at plan time.
 type componentInstallSpec struct {
-	Namespace    string
-	Release      string // helm release name; empty = rendered manifest, no helm
-	Chart        string // expected chart name for helm components
-	ChartVersion string // expected chart version for helm components
-	WorkloadKind string // primary workload for manifest components
-	WorkloadName string
-	NeedsStorage bool
-	InternalDeps []string // fixed technical prerequisites; provider-specific deps are resolved below
+	Namespace         string
+	Release           string // helm release name; empty = rendered manifest, no helm
+	Chart             string // expected chart name for helm components
+	ChartVersion      string // expected chart version for helm components
+	PrerequisiteChart string // same-version API chart installed before the primary release
+	WorkloadKind      string // primary workload for manifest components
+	WorkloadName      string
+	NeedsStorage      bool
+	InternalDeps      []string // fixed technical prerequisites; provider-specific deps are resolved below
 }
 
 // componentsDeferred lists the IDs later batches will add; --only rejects
@@ -79,7 +80,7 @@ var componentsDeferred = []string{
 // componentsOrder. Unknown IDs and later batches are rejected by the plan.
 var componentInstallSpecs = map[string]componentInstallSpec{
 	"lws":                 {Namespace: "lws-system", Release: "ani-lws", Chart: "lws", ChartVersion: LWSChartVersion, WorkloadKind: "Deployment", WorkloadName: "lws-controller-manager"},
-	"kserve":              {Namespace: "kserve", Release: "ani-kserve-llmi", Chart: "kserve-llmisvc-resources", ChartVersion: KServeLLMVersion, WorkloadKind: "Deployment", WorkloadName: "llmisvc-controller-manager", InternalDeps: []string{"cert-manager", "lws"}},
+	"kserve":              {Namespace: "kserve", Release: "ani-kserve-llmi", Chart: "kserve-llmisvc-resources", ChartVersion: KServeLLMVersion, PrerequisiteChart: "kserve-llmisvc-crd", WorkloadKind: "Deployment", WorkloadName: "llmisvc-controller-manager", InternalDeps: []string{"cert-manager", "lws"}},
 	"cert-manager":        {Namespace: "cert-manager", Release: "cert-manager", Chart: "cert-manager", ChartVersion: "v1.21.2", WorkloadKind: "Deployment", WorkloadName: "cert-manager"},
 	"postgresql":          {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "postgresql", NeedsStorage: true},
 	"valkey":              {Namespace: "ani-platform", WorkloadKind: "StatefulSet", WorkloadName: "valkey", NeedsStorage: true},
@@ -980,6 +981,9 @@ func preflightComponentOwnership(ctx context.Context, runner kubectlRunner, clus
 		charts := 0
 		if spec.Chart != "" {
 			charts = 1
+		}
+		if spec.PrerequisiteChart != "" {
+			charts++
 		}
 		result.Charts = charts
 		results = append(results, result)

@@ -48,30 +48,35 @@ func TestChartSpecsMatchTheApprovedLockAndTheChartBytes(t *testing.T) {
 		if spec.Chart == "" {
 			continue
 		}
-		chart, err := chartFor(lock, spec.Chart, spec.ChartVersion)
-		if err != nil {
-			t.Fatalf("component %q declares chart %s %s, which the approved lock does not carry: %v",
-				role, spec.Chart, spec.ChartVersion, err)
-		}
-		if other, taken := claimedBy[chart.Name+"/"+chart.ChartVersion]; taken {
-			t.Fatalf("components %q and %q both claim approved chart %s %s; one approved chart is one component",
-				other, role, chart.Name, chart.ChartVersion)
-		}
-		claimedBy[chart.Name+"/"+chart.ChartVersion] = role
+		for _, chartName := range []string{spec.Chart, spec.PrerequisiteChart} {
+			if chartName == "" {
+				continue
+			}
+			chart, err := chartFor(lock, chartName, spec.ChartVersion)
+			if err != nil {
+				t.Fatalf("component %q declares chart %s %s, which the approved lock does not carry: %v",
+					role, spec.Chart, spec.ChartVersion, err)
+			}
+			if other, taken := claimedBy[chart.Name+"/"+chart.ChartVersion]; taken {
+				t.Fatalf("components %q and %q both claim approved chart %s %s; one approved chart is one component",
+					other, role, chart.Name, chart.ChartVersion)
+			}
+			claimedBy[chart.Name+"/"+chart.ChartVersion] = role
 
-		archive := filepath.Join(root, "charts", chart.Name, chart.Name+"-"+chart.ChartVersion+".tgz")
-		if _, statErr := os.Stat(archive); statErr != nil {
-			// Packaging renames this source into the lock's artifact path; the
-			// development tree keeps the upstream name.
-			archive = filepath.Join(root, chart.ArtifactPath)
-		}
-		name, version, err := readChartIdentity(archive)
-		if err != nil {
-			t.Fatalf("component %q: read the chart's own identity from %s: %v", role, archive, err)
-		}
-		if name != chart.Name || version != chart.ChartVersion {
-			t.Fatalf("component %q: approved chart %s %s is packaged at %s, which declares itself %s %s",
-				role, chart.Name, chart.ChartVersion, chart.ArtifactPath, name, version)
+			archive := filepath.Join(root, "charts", chart.Name, chart.Name+"-"+chart.ChartVersion+".tgz")
+			if _, statErr := os.Stat(archive); statErr != nil {
+				// Packaging renames this source into the lock's artifact path; the
+				// development tree keeps the upstream name.
+				archive = filepath.Join(root, chart.ArtifactPath)
+			}
+			name, version, err := readChartIdentity(archive)
+			if err != nil {
+				t.Fatalf("component %q: read the chart's own identity from %s: %v", role, archive, err)
+			}
+			if name != chart.Name || version != chart.ChartVersion {
+				t.Fatalf("component %q: approved chart %s %s is packaged at %s, which declares itself %s %s",
+					role, chart.Name, chart.ChartVersion, chart.ArtifactPath, name, version)
+			}
 		}
 	}
 	for _, chart := range lock.Charts {

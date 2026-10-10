@@ -18,7 +18,7 @@ tasks:
   stages:
     baseline: fetched_origin_release_da483941_clean_isolated_codex_worktree
     liveInventory: retained_20_22_strict_lab_hostkeys_uid_3de961b2_readonly_verified
-    code: candidate_c52261d_formal_code_gate_builtin_build_pass_llmi_related_tests_pass_next_candidate_pending
+    code: candidate_c52261d_formal_pass_b2faa2e_llmi_formal_gate_failed_three_contract_guards_targeted_fix_pass_new_candidate_pending
     materials: candidate_0283fa4_complete_113_images_12_charts_source_bound_and_target_checksums_pass
     integration: lws_c52261d_two_node_uid_http_normal_finalization_smoke_and_true_noop_pass_llmi_higress_not_verified
     cleanOffline: not_run_gate_requires_all_retained_behavior_pass
@@ -45,6 +45,7 @@ tasks:
   - c52261d 正式代码门禁及 builtin 构建通过；source tree a848ca62bfc4e6f340f1b256188f2873e9e839eec3edf6fb6153022a53182754。新 plan/execute ani-components-ani-kcn-full-20261010-120909 从真实 Helm/Deployment 与 served manifest 观察 already_installed，消费记录 operation=noop、didInstall=false。正式 render 中的修复后 LWS driver 完成双节点实际 UID 链、精确 HTTP 内容、正常 finalization 清理；正式 smoke 通过。旧失败探针的空 namespace 仅在归属及无其他对象核实后正常删除；LWS Pod/Deployment/证书 UID 与内容摘要完全不变，原失败记录保持 fail。
   - 长时保留对象对账中，原 440 对象的 UID/labels 保持；437 对象 payloadHash 相同，三份 CDI 证书由 managedFields 确认 cdi-operator 于 03:58:33/34 UTC 更新，早于 12:09 CST 的 c52261d noop。单列控制器证书续期，不宣称全部原对象长时字节不变；本次 LWS noop 前后受保护 LWS 资源及证书完全相同。
   - LLMI 新组合 26.10-kubeflow-llm-v1 派生 LWS 与 cert-manager，旧 26.03 语义不变。官方 v0.17.0 两份 Chart 经实际 Helm/filter 渲染检查，共享 Standard 配置和 GIE 排除、外部 API 错误及 namespace 归属拒绝通过；验证输出的依赖来源先红后绿。114 镜像批准 store 已按 manifest/blob 闭包落地；完整新材料、正式候选和真实 admission/reconcile 仍待执行。
+  - b2faa2e 正式代码门禁 rc=1 保留，未制材料或执行集群操作；三项合同守卫揭示 role YAML 未显式等待记录绑定 workload、verify 循环旧 16 行夹具和一组件仅一 Chart 的旧材料假设。修复增加正式 Deployment 等待与 CRD prerequisite Chart 登记并在 plan 计入两份 Chart，更新选择表及逐材料守卫。最小三项回归先红后绿，LLMI/组件 plan/execute 相关测试通过；新同源正式构建仍待执行。
   - Higress 2.2.4 的三份 amd64 控制器/网关镜像及四份 OCI Wasm 插件已在 Fedora 按固定 manifest 和全部 blob 摘要校验；Wasm 单列类型并检查内容层魔数。仅源材料通过，正式安装及实际模块加载/路由仍 not_verified。
 - id: KCN-FULL-20261009
   title: KCN OpenSearch 全部非 ANI 组件与完整 Kubeflow 统一干净首装
