@@ -257,7 +257,9 @@ def verify_stopped(args, record, pipeline, core, custom, observed):
     if len(workflows) != 1 or workflows[0]["spec"].get("activeDeadlineSeconds") != 0 or workflows[0].get("status", {}).get("phase") != "Failed":
         raise RuntimeError("fixed KFP terminate operation did not terminate the actual Workflow")
     history = pipeline._run_api.api_client.sanitize_for_serialization(observed.state_history)
-    states = [row["state"] for row in history or []]
+    # The actual KFP response can omit state on an intermediate history row.
+    # Preserve that row unchanged; it cannot prove RUNNING or the final state.
+    states = [row.get("state") for row in history or []]
     # KFP e4ebca3 terminates by activeDeadlineSeconds=0. Its IsTerminating
     # predicate excludes final Workflows, so persistence reports final Failed.
     # Persistence samples Workflow state asynchronously. A Workflow may reach

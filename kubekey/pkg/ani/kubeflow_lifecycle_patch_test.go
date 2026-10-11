@@ -35,3 +35,14 @@ func TestKubeflowLifecyclePatchPreflightConcurrency(t *testing.T) {
 		t.Fatalf("native lifecycle feedback changed the approved source tree: before=%s after=%s", before, after)
 	}
 }
+
+func TestKubeflowStoppedRunSparseHistory(t *testing.T) {
+	probe, err := filepath.Abs(filepath.Join("..", "..", "ani", "kubeflow", "probes", "run.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("python3", "-I", "-B", filepath.Join("testdata", "kubeflow_stop_history_feedback.py"), probe)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("native stop history feedback: %v\n%s", err, output)
+	}
+}
