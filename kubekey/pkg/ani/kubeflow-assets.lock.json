@@ -24,7 +24,7 @@
     "kernel-probe.py": "0913c4e3e512ccc61c0834c36366803d5244e0bbe48d90ff60dc07cd5c391178",
     "model.py": "655f0edce6514b7cb963a1ce51e8eda5dd57399bbd987a76c5681f50c773fc3b",
     "stage2-probe-main.py": "b3a7102d666c081c6556d391a46ca130d85c7b12f476951db7f98ca7066db300",
-    "stage2-probe-contracts.py": "81e6e5adf3681f0b8f4de42fb9bf898402549f5e852deee579433c3006240d6d",
+    "stage2-probe-contracts.py": "1e20ff15a58d4d3053842d6468e9748a2ba1642b80a3f0806267a0491a140fd1",
     "stage2-probe-protection.py": "3195d3421e2a8f420947a294ceeda5db4f8a98a792cb5700688c0067d728473d"
   }
 }

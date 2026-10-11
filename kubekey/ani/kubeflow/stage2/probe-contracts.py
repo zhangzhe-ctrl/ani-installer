@@ -23,26 +23,44 @@ import stage2
 def patch_owned(cluster, value, operations):
     live = cluster.owned(value)
 
+    def guarded_metadata(current):
+        return {key: item for key, item in current["metadata"].items()
+                if key not in ("resourceVersion", "managedFields")}
+
     def arguments(current):
+        guard = "/metadata/_ani_lifecycle_guard"
+        if "_ani_lifecycle_guard" in current["metadata"]:
+            raise ValueError("reserved lifecycle guard already exists")
+        # Compare the mutation target inside the server's atomic JSON patch.
+        # The temporary copy is removed before admission/persistence. Only
+        # controller-owned version/bookkeeping fields are excluded, so absent
+        # annotation/ownership fields remain protected against concurrent adds.
         patch = [{"op": "test", "path": "/metadata/uid", "value": current["metadata"]["uid"]},
-                 {"op": "test", "path": "/metadata/resourceVersion", "value": current["metadata"]["resourceVersion"]}, *operations]
+                 {"op": "copy", "from": "/metadata", "path": guard},
+                 {"op": "add", "path": guard + "/resourceVersion", "value": None},
+                 {"op": "remove", "path": guard + "/resourceVersion"},
+                 {"op": "add", "path": guard + "/managedFields", "value": None},
+                 {"op": "remove", "path": guard + "/managedFields"},
+                 {"op": "test", "path": guard, "value": guarded_metadata(current)},
+                 {"op": "remove", "path": guard},
+                 {"op": "test", "path": "/spec", "value": current["spec"]}, *operations]
         return ["patch", value["kind"], value["metadata"]["name"], "-n", value["metadata"]["namespace"],
                 "--type=json", "--patch", json.dumps(patch), "-o", "json"]
 
     cluster.call(arguments(live) + ["--dry-run=server"])
-    # Controller status updates can advance the version during preflight.
-    # Re-read ownership and the mutation target before binding the real CAS.
+    # Re-read ownership/intent after preflight. The server-side target guards
+    # also reject edits between this final read and the actual submission.
     current = cluster.owned(value)
     if not current or current["metadata"]["uid"] != live["metadata"]["uid"]:
         raise ValueError("patch preflight identity differs")
-    protected_metadata = ("labels", "annotations", "ownerReferences", "finalizers")
     if (current.get("spec") != live.get("spec")
-            or any(current["metadata"].get(key) != live["metadata"].get(key) for key in protected_metadata)):
+            or guarded_metadata(current) != guarded_metadata(live)):
         raise ValueError("patch target changed during preflight")
     args = arguments(current)
     receipt = {"identity": identity(value), "uid": current["metadata"]["uid"], "action": "patch", "result": "UNKNOWN",
                "preflightResourceVersion": live["metadata"]["resourceVersion"],
-               "resourceVersion": current["metadata"]["resourceVersion"]}
+               "resourceVersion": current["metadata"]["resourceVersion"],
+               "atomicGuard": "uid-spec-and-metadata-excluding-controller-bookkeeping"}
     cluster.writes.append(receipt); atomic(cluster.directory / "writes.json", cluster.writes)
     result = json.loads(cluster.call(args))
     if result["metadata"]["uid"] != live["metadata"]["uid"]:
