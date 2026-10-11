@@ -22,12 +22,27 @@ import stage2
 
 def patch_owned(cluster, value, operations):
     live = cluster.owned(value)
-    patch = [{"op": "test", "path": "/metadata/uid", "value": live["metadata"]["uid"]},
-             {"op": "test", "path": "/metadata/resourceVersion", "value": live["metadata"]["resourceVersion"]}, *operations]
-    args = ["patch", value["kind"], value["metadata"]["name"], "-n", value["metadata"]["namespace"],
-            "--type=json", "--patch", json.dumps(patch), "-o", "json"]
-    cluster.call(args + ["--dry-run=server"])
-    receipt = {"identity": identity(value), "uid": live["metadata"]["uid"], "action": "patch", "result": "UNKNOWN"}
+
+    def arguments(current):
+        patch = [{"op": "test", "path": "/metadata/uid", "value": current["metadata"]["uid"]},
+                 {"op": "test", "path": "/metadata/resourceVersion", "value": current["metadata"]["resourceVersion"]}, *operations]
+        return ["patch", value["kind"], value["metadata"]["name"], "-n", value["metadata"]["namespace"],
+                "--type=json", "--patch", json.dumps(patch), "-o", "json"]
+
+    cluster.call(arguments(live) + ["--dry-run=server"])
+    # Controller status updates can advance the version during preflight.
+    # Re-read ownership and the mutation target before binding the real CAS.
+    current = cluster.owned(value)
+    if not current or current["metadata"]["uid"] != live["metadata"]["uid"]:
+        raise ValueError("patch preflight identity differs")
+    protected_metadata = ("labels", "annotations", "ownerReferences", "finalizers")
+    if (current.get("spec") != live.get("spec")
+            or any(current["metadata"].get(key) != live["metadata"].get(key) for key in protected_metadata)):
+        raise ValueError("patch target changed during preflight")
+    args = arguments(current)
+    receipt = {"identity": identity(value), "uid": current["metadata"]["uid"], "action": "patch", "result": "UNKNOWN",
+               "preflightResourceVersion": live["metadata"]["resourceVersion"],
+               "resourceVersion": current["metadata"]["resourceVersion"]}
     cluster.writes.append(receipt); atomic(cluster.directory / "writes.json", cluster.writes)
     result = json.loads(cluster.call(args))
     if result["metadata"]["uid"] != live["metadata"]["uid"]:
