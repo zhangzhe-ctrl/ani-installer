@@ -308,6 +308,44 @@ k5_pod_ready() { # k5_pod_ready <selector> <timeout> — bounded wait until one 
   done
   return 1
 }
+opensearch_client_overrides() {
+  # Project only query inputs; the server's TLS private key is never mounted.
+  python3 - "$CLIENT_POD" "$TOOL_IMAGE" <<'PY'
+import json, sys
+volumes, mounts = [], []
+for name, secret, keys in (
+    ("ca", "ani-opensearch-node-tls", ["ca.crt"]),
+    ("collector", "ani-opensearch-fluent-bit", ["username", "password"]),
+    ("admin", "ani-opensearch-admin", ["username", "password"]),
+):
+    volumes.append({"name": name, "secret": {
+        "secretName": secret, "defaultMode": 0o400,
+        "items": [{"key": key, "path": key} for key in keys],
+    }})
+    mounts.append({"name": name, "mountPath": "/run/ani-log-query/" + name, "readOnly": True})
+print(json.dumps({"spec": {
+    "automountServiceAccountToken": False,
+    "volumes": volumes,
+    "containers": [{"name": sys.argv[1], "image": sys.argv[2],
+        "command": ["python3", "-c", "import time; time.sleep(3600)"],
+        "volumeMounts": mounts}],
+}}))
+PY
+}
+
+validate_opensearch_client_inputs() {
+  kubectl -n "$NS" exec "$CLIENT_POD" -- python3 -c '
+import pathlib, ssl
+root = pathlib.Path("/run/ani-log-query")
+ssl.create_default_context(cafile=str(root / "ca/ca.crt"))
+for identity in ("collector", "admin"):
+    for key in ("username", "password"):
+        if not (root / identity / key).read_text().strip():
+            raise ValueError("empty OpenSearch query credential field")
+print("OpenSearch query inputs verified")
+'
+}
+
 # R02 test seam: ANI_VERIFY_LIB_ONLY=1 defines the helpers above and returns, so
 # the offline behaviour tests can call the real functions with a fake kubectl.
 # Production runs never set it and take exactly the same path as before.
@@ -353,10 +391,13 @@ start_client() {
   if [ -n "$($KC get pod "$CLIENT_POD" -o jsonpath='{.metadata.uid}' 2>/dev/null || true)" ]; then
     fail "pod $CLIENT_POD already exists; this attempt cannot claim a probe it did not create"
   fi
-  local created_uid rc=0
+  local created_uid rc=0 overrides=()
+  if [ "$BACKEND" = opensearch ]; then
+    overrides=(--override-type=merge --overrides "$(opensearch_client_overrides)")
+  fi
   install -d -m 0700 "$EVIDENCE/create" 2>/dev/null || true
   created_uid="$($KC run "$CLIENT_POD" --image="$TOOL_IMAGE" --restart=Never \
-      --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' \
+      --labels "$ATTEMPT_LABEL" --output jsonpath='{.metadata.uid}' "${overrides[@]}" \
       --command -- python3 -c 'import time; time.sleep(3600)' 2>"$EVIDENCE/create/$CLIENT_POD.stderr")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     # Nothing was adopted: a failed create leaves this run owning no object, and
@@ -453,6 +494,9 @@ grep -q '/var/lib/ani-installer/fluent-bit' "$EVIDENCE/volumes.txt" \
 
 note "== [2] markers written to stdout are found in $BACKEND through collection =="
 start_client
+if [ "$BACKEND" = opensearch ]; then
+  validate_opensearch_client_inputs
+fi
 
 # One marker pod per node. Each writes a unique marker and then idles, so the
 # record has time to be collected.
@@ -529,24 +573,8 @@ case "$BACKEND" in
     RETENTION_DAYS="{{ .ani.components.logging.retention_days }}" ;;
 esac
 
-# The secured backend needs the cluster's CA and a credential for every query.
-# Both are copied into the client pod from the Secrets the OpenSearch role
-# created, through the API, so neither is ever a file on the installer's disk
-# and neither appears in a command line.
-if [ "$BACKEND" = opensearch ]; then
-  $KC get secret ani-opensearch-node-tls -o jsonpath='{.data.ca\.crt}' \
-    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/ca.crt'
-  $KC get secret ani-opensearch-fluent-bit -o jsonpath='{.data.username}' \
-    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/os_user'
-  $KC get secret ani-opensearch-fluent-bit -o jsonpath='{.data.password}' \
-    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/os_pass'
-  # A36b: the ISM policy API is admin-only, so the client pod also carries the
-  # administrator credential for the retention-policy read.
-  $KC get secret ani-opensearch-admin -o jsonpath='{.data.username}' \
-    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/admin_user'
-  $KC get secret ani-opensearch-admin -o jsonpath='{.data.password}' \
-    | base64 -d | kubectl -n "$NS" exec -i "$CLIENT_POD" -- sh -c 'cat > /tmp/admin_pass'
-fi
+# Query inputs are read-only Secret projections validated before marker creation.
+# No CA or credential bytes pass through kubectl exec stdin or host files.
 
 cat > "$EVIDENCE/await_markers.py" <<'PY'
 # Poll the backend until every marker is visible, or give up after the timeout.
@@ -583,9 +611,9 @@ def loki_series():
 # one. The CA is the one the OpenSearch role issued, and the credential is the
 # collector's own.
 def os_context():
-    ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
-    user = open("/tmp/os_user").read().strip()
-    password = open("/tmp/os_pass").read().strip()
+    ctx = ssl.create_default_context(cafile="/run/ani-log-query/ca/ca.crt")
+    user = open("/run/ani-log-query/collector/username").read().strip()
+    password = open("/run/ani-log-query/collector/password").read().strip()
     token = base64.b64encode(f"{user}:{password}".encode()).decode()
     return ctx, {"Authorization": "Basic " + token}
 
@@ -932,9 +960,9 @@ while time.time() < deadline:
             with urllib.request.urlopen(url, timeout=20) as r:
                 res = json.load(r).get("data", {}).get("result", []) or []
         else:
-            ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
-            user = open("/tmp/os_user").read().strip()
-            password = open("/tmp/os_pass").read().strip()
+            ctx = ssl.create_default_context(cafile="/run/ani-log-query/ca/ca.crt")
+            user = open("/run/ani-log-query/collector/username").read().strip()
+            password = open("/run/ani-log-query/collector/password").read().strip()
             token = base64.b64encode(f"{user}:{password}".encode()).decode()
             body = json.dumps({"size": 50,
                                "query": {"query_string": {"query": f'"{marker}"'}}}).encode()
@@ -1106,11 +1134,11 @@ PY
     cat > "$EVIDENCE/retention.py" <<'PY'
 import base64, json, ssl, sys, urllib.request
 host = sys.argv[1]
-ctx = ssl.create_default_context(cafile="/tmp/ca.crt")
+ctx = ssl.create_default_context(cafile="/run/ani-log-query/ca/ca.crt")
 # A36b: the ISM policy API is admin-only (the collector identity gets 403),
 # so this read uses the administrator credential.
-user = open("/tmp/admin_user").read().strip()
-password = open("/tmp/admin_pass").read().strip()
+user = open("/run/ani-log-query/admin/username").read().strip()
+password = open("/run/ani-log-query/admin/password").read().strip()
 token = base64.b64encode(f"{user}:{password}".encode()).decode()
 req = urllib.request.Request(f"https://{host}/_plugins/_ism/policies/ani-logs-retention")
 req.add_header("Authorization", "Basic " + token)
