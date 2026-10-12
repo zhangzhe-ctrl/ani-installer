@@ -1,0 +1,710 @@
+{
+  "schema": "ani.platform.environment-handoff.v1",
+  "status": "ENV_READY",
+  "createdAt": "2026-10-12T02:38:16.604596+00:00",
+  "sourceCommit": "c006ccd885a379868c11753bad763d81de72d340",
+  "combinationRelease": "26.10-kubeflow-llm-v1",
+  "clusterUID": "a6664f90-111d-4263-a912-dda4c1d5bcad",
+  "runId": "ani-ani-kcn-full-20261012-003201",
+  "scope": [
+    "172.16.101.20",
+    "172.16.101.21",
+    "172.16.101.22"
+  ],
+  "kubeconfigReference": {
+    "host": "172.16.101.20",
+    "path": "/etc/kubernetes/admin.conf"
+  },
+  "installedComponents": [
+    "cert-manager",
+    "postgresql",
+    "valkey",
+    "nats",
+    "metrics",
+    "opensearch",
+    "fluent-bit",
+    "rustfs",
+    "milvus",
+    "metrics-server",
+    "snapshot-controller",
+    "kubevirt",
+    "volcano",
+    "harbor",
+    "lws",
+    "kserve",
+    "higress",
+    "kubeflow"
+  ],
+  "versions": {
+    "kubernetes": "v1.35.8",
+    "lws": "v0.10.0",
+    "kserveLLMI": "v0.17.0",
+    "higress": "2.2.4"
+  },
+  "actualAPI": {
+    "leaderworkersets.leaderworkerset.x-k8s.io": {
+      "group": "leaderworkerset.x-k8s.io",
+      "servedVersions": [
+        "v1"
+      ],
+      "storageVersion": "v1"
+    },
+    "llminferenceservices.serving.kserve.io": {
+      "group": "serving.kserve.io",
+      "servedVersions": [
+        "v1alpha1",
+        "v1alpha2"
+      ],
+      "storageVersion": "v1alpha2"
+    },
+    "inferenceservices.serving.kserve.io": {
+      "group": "serving.kserve.io",
+      "servedVersions": [
+        "v1beta1"
+      ],
+      "storageVersion": "v1beta1"
+    }
+  },
+  "gateway": {
+    "namespace": "higress-system",
+    "name": "ani-higress",
+    "uid": "a666dbbc-a439-4884-8126-bd58b7d6b8b4",
+    "gatewayClassName": "higress",
+    "listeners": [
+      {
+        "allowedRoutes": {
+          "namespaces": {
+            "from": "Selector",
+            "selector": {
+              "matchExpressions": [
+                {
+                  "key": "kubernetes.io/metadata.name",
+                  "operator": "In",
+                  "values": [
+                    "ani-system",
+                    "ani-higress-probe-a520751e8a"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "name": "http",
+        "port": 80,
+        "protocol": "HTTP"
+      }
+    ],
+    "status": {
+      "addresses": [
+        {
+          "type": "Hostname",
+          "value": "higress-gateway.higress-system.svc.cluster.local"
+        }
+      ],
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-10-12T01:33:29Z",
+          "message": "Resource accepted",
+          "observedGeneration": 1,
+          "reason": "Accepted",
+          "status": "True",
+          "type": "Accepted"
+        },
+        {
+          "lastTransitionTime": "2026-10-12T01:33:29Z",
+          "message": "Resource programmed, assigned to service(s) higress-gateway.higress-system.svc.cluster.local:80",
+          "observedGeneration": 1,
+          "reason": "Programmed",
+          "status": "True",
+          "type": "Programmed"
+        }
+      ],
+      "listeners": [
+        {
+          "attachedRoutes": 0,
+          "conditions": [
+            {
+              "lastTransitionTime": "2026-10-12T01:33:29Z",
+              "message": "No errors found",
+              "observedGeneration": 1,
+              "reason": "Accepted",
+              "status": "True",
+              "type": "Accepted"
+            },
+            {
+              "lastTransitionTime": "2026-10-12T01:33:29Z",
+              "message": "No errors found",
+              "observedGeneration": 1,
+              "reason": "NoConflicts",
+              "status": "False",
+              "type": "Conflicted"
+            },
+            {
+              "lastTransitionTime": "2026-10-12T01:33:29Z",
+              "message": "No errors found",
+              "observedGeneration": 1,
+              "reason": "Programmed",
+              "status": "True",
+              "type": "Programmed"
+            },
+            {
+              "lastTransitionTime": "2026-10-12T01:33:29Z",
+              "message": "No errors found",
+              "observedGeneration": 1,
+              "reason": "ResolvedRefs",
+              "status": "True",
+              "type": "ResolvedRefs"
+            }
+          ],
+          "name": "http",
+          "supportedKinds": [
+            {
+              "group": "gateway.networking.k8s.io",
+              "kind": "HTTPRoute"
+            },
+            {
+              "group": "gateway.networking.k8s.io",
+              "kind": "GRPCRoute"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "gatewayClass": {
+    "name": "higress",
+    "controllerName": "higress.io/gateway-controller"
+  },
+  "urls": {
+    "higressHTTP": [
+      "http://172.16.101.20:30445",
+      "http://172.16.101.21:30445",
+      "http://172.16.101.22:30445"
+    ],
+    "higressHTTPS": "RESERVED_30446_NOT_LISTENING",
+    "kubeflowHTTPAPI": "https://172.16.101.20:30443",
+    "kubeflowGRPC": "172.16.101.20:30444"
+  },
+  "wasm": [
+    {
+      "name": "model-router",
+      "version": "2.0.2",
+      "manifestDigest": "sha256:e8b99fe5e302a59ab53e6884109b0c4f4a86db1c62ec681c48fd0da86192229f",
+      "contentDigest": "sha256:62127d6d8561e380b9af5738de5368408430d6091a5afb7a9ad4f6a02b1cd12d",
+      "registryRepository": "ani-higress-platform/plugins/model-router"
+    },
+    {
+      "name": "key-auth",
+      "version": "2.0.0",
+      "manifestDigest": "sha256:c9cddda9b7dc36b8260afd10d12a089556a070dba28b0b17691e18efc0ca545c",
+      "contentDigest": "sha256:19ec6a090a2515bbb8df50bbf3786c056a217352647793f6a185fb381f4b4df9",
+      "registryRepository": "ani-higress-platform/plugins/key-auth"
+    },
+    {
+      "name": "key-rate-limit",
+      "version": "1.0.0",
+      "manifestDigest": "sha256:c59da1ee175ff04aa3ce18ca465265a51cc4f2bbc901c8f45cc8f8bbaa6ad357",
+      "contentDigest": "sha256:72d14435bd51a99a4afcaea2d5a6798ec3ac118fe1e9ed2d82ddd4efe7b21c93",
+      "registryRepository": "ani-higress-platform/plugins/key-rate-limit"
+    },
+    {
+      "name": "ai-statistics",
+      "version": "2.0.2",
+      "manifestDigest": "sha256:3b6beecc9945290c17ed81fa02a2c592df8c5c4c7c7ac22c0abd85196a0c9da2",
+      "contentDigest": "sha256:88f0a4c6c3dbdb8cac50cd7d27211e38615b9333b00e6140118b07d794d6e518",
+      "registryRepository": "ani-higress-platform/plugins/ai-statistics"
+    }
+  ],
+  "pluginsState": "fixed-disabled-defaults-await-ANI-config",
+  "wasmRegistry": "172.16.101.20:30003",
+  "actualLoadedModuleEvidence": {
+    "podNames": [
+      "higress-gateway-78476f949-cgjk9",
+      "higress-gateway-78476f949-tr8tn"
+    ],
+    "allFourContentDigestsMatched": true
+  },
+  "caReferences": {
+    "harbor": {
+      "host": "172.16.101.20",
+      "path": "/etc/kubernetes/ani/harbor/ca.crt"
+    },
+    "kubeflow": {
+      "namespace": "kubeflow",
+      "configMap": "ani-kfp-ca",
+      "key": "ca.crt"
+    },
+    "rustfs": {
+      "namespace": "ani-platform",
+      "configMap": "ani-rustfs-ca",
+      "key": "ca.crt"
+    }
+  },
+  "credentialReferences": [
+    {
+      "namespace": "ani-platform",
+      "name": "ani-milvus-rustfs",
+      "type": "Opaque",
+      "keys": [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-nats-auth",
+      "type": "Opaque",
+      "keys": [
+        "token"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-postgres-admin",
+      "type": "Opaque",
+      "keys": [
+        "postgres-password"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-postgres-app",
+      "type": "Opaque",
+      "keys": [
+        "app-password"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-rustfs-root",
+      "type": "Opaque",
+      "keys": [
+        "RUSTFS_ACCESS_KEY",
+        "RUSTFS_SECRET_KEY"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-rustfs-tls",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-valkey-auth",
+      "type": "Opaque",
+      "keys": [
+        "valkey-password"
+      ]
+    },
+    {
+      "namespace": "ani-platform",
+      "name": "ani-valkey-config",
+      "type": "Opaque",
+      "keys": [
+        "valkey.conf"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "alertmanager-ani-metrics-alertmanager",
+      "type": "Opaque",
+      "keys": [
+        "alertmanager.yaml"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "alertmanager-ani-metrics-alertmanager-cluster-tls-config",
+      "type": "Opaque",
+      "keys": [
+        "cluster-tls-config.yaml"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "alertmanager-ani-metrics-alertmanager-generated",
+      "type": "Opaque",
+      "keys": [
+        "alertmanager.yaml.gz"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "alertmanager-ani-metrics-alertmanager-tls-assets-0",
+      "type": "Opaque",
+      "keys": []
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "alertmanager-ani-metrics-alertmanager-web-config",
+      "type": "Opaque",
+      "keys": [
+        "web-config.yaml"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-metrics-admission",
+      "type": "Opaque",
+      "keys": [
+        "ca",
+        "cert",
+        "key"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-admin",
+      "type": "Opaque",
+      "keys": [
+        "password",
+        "username"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-admin-tls",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-fluent-bit",
+      "type": "Opaque",
+      "keys": [
+        "password",
+        "username"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-fluent-bit-tls",
+      "type": "Opaque",
+      "keys": [
+        "ca.crt"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-node-tls",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "ani-opensearch-security-config",
+      "type": "Opaque",
+      "keys": [
+        "action_groups.yml",
+        "allowlist.yml",
+        "config.yml",
+        "internal_users.yml",
+        "nodes_dn.yml",
+        "roles.yml",
+        "roles_mapping.yml",
+        "tenants.yml"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "prometheus-ani-metrics-prometheus",
+      "type": "Opaque",
+      "keys": [
+        "prometheus.yaml.gz"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "prometheus-ani-metrics-prometheus-thanos-prometheus-http-client-file",
+      "type": "Opaque",
+      "keys": [
+        "prometheus.http-client-file.yaml"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "prometheus-ani-metrics-prometheus-tls-assets-0",
+      "type": "Opaque",
+      "keys": [
+        "0_ani-observability_ani-metrics-admission_ca"
+      ]
+    },
+    {
+      "namespace": "ani-observability",
+      "name": "prometheus-ani-metrics-prometheus-web-config",
+      "type": "Opaque",
+      "keys": [
+        "web-config.yaml"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-admin",
+      "type": "Opaque",
+      "keys": [
+        "HARBOR_ADMIN_PASSWORD"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-core",
+      "type": "Opaque",
+      "keys": [
+        "CSRF_KEY",
+        "POSTGRESQL_PASSWORD",
+        "REGISTRY_CREDENTIAL_PASSWORD",
+        "secret",
+        "secretKey",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-database",
+      "type": "Opaque",
+      "keys": [
+        "POSTGRES_PASSWORD"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-jobservice",
+      "type": "Opaque",
+      "keys": [
+        "JOBSERVICE_SECRET",
+        "REGISTRY_CREDENTIAL_PASSWORD"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-registry",
+      "type": "Opaque",
+      "keys": [
+        "REGISTRY_HTTP_SECRET",
+        "REGISTRY_REDIS_PASSWORD"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-registry-htpasswd",
+      "type": "Opaque",
+      "keys": [
+        "REGISTRY_HTPASSWD"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-registryctl",
+      "type": "Opaque",
+      "keys": []
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-tls",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "ani-harbor",
+      "name": "ani-harbor-trivy",
+      "type": "Opaque",
+      "keys": [
+        "gitHubToken",
+        "redisURL"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-api-db",
+      "type": "Opaque",
+      "keys": [
+        "password",
+        "username"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-ca",
+      "type": "Opaque",
+      "keys": [
+        "ca.crt"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-control-s3",
+      "type": "Opaque",
+      "keys": [
+        "accesskey",
+        "secretkey"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-entry-tls",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-mlmd-db",
+      "type": "Opaque",
+      "keys": [
+        "password",
+        "username"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-mysql-init",
+      "type": "Opaque",
+      "keys": [
+        "01-kfp.sql"
+      ]
+    },
+    {
+      "namespace": "kubeflow",
+      "name": "ani-kfp-mysql-root",
+      "type": "Opaque",
+      "keys": [
+        "password"
+      ]
+    },
+    {
+      "namespace": "kserve",
+      "name": "kserve-webhook-server-cert",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "kserve",
+      "name": "llmisvc-webhook-server-cert",
+      "type": "kubernetes.io/tls",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ]
+    },
+    {
+      "namespace": "higress-system",
+      "name": "istio-ca-secret",
+      "type": "istio.io/ca-root",
+      "keys": [
+        "ca-cert.pem",
+        "ca-key.pem",
+        "cert-chain.pem",
+        "key.pem",
+        "root-cert.pem"
+      ]
+    }
+  ],
+  "runtimeImageDigestEvidence": {
+    "privateFile": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/runtime-inventory-after-cleanup-final-c006ccd.json",
+    "sha256": "cbbaac7917fa8eebebe16e3fddfd4c0ccab7db1c84057a23080630a221f30e2e",
+    "observedContainers": 241,
+    "assertion": "EVERY_OBSERVED_IMAGEID_EQUALS_ITS_FROZEN_PLATFORM_DIGEST"
+  },
+  "ceph": {
+    "health": "HEALTH_WARN",
+    "cleanPGs": 81,
+    "warningsRetained": true
+  },
+  "boundaries": {
+    "networkPolicy": "KCN_UNSUPPORTED",
+    "engineProbe": "EXTERNAL_CPU_HTTP_ENGINE_BOUNDARY_REAL_KSERVE_LWS_HIGRESS_CONTROLLERS",
+    "realLLMEngine": "NOT_IN_SCOPE",
+    "aniApplicationsIAMTenantModelBusiness": "NOT_IN_SCOPE",
+    "higressHTTPS": "RESERVED_NOT_LISTENING",
+    "temporaryBusinessKeysRoutes": "NORMALLY_CLEANED",
+    "remotePushMergePublish": "NOT_PERFORMED"
+  },
+  "delivery": {
+    "code": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01",
+    "materials": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/materials-c006ccd-reassembly-attempt-01",
+    "privateSite": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/site-capacity50-retained-b46a80b.private.yaml",
+    "frozenSHA256": {
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/kk": "be4e78f06eba5452528ff33a87954d9a9e20fa7a6696df4fa999eb154b6adbc9",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/install.sh": "61ad40fbda04397ca05e41413a80b21934d72461853588ea73518004d58d4c38",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/verify.sh": "eae401ea5eac5103db5e34b70dcdec37c68a6e6c7d84c54ac99393e926d71316",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/probe.sh": "4ad09d4564eb8adfb511f411ef3cee7eb76da50ae6fe5426e1655205d8a7e004",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/network-probe.sh": "cfd4096052dbeeb4e6dffee416bbde9b1081e454669feda675db5ec6e2a00028",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/code-c006ccd-attempt-01/SHA256SUMS": "8d9910a94e8f047f7f393b303f6089e43353dfb890f2d302b498e17b96c6ea4a",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/materials-c006ccd-reassembly-attempt-01/SHA256SUMS": "c06a12a032bf44c000c75edd9e3a5a2c2356848a3bfaaada5e418d376f201eb7",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/materials-c006ccd-reassembly-attempt-01/images/images.tsv": "7b42736785abfc94f41b8040774aee5a0c81f81d94cb5313975110e0232b9cbe",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/materials-c006ccd-reassembly-attempt-01/config/components.lock.yaml": "82587faaf7a4eb369126cd5a6de2b2985678ef45c399ceb1c671f841ff973f60",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/materials-c006ccd-reassembly-attempt-01/manifests/kubeflow/26.03-kubeflow-stage2-v1/assets.lock.json": "c0d0a063f7dd36a3d7cb67d6b13e8ffb65a170f4ac9d19d4bff6f792bfca3215",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/site-capacity50-retained-b46a80b.private.yaml": "ac81b6c54d8e991b4202d96c93da095761c5f95311337d11596b94389da34835",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/source-delta-c006ccd.bundle": "a6f7592fb7bd22693ef9201c8af188998bd390dc3504ebb31160bd8ba094db1f",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/preserve-current-2de-c006ccd/resolved-data-disposition.json": "70eca404b788044b682f5551903d9070736027e81211fd252cb6144a389cf6ae",
+      "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/esxi-snapshot-mapping-readonly-c006ccd/descriptor-chain-readonly/report.json": "3388076f5d96b4b158681c42d92c9fd34752e32aadd0774db953210e9f4a442e"
+    },
+    "evidence": {
+      "frozen-candidate-c006ccd.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/frozen-candidate-c006ccd.json",
+        "sha256": "ba0dc80b49b46c9adc51c4c0b4e8bfa2949e982ad389455d37a0bb0a2004ee94"
+      },
+      "final-clean-baseline-c006ccd-restore-attempt-01/index.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-clean-baseline-c006ccd-restore-attempt-01/index.json",
+        "sha256": "001cd73630d05e053330e903ac264570607628527121c5db38124f24abde8091"
+      },
+      "unified-first-install-frozen-c006ccd-attempt-01.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/unified-first-install-frozen-c006ccd-attempt-01.json",
+        "sha256": "aa03739661a7764aad62194af3281c8384f8cd6b7d5c659cd10106ac25fb1d72"
+      },
+      "final-cluster-identity-frozen-c006ccd.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-cluster-identity-frozen-c006ccd.json",
+        "sha256": "8389850e5a4275a1525ac99458207b4c9baf4ba4e4aed571c824f53fb4e466a3"
+      },
+      "final-selected-behaviors-c006ccd-continuation-03.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-selected-behaviors-c006ccd-continuation-03.json",
+        "sha256": "95c2004e89a5fe36578bb55c431ae6cdb4ba1fb8f9406ac3db53cea8f1be0cc1"
+      },
+      "final-formal-verify-smoke-c006ccd-receipt.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-formal-verify-smoke-c006ccd-receipt.json",
+        "sha256": "9cafa5ad7daab3aab14ae6d18fa96491aa03f8e83bd1071a4f9a70a0abc2d9c2"
+      },
+      "final-formal-verify-acceptance-c006ccd-receipt.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-formal-verify-acceptance-c006ccd-receipt.json",
+        "sha256": "e8266fb5e6314f843634f90d606d6944e10848759f8df600c3653040491748df"
+      },
+      "post-data-noop-final-c006ccd.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/post-data-noop-final-c006ccd.json",
+        "sha256": "f499c4b05833f9e9c625363ab311867ff10bf04f729bb4c8649965fbc63c5056"
+      },
+      "runtime-inventory-after-cleanup-final-c006ccd.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/runtime-inventory-after-cleanup-final-c006ccd.json",
+        "sha256": "cbbaac7917fa8eebebe16e3fddfd4c0ccab7db1c84057a23080630a221f30e2e"
+      },
+      "final-coexistence-capacity-c006ccd-attempt-01/capacity-proof.json": {
+        "privateEvidence": "/home/chabking/ani-installer-runs/lws-kserve-higress-20261010/private/final-coexistence-capacity-c006ccd-attempt-01/capacity-proof.json",
+        "sha256": "2a0d2d89219a88279594c8d10f8661eb3728517e0b93c8cbad4d1ba8a61253a6"
+      }
+    }
+  }
+}

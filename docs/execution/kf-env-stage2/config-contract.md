@@ -2,6 +2,14 @@
 
 完整站点见 `site.example.yaml`。沿用 `kubeflow.enabled` 与 `kubeflow.release`；省略或关闭时不创建二阶段对象。`26.03-kubeflow-stage2-v1` 保持原 Notebook/Standard 组合，要求 full 首装、持久存储、RustFS 和 cert-manager。新组合 `26.10-kubeflow-llm-v1` 保留同一 Standard 与 KFP 基础材料，增加官方 KServe LLMI v0.17.0 并自动引入 LWS v0.10.0；不增加 `kserve.enabled` 或独立 LLMI 开关。`components.lws.enabled` 可独立选择 LWS。保留集群通过 `components install/execute --only kserve` 补齐 LLMI，仅允许存在原成功 Kubeflow Standard 基础且身份、材料、共享对象归属匹配，不重跑 Standard。当前真实交付状态以唯一进度记录为准。
 
+2026-10-12 冻结候选 `c006ccd885a379868c11753bad763d81de72d340` 的当前
+20～22 环境交接见 [environment-handoff.json](records/lws-kserve-higress-c006ccd/environment-handoff.json)，
+逐项验收和原始失败保留索引见 [acceptance-index.json](records/lws-kserve-higress-c006ccd/acceptance-index.json)。
+交接绑定一次统一冷首装 run `ani-ani-kcn-full-20261012-003201` 与实际新集群 UID，
+包括实际 served/storage API、Gateway/listener、四插件摘要、CA/凭据引用、完整材料与代码摘要。
+当前 Higress HTTP 为三节点 `30445`；`30446` 仍仅预留。KCN NetworkPolicy unsupported、
+Ceph HEALTH_WARN 和外部 CPU 引擎探针边界保留；真实 LLM 与 ANI 应用业务不在此次验收范围。
+
 `components.higress.enabled` 独立选择官方 Higress 2.2.4，不派生 Kubeflow。
 正式字段为 `gatewayClass`、`gatewayName`、`httpPort`、`httpsPort`、`hostname`、
 `tlsSecret`、`allowedNamespaces`、`wasmRegistry` 和可选 `probeKeyFile`。

@@ -1,0 +1,121 @@
+{
+  "clusterName": "ani-kcn-full",
+  "profile": "full",
+  "networkStack": "kcn",
+  "networkMultus": true,
+  "installer": {
+    "name": "node1",
+    "address": "172.16.101.20",
+    "registryHost": "172.16.101.20",
+    "registryPort": 5001
+  },
+  "nodes": [
+    {
+      "name": "node1",
+      "address": "172.16.101.20",
+      "installer": true
+    },
+    {
+      "name": "node2",
+      "address": "172.16.101.21",
+      "installer": false
+    },
+    {
+      "name": "node3",
+      "address": "172.16.101.22",
+      "installer": false
+    }
+  ],
+  "components": [
+    "cert-manager",
+    "postgresql",
+    "valkey",
+    "nats",
+    "metrics",
+    "opensearch",
+    "fluent-bit",
+    "rustfs",
+    "milvus",
+    "metrics-server",
+    "snapshot-controller",
+    "kubevirt",
+    "volcano",
+    "harbor",
+    "lws",
+    "kserve",
+    "higress",
+    "kubeflow"
+  ],
+  "dependencySources": {
+    "cert-manager": [
+      "kubeflow",
+      "kserve"
+    ],
+    "harbor": [
+      "higress.wasmRegistry=harbor"
+    ],
+    "kserve": [
+      "kubeflow.release=26.10-kubeflow-llm-v1"
+    ],
+    "lws": [
+      "kserve"
+    ]
+  },
+  "storage": {
+    "enabled": true,
+    "provider": "ceph",
+    "makeDefaultStorageClass": true,
+    "nodes": [
+      {
+        "name": "node1",
+        "devices": [
+          "/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0"
+        ]
+      },
+      {
+        "name": "node2",
+        "devices": [
+          "/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0"
+        ]
+      },
+      {
+        "name": "node3",
+        "devices": [
+          "/dev/disk/by-path/pci-0000:02:00.0-scsi-0:0:1:0"
+        ]
+      }
+    ]
+  },
+  "kubeflow": {
+    "Enabled": true,
+    "Release": "26.10-kubeflow-llm-v1",
+    "NetworkPolicy": "kcn-test-unsupported-v1",
+    "EntryAddress": "172.16.101.20",
+    "HTTPPort": 30443,
+    "GRPCPort": 30444,
+    "Database": {
+      "StorageClass": "ani-block",
+      "StorageSize": "20Gi"
+    },
+    "Workspace": {
+      "StorageClass": "ani-cephfs",
+      "MaxSize": "5Gi",
+      "MaxClaimsPerTenant": 2
+    },
+    "Tenants": [
+      "ani-kfp-probe-a",
+      "ani-kfp-probe-b"
+    ]
+  },
+  "componentStorageClasses": {
+    "harbor": "ani-block",
+    "kubeflow": "ani-block",
+    "kubevirt": "ani-block",
+    "milvus": "ani-block",
+    "nats": "ani-block",
+    "opensearch": "ani-block",
+    "postgresql": "ani-block",
+    "rustfs": "ani-block",
+    "valkey": "ani-block"
+  }
+}
