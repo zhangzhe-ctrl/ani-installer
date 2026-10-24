@@ -24,8 +24,8 @@ for kind_name in 'serviceaccount ani-snapshot-controller' 'role ani-snapshot-con
   read -r kind name <<< "$kind_name"
   check_owner "$kind" "$name" kube-system
 done
-check_owner volumesnapshotclass ani-rbd-retain
-check_owner volumesnapshotclass ani-cephfs-retain
+check_owner volumesnapshotclass ani-rbd-delete
+check_owner volumesnapshotclass ani-cephfs-delete
 "${KUBECTL[@]}" get storageclass ani-block ani-cephfs -o json | python3 -c '
 import json,sys
 items={x["metadata"]["name"]:x for x in json.load(sys.stdin)["items"]}

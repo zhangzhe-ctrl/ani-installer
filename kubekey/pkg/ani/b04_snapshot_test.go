@@ -61,7 +61,7 @@ func TestB04SnapshotProductionSelectionAndRender(t *testing.T) {
 			}
 		case "snapshot-controller/templates/classes.yaml":
 			text := string(file.Rendered)
-			for _, want := range []string{"ani-rbd-retain", "ani-cephfs-retain", "deletionPolicy: Retain", "rook-ceph.rbd.csi.ceph.com", "rook-ceph.cephfs.csi.ceph.com"} {
+			for _, want := range []string{"ani-rbd-delete", "ani-cephfs-delete", "deletionPolicy: Delete", "rook-ceph.rbd.csi.ceph.com", "rook-ceph.cephfs.csi.ceph.com"} {
 				if !strings.Contains(text, want) {
 					t.Errorf("classes omitted %q", want)
 				}
