@@ -87,8 +87,8 @@ SNAP
   content_uid="$("${KUBECTL[@]}" get "volumesnapshotcontent/$content" -o jsonpath='{.spec.volumeSnapshotRef.uid}')"
   content_driver="$("${KUBECTL[@]}" get "volumesnapshotcontent/$content" -o jsonpath='{.spec.driver}')"
   content_policy="$("${KUBECTL[@]}" get "volumesnapshotcontent/$content" -o jsonpath='{.spec.deletionPolicy}')"
-  [ "$content_uid" = "$snap_uid" ] && [ "$content_driver" = "$driver" ] && [ "$content_policy" = Retain ] || {
-    echo "$kind snapshot content binding, driver or Retain policy mismatch" >&2; return 1;
+  [ "$content_uid" = "$snap_uid" ] && [ "$content_driver" = "$driver" ] && [ "$content_policy" = Delete ] || {
+    echo "$kind snapshot content binding, driver or Delete policy mismatch" >&2; return 1;
   }
   "${KUBECTL[@]}" -n "$NS" get "volumesnapshot/$snapshot" -o json > "$OUT_DIR/$snapshot.json"
   "${KUBECTL[@]}" get "volumesnapshotcontent/$content" -o json > "$OUT_DIR/$content.json"
@@ -155,5 +155,5 @@ JOB
   echo "ANI-SNAPSHOT-RESTORE-OK driver=$kind source=$source restore=$restore snapshot=$snapshot content=$content source_uid=$source_uid restore_uid=$restore_uid"
 }
 
-run_driver rbd ani-block ani-rbd-retain rook-ceph.rbd.csi.ceph.com
-run_driver cephfs ani-cephfs ani-cephfs-retain rook-ceph.cephfs.csi.ceph.com
+run_driver rbd ani-block ani-rbd-delete rook-ceph.rbd.csi.ceph.com
+run_driver cephfs ani-cephfs ani-cephfs-delete rook-ceph.cephfs.csi.ceph.com
